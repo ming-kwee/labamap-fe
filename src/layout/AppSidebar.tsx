@@ -12,6 +12,7 @@ import {
   HorizontaLDots,
   ListIcon,
   PageIcon,
+  PaperPlaneIcon,
   PieChartIcon,
   PlugInIcon,
   TableIcon,
@@ -31,6 +32,21 @@ const navItems: NavItem[] = [
     icon: <GridIcon />,
     name: "Dashboard",
     subItems: [{ name: "Ecommerce", path: "/", pro: false }],
+  },
+  {
+    icon: <PaperPlaneIcon />,
+    name: "Create Product Api Demo",
+    path: "/api-demo",
+  },
+    {
+    icon: <PageIcon />,
+    name: "Create Product Api Examples",
+    path: "/api-examples",
+  },
+  {
+    icon: <ListIcon />,
+    name: "Create Product",
+    path: "/products/create",
   },
   {
     icon: <CalenderIcon />,
