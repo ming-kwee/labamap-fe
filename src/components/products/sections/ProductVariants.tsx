@@ -38,25 +38,107 @@ const commonVariantTypes = [
 export default function ProductVariants({ data, onUpdate }: ProductVariantsProps) {
   const [variants, setVariants] = useState<ProductVariant[]>([]);
   const [variantOptions, setVariantOptions] = useState<VariantOption[]>([]);
+
+  // Helper function to transform optionGroups to internal VariantOption format
+  const transformOptionGroupsToVariantOptions = (optionGroups: ProductData['optionGroups']): VariantOption[] => {
+    return optionGroups.map(group => ({
+      name: group.channel_option_name,
+      values: group.channel_option_values.map(val => val.channel_option_value)
+    }));
+  };
+
+  // Helper function to transform internal VariantOption format to optionGroups
+  const transformVariantOptionsToOptionGroups = (options: VariantOption[]): ProductData['optionGroups'] => {
+    return options.map(option => ({
+      channel_option_name: option.name,
+      channel_option_values: option.values.map(value => ({
+        channel_option_value: value,
+        channel_option_description: ""
+      }))
+    }));
+  };
+
+  // Helper function to transform internal ProductVariant format to variantGroups
+  const transformVariantsToVariantGroups = (variants: ProductVariant[]): ProductData['variantGroups'] => {
+    return variants.map(variant => {
+      const attributeKeys = Object.keys(variant.attributes);
+      return {
+        channel_variant_option1_key: attributeKeys[0] || "",
+        channel_variant_option1_value: variant.attributes[attributeKeys[0]] || "",
+        channel_variant_option2_key: attributeKeys[1] || "",
+        channel_variant_option2_value: variant.attributes[attributeKeys[1]] || "",
+      };
+    });
+  };
+
   const [newOptionName, setNewOptionName] = useState("");
   const [newOptionValues, setNewOptionValues] = useState("");
   const [isGeneratingVariants, setIsGeneratingVariants] = useState(false);
   const [bulkEditMode, setBulkEditMode] = useState(false);
+
   const [selectedVariants, setSelectedVariants] = useState<string[]>([]);
+  const [variantsEnabled, setVariantsEnabled] = useState(data.variantGroups.length > 0 || data.optionGroups.length > 0);
+
+  // Initialize internal state from ProductData
+  useEffect(() => {
+    if (data.optionGroups.length > 0) {
+      setVariantOptions(transformOptionGroupsToVariantOptions(data.optionGroups));
+    }
+  }, [data.optionGroups]);
+
+  // Initialize variants from existing variantGroups data
+  useEffect(() => {
+    if (variantsEnabled && variantOptions.length > 0) {
+      // Transform existing variantGroups back to internal format for editing
+      const existingVariants: ProductVariant[] = data.variantGroups.map((group, index) => {
+        const attributes: Record<string, string> = {};
+        if (group.channel_variant_option1_key && group.channel_variant_option1_value) {
+          attributes[group.channel_variant_option1_key] = group.channel_variant_option1_value;
+        }
+        if (group.channel_variant_option2_key && group.channel_variant_option2_value) {
+          attributes[group.channel_variant_option2_key] = group.channel_variant_option2_value;
+        }
+        
+        return {
+          id: `variant-${index}`,
+          sku: `${data.masterAttributes.sku || "PRD"}-${Object.values(attributes).join("-")}`,
+          price: data.masterAttributes.basePrice || 0,
+          inventory: 0,
+          attributes,
+          enabled: true,
+        };
+      });
+      setVariants(existingVariants);
+    }
+  }, [data.variantGroups, data.masterAttributes.sku, data.masterAttributes.basePrice, variantOptions]);
+
 
   useEffect(() => {
     // Auto-generate variants when options change
-    if (variantOptions.length > 0 && data.variantGroups.length > 0) {
+    if (variantOptions.length > 0 && variantsEnabled) {
       generateVariantCombinations();
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [variantOptions, data.variantGroups.length > 0]);
+  }, [variantOptions, variantsEnabled]);
 
   const handleVariantToggle = (hasVariants: boolean) => {
-    onUpdate({ 
-      variantGroups: hasVariants ? [] : [],
-      optionGroups: hasVariants ? [] : [],
-    });
+    setVariantsEnabled(hasVariants);
+    
+    if (hasVariants) {
+      // Enable variants - initialize with empty arrays to show the variant creation UI
+      onUpdate({ 
+        variantGroups: [],
+        optionGroups: [],
+      });
+    } else {
+      // Disable variants - clear all variant data
+      setVariants([]);
+      setVariantOptions([]);
+      onUpdate({ 
+        variantGroups: [],
+        optionGroups: [],
+      });
+    }
   };
 
   const addVariantOption = (optionName?: string, optionValues?: string[]) => {
@@ -66,8 +148,7 @@ export default function ProductVariants({ data, onUpdate }: ProductVariantsProps
     if (name && values.length > 0) {
       const newOptions = [...variantOptions, { name, values }];
       setVariantOptions(newOptions);
-      // TODO: Update to match new optionGroups structure
-      // onUpdate({ optionGroups: newOptions });
+      onUpdate({ optionGroups: transformVariantOptionsToOptionGroups(newOptions) });
       setNewOptionName("");
       setNewOptionValues("");
     }
@@ -76,8 +157,7 @@ export default function ProductVariants({ data, onUpdate }: ProductVariantsProps
   const removeVariantOption = (index: number) => {
     const newOptions = variantOptions.filter((_, i) => i !== index);
     setVariantOptions(newOptions);
-    // TODO: Update to match new optionGroups structure
-      // onUpdate({ optionGroups: newOptions });
+    onUpdate({ optionGroups: transformVariantOptionsToOptionGroups(newOptions) });
   };
 
   const updateVariantOption = (index: number, field: "name" | "values", value: string | string[]) => {
@@ -85,8 +165,7 @@ export default function ProductVariants({ data, onUpdate }: ProductVariantsProps
       i === index ? { ...option, [field]: value } : option
     );
     setVariantOptions(newOptions);
-    // TODO: Update to match new optionGroups structure
-    // onUpdate({ optionGroups: newOptions });
+    onUpdate({ optionGroups: transformVariantOptionsToOptionGroups(newOptions) });
   };
 
   const generateVariantCombinations = () => {
@@ -121,8 +200,7 @@ export default function ProductVariants({ data, onUpdate }: ProductVariantsProps
       });
 
       setVariants(newVariants);
-      // TODO: Update to match new variantGroups structure
-      // onUpdate({ variantGroups: newVariants });
+      onUpdate({ variantGroups: transformVariantsToVariantGroups(newVariants) });
       setIsGeneratingVariants(false);
     }, 1000);
   };
@@ -199,13 +277,14 @@ export default function ProductVariants({ data, onUpdate }: ProductVariantsProps
             </p>
           </div>
           <Switch
+            key={`variants-toggle-${variantsEnabled}`}
             label="Enable Variants"
-            defaultChecked={data.variantGroups.length > 0}
+            defaultChecked={variantsEnabled}
             onChange={handleVariantToggle}
           />
         </div>
 
-        {!(data.variantGroups.length > 0) && (
+        {!(variantsEnabled) && (
           <div className="mt-6 p-4 bg-gray-50 dark:bg-gray-900 rounded-lg">
             <p className="text-sm text-gray-600 dark:text-gray-400">
               Enable variants if your product has different options like size, color, or material.
@@ -215,7 +294,7 @@ export default function ProductVariants({ data, onUpdate }: ProductVariantsProps
         )}
       </div>
 
-      {data.variantGroups.length > 0 && (
+      {variantsEnabled && (
         <>
           {/* Variant Options */}
           <div className="bg-white dark:bg-gray-800 rounded-xl p-6 border border-gray-200 dark:border-gray-700">
