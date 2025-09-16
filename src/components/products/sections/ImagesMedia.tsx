@@ -21,7 +21,7 @@ interface MediaFile {
   dimensions?: { width: number; height: number };
 }
 
-export default function ImagesMedia({ onUpdate }: ImagesMediaProps) {
+export default function ImagesMedia({ data, onUpdate }: ImagesMediaProps) {
   const [mediaFiles, setMediaFiles] = useState<MediaFile[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
   const [, setSelectedMedia] = useState<string | null>(null);
@@ -62,11 +62,8 @@ export default function ImagesMedia({ onUpdate }: ImagesMediaProps) {
       setMediaFiles(updatedMedia);
       
       // Update product data
-      const images = updatedMedia.filter(m => m.type === "image").map(m => ({
-        id: m.id,
-        url: m.url,
-        alt: m.alt || "",
-        isPrimary: m.isPrimary || false,
+      const product_images = updatedMedia.filter(m => m.type === "image").map(m => ({
+        src: m.url,
       }));
       
       const videos = updatedMedia.filter(m => m.type === "video").map(m => ({
@@ -75,7 +72,13 @@ export default function ImagesMedia({ onUpdate }: ImagesMediaProps) {
         title: m.title || "",
       }));
 
-      onUpdate({ images, videos });
+      onUpdate({ 
+        masterAttributes: { 
+          ...data.masterAttributes,
+          product_images, 
+          videos 
+        } 
+      });
       
     } catch (error) {
       console.error("Error processing media files:", error);
@@ -122,7 +125,13 @@ export default function ImagesMedia({ onUpdate }: ImagesMediaProps) {
       title: m.title || "",
     }));
 
-    onUpdate({ images, videos });
+    onUpdate({ 
+      masterAttributes: { 
+        ...data.masterAttributes,
+        product_images: images.map(img => ({ src: img.url })), 
+        videos 
+      } 
+    });
   };
 
   const setPrimaryImage = (id: string) => {
@@ -139,7 +148,12 @@ export default function ImagesMedia({ onUpdate }: ImagesMediaProps) {
       isPrimary: m.isPrimary || false,
     }));
 
-    onUpdate({ images });
+    onUpdate({ 
+      masterAttributes: { 
+        ...data.masterAttributes,
+        product_images: images.map(img => ({ src: img.url }))
+      } 
+    });
   };
 
   const updateMediaAlt = (id: string, alt: string) => {
@@ -155,7 +169,12 @@ export default function ImagesMedia({ onUpdate }: ImagesMediaProps) {
       isPrimary: m.isPrimary || false,
     }));
 
-    onUpdate({ images });
+    onUpdate({ 
+      masterAttributes: { 
+        ...data.masterAttributes,
+        product_images: images.map(img => ({ src: img.url }))
+      } 
+    });
   };
 
   const generateAIAltText = async (media: MediaFile) => {

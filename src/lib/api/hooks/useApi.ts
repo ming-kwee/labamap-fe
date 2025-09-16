@@ -47,8 +47,9 @@ export function useApi<T>(
 
   const [retryCount, setRetryCount] = useState(0);
 
+
   const execute = useCallback(
-    async (...args: unknown[]) => {
+    async (...args: unknown[]): Promise<ApiResponse<T>> => {
       setState(prev => ({
         ...prev,
         loading: true,
@@ -88,8 +89,18 @@ export function useApi<T>(
             }, retryDelay);
           }
         }
+        
+        return response;
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : 'Network error';
+        const errorResponse: ApiResponse<T> = {
+          success: false,
+          error: {
+            code: 'NETWORK_ERROR',
+            message: errorMessage,
+          },
+        };
+        
         setState(prev => ({
           ...prev,
           loading: false,
@@ -98,10 +109,12 @@ export function useApi<T>(
         }));
         
         onError?.(errorMessage);
+        return errorResponse;
       }
     },
     [apiFunction, onSuccess, onError, retryCount, retryAttempts, retryDelay]
   );
+
 
   const reset = useCallback(() => {
     setState({
@@ -199,7 +212,13 @@ export function useInfiniteQuery<T>(
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(true);
 
-  const { execute, loading, error } = useApi(apiFunction, { ...options, immediate: false });
+  const { execute, loading, error } = useApi(
+    (...allArgs: unknown[]) => {
+      const [pageArg, ...restArgs] = allArgs;
+      return apiFunction(pageArg as number, ...restArgs);
+    }, 
+    { ...options, immediate: false }
+  );
 
   const loadMore = useCallback(async () => {
     if (loading || !hasMore) return;

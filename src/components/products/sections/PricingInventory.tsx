@@ -165,9 +165,9 @@ export default function PricingInventory({ data, onUpdate }: PricingInventoryPro
               </span>
               <Input
                 type="number"
-                step="0.01"
+                step={0.01}
                 placeholder="0.00"
-                defaultValue={data.masterAttributes.costPrice}
+                defaultValue={data.masterAttributes.costPrice.toString()}
                 onChange={(e) => handlePriceChange("costPrice", e.target.value)}
                 className="pl-8"
               />
@@ -183,9 +183,9 @@ export default function PricingInventory({ data, onUpdate }: PricingInventoryPro
               </span>
               <Input
                 type="number"
-                step="0.01"
+                step={0.01}
                 placeholder="0.00"
-                defaultValue={data.masterAttributes.basePrice}
+                defaultValue={data.masterAttributes.basePrice.toString()}
                 onChange={(e) => handlePriceChange("basePrice", e.target.value)}
                 className="pl-8"
               />
@@ -201,9 +201,9 @@ export default function PricingInventory({ data, onUpdate }: PricingInventoryPro
               </span>
               <Input
                 type="number"
-                step="0.01"
+                step={0.01}
                 placeholder="0.00"
-                defaultValue={data.masterAttributes.comparePrice}
+                defaultValue={data.masterAttributes.comparePrice.toString()}
                 onChange={(e) => handlePriceChange("comparePrice", e.target.value)}
                 className="pl-8"
               />
@@ -259,7 +259,8 @@ export default function PricingInventory({ data, onUpdate }: PricingInventoryPro
           <div className="flex items-center justify-between mb-4">
             <Label>Tax Settings</Label>
             <Switch
-              checked={data.masterAttributes.taxable}
+              label="Enable Tax"
+              defaultChecked={data.masterAttributes.taxable}
               onChange={(checked) => handleInputChange("taxable", checked)}
             />
           </div>
@@ -285,7 +286,8 @@ export default function PricingInventory({ data, onUpdate }: PricingInventoryPro
             </p>
           </div>
           <Switch
-            checked={data.masterAttributes.trackInventory}
+            label="Track Inventory"
+            defaultChecked={data.masterAttributes.trackInventory}
             onChange={(checked) => handleInputChange("trackInventory", checked)}
           />
         </div>
@@ -306,7 +308,7 @@ export default function PricingInventory({ data, onUpdate }: PricingInventoryPro
                         type="number"
                         min="0"
                         placeholder="0"
-                        defaultValue={location.quantity}
+                        defaultValue={location.quantity.toString()}
                         onChange={(e) => updateInventoryLocation(location.id, parseInt(e.target.value) || 0)}
                       />
                     </div>
@@ -332,7 +334,7 @@ export default function PricingInventory({ data, onUpdate }: PricingInventoryPro
                   type="number"
                   min="0"
                   placeholder="0"
-                  defaultValue={data.masterAttributes.stockQuantity}
+                  defaultValue={data.masterAttributes.stockQuantity.toString()}
                   onChange={(e) => handleInputChange("stockQuantity", parseInt(e.target.value) || 0)}
                 />
               </div>
@@ -343,7 +345,7 @@ export default function PricingInventory({ data, onUpdate }: PricingInventoryPro
                   type="number"
                   min="0"
                   placeholder="5"
-                  defaultValue={data.masterAttributes.lowStockThreshold}
+                  defaultValue={data.masterAttributes.lowStockThreshold.toString()}
                   onChange={(e) => handleInputChange("lowStockThreshold", parseInt(e.target.value) || 5)}
                 />
               </div>

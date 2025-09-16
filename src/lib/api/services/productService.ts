@@ -279,17 +279,17 @@ export class ProductService {
   }
 
   /**
-   * Get product variants
+   * Get product variant groups
    */
-  async getVariants(productId: string): Promise<ApiResponse<ProductResponse['variants']>> {
-    return apiClient.get<ProductResponse['variants']>(`/products/${productId}/variants`);
+  async getVariants(productId: string): Promise<ApiResponse<ProductResponse['variantGroups']>> {
+    return apiClient.get<ProductResponse['variantGroups']>(`/products/${productId}/variants`);
   }
 
   /**
-   * Generate product variants based on options
+   * Generate product variants based on option groups
    */
-  async generateVariants(productId: string, options: ProductData['variantOptions']): Promise<ApiResponse<ProductResponse['variants']>> {
-    return apiClient.post<ProductResponse['variants']>(
+  async generateVariants(productId: string, options: ProductData['optionGroups']): Promise<ApiResponse<ProductResponse['variantGroups']>> {
+    return apiClient.post<ProductResponse['variantGroups']>(
       `/products/${productId}/variants/generate`,
       { options }
     );

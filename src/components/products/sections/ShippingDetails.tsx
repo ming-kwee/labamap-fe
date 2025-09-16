@@ -20,17 +20,17 @@ export default function ShippingDetails({ data, onUpdate }: ShippingDetailsProps
             <Label>Weight (kg)</Label>
             <Input
               type="number"
-              step="0.01"
-              defaultValue={data.weight}
-              onChange={(e) => onUpdate({ weight: parseFloat(e.target.value) || 0 })}
+              step={0.01}
+              defaultValue={data.masterAttributes.weight}
+              onChange={(e) => onUpdate({ masterAttributes: { ...data.masterAttributes, weight: parseFloat(e.target.value) || 0 } })}
             />
           </div>
           
           <div>
             <Label>Shipping Class</Label>
             <select 
-              value={data.shippingClass}
-              onChange={(e) => onUpdate({ shippingClass: e.target.value })}
+              defaultValue={data.masterAttributes.shippingClass}
+              onChange={(e) => onUpdate({ masterAttributes: { ...data.masterAttributes, shippingClass: e.target.value } })}
               className="h-11 w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 px-4 py-2.5 text-sm"
             >
               <option value="">Standard</option>
@@ -44,10 +44,13 @@ export default function ShippingDetails({ data, onUpdate }: ShippingDetailsProps
             <Label>Length (cm)</Label>
             <Input
               type="number"
-              step="0.1"
-              defaultValue={data.dimensions?.length}
+              step={0.1}
+              defaultValue={data.masterAttributes.dimensions?.length}
               onChange={(e) => onUpdate({ 
-                dimensions: { ...data.dimensions, length: parseFloat(e.target.value) || 0 } 
+                masterAttributes: { 
+                  ...data.masterAttributes, 
+                  dimensions: { ...data.masterAttributes.dimensions, length: parseFloat(e.target.value) || 0 } 
+                } 
               })}
             />
           </div>
@@ -56,10 +59,13 @@ export default function ShippingDetails({ data, onUpdate }: ShippingDetailsProps
             <Label>Width (cm)</Label>
             <Input
               type="number"
-              step="0.1"
-              defaultValue={data.dimensions?.width}
+              step={0.1}
+              defaultValue={data.masterAttributes.dimensions?.width}
               onChange={(e) => onUpdate({ 
-                dimensions: { ...data.dimensions, width: parseFloat(e.target.value) || 0 } 
+                masterAttributes: { 
+                  ...data.masterAttributes, 
+                  dimensions: { ...data.masterAttributes.dimensions, width: parseFloat(e.target.value) || 0 } 
+                } 
               })}
             />
           </div>
@@ -68,10 +74,13 @@ export default function ShippingDetails({ data, onUpdate }: ShippingDetailsProps
             <Label>Height (cm)</Label>
             <Input
               type="number"
-              step="0.1"
-              defaultValue={data.dimensions?.height}
+              step={0.1}
+              defaultValue={data.masterAttributes.dimensions?.height}
               onChange={(e) => onUpdate({ 
-                dimensions: { ...data.dimensions, height: parseFloat(e.target.value) || 0 } 
+                masterAttributes: { 
+                  ...data.masterAttributes, 
+                  dimensions: { ...data.masterAttributes.dimensions, height: parseFloat(e.target.value) || 0 } 
+                } 
               })}
             />
           </div>

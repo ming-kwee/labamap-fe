@@ -270,8 +270,8 @@ export default function ProductCreateForm({ productId }: ProductCreateFormProps 
   // Provide categories and brands data to child components
   const enhancedProductData = {
     ...productData,
-    _categories: categories?.data || [],
-    _brands: brands?.data || [],
+    _categories: categories || [],
+    _brands: brands || [],
   };
 
   const renderSection = () => {

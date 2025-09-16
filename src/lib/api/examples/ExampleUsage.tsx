@@ -16,6 +16,7 @@ import {
   useProductSearch,
   useBulkOperations,
 } from '@/lib/api/hooks/useProducts';
+import { ProductData } from '@/components/products/ProductCreateForm';
 
 // Payload builder function to match the required JSON structure
 const createProductPayload = (formData: any) => {
@@ -196,10 +197,14 @@ export function SimpleProductCreation() {
 // Example 2: Product List with Search and Pagination
 export function ProductListWithSearch() {
   const [searchQuery, setSearchQuery] = useState('');
-  const [filters, setFilters] = useState({
+  const [filters, setFilters] = useState<{
+    page: number;
+    limit: number;
+    status: 'active' | 'draft' | 'inactive';
+  }>({
     page: 1,
     limit: 10,
-    status: 'active' as const,
+    status: 'active',
   });
 
   const { data: products, loading, error, refetch } = useProducts(filters);
@@ -223,7 +228,7 @@ export function ProductListWithSearch() {
     }
   };
 
-  const displayProducts = searchProducts.data?.data?.products || products?.data?.products || [];
+  const displayProducts = searchProducts.data?.products || products?.products || [];
 
   if (loading) return <div>Loading products...</div>;
   if (error) return <div>Error: {error}</div>;
@@ -271,11 +276,11 @@ export function ProductListWithSearch() {
               borderRadius: '8px' 
             }}
           >
-            <h3>{product.name}</h3>
-            <p><strong>SKU:</strong> {product.sku}</p>
-            <p><strong>Price:</strong> ${product.basePrice}</p>
-            <p><strong>Status:</strong> {product.status}</p>
-            <p><strong>Category:</strong> {product.category}</p>
+            <h3>{product.masterAttributes.product_name}</h3>
+            <p><strong>SKU:</strong> {product.masterAttributes.sku}</p>
+            <p><strong>Price:</strong> ${product.masterAttributes.basePrice}</p>
+            <p><strong>Status:</strong> {product.masterAttributes.status}</p>
+            <p><strong>Category:</strong> {product.masterAttributes.category}</p>
             
             <div style={{ marginTop: '10px' }}>
               <button 
@@ -298,7 +303,7 @@ export function ProductListWithSearch() {
       </div>
 
       {/* Pagination */}
-      {products?.data?.pagination && (
+      {products?.pagination && (
         <div style={{ marginTop: '20px', textAlign: 'center' }}>
           <button
             disabled={filters.page === 1}
@@ -309,11 +314,11 @@ export function ProductListWithSearch() {
           </button>
           
           <span style={{ margin: '0 10px' }}>
-            Page {filters.page} of {products.data.pagination.totalPages}
+            Page {filters.page} of {products.pagination.totalPages}
           </span>
           
           <button
-            disabled={!products.data.pagination.hasNext}
+            disabled={!products.pagination.hasNext}
             onClick={() => setFilters(prev => ({ ...prev, page: prev.page + 1 }))}
             style={{ marginLeft: '10px', padding: '8px 16px' }}
           >
@@ -346,7 +351,7 @@ export function AdvancedProductForm() {
   const handleGenerateSKU = async () => {
     const result = await generateSKU.mutate(formData.category);
     if (result?.success && result.data) {
-      setFormData(prev => ({ ...prev, sku: result.data.sku }));
+      setFormData(prev => ({ ...prev, sku: result.data?.sku || '' }));
     }
   };
 
@@ -358,7 +363,7 @@ export function AdvancedProductForm() {
     if (result?.success && result.data) {
       setFormData(prev => ({
         ...prev,
-        images: [...prev.images, result.data.url]
+        images: [...prev.images, result.data?.url || ''].filter(Boolean)
       }));
     }
   };
@@ -452,7 +457,7 @@ export function AdvancedProductForm() {
           style={{ width: '100%', padding: '8px', marginTop: '5px' }}
         >
           <option value="">Select Category</option>
-          {categories?.data?.map(cat => (
+          {categories?.map((cat: any) => (
             <option key={cat.id} value={cat.id}>{cat.name}</option>
           ))}
         </select>
@@ -466,7 +471,7 @@ export function AdvancedProductForm() {
           style={{ width: '100%', padding: '8px', marginTop: '5px' }}
         >
           <option value="">Select Brand</option>
-          {brands?.data?.map(brand => (
+          {brands?.map((brand: any) => (
             <option key={brand.id} value={brand.id}>{brand.name}</option>
           ))}
         </select>
@@ -589,7 +594,11 @@ export function BulkOperationsExample() {
 
     const updates = selectedProducts.map(id => ({
       id,
-      data: { status }
+      data: { 
+        masterAttributes: { 
+          status 
+        } 
+      } as Partial<ProductData>
     }));
 
     const result = await bulkUpdate.mutate(updates);
@@ -630,7 +639,7 @@ export function BulkOperationsExample() {
       </div>
 
       <div>
-        {products?.data?.products.map(product => (
+        {products?.products.map(product => (
           <div
             key={product.id}
             style={{
@@ -648,9 +657,9 @@ export function BulkOperationsExample() {
                 style={{ marginRight: '10px' }}
               />
               <div>
-                <strong>{product.name}</strong>
+                <strong>{product.masterAttributes.product_name}</strong>
                 <br />
-                SKU: {product.sku} | Status: {product.status} | Price: ${product.basePrice}
+                SKU: {product.masterAttributes.sku} | Status: {product.masterAttributes.status} | Price: ${product.masterAttributes.basePrice}
               </div>
             </label>
           </div>
@@ -663,10 +672,14 @@ export function BulkOperationsExample() {
 // Example 5: Real-time Product Updates
 export function RealTimeProductUpdates() {
   const [productId, setProductId] = useState('');
-  const [updates, setUpdates] = useState({
+  const [updates, setUpdates] = useState<{
+    name: string;
+    basePrice: number;
+    status: 'draft' | 'active' | 'inactive';
+  }>({
     name: '',
     basePrice: 0,
-    status: 'draft' as const,
+    status: 'draft',
   });
 
   const updateProduct = useUpdateProduct();

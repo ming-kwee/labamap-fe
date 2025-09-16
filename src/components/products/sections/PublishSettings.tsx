@@ -25,8 +25,14 @@ export default function PublishSettings({ data, onUpdate }: PublishSettingsProps
               </p>
             </div>
             <Switch
-              checked={data.autoPublish}
-              onChange={(autoPublish) => onUpdate({ autoPublish })}
+              label="Auto Publish"
+              defaultChecked={data.masterAttributes.autoPublish}
+              onChange={(autoPublish) => onUpdate({ 
+                masterAttributes: { 
+                  ...data.masterAttributes, 
+                  autoPublish 
+                } 
+              })}
             />
           </div>
 
@@ -34,9 +40,12 @@ export default function PublishSettings({ data, onUpdate }: PublishSettingsProps
             <Label>Scheduled Publish Date</Label>
             <Input
               type="datetime-local"
-              defaultValue={data.scheduledPublish ? new Date(data.scheduledPublish).toISOString().slice(0, 16) : ""}
+              defaultValue={data.masterAttributes.scheduledPublish ? new Date(data.masterAttributes.scheduledPublish).toISOString().slice(0, 16) : ""}
               onChange={(e) => onUpdate({ 
-                scheduledPublish: e.target.value ? new Date(e.target.value) : null 
+                masterAttributes: {
+                  ...data.masterAttributes,
+                  scheduledPublish: e.target.value ? new Date(e.target.value) : null 
+                }
               })}
             />
           </div>
@@ -51,8 +60,13 @@ export default function PublishSettings({ data, onUpdate }: PublishSettingsProps
                       type="radio"
                       name="publishStatus"
                       value={status}
-                      checked={data.status === status}
-                      onChange={(e) => onUpdate({ status: e.target.value as "draft" | "active" | "inactive" })}
+                      checked={data.masterAttributes.status === status}
+                      onChange={(e) => onUpdate({ 
+                        masterAttributes: {
+                          ...data.masterAttributes,
+                          status: e.target.value as "draft" | "active" | "inactive"
+                        }
+                      })}
                     />
                     <span className="text-sm capitalize">{status}</span>
                   </label>

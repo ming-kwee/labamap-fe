@@ -70,24 +70,24 @@ const availableChannels = [
 
 export default function ChannelSync({ data, onUpdate }: ChannelSyncProps) {
   // const [selectedChannels, setSelectedChannels] = useState<string[]>(
-  //   data.channels?.map(c => c.platform) || []
+  //   data.masterAttributes.channels?.map(c => c.platform) || []
   // );
   const [isSyncing, setIsSyncing] = useState(false);
   const [lastSync, setLastSync] = useState(new Date(Date.now() - 30 * 60 * 1000)); // 30 min ago
 
   const toggleChannel = (channelId: string, storeId: string) => {
-    const channelExists = data.channels?.find(c => c.platform === channelId && c.storeId === storeId);
+    const channelExists = data.masterAttributes.channels?.find(c => c.platform === channelId && c.storeId === storeId);
     
     let newChannels;
     if (channelExists) {
-      newChannels = data.channels?.filter(c => !(c.platform === channelId && c.storeId === storeId)) || [];
+      newChannels = data.masterAttributes.channels?.filter(c => !(c.platform === channelId && c.storeId === storeId)) || [];
     } else {
       const channel = availableChannels.find(c => c.id === channelId);
       const store = channel?.stores.find(s => s.id === storeId);
       
       if (channel && store) {
         newChannels = [
-          ...(data.channels || []),
+          ...(data.masterAttributes.channels || []),
           {
             platform: channelId,
             storeId: storeId,
@@ -96,11 +96,16 @@ export default function ChannelSync({ data, onUpdate }: ChannelSyncProps) {
           }
         ];
       } else {
-        newChannels = data.channels || [];
+        newChannels = data.masterAttributes.channels || [];
       }
     }
 
-    onUpdate({ channels: newChannels });
+    onUpdate({ 
+      masterAttributes: { 
+        ...data.masterAttributes, 
+        channels: newChannels 
+      } 
+    });
   };
 
   const syncAllChannels = async () => {
@@ -117,7 +122,7 @@ export default function ChannelSync({ data, onUpdate }: ChannelSyncProps) {
   };
 
   const getChannelStatus = (channelId: string, storeId: string) => {
-    return data.channels?.some(c => c.platform === channelId && c.storeId === storeId && c.enabled) || false;
+    return data.masterAttributes.channels?.some(c => c.platform === channelId && c.storeId === storeId && c.enabled) || false;
   };
 
   return (
@@ -131,7 +136,7 @@ export default function ChannelSync({ data, onUpdate }: ChannelSyncProps) {
               Manage your product across multiple sales channels
             </p>
           </div>
-          <Button onClick={syncAllChannels} disabled={isSyncing || !data.channels?.length}>
+          <Button onClick={syncAllChannels} disabled={isSyncing || !data.masterAttributes.channels?.length}>
             {isSyncing ? "🔄 Syncing..." : "🔄 Sync All"}
           </Button>
         </div>
@@ -140,13 +145,13 @@ export default function ChannelSync({ data, onUpdate }: ChannelSyncProps) {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
           <div className="p-4 bg-blue-50 dark:bg-blue-900/10 rounded-lg">
             <div className="text-2xl font-bold text-blue-600 dark:text-blue-400">
-              {data.channels?.length || 0}
+              {data.masterAttributes.channels?.length || 0}
             </div>
             <div className="text-sm text-blue-800 dark:text-blue-300">Connected Channels</div>
           </div>
           <div className="p-4 bg-green-50 dark:bg-green-900/10 rounded-lg">
             <div className="text-2xl font-bold text-green-600 dark:text-green-400">
-              {data.channels?.filter(c => c.enabled).length || 0}
+              {data.masterAttributes.channels?.filter(c => c.enabled).length || 0}
             </div>
             <div className="text-sm text-green-800 dark:text-green-300">Active Syncs</div>
           </div>
@@ -194,7 +199,8 @@ export default function ChannelSync({ data, onUpdate }: ChannelSyncProps) {
                             <div className="text-xs text-gray-500 dark:text-gray-400">{store.url}</div>
                           </div>
                           <Switch
-                            checked={getChannelStatus(channel.id, store.id)}
+                            label=""
+                            defaultChecked={getChannelStatus(channel.id, store.id)}
                             onChange={() => toggleChannel(channel.id, store.id)}
                           />
                         </div>
@@ -213,12 +219,12 @@ export default function ChannelSync({ data, onUpdate }: ChannelSyncProps) {
       </div>
 
       {/* Channel Mapping */}
-      {data.channels && data.channels.length > 0 && (
+      {data.masterAttributes.channels && data.masterAttributes.channels.length > 0 && (
         <div className="bg-white dark:bg-gray-800 rounded-xl p-6 border border-gray-200 dark:border-gray-700">
           <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-6">Channel-Specific Settings</h3>
           
           <div className="space-y-6">
-            {data.channels.map((channel, index) => {
+            {data.masterAttributes.channels.map((channel, index) => {
               const channelInfo = availableChannels.find(c => c.id === channel.platform);
               const storeInfo = channelInfo?.stores.find(s => s.id === channel.storeId);
               
@@ -235,12 +241,18 @@ export default function ChannelSync({ data, onUpdate }: ChannelSyncProps) {
                       </div>
                     </div>
                     <Switch
-                      checked={channel.enabled}
+                      label="Enable Channel"
+                      defaultChecked={channel.enabled}
                       onChange={(enabled) => {
-                        const updatedChannels = data.channels?.map((c, i) => 
+                        const updatedChannels = data.masterAttributes.channels?.map((c, i) => 
                           i === index ? { ...c, enabled } : c
                         );
-                        onUpdate({ channels: updatedChannels });
+                        onUpdate({ 
+                          masterAttributes: { 
+                            ...data.masterAttributes, 
+                            channels: updatedChannels 
+                          } 
+                        });
                       }}
                     />
                   </div>
@@ -253,7 +265,7 @@ export default function ChannelSync({ data, onUpdate }: ChannelSyncProps) {
                         </label>
                         <input
                           type="text"
-                          placeholder={data.name || "Use default title"}
+                          placeholder={data.masterAttributes.product_name || "Use default title"}
                           className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
                         />
                       </div>
@@ -286,7 +298,7 @@ export default function ChannelSync({ data, onUpdate }: ChannelSyncProps) {
               <h4 className="font-medium text-gray-900 dark:text-white">Auto-sync inventory changes</h4>
               <p className="text-sm text-gray-500 dark:text-gray-400">Automatically sync when inventory levels change</p>
             </div>
-            <Switch defaultChecked />
+            <Switch label="" defaultChecked />
           </div>
           
           <div className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-900 rounded-lg">
@@ -294,7 +306,7 @@ export default function ChannelSync({ data, onUpdate }: ChannelSyncProps) {
               <h4 className="font-medium text-gray-900 dark:text-white">Auto-sync price changes</h4>
               <p className="text-sm text-gray-500 dark:text-gray-400">Automatically sync when prices are updated</p>
             </div>
-            <Switch defaultChecked />
+            <Switch label="" defaultChecked />
           </div>
           
           <div className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-900 rounded-lg">
@@ -302,7 +314,7 @@ export default function ChannelSync({ data, onUpdate }: ChannelSyncProps) {
               <h4 className="font-medium text-gray-900 dark:text-white">Sync product details</h4>
               <p className="text-sm text-gray-500 dark:text-gray-400">Keep descriptions, images, and attributes in sync</p>
             </div>
-            <Switch />
+            <Switch label="" />
           </div>
         </div>
       </div>

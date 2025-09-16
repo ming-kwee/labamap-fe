@@ -36,8 +36,8 @@ const commonVariantTypes = [
 ];
 
 export default function ProductVariants({ data, onUpdate }: ProductVariantsProps) {
-  const [variants, setVariants] = useState<ProductVariant[]>(data.variants || []);
-  const [variantOptions, setVariantOptions] = useState<VariantOption[]>(data.variantOptions || []);
+  const [variants, setVariants] = useState<ProductVariant[]>([]);
+  const [variantOptions, setVariantOptions] = useState<VariantOption[]>([]);
   const [newOptionName, setNewOptionName] = useState("");
   const [newOptionValues, setNewOptionValues] = useState("");
   const [isGeneratingVariants, setIsGeneratingVariants] = useState(false);
@@ -46,17 +46,16 @@ export default function ProductVariants({ data, onUpdate }: ProductVariantsProps
 
   useEffect(() => {
     // Auto-generate variants when options change
-    if (variantOptions.length > 0 && data.hasVariants) {
+    if (variantOptions.length > 0 && data.variantGroups.length > 0) {
       generateVariantCombinations();
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [variantOptions, data.hasVariants]);
+  }, [variantOptions, data.variantGroups.length > 0]);
 
   const handleVariantToggle = (hasVariants: boolean) => {
     onUpdate({ 
-      hasVariants,
-      variantOptions: hasVariants ? variantOptions : [],
-      variants: hasVariants ? variants : [],
+      variantGroups: hasVariants ? [] : [],
+      optionGroups: hasVariants ? [] : [],
     });
   };
 
@@ -67,7 +66,8 @@ export default function ProductVariants({ data, onUpdate }: ProductVariantsProps
     if (name && values.length > 0) {
       const newOptions = [...variantOptions, { name, values }];
       setVariantOptions(newOptions);
-      onUpdate({ variantOptions: newOptions });
+      // TODO: Update to match new optionGroups structure
+      // onUpdate({ optionGroups: newOptions });
       setNewOptionName("");
       setNewOptionValues("");
     }
@@ -76,7 +76,8 @@ export default function ProductVariants({ data, onUpdate }: ProductVariantsProps
   const removeVariantOption = (index: number) => {
     const newOptions = variantOptions.filter((_, i) => i !== index);
     setVariantOptions(newOptions);
-    onUpdate({ variantOptions: newOptions });
+    // TODO: Update to match new optionGroups structure
+      // onUpdate({ optionGroups: newOptions });
   };
 
   const updateVariantOption = (index: number, field: "name" | "values", value: string | string[]) => {
@@ -84,7 +85,8 @@ export default function ProductVariants({ data, onUpdate }: ProductVariantsProps
       i === index ? { ...option, [field]: value } : option
     );
     setVariantOptions(newOptions);
-    onUpdate({ variantOptions: newOptions });
+    // TODO: Update to match new optionGroups structure
+    // onUpdate({ optionGroups: newOptions });
   };
 
   const generateVariantCombinations = () => {
@@ -106,12 +108,12 @@ export default function ProductVariants({ data, onUpdate }: ProductVariantsProps
 
         // Generate SKU from attributes
         const skuSuffix = Object.values(combo).map(v => v.substring(0, 2).toUpperCase()).join("-");
-        const sku = `${data.sku || "PRD"}-${skuSuffix}`;
+        const sku = `${data.masterAttributes.sku || "PRD"}-${skuSuffix}`;
 
         return {
           id: Math.random().toString(36).substr(2, 9),
           sku,
-          price: data.basePrice || 0,
+          price: data.masterAttributes.basePrice || 0,
           inventory: 0,
           attributes: combo,
           enabled: true,
@@ -119,7 +121,8 @@ export default function ProductVariants({ data, onUpdate }: ProductVariantsProps
       });
 
       setVariants(newVariants);
-      onUpdate({ variants: newVariants });
+      // TODO: Update to match new variantGroups structure
+      // onUpdate({ variantGroups: newVariants });
       setIsGeneratingVariants(false);
     }, 1000);
   };
@@ -148,13 +151,15 @@ export default function ProductVariants({ data, onUpdate }: ProductVariantsProps
       v.id === id ? { ...v, [field]: value } : v
     );
     setVariants(newVariants);
-    onUpdate({ variants: newVariants });
+    // TODO: Update to match new variantGroups structure
+      // onUpdate({ variantGroups: newVariants });
   };
 
   const deleteVariant = (id: string) => {
     const newVariants = variants.filter(v => v.id !== id);
     setVariants(newVariants);
-    onUpdate({ variants: newVariants });
+    // TODO: Update to match new variantGroups structure
+      // onUpdate({ variantGroups: newVariants });
   };
 
   const bulkUpdateVariants = (field: keyof ProductVariant, value: ProductVariant[keyof ProductVariant]) => {
@@ -162,7 +167,8 @@ export default function ProductVariants({ data, onUpdate }: ProductVariantsProps
       selectedVariants.includes(v.id) ? { ...v, [field]: value } : v
     );
     setVariants(newVariants);
-    onUpdate({ variants: newVariants });
+    // TODO: Update to match new variantGroups structure
+      // onUpdate({ variantGroups: newVariants });
   };
 
   const toggleVariantSelection = (id: string) => {
@@ -193,12 +199,13 @@ export default function ProductVariants({ data, onUpdate }: ProductVariantsProps
             </p>
           </div>
           <Switch
-            checked={data.hasVariants}
+            label="Enable Variants"
+            defaultChecked={data.variantGroups.length > 0}
             onChange={handleVariantToggle}
           />
         </div>
 
-        {!data.hasVariants && (
+        {!(data.variantGroups.length > 0) && (
           <div className="mt-6 p-4 bg-gray-50 dark:bg-gray-900 rounded-lg">
             <p className="text-sm text-gray-600 dark:text-gray-400">
               Enable variants if your product has different options like size, color, or material.
@@ -208,7 +215,7 @@ export default function ProductVariants({ data, onUpdate }: ProductVariantsProps
         )}
       </div>
 
-      {data.hasVariants && (
+      {data.variantGroups.length > 0 && (
         <>
           {/* Variant Options */}
           <div className="bg-white dark:bg-gray-800 rounded-xl p-6 border border-gray-200 dark:border-gray-700">
@@ -304,7 +311,7 @@ export default function ProductVariants({ data, onUpdate }: ProductVariantsProps
                 <Input
                   type="text"
                   placeholder="e.g., Size, Color, Material"
-                  value={newOptionName}
+                  defaultValue={newOptionName}
                   onChange={(e) => setNewOptionName(e.target.value)}
                 />
               </div>
@@ -313,13 +320,8 @@ export default function ProductVariants({ data, onUpdate }: ProductVariantsProps
                 <Input
                   type="text"
                   placeholder="e.g., Small, Medium, Large"
-                  value={newOptionValues}
+                  defaultValue={newOptionValues}
                   onChange={(e) => setNewOptionValues(e.target.value)}
-                  onKeyPress={(e) => {
-                    if (e.key === "Enter") {
-                      addVariantOption();
-                    }
-                  }}
                 />
               </div>
             </div>
@@ -377,7 +379,7 @@ export default function ProductVariants({ data, onUpdate }: ProductVariantsProps
                       <div className="flex gap-2">
                         <Input
                           type="number"
-                          step="0.01"
+                          step={0.01}
                           placeholder="0.00"
                           id="bulk-price"
                         />
@@ -486,7 +488,7 @@ export default function ProductVariants({ data, onUpdate }: ProductVariantsProps
                         <td className="p-3">
                           <Input
                             type="text"
-                            value={variant.sku}
+                            defaultValue={variant.sku}
                             onChange={(e) => updateVariant(variant.id, "sku", e.target.value)}
                             className="w-32"
                           />
@@ -494,8 +496,8 @@ export default function ProductVariants({ data, onUpdate }: ProductVariantsProps
                         <td className="p-3">
                           <Input
                             type="number"
-                            step="0.01"
-                            value={variant.price}
+                            step={0.01}
+                            defaultValue={variant.price.toString()}
                             onChange={(e) => updateVariant(variant.id, "price", parseFloat(e.target.value) || 0)}
                             className="w-24"
                           />
@@ -504,14 +506,15 @@ export default function ProductVariants({ data, onUpdate }: ProductVariantsProps
                           <Input
                             type="number"
                             min="0"
-                            value={variant.inventory}
+                            defaultValue={variant.inventory.toString()}
                             onChange={(e) => updateVariant(variant.id, "inventory", parseInt(e.target.value) || 0)}
                             className="w-20"
                           />
                         </td>
                         <td className="p-3">
                           <Switch
-                            checked={variant.enabled}
+                            label="Enabled"
+                            defaultChecked={variant.enabled}
                             onChange={(checked) => updateVariant(variant.id, "enabled", checked)}
                           />
                         </td>

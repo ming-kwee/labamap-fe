@@ -67,7 +67,7 @@ export interface ProductListRequest {
   search?: string;
   category?: string;
   brand?: string;
-  status?: ProductData['status'];
+  status?: ProductData['masterAttributes']['status'];
   sortBy?: 'name' | 'createdAt' | 'updatedAt' | 'price';
   sortOrder?: 'asc' | 'desc';
 }
