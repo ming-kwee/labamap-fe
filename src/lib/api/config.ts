@@ -5,7 +5,7 @@
 
 export const API_CONFIG = {
   // Base URL for the API - can be configured via environment variables
-  BASE_URL: process.env.NEXT_PUBLIC_API_BASE_URL || 'https://api.example.com/v1',
+  BASE_URL: process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8888/labamap',
   
   // API timeout in milliseconds
   TIMEOUT: 30000,
@@ -19,6 +19,7 @@ export const API_CONFIG = {
   // API endpoints
   ENDPOINTS: {
     // Product endpoints
+    CREATE_PRODUCT: '/master-product/create',
     PRODUCTS: '/products',
     PRODUCT_BY_ID: '/products/:id',
     PRODUCT_UPLOAD: '/products/upload',

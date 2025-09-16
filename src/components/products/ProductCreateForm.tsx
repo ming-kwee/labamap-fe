@@ -17,115 +17,111 @@ import ProductSidebar from "./ProductSidebar";
 import { useCreateProduct, useUpdateProduct, useCategories, useBrands } from "@/lib/api/hooks/useProducts";
 
 export interface ProductData {
-  // Product Basics
-  name: string;
-  description: string;
-  category: string;
-  brand: string;
-  sku: string;
-  barcode: string;
-  status: "draft" | "active" | "inactive";
-  tags: string[];
-  
-  // Pricing & Inventory
-  basePrice: number;
-  currency: string;
-  costPrice: number;
-  comparePrice: number;
-  taxable: boolean;
-  trackInventory: boolean;
-  stockQuantity: number;
-  lowStockThreshold: number;
-  
-  // Images & Media
-  images: Array<{
+  masterAttributes: {
     id: string;
-    url: string;
-    alt: string;
-    isPrimary: boolean;
-  }>;
-  videos: Array<{
-    id: string;
-    url: string;
-    title: string;
-  }>;
-  
-  // Variants
-  hasVariants: boolean;
-  variantOptions: Array<{
-    name: string;
-    values: string[];
-  }>;
-  variants: Array<{
-    id: string;
+    product_unique_id: string;
+    product_id: string;
+    product_name: string;
+    description: string;
+    category: string;
+    brand: string;
     sku: string;
-    price: number;
-    inventory: number;
-    attributes: Record<string, string>;
-  }>;
-  
-  // Shipping
-  weight: number;
-  dimensions: {
-    length: number;
-    width: number;
-    height: number;
+    barcode: string;
+    status: "draft" | "active" | "inactive";
+    tags: string[];
+    basePrice: number;
+    currency: string;
+    costPrice: number;
+    comparePrice: number;
+    taxable: boolean;
+    trackInventory: boolean;
+    stockQuantity: number;
+    lowStockThreshold: number;
+    weight: number;
+    dimensions: {
+      length: number;
+      width: number;
+      height: number;
+    };
+    shippingClass: string;
+    seoTitle: string;
+    seoDescription: string;
+    seoKeywords: string[];
+    metaImage: string;
+    channels: Array<{
+      platform: string;
+      storeId: string;
+      enabled: boolean;
+      customMapping: Record<string, unknown>;
+    }>;
+    publishedAt: Date | null;
+    scheduledPublish: Date | null;
+    autoPublish: boolean;
+    product_images: Array<{
+      src: string;
+    }>;
+    videos: Array<{
+      id: string;
+      url: string;
+      title: string;
+    }>;
   };
-  shippingClass: string;
-  
-  // SEO & Marketing
-  seoTitle: string;
-  seoDescription: string;
-  seoKeywords: string[];
-  metaImage: string;
-  
-  // Channel Sync
-  channels: Array<{
-    platform: string;
-    storeId: string;
-    enabled: boolean;
-    customMapping: Record<string, unknown>;
+  variantGroups: Array<{
+    channel_variant_option1_key: string;
+    channel_variant_option1_value: string;
+    channel_variant_option2_key: string;
+    channel_variant_option2_value: string;
   }>;
-  
-  // Publishing
-  publishedAt: Date | null;
-  scheduledPublish: Date | null;
-  autoPublish: boolean;
+  optionGroups: Array<{
+    channel_option_name: string;
+    channel_option_values: Array<{
+      channel_option_value: string;
+      channel_option_description: string;
+    }>;
+  }>;
 }
 
 const initialProductData: ProductData = {
-  name: "",
-  description: "",
-  category: "",
-  brand: "",
-  sku: "",
-  barcode: "",
-  status: "draft",
-  tags: [],
-  basePrice: 0,
-  currency: "USD",
-  costPrice: 0,
-  comparePrice: 0,
-  taxable: true,
-  trackInventory: true,
-  stockQuantity: 0,
-  lowStockThreshold: 5,
-  images: [],
-  videos: [],
-  hasVariants: false,
-  variantOptions: [],
-  variants: [],
-  weight: 0,
-  dimensions: { length: 0, width: 0, height: 0 },
-  shippingClass: "",
-  seoTitle: "",
-  seoDescription: "",
-  seoKeywords: [],
-  metaImage: "",
-  channels: [],
-  publishedAt: null,
-  scheduledPublish: null,
-  autoPublish: false,
+  masterAttributes: {
+    id: "",
+    product_unique_id: "",
+    product_id: "",
+    product_name: "",
+    description: "",
+    category: "",
+    brand: "",
+    sku: "",
+    barcode: "",
+    status: "draft",
+    tags: [],
+    basePrice: 0,
+    currency: "USD",
+    costPrice: 0,
+    comparePrice: 0,
+    taxable: true,
+    trackInventory: true,
+    stockQuantity: 0,
+    lowStockThreshold: 5,
+    weight: 0,
+    dimensions: {
+      length: 0,
+      width: 0,
+      height: 0,
+    },
+    shippingClass: "standard",
+    seoTitle: "",
+    seoDescription: "",
+    seoKeywords: [],
+    metaImage: "",
+    channels: [],
+    publishedAt: null,
+    scheduledPublish: null,
+    autoPublish: false,
+    product_images: [],
+    videos: [],
+  },
+  variantGroups: [],
+  optionGroups: [],
 };
 
 interface ProductCreateFormProps {
@@ -163,23 +159,23 @@ export default function ProductCreateForm({ productId }: ProductCreateFormProps 
   const validateProduct = (): string[] => {
     const errors: string[] = [];
     
-    if (!productData.name.trim()) {
+    if (!productData.masterAttributes.product_name.trim()) {
       errors.push('Product name is required');
     }
     
-    if (!productData.category) {
+    if (!productData.masterAttributes.category) {
       errors.push('Category is required');
     }
     
-    if (!productData.sku.trim()) {
+    if (!productData.masterAttributes.sku.trim()) {
       errors.push('SKU is required');
     }
     
-    if (productData.basePrice <= 0) {
+    if (productData.masterAttributes.basePrice <= 0) {
       errors.push('Base price must be greater than 0');
     }
     
-    if (!productData.description.trim()) {
+    if (!productData.masterAttributes.description.trim()) {
       errors.push('Product description is required');
     }
 
@@ -197,8 +193,11 @@ export default function ProductCreateForm({ productId }: ProductCreateFormProps 
     try {
       const dataToSave = {
         ...productData,
-        status: publish ? "active" as const : productData.status,
-        publishedAt: publish ? new Date() : productData.publishedAt,
+        masterAttributes: {
+          ...productData.masterAttributes,
+          status: publish ? "active" as const : productData.masterAttributes.status,
+          publishedAt: publish ? new Date() : productData.masterAttributes.publishedAt,
+        }
       };
 
       let result;
@@ -234,10 +233,13 @@ export default function ProductCreateForm({ productId }: ProductCreateFormProps 
     try {
       const duplicatedData = {
         ...productData,
-        name: `${productData.name} (Copy)`,
-        sku: `${productData.sku}-copy-${Date.now()}`,
-        status: "draft" as const,
-        publishedAt: null,
+        masterAttributes: {
+          ...productData.masterAttributes,
+          product_name: `${productData.masterAttributes.product_name} (Copy)`,
+          sku: `${productData.masterAttributes.sku}-copy-${Date.now()}`,
+          status: "draft" as const,
+          publishedAt: null,
+        }
       };
       
       const result = await createProduct.mutate(duplicatedData);

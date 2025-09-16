@@ -14,18 +14,25 @@ interface SEOMarketingProps {
 export default function SEOMarketing({ data, onUpdate }: SEOMarketingProps) {
   const [isGenerating, setIsGenerating] = useState(false);
 
+  const handleInputChange = (field: keyof ProductData['masterAttributes'], value: any) => {
+    onUpdate({ 
+      masterAttributes: { 
+        ...data.masterAttributes, 
+        [field]: value 
+      } 
+    });
+  };
+
   const generateSEOContent = async () => {
-    if (!data.name) return;
+    if (!data.masterAttributes.product_name) return;
     
     setIsGenerating(true);
     try {
       await new Promise(resolve => setTimeout(resolve, 2000));
       
-      onUpdate({
-        seoTitle: `${data.name} - Best Quality & Price | Shop Now`,
-        seoDescription: `Shop ${data.name} with fast shipping and best price guarantee. High quality, excellent value. Order now and get free shipping on orders over $50.`,
-        seoKeywords: [data.name.toLowerCase(), data.category?.toLowerCase(), "quality", "best price", "online shopping"].filter(Boolean)
-      });
+      handleInputChange("seoTitle", `${data.masterAttributes.product_name} - Best Quality & Price | Shop Now`);
+      handleInputChange("seoDescription", `Shop ${data.masterAttributes.product_name} with fast shipping and best price guarantee. High quality, excellent value. Order now and get free shipping on orders over $50.`);
+      handleInputChange("seoKeywords", [data.masterAttributes.product_name.toLowerCase(), data.masterAttributes.category?.toLowerCase(), "quality", "best price", "online shopping"].filter(Boolean));
     } finally {
       setIsGenerating(false);
     }
@@ -41,7 +48,7 @@ export default function SEOMarketing({ data, onUpdate }: SEOMarketingProps) {
               Optimize your product for search engines and marketing campaigns
             </p>
           </div>
-          <Button onClick={generateSEOContent} disabled={isGenerating || !data.name}>
+          <Button onClick={generateSEOContent} disabled={isGenerating || !data.masterAttributes.product_name}>
             {isGenerating ? "🤖 Generating..." : "🤖 AI Optimize"}
           </Button>
         </div>
@@ -52,11 +59,11 @@ export default function SEOMarketing({ data, onUpdate }: SEOMarketingProps) {
             <Input
               type="text"
               placeholder="Optimized title for search engines"
-              defaultValue={data.seoTitle}
-              onChange={(e) => onUpdate({ seoTitle: e.target.value })}
+              defaultValue={data.masterAttributes.seoTitle}
+              onChange={(e) => handleInputChange("seoTitle", e.target.value)}
             />
             <div className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-              {data.seoTitle?.length || 0}/60 characters
+              {data.masterAttributes.seoTitle?.length || 0}/60 characters
             </div>
           </div>
 
@@ -64,11 +71,11 @@ export default function SEOMarketing({ data, onUpdate }: SEOMarketingProps) {
             <Label>SEO Description</Label>
             <TextArea
               placeholder="Brief description that appears in search results"
-              value={data.seoDescription}
-              onChange={(value) => onUpdate({ seoDescription: value })}
+              value={data.masterAttributes.seoDescription}
+              onChange={(value) => handleInputChange("seoDescription", value)}
             />
             <div className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-              {data.seoDescription?.length || 0}/160 characters
+              {data.masterAttributes.seoDescription?.length || 0}/160 characters
             </div>
           </div>
 
@@ -77,10 +84,8 @@ export default function SEOMarketing({ data, onUpdate }: SEOMarketingProps) {
             <Input
               type="text"
               placeholder="Enter keywords separated by commas"
-              defaultValue={data.seoKeywords?.join(", ")}
-              onChange={(e) => onUpdate({ 
-                seoKeywords: e.target.value.split(",").map(k => k.trim()).filter(k => k) 
-              })}
+              defaultValue={data.masterAttributes.seoKeywords?.join(", ")}
+              onChange={(e) => handleInputChange("seoKeywords", e.target.value.split(",").map(k => k.trim()).filter(k => k))}
             />
           </div>
         </div>

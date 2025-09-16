@@ -25,12 +25,8 @@ export class ProductService {
   /**
    * Create a new product
    */
-  async createProduct(productData: Omit<ProductData, 'id' | 'createdAt' | 'updatedAt'>): Promise<ApiResponse<ProductResponse>> {
-    const request: ProductCreateRequest = {
-      product: productData,
-    };
-    
-    return apiClient.post<ProductResponse>(API_CONFIG.ENDPOINTS.PRODUCTS, request);
+  async createProduct(productData: ProductData): Promise<ApiResponse<ProductResponse>> {
+    return apiClient.post<ProductResponse>(API_CONFIG.ENDPOINTS.CREATE_PRODUCT, productData);
   }
 
   /**

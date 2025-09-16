@@ -18,10 +18,10 @@ export default function ProductSidebar({ productData }: ProductSidebarProps) {
         <div className="bg-gray-50 dark:bg-gray-900 rounded-xl p-4 mb-6">
           <div className="flex items-center gap-3 mb-3">
             <div className="w-12 h-12 bg-gray-200 dark:bg-gray-700 rounded-lg flex items-center justify-center">
-              {productData.images.length > 0 ? (
+              {productData.masterAttributes.product_images.length > 0 ? (
                 <img 
-                  src={productData.images[0].url} 
-                  alt={productData.name || "Product"} 
+                  src={productData.masterAttributes.product_images[0].src} 
+                  alt={productData.masterAttributes.product_name || "Product"} 
                   className="w-full h-full object-cover rounded-lg"
                 />
               ) : (
@@ -30,10 +30,10 @@ export default function ProductSidebar({ productData }: ProductSidebarProps) {
             </div>
             <div className="flex-1">
               <h3 className="font-medium text-gray-900 dark:text-white">
-                {productData.name || "Untitled Product"}
+                {productData.masterAttributes.product_name || "Untitled Product"}
               </h3>
               <p className="text-sm text-gray-500 dark:text-gray-400">
-                {productData.sku || "No SKU"}
+                {productData.masterAttributes.sku || "No SKU"}
               </p>
             </div>
           </div>
@@ -41,16 +41,16 @@ export default function ProductSidebar({ productData }: ProductSidebarProps) {
           {/* Status Badge */}
           <div className="flex items-center justify-between mb-3">
             <span className={`px-2 py-1 text-xs font-medium rounded-full ${
-              productData.status === "active" 
+              productData.masterAttributes.status === "active" 
                 ? "bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400"
-                : productData.status === "inactive"
+                : productData.masterAttributes.status === "inactive"
                 ? "bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-400"
                 : "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-400"
             }`}>
-              {productData.status.charAt(0).toUpperCase() + productData.status.slice(1)}
+              {productData.masterAttributes.status.charAt(0).toUpperCase() + productData.masterAttributes.status.slice(1)}
             </span>
             <span className="text-sm text-gray-500 dark:text-gray-400">
-              {productData.basePrice > 0 ? `$${productData.basePrice}` : "No price"}
+              {productData.masterAttributes.basePrice > 0 ? `$${productData.masterAttributes.basePrice}` : "No price"}
             </span>
           </div>
 
@@ -92,8 +92,8 @@ export default function ProductSidebar({ productData }: ProductSidebarProps) {
         <div>
           <h4 className="text-sm font-medium text-gray-900 dark:text-white mb-3">Channel Status</h4>
           <div className="space-y-2">
-            {productData.channels.length > 0 ? (
-              productData.channels.map((channel, index) => (
+            {productData.masterAttributes.channels.length > 0 ? (
+              productData.masterAttributes.channels.map((channel, index) => (
                 <div key={index} className="flex items-center justify-between text-sm">
                   <span className="text-gray-600 dark:text-gray-400">{channel.platform}</span>
                   <span className={`px-2 py-1 text-xs rounded-full ${
@@ -117,15 +117,15 @@ export default function ProductSidebar({ productData }: ProductSidebarProps) {
 
 function calculateCompletionPercentage(data: ProductData): number {
   const fields = [
-    !!data.name,
-    !!data.description,
-    !!data.category,
-    !!data.sku,
-    data.basePrice > 0,
-    data.images.length > 0,
-    !!data.seoTitle,
-    !!data.seoDescription,
-    data.channels.length > 0,
+    !!data.masterAttributes.product_name,
+    !!data.masterAttributes.description,
+    !!data.masterAttributes.category,
+    !!data.masterAttributes.sku,
+    data.masterAttributes.basePrice > 0,
+    data.masterAttributes.product_images.length > 0,
+    !!data.masterAttributes.seoTitle,
+    !!data.masterAttributes.seoDescription,
+    data.masterAttributes.channels.length > 0,
   ];
   
   const completed = fields.filter(Boolean).length;

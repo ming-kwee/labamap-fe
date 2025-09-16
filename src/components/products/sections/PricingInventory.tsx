@@ -31,22 +31,27 @@ export default function PricingInventory({ data, onUpdate }: PricingInventoryPro
   // const [multiCurrencyPricing, setMultiCurrencyPricing] = useState<Record<string, number>>({});
   const [profitMargin, setProfitMargin] = useState(0);
   const [inventoryLocations, setInventoryLocations] = useState([
-    { id: "main", name: "Main Warehouse", quantity: data.stockQuantity || 0 },
+    { id: "main", name: "Main Warehouse", quantity: data.masterAttributes.stockQuantity || 0 },
     { id: "store1", name: "Store 1", quantity: 0 },
     { id: "store2", name: "Store 2", quantity: 0 },
   ]);
 
-  const selectedCurrency = currencies.find(c => c.code === data.currency) || currencies[0];
+  const selectedCurrency = currencies.find(c => c.code === data.masterAttributes.currency) || currencies[0];
 
   useEffect(() => {
-    if (data.basePrice && data.costPrice) {
-      const margin = ((data.basePrice - data.costPrice) / data.basePrice) * 100;
+    if (data.masterAttributes.basePrice && data.masterAttributes.costPrice) {
+      const margin = ((data.masterAttributes.basePrice - data.masterAttributes.costPrice) / data.masterAttributes.basePrice) * 100;
       setProfitMargin(margin);
     }
-  }, [data.basePrice, data.costPrice]);
+  }, [data.masterAttributes.basePrice, data.masterAttributes.costPrice]);
 
-  const handleInputChange = (field: keyof ProductData, value: ProductData[keyof ProductData]) => {
-    onUpdate({ [field]: value });
+  const handleInputChange = (field: keyof ProductData['masterAttributes'], value: any) => {
+    onUpdate({ 
+      masterAttributes: { 
+        ...data.masterAttributes, 
+        [field]: value 
+      } 
+    });
   };
 
   const handlePriceChange = (type: "basePrice" | "costPrice" | "comparePrice", value: string) => {
@@ -84,25 +89,25 @@ export default function PricingInventory({ data, onUpdate }: PricingInventoryPro
   };
 
   const generatePricingRecommendations = () => {
-    if (!data.costPrice) return null;
+    if (!data.masterAttributes.costPrice) return null;
 
     const recommendations = [
       { 
         name: "Economy", 
         margin: 50, 
-        price: data.costPrice * 1.5,
+        price: data.masterAttributes.costPrice * 1.5,
         description: "Low margin, high volume strategy"
       },
       { 
         name: "Standard", 
         margin: 100, 
-        price: data.costPrice * 2,
+        price: data.masterAttributes.costPrice * 2,
         description: "Balanced approach"
       },
       { 
         name: "Premium", 
         margin: 150, 
-        price: data.costPrice * 2.5,
+        price: data.masterAttributes.costPrice * 2.5,
         description: "High margin, premium positioning"
       },
     ];
@@ -139,7 +144,7 @@ export default function PricingInventory({ data, onUpdate }: PricingInventoryPro
           <div>
             <Label>Base Currency</Label>
             <select
-              value={data.currency}
+              value={data.masterAttributes.currency}
               onChange={(e) => handleInputChange("currency", e.target.value)}
               className="h-11 w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 px-4 py-2.5 text-sm shadow-theme-xs focus:outline-none focus:ring-3 focus:ring-brand-500/10 focus:border-brand-300 dark:focus:border-brand-800 dark:text-white"
             >
@@ -162,7 +167,7 @@ export default function PricingInventory({ data, onUpdate }: PricingInventoryPro
                 type="number"
                 step="0.01"
                 placeholder="0.00"
-                defaultValue={data.costPrice}
+                defaultValue={data.masterAttributes.costPrice}
                 onChange={(e) => handlePriceChange("costPrice", e.target.value)}
                 className="pl-8"
               />
@@ -180,7 +185,7 @@ export default function PricingInventory({ data, onUpdate }: PricingInventoryPro
                 type="number"
                 step="0.01"
                 placeholder="0.00"
-                defaultValue={data.basePrice}
+                defaultValue={data.masterAttributes.basePrice}
                 onChange={(e) => handlePriceChange("basePrice", e.target.value)}
                 className="pl-8"
               />
@@ -198,7 +203,7 @@ export default function PricingInventory({ data, onUpdate }: PricingInventoryPro
                 type="number"
                 step="0.01"
                 placeholder="0.00"
-                defaultValue={data.comparePrice}
+                defaultValue={data.masterAttributes.comparePrice}
                 onChange={(e) => handlePriceChange("comparePrice", e.target.value)}
                 className="pl-8"
               />
@@ -236,12 +241,12 @@ export default function PricingInventory({ data, onUpdate }: PricingInventoryPro
         <div className="mt-6">
           <h4 className="font-medium text-gray-900 dark:text-white mb-3">Multi-Currency Pricing</h4>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {currencies.filter(c => c.code !== data.currency).map(currency => (
+            {currencies.filter(c => c.code !== data.masterAttributes.currency).map(currency => (
               <div key={currency.code} className="p-3 bg-gray-50 dark:bg-gray-900 rounded-lg">
                 <div className="flex items-center justify-between">
                   <span className="text-sm text-gray-600 dark:text-gray-400">{currency.name}</span>
                   <span className="font-medium text-gray-900 dark:text-white">
-                    {currency.symbol}{calculateMultiCurrencyPrice(data.basePrice, currency.code)}
+                    {currency.symbol}{calculateMultiCurrencyPrice(data.masterAttributes.basePrice, currency.code)}
                   </span>
                 </div>
               </div>
@@ -254,11 +259,11 @@ export default function PricingInventory({ data, onUpdate }: PricingInventoryPro
           <div className="flex items-center justify-between mb-4">
             <Label>Tax Settings</Label>
             <Switch
-              checked={data.taxable}
+              checked={data.masterAttributes.taxable}
               onChange={(checked) => handleInputChange("taxable", checked)}
             />
           </div>
-          {data.taxable && (
+          {data.masterAttributes.taxable && (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <select className="h-11 w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 px-4 py-2.5 text-sm shadow-theme-xs focus:outline-none focus:ring-3 focus:ring-brand-500/10 focus:border-brand-300 dark:focus:border-brand-800 dark:text-white">
                 {taxRates.map(tax => (
@@ -280,12 +285,12 @@ export default function PricingInventory({ data, onUpdate }: PricingInventoryPro
             </p>
           </div>
           <Switch
-            checked={data.trackInventory}
+            checked={data.masterAttributes.trackInventory}
             onChange={(checked) => handleInputChange("trackInventory", checked)}
           />
         </div>
 
-        {data.trackInventory && (
+        {data.masterAttributes.trackInventory && (
           <>
             {/* Inventory Locations */}
             <div className="mb-6">
@@ -307,10 +312,10 @@ export default function PricingInventory({ data, onUpdate }: PricingInventoryPro
                     </div>
                     <div className="w-16 text-right">
                       <span className={`text-sm font-medium ${
-                        location.quantity > data.lowStockThreshold ? "text-green-600" :
+                        location.quantity > data.masterAttributes.lowStockThreshold ? "text-green-600" :
                         location.quantity > 0 ? "text-yellow-600" : "text-red-600"
                       }`}>
-                        {location.quantity > data.lowStockThreshold ? "✓" :
+                        {location.quantity > data.masterAttributes.lowStockThreshold ? "✓" :
                          location.quantity > 0 ? "⚠️" : "❌"}
                       </span>
                     </div>
@@ -327,7 +332,7 @@ export default function PricingInventory({ data, onUpdate }: PricingInventoryPro
                   type="number"
                   min="0"
                   placeholder="0"
-                  defaultValue={data.stockQuantity}
+                  defaultValue={data.masterAttributes.stockQuantity}
                   onChange={(e) => handleInputChange("stockQuantity", parseInt(e.target.value) || 0)}
                 />
               </div>
@@ -338,7 +343,7 @@ export default function PricingInventory({ data, onUpdate }: PricingInventoryPro
                   type="number"
                   min="0"
                   placeholder="5"
-                  defaultValue={data.lowStockThreshold}
+                  defaultValue={data.masterAttributes.lowStockThreshold}
                   onChange={(e) => handleInputChange("lowStockThreshold", parseInt(e.target.value) || 5)}
                 />
               </div>
@@ -350,16 +355,16 @@ export default function PricingInventory({ data, onUpdate }: PricingInventoryPro
                 <div>
                   <h4 className="font-medium text-gray-900 dark:text-white">Current Stock Status</h4>
                   <p className="text-sm text-gray-500 dark:text-gray-400">
-                    {data.stockQuantity > data.lowStockThreshold ? 
+                    {data.masterAttributes.stockQuantity > data.masterAttributes.lowStockThreshold ? 
                       "✅ Stock levels are healthy" :
-                      data.stockQuantity > 0 ?
+                      data.masterAttributes.stockQuantity > 0 ?
                       "⚠️ Stock levels are low" :
                       "❌ Out of stock"
                     }
                   </p>
                 </div>
                 <div className="text-right">
-                  <div className="text-2xl font-bold text-gray-900 dark:text-white">{data.stockQuantity}</div>
+                  <div className="text-2xl font-bold text-gray-900 dark:text-white">{data.masterAttributes.stockQuantity}</div>
                   <div className="text-sm text-gray-500 dark:text-gray-400">units available</div>
                 </div>
               </div>

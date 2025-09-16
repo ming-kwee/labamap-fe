@@ -25,12 +25,17 @@ export default function ProductBasics({ data, onUpdate }: ProductBasicsProps) {
   const [isGeneratingContent, setIsGeneratingContent] = useState(false);
   const [tagInput, setTagInput] = useState("");
 
-  const handleInputChange = (field: keyof ProductData, value: ProductData[keyof ProductData]) => {
-    onUpdate({ [field]: value });
+  const handleInputChange = (field: keyof ProductData['masterAttributes'], value: any) => {
+    onUpdate({ 
+      masterAttributes: { 
+        ...data.masterAttributes, 
+        [field]: value 
+      } 
+    });
   };
 
   const generateSKU = () => {
-    const prefix = data.category ? data.category.substring(0, 3).toUpperCase() : "PRD";
+    const prefix = data.masterAttributes.category ? data.masterAttributes.category.substring(0, 3).toUpperCase() : "PRD";
     const timestamp = Date.now().toString().slice(-6);
     const sku = `${prefix}-${timestamp}`;
     handleInputChange("sku", sku);
@@ -43,14 +48,14 @@ export default function ProductBasics({ data, onUpdate }: ProductBasicsProps) {
   };
 
   const generateContent = async () => {
-    if (!data.name) return;
+    if (!data.masterAttributes.product_name) return;
     
     setIsGeneratingContent(true);
     try {
       // Simulate AI content generation
       await new Promise(resolve => setTimeout(resolve, 2000));
       
-      const generatedDescription = `Experience the premium quality of ${data.name}. This exceptional product combines innovative design with superior functionality, making it perfect for modern consumers who demand excellence. 
+      const generatedDescription = `Experience the premium quality of ${data.masterAttributes.product_name}. This exceptional product combines innovative design with superior functionality, making it perfect for modern consumers who demand excellence. 
 
 Key Features:
 • Premium materials and construction
@@ -59,13 +64,10 @@ Key Features:
 • Versatile functionality for multiple use cases
 • Backed by our quality guarantee
 
-Whether you're looking for reliability, style, or performance, ${data.name} delivers on all fronts. Join thousands of satisfied customers who have made this their go-to choice.`;
+Whether you're looking for reliability, style, or performance, ${data.masterAttributes.product_name} delivers on all fronts. Join thousands of satisfied customers who have made this their go-to choice.`;
 
       handleInputChange("description", generatedDescription);
       
-      // Generate SEO content
-      handleInputChange("seoTitle", `${data.name} - Premium Quality | Best Price Online`);
-      handleInputChange("seoDescription", `Shop ${data.name} with fast shipping and best price guarantee. Premium quality, exceptional value. Order now and experience the difference.`);
       
     } catch (error) {
       console.error("Failed to generate content:", error);
@@ -75,14 +77,14 @@ Whether you're looking for reliability, style, or performance, ${data.name} deli
   };
 
   const addTag = (tag: string) => {
-    if (tag && !data.tags.includes(tag)) {
-      handleInputChange("tags", [...data.tags, tag]);
+    if (tag && !data.masterAttributes.tags.includes(tag)) {
+      handleInputChange("tags", [...data.masterAttributes.tags, tag]);
       setTagInput("");
     }
   };
 
   const removeTag = (tagToRemove: string) => {
-    handleInputChange("tags", data.tags.filter(tag => tag !== tagToRemove));
+    handleInputChange("tags", data.masterAttributes.tags.filter(tag => tag !== tagToRemove));
   };
 
   const handleTagKeyPress = (e: React.KeyboardEvent) => {
@@ -105,7 +107,7 @@ Whether you're looking for reliability, style, or performance, ${data.name} deli
           </div>
           <Button 
             onClick={generateContent}
-            disabled={!data.name || isGeneratingContent}
+            disabled={!data.masterAttributes.product_name || isGeneratingContent}
             className="bg-purple-500 hover:bg-purple-600"
           >
             {isGeneratingContent ? "🤖 Generating..." : "🤖 AI Generate"}
@@ -119,8 +121,8 @@ Whether you're looking for reliability, style, or performance, ${data.name} deli
             <Input
               type="text"
               placeholder="Enter product name"
-              defaultValue={data.name}
-              onChange={(e) => handleInputChange("name", e.target.value)}
+              defaultValue={data.masterAttributes.product_name}
+              onChange={(e) => handleInputChange("product_name", e.target.value)}
               className="text-lg font-medium"
             />
           </div>
@@ -129,7 +131,7 @@ Whether you're looking for reliability, style, or performance, ${data.name} deli
           <div>
             <Label>Category *</Label>
             <select
-              value={data.category}
+              value={data.masterAttributes.category}
               onChange={(e) => handleInputChange("category", e.target.value)}
               className="h-11 w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 px-4 py-2.5 text-sm shadow-theme-xs focus:outline-none focus:ring-3 focus:ring-brand-500/10 focus:border-brand-300 dark:focus:border-brand-800 dark:text-white"
             >
@@ -144,7 +146,7 @@ Whether you're looking for reliability, style, or performance, ${data.name} deli
           <div>
             <Label>Brand</Label>
             <select
-              value={data.brand}
+              value={data.masterAttributes.brand}
               onChange={(e) => handleInputChange("brand", e.target.value)}
               className="h-11 w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 px-4 py-2.5 text-sm shadow-theme-xs focus:outline-none focus:ring-3 focus:ring-brand-500/10 focus:border-brand-300 dark:focus:border-brand-800 dark:text-white"
             >
@@ -162,7 +164,7 @@ Whether you're looking for reliability, style, or performance, ${data.name} deli
               <Input
                 type="text"
                 placeholder="Product SKU"
-                defaultValue={data.sku}
+                defaultValue={data.masterAttributes.sku}
                 onChange={(e) => handleInputChange("sku", e.target.value)}
               />
               <Button onClick={generateSKU} variant="outline" className="whitespace-nowrap">
@@ -178,7 +180,7 @@ Whether you're looking for reliability, style, or performance, ${data.name} deli
               <Input
                 type="text"
                 placeholder="Product barcode"
-                defaultValue={data.barcode}
+                defaultValue={data.masterAttributes.barcode}
                 onChange={(e) => handleInputChange("barcode", e.target.value)}
               />
               <Button onClick={generateBarcode} variant="outline" className="whitespace-nowrap">
@@ -187,26 +189,19 @@ Whether you're looking for reliability, style, or performance, ${data.name} deli
             </div>
           </div>
 
+
           {/* Status */}
-          <div className="lg:col-span-2">
+          <div>
             <Label>Product Status</Label>
-            <div className="flex gap-4 mt-2">
-              {["draft", "active", "inactive"].map(status => (
-                <label key={status} className="flex items-center gap-2 cursor-pointer">
-                  <input
-                    type="radio"
-                    name="status"
-                    value={status}
-                    checked={data.status === status}
-                    onChange={(e) => handleInputChange("status", e.target.value)}
-                    className="w-4 h-4 text-brand-500 border-gray-300 focus:ring-brand-500"
-                  />
-                  <span className="text-sm text-gray-700 dark:text-gray-300 capitalize">
-                    {status}
-                  </span>
-                </label>
-              ))}
-            </div>
+            <select
+              value={data.masterAttributes.status}
+              onChange={(e) => handleInputChange("status", e.target.value as "draft" | "active" | "inactive")}
+              className="h-11 w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 px-4 py-2.5 text-sm shadow-theme-xs focus:outline-none focus:ring-3 focus:ring-brand-500/10 focus:border-brand-300 dark:focus:border-brand-800 dark:text-white"
+            >
+              <option value="draft">Draft</option>
+              <option value="active">Active</option>
+              <option value="inactive">Inactive</option>
+            </select>
           </div>
         </div>
       </div>
@@ -221,15 +216,17 @@ Whether you're looking for reliability, style, or performance, ${data.name} deli
         </div>
         <TextArea
           placeholder="Enter detailed product description..."
-          value={data.description}
+          value={data.masterAttributes.description}
           onChange={(value) => handleInputChange("description", value)}
           className="min-h-32"
         />
         <div className="flex items-center justify-between mt-3 text-sm text-gray-500 dark:text-gray-400">
           <span>Use clear, engaging language that highlights key benefits</span>
-          <span>{data.description.length} characters</span>
+          <span>{data.masterAttributes.description.length} characters</span>
         </div>
       </div>
+
+
 
       {/* Tags */}
       <div className="bg-white dark:bg-gray-800 rounded-xl p-6 border border-gray-200 dark:border-gray-700">
@@ -241,9 +238,9 @@ Whether you're looking for reliability, style, or performance, ${data.name} deli
         </div>
         
         {/* Existing Tags */}
-        {data.tags.length > 0 && (
+        {data.masterAttributes.tags.length > 0 && (
           <div className="flex flex-wrap gap-2 mb-4">
-            {data.tags.map((tag, index) => (
+            {data.masterAttributes.tags.map((tag, index) => (
               <span
                 key={index}
                 className="inline-flex items-center gap-1 px-3 py-1 text-sm bg-brand-100 text-brand-800 dark:bg-brand-900/20 dark:text-brand-400 rounded-full"
@@ -262,12 +259,13 @@ Whether you're looking for reliability, style, or performance, ${data.name} deli
 
         {/* Add Tag Input */}
         <div className="flex gap-2">
-          <Input
+          <input
             type="text"
             placeholder="Add tags (press Enter or comma to add)"
             value={tagInput}
             onChange={(e) => setTagInput(e.target.value)}
             onKeyPress={handleTagKeyPress}
+            className="h-11 w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 px-4 py-2.5 text-sm shadow-theme-xs focus:outline-none focus:ring-3 focus:ring-brand-500/10 focus:border-brand-300 dark:focus:border-brand-800 dark:text-white"
           />
           <Button 
             onClick={() => addTag(tagInput.trim())}
@@ -286,7 +284,7 @@ Whether you're looking for reliability, style, or performance, ${data.name} deli
               <button
                 key={tag}
                 onClick={() => addTag(tag)}
-                disabled={data.tags.includes(tag)}
+                disabled={data.masterAttributes.tags.includes(tag)}
                 className="px-3 py-1 text-xs bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-full hover:bg-gray-200 dark:hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {tag}
@@ -308,7 +306,7 @@ Whether you're looking for reliability, style, or performance, ${data.name} deli
               <p>• Product name should be clear and include key benefits</p>
               <p>• SKU format should be consistent across your catalog</p>
               <p>• Consider adding seasonal or trending tags for better discoverability</p>
-              {data.name && !data.description && (
+              {data.masterAttributes.product_name && !data.masterAttributes.description && (
                 <p className="text-amber-700 dark:text-amber-400">⚠️ Add a description to improve conversion rates</p>
               )}
             </div>
