@@ -38,11 +38,6 @@ const navItems: NavItem[] = [
     name: "Create Product Api Demo",
     path: "/api-demo",
   },
-    {
-    icon: <PageIcon />,
-    name: "Create Product Api Examples",
-    path: "/api-examples",
-  },
   {
     icon: <ListIcon />,
     name: "Create Product",
