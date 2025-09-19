@@ -8,7 +8,7 @@ import { productService } from '../services/productService';
 import { categoryService } from '../services/categoryService';
 import { brandService } from '../services/brandService';
 import { ProductData } from '@/components/products/ProductCreateForm';
-import type { ProductListRequest } from '../types';
+import type { ProductListRequest, ChannelSpecificData, VariantChannelSyncResponse } from '../types';
 import { useApi, useMutation, useQuery } from './useApi';
 
 /**
@@ -173,12 +173,19 @@ export function useGenerateContent() {
 }
 
 /**
- * Hook for channel sync
+ * Hook for enhanced channel sync with channel-specific data
  */
 export function useChannelSync() {
   return useMutation(
-    (productId: string, channels: string[], mapping?: Record<string, unknown>) =>
-      productService.syncToChannels(productId, channels, mapping),
+    (...args: unknown[]) => {
+      const [productId, channels, mapping, syncVariants] = args as [
+        string,
+        Array<{ platform: string; storeId: string; channelData?: ChannelSpecificData }>,
+        Record<string, unknown>?,
+        boolean?
+      ];
+      return productService.syncToChannels(productId, channels, mapping, syncVariants);
+    },
     {
       onSuccess: (data) => {
         console.log('Product synced to channels:', data);
@@ -315,5 +322,143 @@ export function useAvailabilityCheck() {
   return {
     checkName,
     checkSKU,
+  };
+}
+
+/**
+ * Hook for variant channel synchronization
+ */
+export function useVariantChannelSync() {
+  return useMutation(
+    (...args: unknown[]) => {
+      const [productId, variantId, channel, storeId, channelData] = args as [
+        string,
+        string,
+        string,
+        string,
+        ChannelSpecificData
+      ];
+      return productService.syncVariantToChannel(productId, variantId, channel, storeId, channelData);
+    },
+    {
+      onSuccess: (data) => {
+        console.log('Variant synced to channel:', data);
+      },
+      onError: (error) => {
+        console.error('Failed to sync variant to channel:', error);
+      },
+    }
+  );
+}
+
+/**
+ * Hook for getting channel configurations
+ */
+export function useChannelConfigs() {
+  return useQuery(
+    () => productService.getChannelConfigs(),
+    [],
+    {
+      onError: (error) => {
+        console.error('Failed to fetch channel configs:', error);
+      },
+    }
+  );
+}
+
+/**
+ * Hook for managing variant channel data
+ */
+export function useVariantChannelData() {
+  const updateChannelData = useMutation(
+    (...args: unknown[]) => {
+      const [productId, variantId, channel, storeId, channelData] = args as [
+        string,
+        string,
+        string,
+        string,
+        Partial<ChannelSpecificData>
+      ];
+      return productService.updateVariantChannelData(productId, variantId, channel, storeId, channelData);
+    },
+    {
+      onSuccess: (data) => {
+        console.log('Variant channel data updated:', data);
+      },
+      onError: (error) => {
+        console.error('Failed to update variant channel data:', error);
+      },
+    }
+  );
+
+  const getChannelData = useCallback(
+    (productId: string, variantId: string, channel: string, storeId: string) =>
+      productService.getVariantChannelData(productId, variantId, channel, storeId),
+    []
+  );
+
+  return {
+    updateChannelData,
+    getChannelData,
+  };
+}
+
+/**
+ * Hook for bulk variant synchronization
+ */
+export function useBulkVariantSync() {
+  return useMutation(
+    (...args: unknown[]) => {
+      const [productId, variants] = args as [
+        string,
+        Array<{
+          variantId: string;
+          channels: Array<{
+            platform: string;
+            storeId: string;
+            channelData: ChannelSpecificData;
+          }>;
+        }>
+      ];
+      return productService.bulkSyncVariants(productId, variants);
+    },
+    {
+      onSuccess: (data) => {
+        console.log('Variants bulk synced:', data);
+      },
+      onError: (error) => {
+        console.error('Failed to bulk sync variants:', error);
+      },
+    }
+  );
+}
+
+/**
+ * Hook for product variants management
+ */
+export function useProductVariants() {
+  const getVariants = useCallback(
+    (productId: string) => productService.getVariants(productId),
+    []
+  );
+
+  const generateVariants = useMutation(
+    (...args: unknown[]) => {
+      const [productId, options] = args as [string, ProductData['optionGroups']];
+      return productService.generateVariants(productId, options);
+    },
+    {
+      onSuccess: (data) => {
+        console.log('Variants generated:', data);
+      },
+      onError: (error) => {
+        console.error('Failed to generate variants:', error);
+      },
+    }
+  );
+
+  return {
+    getVariants,
+    generateVariants,
   };
 }

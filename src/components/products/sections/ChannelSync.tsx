@@ -236,7 +236,6 @@ export default function ChannelSync({ data, onUpdate }: ChannelSyncProps) {
                             label=""
                             defaultChecked={isActive}
                             onChange={(checked) => toggleChannel(channel.id, 'default')}
-                            size="sm"
                           />
                         </div>
                       </div>
@@ -265,10 +264,7 @@ export default function ChannelSync({ data, onUpdate }: ChannelSyncProps) {
                           <Button
                             size="sm"
                             variant="outline"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleChannelSync(channel.id);
-                            }}
+                            onClick={() => handleChannelSync(channel.id)}
                             disabled={!channel.isConnected}
                             className="w-full"
                           >

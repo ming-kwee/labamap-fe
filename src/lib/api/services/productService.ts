@@ -14,6 +14,10 @@ import {
   MediaUploadResponse,
   ChannelSyncRequest,
   ChannelSyncResponse,
+  VariantChannelSyncRequest,
+  VariantChannelSyncResponse,
+  EnhancedChannelConfig,
+  ChannelSpecificData,
   ProductAnalytics,
   BulkOperation,
   BulkOperationResponse,
@@ -162,18 +166,117 @@ export class ProductService {
   }
 
   /**
-   * Sync product to channels
+   * Enhanced sync product to channels with channel-specific data
    */
-  async syncToChannels(productId: string, channels: string[], mapping?: Record<string, unknown>): Promise<ApiResponse<ChannelSyncResponse>> {
+  async syncToChannels(
+    productId: string, 
+    channels: Array<{ platform: string; storeId: string; channelData?: ChannelSpecificData }>,
+    mapping?: Record<string, unknown>,
+    syncVariants = false
+  ): Promise<ApiResponse<ChannelSyncResponse>> {
     const request: ChannelSyncRequest = {
       productId,
       channels,
       mapping,
+      syncVariants,
     };
 
     return apiClient.post<ChannelSyncResponse>(
       API_CONFIG.ENDPOINTS.CHANNEL_SYNC.replace(':platform', 'all'),
       request
+    );
+  }
+
+  /**
+   * Sync specific variant to a channel
+   */
+  async syncVariantToChannel(
+    productId: string,
+    variantId: string,
+    channel: string,
+    storeId: string,
+    channelData: ChannelSpecificData
+  ): Promise<ApiResponse<VariantChannelSyncResponse>> {
+    const request: VariantChannelSyncRequest = {
+      productId,
+      variantId,
+      channel,
+      storeId,
+      channelData,
+    };
+
+    return apiClient.post<VariantChannelSyncResponse>(
+      `/products/${productId}/variants/${variantId}/sync/${channel}`,
+      request
+    );
+  }
+
+  /**
+   * Get available channel configurations
+   */
+  async getChannelConfigs(): Promise<ApiResponse<EnhancedChannelConfig[]>> {
+    return apiClient.get<EnhancedChannelConfig[]>('/channels/configs');
+  }
+
+  /**
+   * Update channel-specific data for a variant
+   */
+  async updateVariantChannelData(
+    productId: string,
+    variantId: string,
+    channel: string,
+    storeId: string,
+    channelData: Partial<ChannelSpecificData>
+  ): Promise<ApiResponse<ChannelSpecificData>> {
+    return apiClient.patch<ChannelSpecificData>(
+      `/products/${productId}/variants/${variantId}/channels/${channel}/${storeId}`,
+      channelData
+    );
+  }
+
+  /**
+   * Get channel-specific data for a variant
+   */
+  async getVariantChannelData(
+    productId: string,
+    variantId: string,
+    channel: string,
+    storeId: string
+  ): Promise<ApiResponse<ChannelSpecificData>> {
+    return apiClient.get<ChannelSpecificData>(
+      `/products/${productId}/variants/${variantId}/channels/${channel}/${storeId}`
+    );
+  }
+
+  /**
+   * Bulk sync variants to channels
+   */
+  async bulkSyncVariants(
+    productId: string,
+    variants: Array<{
+      variantId: string;
+      channels: Array<{
+        platform: string;
+        storeId: string;
+        channelData: ChannelSpecificData;
+      }>;
+    }>
+  ): Promise<ApiResponse<{
+    success: boolean;
+    results: Array<{
+      variantId: string;
+      results: VariantChannelSyncResponse[];
+    }>;
+  }>> {
+    return apiClient.post<{
+      success: boolean;
+      results: Array<{
+        variantId: string;
+        results: VariantChannelSyncResponse[];
+      }>;
+    }>(
+      `/products/${productId}/variants/bulk-sync`,
+      { variants }
     );
   }
 

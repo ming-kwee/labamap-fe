@@ -118,7 +118,7 @@ export interface Brand {
   description?: string;
 }
 
-// Channel sync types
+// Enhanced Channel sync types
 export interface Channel {
   id: string;
   platform: string;
@@ -129,20 +129,138 @@ export interface Channel {
   lastSync?: string;
 }
 
+// Enhanced channel configuration (matching our UI components)
+export interface EnhancedChannelConfig {
+  id: string;
+  name: string;
+  displayName: string;
+  icon: string;
+  description: string;
+  isConnected: boolean;
+  category: 'marketplace' | 'social' | 'direct' | 'advertising';
+  requiredFields: ChannelFieldConfig[];
+  optionalFields: ChannelFieldConfig[];
+  supportedFeatures: ChannelFeature[];
+  limitations: ChannelLimitation[];
+  stores?: Array<{
+    id: string;
+    name: string;
+    url: string;
+  }>;
+}
+
+export interface ChannelFieldConfig {
+  fieldName: string;
+  displayName: string;
+  type: 'text' | 'number' | 'select' | 'multiselect' | 'boolean' | 'textarea' | 'date' | 'url' | 'email';
+  required: boolean;
+  options?: Array<{ value: string; label: string }>;
+  validation?: {
+    pattern?: string;
+    min?: number;
+    max?: number;
+    minLength?: number;
+    maxLength?: number;
+  };
+  helpText?: string;
+  placeholder?: string;
+  defaultValue?: string | number | boolean;
+  dependsOn?: string;
+}
+
+export interface ChannelFeature {
+  name: string;
+  supported: boolean;
+  limitations?: string;
+}
+
+export interface ChannelLimitation {
+  type: 'field_length' | 'image_count' | 'image_size' | 'description_length' | 'title_length' | 'custom';
+  field?: string;
+  limit: number;
+  message: string;
+}
+
+// Channel-specific data for variants and products
+export interface ChannelSpecificData {
+  sku?: string;
+  title?: string;
+  description?: string;
+  price?: number;
+  inventory?: number;
+  costPrice?: number;
+  comparePrice?: number;
+  weight?: number;
+  barcode?: string;
+  enabled?: boolean;
+  taxable?: boolean;
+  visibility?: boolean;
+  tags?: string[];
+  images?: string[];
+  customFields?: Record<string, unknown>;
+  platformSpecific?: Record<string, unknown>;
+  seo?: {
+    title?: string;
+    description?: string;
+    keywords?: string[];
+    slug?: string;
+  };
+  inventoryManagement?: {
+    trackInventory?: boolean;
+    lowStockThreshold?: number;
+    allowBackorders?: boolean;
+    reservedQuantity?: number;
+  };
+  lastSynced?: Date;
+  syncStatus?: 'pending' | 'synced' | 'error';
+  syncErrors?: string[];
+}
+
+// Enhanced channel sync request supporting channel-specific data
 export interface ChannelSyncRequest {
   productId: string;
-  channels: string[];
+  channels: Array<{
+    platform: string;
+    storeId: string;
+    channelData?: ChannelSpecificData;
+  }>;
   mapping?: Record<string, unknown>;
+  syncVariants?: boolean;
 }
 
 export interface ChannelSyncResponse {
   success: boolean;
   results: Array<{
     channel: string;
+    storeId: string;
     status: 'success' | 'error';
     message?: string;
     externalId?: string;
+    variantResults?: Array<{
+      variantId: string;
+      externalId?: string;
+      status: 'success' | 'error';
+      message?: string;
+    }>;
   }>;
+}
+
+// Variant-specific channel operations
+export interface VariantChannelSyncRequest {
+  productId: string;
+  variantId: string;
+  channel: string;
+  storeId: string;
+  channelData: ChannelSpecificData;
+}
+
+export interface VariantChannelSyncResponse {
+  success: boolean;
+  variantId: string;
+  channel: string;
+  externalId?: string;
+  syncedFields: string[];
+  errors?: string[];
 }
 
 // Analytics types
