@@ -14,7 +14,7 @@ import ProductAnalytics from "./sections/ProductAnalytics";
 import ProductReviews from "./sections/ProductReviews";
 import ProductBundles from "./sections/ProductBundles";
 import ProductSidebar from "./ProductSidebar";
-import { useCreateProduct, useUpdateProduct, useCategories, useBrands } from "@/lib/api/hooks/useProducts";
+import { useCreateProduct, useUpdateProduct, useCategories, useBrands, useChannelSync } from "@/lib/api/hooks/useProducts";
 
 export interface ProductData {
   masterAttributes: {
@@ -197,6 +197,17 @@ export default function ProductCreateForm({ productId }: ProductCreateFormProps 
   const router = useRouter();
   const [activeSection, setActiveSection] = useState("basics");
   const [productData, setProductData] = useState<ProductData>(initialProductData);
+  const [currentProductId, setCurrentProductId] = useState<string | undefined>(productId);
+  const [channelSyncFunctions, setChannelSyncFunctions] = useState<{
+    validateChannelsForSync: () => { isValid: boolean; errors: string[] };
+    triggerAutoSync: () => Promise<any>;
+    syncAllChannels: () => Promise<any>;
+    handleChannelSync: (channelId: string, storeId?: string) => Promise<void>;
+  } | null>(null);
+  const [channelSyncStatus, setChannelSyncStatus] = useState<Record<string, {
+    status: 'pending' | 'synced' | 'error';
+    errors?: string[];
+  }>>({});
   
   // API hooks
   const createProduct = useCreateProduct();
@@ -221,7 +232,7 @@ export default function ProductCreateForm({ productId }: ProductCreateFormProps 
     }
   };
 
-  const validateProduct = (): string[] => {
+  const validateProduct = (includeChannelValidation = false): string[] => {
     const errors: string[] = [];
     
     if (!productData.masterAttributes.product_name.trim()) {
@@ -244,11 +255,20 @@ export default function ProductCreateForm({ productId }: ProductCreateFormProps 
       errors.push('Product description is required');
     }
 
+    // Enhanced: Channel validation for publish operations
+    if (includeChannelValidation && channelSyncFunctions) {
+      const channelValidation = channelSyncFunctions.validateChannelsForSync();
+      if (!channelValidation.isValid) {
+        errors.push(...channelValidation.errors.map(err => `Channel: ${err}`));
+      }
+    }
+
     return errors;
   };
 
-  const handleSave = async (publish = false) => {
-    const validationErrors = validateProduct();
+  const handleSave = async (publish = false, autoSync = false) => {
+    // Enhanced validation with channel checks for publish operations
+    const validationErrors = validateProduct(publish);
     
     if (validationErrors.length > 0) {
       showNotification(`Please fix the following errors:\n${validationErrors.join('\n')}`, 'error');
@@ -273,23 +293,82 @@ export default function ProductCreateForm({ productId }: ProductCreateFormProps 
       }
 
       if (result?.success) {
+        // Update the current product ID for channel sync operations
+        const savedProductId = result.data?.id || productId;
+        setCurrentProductId(savedProductId);
+        
         showNotification(
           isEditing 
             ? `Product updated ${publish ? 'and published' : ''} successfully!` 
             : `Product created ${publish ? 'and published' : ''} successfully!`
         );
         
+        // Enhanced: Auto-sync to channels after successful save/publish
+        if (publish && autoSync && channelSyncFunctions && savedProductId) {
+          const enabledChannels = productData.masterAttributes.channels?.filter(c => c.enabled) || [];
+          
+          if (enabledChannels.length > 0) {
+            showNotification('Starting automatic channel sync...', 'success');
+            
+            try {
+              const syncResults = await channelSyncFunctions.triggerAutoSync();
+              if (syncResults) {
+                const successCount = syncResults.filter((r: any) => r.success).length;
+                const failCount = syncResults.length - successCount;
+                
+                if (failCount === 0) {
+                  showNotification(`Product successfully synced to ${successCount} channel(s)!`, 'success');
+                } else {
+                  showNotification(`Product synced to ${successCount} channel(s), ${failCount} failed. Check channel status for details.`, 'error');
+                }
+              }
+            } catch (syncError) {
+              showNotification('Channel sync failed. You can retry from the Channel Sync section.', 'error');
+              console.error('Auto-sync failed:', syncError);
+            }
+          }
+        }
+        
         // Redirect to product list or product detail page
-        if (!isEditing && result.data?.id) {
-          router.push(`/products/${result.data.id}`);
+        if (!isEditing && savedProductId) {
+          router.push(`/products/${savedProductId}`);
         }
       }
+      
+      return result;
     } catch (error) {
       showNotification(
         `Failed to ${isEditing ? 'update' : 'create'} product: ${error instanceof Error ? error.message : 'Unknown error'}`,
         'error'
       );
+      throw error;
     }
+  };
+
+  // Enhanced: Channel sync status tracking
+  const handleChannelSyncStatusChange = (channelId: string, status: 'pending' | 'synced' | 'error', errors?: string[]) => {
+    setChannelSyncStatus(prev => ({
+      ...prev,
+      [channelId]: { status, errors }
+    }));
+    
+    // Show notifications for sync status changes
+    switch (status) {
+      case 'pending':
+        showNotification(`Syncing to ${channelId}...`, 'success');
+        break;
+      case 'synced':
+        showNotification(`Successfully synced to ${channelId}!`, 'success');
+        break;
+      case 'error':
+        showNotification(`Failed to sync to ${channelId}: ${errors?.[0] || 'Unknown error'}`, 'error');
+        break;
+    }
+  };
+
+  // Enhanced: Save and publish with auto-sync
+  const handleSaveAndSync = async () => {
+    return await handleSave(true, true); // publish = true, autoSync = true
   };
 
   const handleDuplicate = async () => {
@@ -354,7 +433,16 @@ export default function ProductCreateForm({ productId }: ProductCreateFormProps 
       case "seo":
         return <SEOMarketing data={enhancedProductData} onUpdate={updateProductData} />;
       case "channels":
-        return <ChannelSync data={enhancedProductData} onUpdate={updateProductData} />;
+        return (
+          <ChannelSync 
+            data={enhancedProductData} 
+            onUpdate={updateProductData}
+            productId={currentProductId}
+            onSyncStatusChange={handleChannelSyncStatusChange}
+            autoSyncEnabled={true}
+            onSyncFunctionsReady={setChannelSyncFunctions}
+          />
+        );
       case "publishing":
         return <PublishSettings data={enhancedProductData} onUpdate={updateProductData} />;
       case "analytics":
@@ -411,6 +499,18 @@ export default function ProductCreateForm({ productId }: ProductCreateFormProps 
               >
                 {isSaving ? "Publishing..." : "Save & Publish"}
               </button>
+              
+              {/* Enhanced: Save, Publish & Auto-Sync Button */}
+              {productData.masterAttributes.channels?.some(c => c.enabled) && (
+                <button 
+                  onClick={handleSaveAndSync}
+                  disabled={isSaving}
+                  className="px-4 py-2 text-sm font-medium text-white bg-gradient-to-r from-brand-500 to-purple-600 rounded-lg hover:from-brand-600 hover:to-purple-700 disabled:opacity-50 flex items-center gap-2"
+                >
+                  {isSaving ? "Publishing & Syncing..." : "Publish & Sync All"}
+                  <span className="text-xs">🔄</span>
+                </button>
+              )}
             </div>
           </div>
         </div>

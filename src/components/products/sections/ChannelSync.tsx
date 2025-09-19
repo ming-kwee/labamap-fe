@@ -1,22 +1,45 @@
 "use client";
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import Button from "@/components/ui/button/Button";
 import Switch from "@/components/form/switch/Switch";
 import { ProductData } from "../ProductCreateForm";
 import { getEnhancedChannelConfig, getChannelsByCategory, ENHANCED_CHANNEL_CONFIGS } from "../channels/EnhancedChannelConfigs";
 import { ChannelConfig, ChannelSpecificData } from "../channels/ChannelTypes";
 import ChannelConfigurationForm from "./ChannelConfigurationForm";
+import { useChannelSync, useVariantChannelSync, useBulkVariantSync, useChannelConfigs } from "@/lib/api/hooks/useProducts";
 
 interface ChannelSyncProps {
   data: ProductData;
   onUpdate: (updates: Partial<ProductData>) => void;
+  productId?: string; // For correlating with save operations
+  onSyncStatusChange?: (channelId: string, status: 'pending' | 'synced' | 'error', errors?: string[]) => void;
+  autoSyncEnabled?: boolean; // Enable auto-sync after save
+  onSyncFunctionsReady?: (functions: {
+    validateChannelsForSync: () => { isValid: boolean; errors: string[] };
+    triggerAutoSync: () => Promise<any>;
+    syncAllChannels: () => Promise<any>;
+    handleChannelSync: (channelId: string, storeId?: string) => Promise<void>;
+  }) => void;
 }
 
-export default function ChannelSync({ data, onUpdate }: ChannelSyncProps) {
+export default function ChannelSync({ 
+  data, 
+  onUpdate, 
+  productId, 
+  onSyncStatusChange, 
+  autoSyncEnabled = false,
+  onSyncFunctionsReady
+}: ChannelSyncProps) {
   const [selectedChannelId, setSelectedChannelId] = useState<string | null>(null);
   const [isSyncing, setIsSyncing] = useState(false);
   const [lastSync, setLastSync] = useState(new Date(Date.now() - 30 * 60 * 1000));
   const [channelDataState, setChannelDataState] = useState<Record<string, ChannelSpecificData>>({});
+
+  // Enhanced API hooks for real channel operations
+  const channelSync = useChannelSync();
+  const variantSync = useVariantChannelSync();
+  const bulkVariantSync = useBulkVariantSync();
+  const { data: channelConfigs } = useChannelConfigs();
 
   const availableChannels = Object.values(ENHANCED_CHANNEL_CONFIGS);
   const activeChannels = availableChannels.filter(channel => 
@@ -78,44 +101,157 @@ export default function ChannelSync({ data, onUpdate }: ChannelSyncProps) {
     }));
   };
 
-  const handleChannelSync = async (channelId: string) => {
+  // Enhanced handleChannelSync with real API integration
+  const handleChannelSync = async (channelId: string, storeId = 'default') => {
+    if (!productId) {
+      console.warn('Cannot sync: Product must be saved first');
+      return;
+    }
+
     setIsSyncing(true);
+    
+    // Update sync status to pending
+    handleChannelDataUpdate(channelId, {
+      syncStatus: 'pending',
+      pendingSync: true
+    });
+    
+    onSyncStatusChange?.(channelId, 'pending');
+
     try {
-      // Simulate sync process
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      // Get channel configuration for this sync
+      const channelConfig = getEnhancedChannelConfig(channelId);
+      const channelData = getChannelData(channelId);
       
-      // Update sync status
-      handleChannelDataUpdate(channelId, {
-        lastSynced: new Date(),
-        syncErrors: [],
-        pendingSync: false
-      });
+      // Prepare channel-specific data for sync
+      const channelPayload = {
+        platform: channelId,
+        storeId,
+        channelData: {
+          ...channelData,
+          sku: data.masterAttributes.sku,
+          title: data.masterAttributes.product_name,
+          description: data.masterAttributes.description,
+          price: data.masterAttributes.basePrice,
+          inventory: data.masterAttributes.stockQuantity,
+          enabled: true,
+          ...channelData.customFields
+        }
+      };
+
+      // Real API call to sync product to channel
+      const result = await channelSync.mutate(productId, [channelPayload]);
       
-      console.log(`Successfully synced ${channelId}`);
+      if (result?.success) {
+        // Update sync status to success
+        handleChannelDataUpdate(channelId, {
+          lastSynced: new Date(),
+          syncStatus: 'synced',
+          syncErrors: [],
+          pendingSync: false
+        });
+        
+        onSyncStatusChange?.(channelId, 'synced');
+        console.log(`Successfully synced ${channelId} to ${storeId}`);
+        
+        // If variants exist, sync them too
+        if (data.enhancedVariants && data.enhancedVariants.length > 0) {
+          await syncProductVariants(channelId, storeId);
+        }
+      }
     } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown sync error';
+      const syncErrors = [`Sync failed: ${errorMessage}`];
+      
       handleChannelDataUpdate(channelId, {
-        syncErrors: ['Sync failed: Network error'],
+        syncStatus: 'error',
+        syncErrors,
         pendingSync: false
       });
+      
+      onSyncStatusChange?.(channelId, 'error', syncErrors);
       console.error(`Sync failed for ${channelId}:`, error);
     } finally {
       setIsSyncing(false);
     }
   };
 
+  // Enhanced variant sync function
+  const syncProductVariants = async (channelId: string, storeId: string) => {
+    if (!data.enhancedVariants || !productId) return;
+
+    try {
+      // Prepare variant data for bulk sync
+      const variantsToSync = data.enhancedVariants.map(variant => ({
+        variantId: variant.id,
+        channels: [{
+          platform: channelId,
+          storeId,
+          channelData: {
+            sku: variant.channelData[channelId]?.sku || variant.masterData.sku,
+            title: variant.channelData[channelId]?.title || variant.masterData.title,
+            price: variant.channelData[channelId]?.price || variant.masterData.price,
+            inventory: variant.channelData[channelId]?.inventory || variant.masterData.inventory,
+            enabled: variant.channelData[channelId]?.enabled ?? variant.masterData.enabled,
+            ...variant.channelData[channelId]?.customFields
+          }
+        }]
+      }));
+
+      await bulkVariantSync.mutate(productId, variantsToSync);
+      console.log(`Successfully synced ${variantsToSync.length} variants to ${channelId}`);
+    } catch (error) {
+      console.error(`Failed to sync variants to ${channelId}:`, error);
+    }
+  };
+
+  // Enhanced syncAllChannels with real API calls
   const syncAllChannels = async () => {
+    if (!productId) {
+      console.warn('Cannot sync all channels: Product must be saved first');
+      return;
+    }
+
     setIsSyncing(true);
+    const results = [];
+    
     try {
       for (const channel of activeChannels) {
-        await handleChannelSync(channel.id);
-        await new Promise(resolve => setTimeout(resolve, 500));
+        const stores = channel.stores || [{ id: 'default', name: 'Default Store', url: '' }];
+        
+        for (const store of stores) {
+          const isActive = data.masterAttributes.channels?.some(
+            c => c.platform === channel.id && c.storeId === store.id && c.enabled
+          );
+          
+          if (isActive) {
+            try {
+              await handleChannelSync(channel.id, store.id);
+              results.push({ channel: channel.id, store: store.id, success: true });
+              
+              // Small delay between syncs to avoid rate limiting
+              await new Promise(resolve => setTimeout(resolve, 300));
+            } catch (error) {
+              results.push({ 
+                channel: channel.id, 
+                store: store.id, 
+                success: false, 
+                error: error instanceof Error ? error.message : 'Unknown error' 
+              });
+            }
+          }
+        }
       }
+      
       setLastSync(new Date());
+      console.log('Bulk sync completed:', results);
     } catch (error) {
-      console.error("Sync failed:", error);
+      console.error("Bulk sync failed:", error);
     } finally {
       setIsSyncing(false);
     }
+    
+    return results;
   };
 
   const getChannelStatus = (channelId: string, storeId: string) => {
@@ -129,6 +265,86 @@ export default function ChannelSync({ data, onUpdate }: ChannelSyncProps) {
       syncErrors: []
     };
   };
+
+  // Channel validation function for save correlation
+  const validateChannelsForSync = (): { isValid: boolean; errors: string[] } => {
+    const errors: string[] = [];
+    
+    if (!productId) {
+      errors.push('Product must be saved before channel sync validation');
+    }
+    
+    const enabledChannels = data.masterAttributes.channels?.filter(c => c.enabled) || [];
+    
+    if (enabledChannels.length === 0) {
+      return { isValid: true, errors: [] }; // No channels selected is valid
+    }
+
+    for (const channel of enabledChannels) {
+      const channelConfig = getEnhancedChannelConfig(channel.platform);
+      const channelData = getChannelData(channel.platform);
+      
+      if (!channelConfig) {
+        errors.push(`Unknown channel configuration: ${channel.platform}`);
+        continue;
+      }
+
+      // Check required fields for this channel
+      for (const field of channelConfig.requiredFields) {
+        const value = channelData.customFields?.[field.fieldName];
+        if (!value && field.required) {
+          errors.push(`${channelConfig.displayName}: Missing required field '${field.displayName}'`);
+        }
+      }
+
+      // Check basic product data
+      if (!data.masterAttributes.product_name.trim()) {
+        errors.push(`${channelConfig.displayName}: Product name is required`);
+      }
+      
+      if (!data.masterAttributes.sku.trim()) {
+        errors.push(`${channelConfig.displayName}: SKU is required`);
+      }
+      
+      if (data.masterAttributes.basePrice <= 0) {
+        errors.push(`${channelConfig.displayName}: Valid price is required`);
+      }
+    }
+
+    return {
+      isValid: errors.length === 0,
+      errors
+    };
+  };
+
+  // Auto-sync function that can be called after save
+  const triggerAutoSync = async () => {
+    if (!autoSyncEnabled || !productId) return;
+    
+    const validation = validateChannelsForSync();
+    if (!validation.isValid) {
+      console.warn('Auto-sync skipped due to validation errors:', validation.errors);
+      return;
+    }
+
+    const enabledChannels = data.masterAttributes.channels?.filter(c => c.enabled) || [];
+    if (enabledChannels.length > 0) {
+      console.log('Triggering auto-sync for', enabledChannels.length, 'channels');
+      return await syncAllChannels();
+    }
+  };
+
+  // Expose sync functions to parent component
+  useEffect(() => {
+    if (onSyncFunctionsReady) {
+      onSyncFunctionsReady({
+        validateChannelsForSync,
+        triggerAutoSync,
+        syncAllChannels,
+        handleChannelSync
+      });
+    }
+  }, [productId, data.masterAttributes.channels, autoSyncEnabled]);
 
   const channelsByCategory = {
     marketplace: getChannelsByCategory('marketplace'),
