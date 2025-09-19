@@ -148,6 +148,8 @@ export default function ProductVariants({ data, onUpdate }: ProductVariantsProps
   const [variantsEnabled, setVariantsEnabled] = useState(data.variantGroups.length > 0 || data.optionGroups.length > 0);
   const [selectedChannel, setSelectedChannel] = useState<string>('master');
   const [viewMode, setViewMode] = useState<'unified' | 'channel-specific'>('unified');
+  const [selectedVariantForDetails, setSelectedVariantForDetails] = useState<ProductVariant | null>(null);
+  const [showVariantDetails, setShowVariantDetails] = useState(false);
 
   // Initialize internal state from ProductData
   useEffect(() => {
@@ -434,6 +436,32 @@ export default function ProductVariants({ data, onUpdate }: ProductVariantsProps
       enhancedVariants: newVariants,
       variantGroups: transformVariantsToVariantGroups(newVariants) 
     });
+  };
+
+  const openVariantDetails = (variant: ProductVariant) => {
+    setSelectedVariantForDetails(variant);
+    setShowVariantDetails(true);
+  };
+
+  const closeVariantDetails = () => {
+    setSelectedVariantForDetails(null);
+    setShowVariantDetails(false);
+  };
+
+  const updateVariantDetails = (variantId: string, updates: Partial<ProductVariant>) => {
+    const newVariants = variants.map(v => 
+      v.id === variantId ? { ...v, ...updates } : v
+    );
+    setVariants(newVariants);
+    onUpdate({ 
+      enhancedVariants: newVariants,
+      variantGroups: transformVariantsToVariantGroups(newVariants) 
+    });
+    
+    // Update the selected variant for details if it's the one being edited
+    if (selectedVariantForDetails?.id === variantId) {
+      setSelectedVariantForDetails({ ...selectedVariantForDetails, ...updates });
+    }
   };
 
   const getVariantCompletionScore = (variant: ProductVariant, channel: string = 'master'): number => {
@@ -1005,7 +1033,13 @@ export default function ProductVariants({ data, onUpdate }: ProductVariantsProps
                                 </span>
                               )}
                             </div>
-                            {/* Variant details editing temporarily disabled */}
+                            <button
+                              onClick={() => openVariantDetails(variant)}
+                              className="ml-2 px-2 py-1 text-xs bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded hover:bg-blue-200 dark:hover:bg-blue-900/50 transition-colors"
+                              title="Edit Details"
+                            >
+                              ⚙️ Edit
+                            </button>
                           </div>
                         </td>
                         <td className="p-3">
@@ -1089,7 +1123,17 @@ export default function ProductVariants({ data, onUpdate }: ProductVariantsProps
         </>
       )}
 
-      {/* Variant Details Modal - Completely removed to eliminate TypeScript errors */}
+      {/* Variant Details Modal */}
+      {showVariantDetails && selectedVariantForDetails && (
+        <VariantDetailsModal
+          variant={selectedVariantForDetails}
+          onClose={closeVariantDetails}
+          onUpdate={updateVariantDetails}
+          availableChannels={getActiveChannels()}
+          viewMode={viewMode}
+          selectedChannel={selectedChannel}
+        />
+      )}
     </div>
   );
 }
@@ -1396,6 +1440,771 @@ function VariantMediaGallery({ images, onClose, onUpdate, variant, channel }: Va
             )}
           </div>
         </div>
+      </div>
+    </div>
+  );
+}
+
+// Variant Details Modal Component
+interface VariantDetailsModalProps {
+  variant: ProductVariant;
+  onClose: () => void;
+  onUpdate: (variantId: string, updates: Partial<ProductVariant>) => void;
+  availableChannels: string[];
+  viewMode: 'unified' | 'channel-specific';
+  selectedChannel: string;
+}
+
+function VariantDetailsModal({ 
+  variant, 
+  onClose, 
+  onUpdate, 
+  availableChannels,
+  viewMode: parentViewMode,
+  selectedChannel: parentSelectedChannel
+}: VariantDetailsModalProps) {
+  const [activeTab, setActiveTab] = useState<'basic' | 'inventory' | 'seo' | 'shipping' | 'channels'>('basic');
+  const [viewMode, setViewMode] = useState<'master' | 'channel'>(parentViewMode === 'channel-specific' ? 'channel' : 'master');
+  const [selectedChannel, setSelectedChannel] = useState(parentSelectedChannel !== 'master' ? parentSelectedChannel : availableChannels[0] || 'master');
+  
+  // Local state for form data
+  const [formData, setFormData] = useState({
+    masterData: { ...variant.masterData },
+    channelData: { ...variant.channelData },
+    globalSettings: { ...variant.globalSettings }
+  });
+
+  const updateFormData = (section: keyof typeof formData, field: string, value: any) => {
+    setFormData(prev => ({
+      ...prev,
+      [section]: {
+        ...prev[section],
+        [field]: value
+      }
+    }));
+  };
+
+  const updateChannelData = (channel: string, field: string, value: any) => {
+    setFormData(prev => ({
+      ...prev,
+      channelData: {
+        ...prev.channelData,
+        [channel]: {
+          ...prev.channelData[channel],
+          [field]: value
+        }
+      }
+    }));
+  };
+
+  const handleSave = () => {
+    onUpdate(variant.id, formData);
+    onClose();
+  };
+
+  const getCurrentData = () => {
+    if (viewMode === 'master') {
+      return formData.masterData;
+    } else {
+      const channelData = formData.channelData[selectedChannel] || {};
+      return {
+        ...formData.masterData,
+        ...channelData
+      };
+    }
+  };
+
+  const updateCurrentData = (field: string, value: any) => {
+    if (viewMode === 'master') {
+      updateFormData('masterData', field, value);
+    } else {
+      updateChannelData(selectedChannel, field, value);
+    }
+  };
+
+  const tabs = [
+    { id: 'basic', label: 'Basic Info', icon: '📝' },
+    { id: 'inventory', label: 'Inventory', icon: '📦' },
+    { id: 'seo', label: 'SEO', icon: '🔍' },
+    { id: 'shipping', label: 'Shipping', icon: '🚚' },
+    { id: 'channels', label: 'Channels', icon: '🌐' }
+  ];
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
+      <div className="bg-white dark:bg-gray-800 rounded-xl max-w-4xl w-full max-h-[90vh] overflow-hidden flex flex-col">
+        {/* Header */}
+        <div className="flex items-center justify-between p-6 border-b border-gray-200 dark:border-gray-700">
+          <div>
+            <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
+              Variant Details
+            </h2>
+            <div className="flex flex-wrap gap-2 mt-2">
+              {Object.entries(variant.attributes).map(([key, value]) => (
+                <span key={key} className="px-2 py-1 text-xs bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded">
+                  {key}: {value}
+                </span>
+              ))}
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 text-xl"
+          >
+            ✕
+          </button>
+        </div>
+
+        {/* Content */}
+        <div className="flex flex-1 overflow-hidden">
+          {/* Sidebar Navigation */}
+          <div className="w-64 bg-gray-50 dark:bg-gray-900 border-r border-gray-200 dark:border-gray-700 p-4">
+            {/* View Mode Selector */}
+            <div className="mb-6">
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                Editing Mode
+              </label>
+              <div className="space-y-2">
+                <label className="flex items-center">
+                  <input
+                    type="radio"
+                    name="viewMode"
+                    value="master"
+                    checked={viewMode === 'master'}
+                    onChange={(e) => setViewMode(e.target.value as 'master' | 'channel')}
+                    className="mr-2"
+                  />
+                  <span className="text-sm">🏠 Master Data</span>
+                </label>
+                <label className="flex items-center">
+                  <input
+                    type="radio"
+                    name="viewMode"
+                    value="channel"
+                    checked={viewMode === 'channel'}
+                    onChange={(e) => setViewMode(e.target.value as 'master' | 'channel')}
+                    className="mr-2"
+                    disabled={availableChannels.length === 0}
+                  />
+                  <span className="text-sm">📱 Channel Specific</span>
+                </label>
+              </div>
+              
+              {/* Channel Selector */}
+              {viewMode === 'channel' && availableChannels.length > 0 && (
+                <div className="mt-3">
+                  <select
+                    value={selectedChannel}
+                    onChange={(e) => setSelectedChannel(e.target.value)}
+                    className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800"
+                  >
+                    {availableChannels.map(channel => (
+                      <option key={channel} value={channel}>
+                        {channel.charAt(0).toUpperCase() + channel.slice(1)}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+            </div>
+
+            {/* Tab Navigation */}
+            <nav className="space-y-1">
+              {tabs.map(tab => (
+                <button
+                  key={tab.id}
+                  onClick={() => setActiveTab(tab.id as any)}
+                  className={`w-full flex items-center px-3 py-2 text-sm rounded-lg transition-colors ${
+                    activeTab === tab.id
+                      ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400'
+                      : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'
+                  }`}
+                >
+                  <span className="mr-3">{tab.icon}</span>
+                  {tab.label}
+                </button>
+              ))}
+            </nav>
+          </div>
+
+          {/* Main Content */}
+          <div className="flex-1 p-6 overflow-y-auto">
+            {activeTab === 'basic' && (
+              <BasicInfoTab 
+                data={getCurrentData()} 
+                onUpdate={updateCurrentData}
+                viewMode={viewMode}
+                selectedChannel={selectedChannel}
+              />
+            )}
+            {activeTab === 'inventory' && (
+              <InventoryTab 
+                data={getCurrentData()} 
+                onUpdate={updateCurrentData}
+                globalSettings={formData.globalSettings}
+                onUpdateGlobal={(field, value) => updateFormData('globalSettings', field, value)}
+                viewMode={viewMode}
+              />
+            )}
+            {activeTab === 'seo' && (
+              <SEOTab 
+                data={getCurrentData()} 
+                onUpdate={updateCurrentData}
+                viewMode={viewMode}
+                selectedChannel={selectedChannel}
+              />
+            )}
+            {activeTab === 'shipping' && (
+              <ShippingTab 
+                data={getCurrentData()} 
+                onUpdate={updateCurrentData}
+                globalSettings={formData.globalSettings}
+                onUpdateGlobal={(field, value) => updateFormData('globalSettings', field, value)}
+              />
+            )}
+            {activeTab === 'channels' && (
+              <ChannelsTab 
+                variant={variant}
+                channelData={formData.channelData}
+                onUpdateChannel={updateChannelData}
+                availableChannels={availableChannels}
+              />
+            )}
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="flex items-center justify-between p-6 border-t border-gray-200 dark:border-gray-700">
+          <div className="text-sm text-gray-500 dark:text-gray-400">
+            {viewMode === 'master' ? 'Editing master variant data' : `Editing ${selectedChannel} channel data`}
+          </div>
+          <div className="flex gap-3">
+            <Button onClick={onClose} variant="outline">
+              Cancel
+            </Button>
+            <Button onClick={handleSave}>
+              Save Changes
+            </Button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Basic Info Tab Component
+interface BasicInfoTabProps {
+  data: any;
+  onUpdate: (field: string, value: any) => void;
+  viewMode: 'master' | 'channel';
+  selectedChannel: string;
+}
+
+function BasicInfoTab({ data, onUpdate, viewMode, selectedChannel }: BasicInfoTabProps) {
+  return (
+    <div className="space-y-6">
+      <div>
+        <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-4">
+          Basic Information
+          {viewMode === 'channel' && (
+            <span className="ml-2 text-sm text-blue-600 dark:text-blue-400">
+              ({selectedChannel} channel)
+            </span>
+          )}
+        </h3>
+        
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <Label>Variant Title</Label>
+            <Input
+              type="text"
+              defaultValue={data.title || ''}
+              onChange={(e) => onUpdate('title', e.target.value)}
+              placeholder="Enter variant title"
+            />
+          </div>
+          
+          <div>
+            <Label>Barcode</Label>
+            <Input
+              type="text"
+              defaultValue={data.barcode || ''}
+              onChange={(e) => onUpdate('barcode', e.target.value)}
+              placeholder="UPC, EAN, ISBN, etc."
+            />
+          </div>
+          
+          <div className="md:col-span-2">
+            <Label>Description</Label>
+            <textarea
+              value={data.description || ''}
+              onChange={(e) => onUpdate('description', e.target.value)}
+              placeholder="Describe this variant..."
+              className="w-full min-h-[100px] px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white resize-y"
+            />
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <h4 className="text-md font-medium text-gray-900 dark:text-white mb-4">Pricing</h4>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div>
+            <Label>Selling Price</Label>
+            <Input
+              type="number"
+              step={0.01}
+              defaultValue={data.price ? data.price.toString() : ''}
+              onChange={(e) => onUpdate('price', parseFloat(e.target.value) || 0)}
+              placeholder="0.00"
+            />
+          </div>
+          
+          <div>
+            <Label>Cost Price</Label>
+            <Input
+              type="number"
+              step={0.01}
+              defaultValue={data.costPrice ? data.costPrice.toString() : ''}
+              onChange={(e) => onUpdate('costPrice', parseFloat(e.target.value) || 0)}
+              placeholder="0.00"
+            />
+          </div>
+          
+          <div>
+            <Label>Compare at Price</Label>
+            <Input
+              type="number"
+              step={0.01}
+              defaultValue={data.comparePrice ? data.comparePrice.toString() : ''}
+              onChange={(e) => onUpdate('comparePrice', parseFloat(e.target.value) || 0)}
+              placeholder="0.00"
+            />
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <h4 className="text-md font-medium text-gray-900 dark:text-white mb-4">Physical Properties</h4>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <Label>Weight (kg)</Label>
+            <Input
+              type="number"
+              step={0.01}
+              defaultValue={data.weight ? data.weight.toString() : ''}
+              onChange={(e) => onUpdate('weight', parseFloat(e.target.value) || 0)}
+              placeholder="0.00"
+            />
+          </div>
+          
+          <div>
+            <Label>Dimensions (L × W × H cm)</Label>
+            <div className="grid grid-cols-3 gap-2">
+              <Input
+                type="number"
+                step={0.1}
+                defaultValue={data.dimensions?.length ? data.dimensions.length.toString() : ''}
+                onChange={(e) => onUpdate('dimensions', { 
+                  ...data.dimensions, 
+                  length: parseFloat(e.target.value) || 0 
+                })}
+                placeholder="L"
+              />
+              <Input
+                type="number"
+                step={0.1}
+                defaultValue={data.dimensions?.width ? data.dimensions.width.toString() : ''}
+                onChange={(e) => onUpdate('dimensions', { 
+                  ...data.dimensions, 
+                  width: parseFloat(e.target.value) || 0 
+                })}
+                placeholder="W"
+              />
+              <Input
+                type="number"
+                step={0.1}
+                defaultValue={data.dimensions?.height ? data.dimensions.height.toString() : ''}
+                onChange={(e) => onUpdate('dimensions', { 
+                  ...data.dimensions, 
+                  height: parseFloat(e.target.value) || 0 
+                })}
+                placeholder="H"
+              />
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Inventory Tab Component
+interface InventoryTabProps {
+  data: any;
+  onUpdate: (field: string, value: any) => void;
+  globalSettings: any;
+  onUpdateGlobal: (field: string, value: any) => void;
+  viewMode: 'master' | 'channel';
+}
+
+function InventoryTab({ data, onUpdate, globalSettings, onUpdateGlobal, viewMode }: InventoryTabProps) {
+  return (
+    <div className="space-y-6">
+      <div>
+        <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-4">
+          Inventory Management
+        </h3>
+        
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <Label>Current Stock</Label>
+            <Input
+              type="number"
+              min="0"
+              defaultValue={data.inventory ? data.inventory.toString() : ''}
+              onChange={(e) => onUpdate('inventory', parseInt(e.target.value) || 0)}
+              placeholder="0"
+            />
+          </div>
+          
+          <div>
+            <Label>Low Stock Threshold</Label>
+            <Input
+              type="number"
+              min="0"
+              defaultValue={data.lowStockThreshold ? data.lowStockThreshold.toString() : ''}
+              onChange={(e) => onUpdate('lowStockThreshold', parseInt(e.target.value) || 0)}
+              placeholder="5"
+            />
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <h4 className="text-md font-medium text-gray-900 dark:text-white mb-4">Inventory Settings</h4>
+        <div className="space-y-3">
+          <label className="flex items-center">
+            <input
+              type="checkbox"
+              checked={data.trackInventory || false}
+              onChange={(e) => onUpdate('trackInventory', e.target.checked)}
+              className="mr-3"
+            />
+            <span className="text-sm text-gray-700 dark:text-gray-300">
+              Track inventory for this variant
+            </span>
+          </label>
+          
+          <label className="flex items-center">
+            <input
+              type="checkbox"
+              checked={data.taxable || false}
+              onChange={(e) => onUpdate('taxable', e.target.checked)}
+              className="mr-3"
+            />
+            <span className="text-sm text-gray-700 dark:text-gray-300">
+              This variant is taxable
+            </span>
+          </label>
+        </div>
+      </div>
+
+      {viewMode === 'master' && (
+        <div>
+          <h4 className="text-md font-medium text-gray-900 dark:text-white mb-4">Global Settings</h4>
+          <div className="space-y-3">
+            <label className="flex items-center">
+              <input
+                type="checkbox"
+                checked={globalSettings?.requiresShipping || false}
+                onChange={(e) => onUpdateGlobal('requiresShipping', e.target.checked)}
+                className="mr-3"
+              />
+              <span className="text-sm text-gray-700 dark:text-gray-300">
+                This variant requires shipping
+              </span>
+            </label>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// SEO Tab Component
+interface SEOTabProps {
+  data: any;
+  onUpdate: (field: string, value: any) => void;
+  viewMode: 'master' | 'channel';
+  selectedChannel: string;
+}
+
+function SEOTab({ data, onUpdate, viewMode, selectedChannel }: SEOTabProps) {
+  const seoData = data.seo || {};
+  
+  const updateSEO = (field: string, value: string) => {
+    onUpdate('seo', {
+      ...seoData,
+      [field]: value
+    });
+  };
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-4">
+          SEO Settings
+          {viewMode === 'channel' && (
+            <span className="ml-2 text-sm text-blue-600 dark:text-blue-400">
+              ({selectedChannel} channel)
+            </span>
+          )}
+        </h3>
+        
+        <div className="space-y-4">
+          <div>
+            <Label>SEO Title</Label>
+            <Input
+              type="text"
+              defaultValue={seoData.title || ''}
+              onChange={(e) => updateSEO('title', e.target.value)}
+              placeholder="Optimized title for search engines"
+            />
+            <p className="text-xs text-gray-500 mt-1">
+              {(seoData.title || '').length}/60 characters
+            </p>
+          </div>
+          
+          <div>
+            <Label>SEO Description</Label>
+            <textarea
+              value={seoData.description || ''}
+              onChange={(e) => updateSEO('description', e.target.value)}
+              placeholder="Meta description for search results"
+              maxLength={160}
+              className="w-full min-h-[80px] px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white resize-y"
+            />
+            <p className="text-xs text-gray-500 mt-1">
+              {(seoData.description || '').length}/160 characters
+            </p>
+          </div>
+          
+          <div>
+            <Label>Keywords</Label>
+            <Input
+              type="text"
+              defaultValue={seoData.keywords?.join(', ') || ''}
+              onChange={(e) => updateSEO('keywords', e.target.value)}
+              placeholder="keyword1, keyword2, keyword3"
+            />
+            <p className="text-xs text-gray-500 mt-1">
+              Separate keywords with commas
+            </p>
+          </div>
+          
+          {viewMode === 'channel' && (
+            <div>
+              <Label>URL Slug</Label>
+              <Input
+                type="text"
+                defaultValue={seoData.slug || ''}
+                onChange={(e) => updateSEO('slug', e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '-'))}
+                placeholder="url-friendly-slug"
+              />
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Shipping Tab Component
+interface ShippingTabProps {
+  data: any;
+  onUpdate: (field: string, value: any) => void;
+  globalSettings: any;
+  onUpdateGlobal: (field: string, value: any) => void;
+}
+
+function ShippingTab({ data, onUpdate, globalSettings, onUpdateGlobal }: ShippingTabProps) {
+  return (
+    <div className="space-y-6">
+      <div>
+        <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-4">
+          Shipping Information
+        </h3>
+        
+        <div className="space-y-4">
+          <div>
+            <Label>HS Code</Label>
+            <Input
+              type="text"
+              defaultValue={globalSettings?.hsCode || ''}
+              onChange={(e) => onUpdateGlobal('hsCode', e.target.value)}
+              placeholder="Harmonized System code"
+            />
+          </div>
+          
+          <div>
+            <Label>Country of Origin</Label>
+            <Input
+              type="text"
+              defaultValue={globalSettings?.countryOfOrigin || ''}
+              onChange={(e) => onUpdateGlobal('countryOfOrigin', e.target.value)}
+              placeholder="Country where this variant is manufactured"
+            />
+          </div>
+          
+          <div>
+            <Label>Notes</Label>
+            <textarea
+              value={globalSettings?.notes || ''}
+              onChange={(e) => onUpdateGlobal('notes', e.target.value)}
+              placeholder="Special shipping instructions or notes"
+              className="w-full min-h-[80px] px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white resize-y"
+            />
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Channels Tab Component
+interface ChannelsTabProps {
+  variant: ProductVariant;
+  channelData: Record<string, any>;
+  onUpdateChannel: (channel: string, field: string, value: any) => void;
+  availableChannels: string[];
+}
+
+function ChannelsTab({ variant, channelData, onUpdateChannel, availableChannels }: ChannelsTabProps) {
+  return (
+    <div className="space-y-6">
+      <div>
+        <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-4">
+          Channel Configuration
+        </h3>
+        
+        {availableChannels.length === 0 ? (
+          <div className="text-center py-8 text-gray-500 dark:text-gray-400">
+            <p>No channels configured yet.</p>
+            <p className="text-sm mt-2">Add channels in the main variant table to configure them here.</p>
+          </div>
+        ) : (
+          <div className="space-y-6">
+            {availableChannels.map(channel => {
+              const data = channelData[channel] || {};
+              const isOverridden = Object.keys(data).length > 0;
+              
+              return (
+                <div key={channel} className="border border-gray-200 dark:border-gray-700 rounded-lg p-4">
+                  <div className="flex items-center justify-between mb-4">
+                    <h4 className="font-medium text-gray-900 dark:text-white">
+                      {channel.charAt(0).toUpperCase() + channel.slice(1)}
+                    </h4>
+                    <div className="flex items-center gap-2">
+                      {isOverridden && (
+                        <span className="px-2 py-1 text-xs bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded">
+                          {Object.keys(data).length} override{Object.keys(data).length !== 1 ? 's' : ''}
+                        </span>
+                      )}
+                      <label className="flex items-center">
+                        <input
+                          type="checkbox"
+                          checked={data.enabled !== false}
+                          onChange={(e) => onUpdateChannel(channel, 'enabled', e.target.checked)}
+                          className="mr-2"
+                        />
+                        <span className="text-sm">Enabled</span>
+                      </label>
+                    </div>
+                  </div>
+                  
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <Label>Channel SKU</Label>
+                      <Input
+                        type="text"
+                        defaultValue={data.sku || ''}
+                        onChange={(e) => onUpdateChannel(channel, 'sku', e.target.value)}
+                        placeholder={`Use master SKU (${variant.masterData.sku})`}
+                      />
+                    </div>
+                    
+                    <div>
+                      <Label>Channel Price</Label>
+                      <Input
+                        type="number"
+                        step={0.01}
+                        defaultValue={data.price ? data.price.toString() : ''}
+                        onChange={(e) => onUpdateChannel(channel, 'price', parseFloat(e.target.value) || undefined)}
+                        placeholder={`Use master price ($${variant.masterData.price})`}
+                      />
+                    </div>
+                    
+                    <div>
+                      <Label>Channel Inventory</Label>
+                      <Input
+                        type="number"
+                        min="0"
+                        defaultValue={data.inventory ? data.inventory.toString() : ''}
+                        onChange={(e) => onUpdateChannel(channel, 'inventory', parseInt(e.target.value) || undefined)}
+                        placeholder={`Use master inventory (${variant.masterData.inventory})`}
+                      />
+                    </div>
+                    
+                    <div>
+                      <Label>Visibility</Label>
+                      <select
+                        value={data.visibility !== false ? 'visible' : 'hidden'}
+                        onChange={(e) => onUpdateChannel(channel, 'visibility', e.target.value === 'visible')}
+                        className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800"
+                      >
+                        <option value="visible">Visible</option>
+                        <option value="hidden">Hidden</option>
+                      </select>
+                    </div>
+                  </div>
+                  
+                  <div className="mt-4">
+                    <Label>Channel Tags</Label>
+                    <Input
+                      type="text"
+                      defaultValue={data.tags?.join(', ') || ''}
+                      onChange={(e) => onUpdateChannel(channel, 'tags', e.target.value.split(',').map(t => t.trim()).filter(t => t))}
+                      placeholder="tag1, tag2, tag3"
+                    />
+                  </div>
+                  
+                  {data.syncStatus && (
+                    <div className="mt-4 p-3 bg-gray-50 dark:bg-gray-900 rounded-lg">
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm text-gray-600 dark:text-gray-400">Sync Status:</span>
+                        <span className={`px-2 py-1 text-xs rounded ${
+                          data.syncStatus === 'synced' 
+                            ? 'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400'
+                            : data.syncStatus === 'error'
+                            ? 'bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-400'
+                            : 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-400'
+                        }`}>
+                          {data.syncStatus}
+                        </span>
+                      </div>
+                      {data.lastSynced && (
+                        <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                          Last synced: {new Date(data.lastSynced).toLocaleString()}
+                        </p>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
     </div>
   );

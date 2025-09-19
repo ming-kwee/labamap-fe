@@ -22,6 +22,10 @@ import {
   BulkOperation,
   BulkOperationResponse,
   ApiResponse,
+  VariantUpdateRequest,
+  VariantDetailsResponse,
+  BulkVariantUpdateRequest,
+  BulkVariantUpdateResponse,
 } from '../types';
 import { ProductData } from '@/components/products/ProductCreateForm';
 
@@ -389,6 +393,53 @@ export class ProductService {
   }
 
   /**
+   * Update individual variant details (from Enhanced Modal)
+   */
+  async updateVariant(
+    productId: string,
+    variantId: string,
+    updates: {
+      masterData?: Partial<{
+        title: string;
+        barcode: string;
+        description: string;
+        price: number;
+        costPrice: number;
+        comparePrice: number;
+        weight: number;
+        dimensions: { length: number; width: number; height: number };
+        inventory: number;
+        lowStockThreshold: number;
+        enabled: boolean;
+      }>;
+      seoData?: Partial<{
+        title: string;
+        description: string;
+        keywords: string[];
+        slug: string;
+      }>;
+      channelData?: Record<string, Partial<ChannelSpecificData>>;
+    }
+  ): Promise<ApiResponse<VariantDetailsResponse>> {
+    return apiClient.patch<VariantDetailsResponse>(
+      `/products/${productId}/variants/${variantId}`,
+      updates
+    );
+  }
+
+  /**
+   * Get detailed variant data for the Enhanced Modal
+   */
+  async getVariantDetails(
+    productId: string,
+    variantId: string
+  ): Promise<ApiResponse<VariantDetailsResponse>> {
+    return apiClient.get<VariantDetailsResponse>(
+      `/products/${productId}/variants/${variantId}/details`
+    );
+  }
+
+  /**
    * Generate product variants based on option groups
    */
   async generateVariants(productId: string, options: ProductData['optionGroups']): Promise<ApiResponse<ProductResponse['variantGroups']>> {
@@ -396,6 +447,33 @@ export class ProductService {
       `/products/${productId}/variants/generate`,
       { options }
     );
+  }
+
+  /**
+   * Bulk update multiple variants (Enhanced Modal support)
+   */
+  async bulkUpdateVariants(
+    productId: string,
+    updates: Array<{
+      variantId: string;
+      data: {
+        masterData?: Partial<Record<string, unknown>>;
+        channelData?: Record<string, Partial<ChannelSpecificData>>;
+        seoData?: Partial<Record<string, unknown>>;
+      };
+    }>
+  ): Promise<ApiResponse<BulkVariantUpdateResponse>> {
+    return apiClient.post<BulkVariantUpdateResponse>(
+      `/products/${productId}/variants/bulk-update`,
+      { updates }
+    );
+  }
+
+  /**
+   * Delete individual variant
+   */
+  async deleteVariant(productId: string, variantId: string): Promise<ApiResponse<void>> {
+    return apiClient.delete<void>(`/products/${productId}/variants/${variantId}`);
   }
 
   /**

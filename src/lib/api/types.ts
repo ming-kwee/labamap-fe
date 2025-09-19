@@ -299,6 +299,77 @@ export interface BulkOperationResponse {
   }>;
 }
 
+// Enhanced variant management types (for new Variant Details Modal)
+export interface VariantUpdateRequest {
+  masterData?: Partial<{
+    title: string;
+    barcode: string;
+    description: string;
+    price: number;
+    costPrice: number;
+    comparePrice: number;
+    weight: number;
+    dimensions: { length: number; width: number; height: number };
+    inventory: number;
+    lowStockThreshold: number;
+    enabled: boolean;
+  }>;
+  seoData?: Partial<{
+    title: string;
+    description: string;
+    keywords: string[];
+    slug: string;
+  }>;
+  channelData?: Record<string, Partial<ChannelSpecificData>>;
+}
+
+export interface VariantDetailsResponse {
+  variantId: string;
+  attributes: Record<string, string>;
+  masterData: {
+    title: string;
+    barcode: string;
+    description: string;
+    price: number;
+    costPrice: number;
+    comparePrice: number;
+    weight: number;
+    dimensions: { length: number; width: number; height: number };
+    inventory: number;
+    lowStockThreshold: number;
+    enabled: boolean;
+    sku: string;
+  };
+  channelData: Record<string, ChannelSpecificData>;
+  seoData: {
+    title: string;
+    description: string;
+    keywords: string[];
+    slug: string;
+  };
+  globalSettings: {
+    hsCode: string;
+    countryOfOrigin: string;
+    notes: string;
+  };
+}
+
+export interface BulkVariantUpdateRequest {
+  updates: Array<{
+    variantId: string;
+    data: VariantUpdateRequest;
+  }>;
+}
+
+export interface BulkVariantUpdateResponse {
+  success: boolean;
+  updated: string[];
+  errors: Array<{
+    variantId: string;
+    error: string;
+  }>;
+}
+
 // OpenAPI schema types
 export interface OpenApiSchema {
   openapi: string;
