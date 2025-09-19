@@ -79,6 +79,70 @@ export interface ProductData {
       channel_option_description: string;
     }>;
   }>;
+  enhancedVariants?: Array<{
+    id: string;
+    masterData: {
+      sku: string;
+      title?: string;
+      description?: string;
+      price: number;
+      inventory: number;
+      costPrice?: number;
+      comparePrice?: number;
+      weight?: number;
+      barcode?: string;
+      enabled: boolean;
+      taxable?: boolean;
+      trackInventory?: boolean;
+      lowStockThreshold?: number;
+      dimensions?: {
+        length: number;
+        width: number;
+        height: number;
+      };
+      images?: string[];
+    };
+    attributes: Record<string, string>;
+    channelData: Record<string, {
+      sku?: string;
+      title?: string;
+      description?: string;
+      price?: number;
+      inventory?: number;
+      costPrice?: number;
+      comparePrice?: number;
+      weight?: number;
+      barcode?: string;
+      enabled?: boolean;
+      taxable?: boolean;
+      visibility?: boolean;
+      tags?: string[];
+      images?: string[];
+      customFields?: Record<string, unknown>;
+      platformSpecific?: Record<string, unknown>;
+      seo?: {
+        title?: string;
+        description?: string;
+        keywords?: string[];
+        slug?: string;
+      };
+      inventoryManagement?: {
+        trackInventory?: boolean;
+        lowStockThreshold?: number;
+        allowBackorders?: boolean;
+        reservedQuantity?: number;
+      };
+      lastSynced?: Date;
+      syncStatus?: 'pending' | 'synced' | 'error';
+      syncErrors?: string[];
+    }>;
+    globalSettings?: {
+      requiresShipping?: boolean;
+      hsCode?: string;
+      countryOfOrigin?: string;
+      notes?: string;
+    };
+  }>;
 }
 
 const initialProductData: ProductData = {
@@ -122,6 +186,7 @@ const initialProductData: ProductData = {
   },
   variantGroups: [],
   optionGroups: [],
+  enhancedVariants: [],
 };
 
 interface ProductCreateFormProps {
