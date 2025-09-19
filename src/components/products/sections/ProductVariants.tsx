@@ -397,7 +397,7 @@ export default function ProductVariants({ data, onUpdate }: ProductVariantsProps
     return data.masterAttributes.channels?.map(c => c.platform) || [];
   };
 
-  const updateChannelVariantData = (variantId: string, channel: string, field: string, value: string | number | boolean) => {
+  const updateChannelVariantData = (variantId: string, channel: string, field: string, value: string | number | boolean | string[]) => {
     const newVariants = variants.map(v => {
       if (v.id === variantId) {
         const updatedChannelData = { ...v.channelData };
@@ -419,7 +419,7 @@ export default function ProductVariants({ data, onUpdate }: ProductVariantsProps
     });
   };
 
-  const updateMasterVariantData = (variantId: string, field: string, value: string | number | boolean) => {
+  const updateMasterVariantData = (variantId: string, field: string, value: string | number | boolean | string[]) => {
     const newVariants = variants.map(v => {
       if (v.id === variantId) {
         return { 
@@ -875,6 +875,7 @@ export default function ProductVariants({ data, onUpdate }: ProductVariantsProps
                         </th>
                       )}
                       <th className="text-left p-3 text-sm font-medium text-gray-500 dark:text-gray-400">Variant</th>
+                      <th className="text-left p-3 text-sm font-medium text-gray-500 dark:text-gray-400">Media</th>
                       <th className="text-left p-3 text-sm font-medium text-gray-500 dark:text-gray-400">SKU</th>
                       <th className="text-left p-3 text-sm font-medium text-gray-500 dark:text-gray-400">Price</th>
                       <th className="text-left p-3 text-sm font-medium text-gray-500 dark:text-gray-400">Inventory</th>
@@ -906,6 +907,20 @@ export default function ProductVariants({ data, onUpdate }: ProductVariantsProps
                               </span>
                             ))}
                           </div>
+                        </td>
+                        <td className="p-3">
+                          <VariantMediaCell 
+                            variant={variant}
+                            viewMode={viewMode}
+                            selectedChannel={selectedChannel}
+                            onUpdate={(images) => {
+                              if (viewMode === 'channel-specific' && selectedChannel !== 'master') {
+                                updateChannelVariantData(variant.id, selectedChannel, 'images', images);
+                              } else {
+                                updateMasterVariantData(variant.id, "images", images);
+                              }
+                            }}
+                          />
                         </td>
                         <td className="p-3">
                           <div className="relative">
@@ -1075,6 +1090,313 @@ export default function ProductVariants({ data, onUpdate }: ProductVariantsProps
       )}
 
       {/* Variant Details Modal - Completely removed to eliminate TypeScript errors */}
+    </div>
+  );
+}
+
+// Variant Media Cell Component
+interface VariantMediaCellProps {
+  variant: ProductVariant;
+  viewMode: 'unified' | 'channel-specific';
+  selectedChannel: string;
+  onUpdate: (images: string[]) => void;
+}
+
+function VariantMediaCell({ variant, viewMode, selectedChannel, onUpdate }: VariantMediaCellProps) {
+  const [showGallery, setShowGallery] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
+  
+  const currentImages = (getVariantMediaImages(variant, viewMode, selectedChannel)) || [];
+  
+  const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = event.target.files;
+    if (files) {
+      // Convert files to URLs (in real app, upload to server)
+      const newImages = Array.from(files).map(file => URL.createObjectURL(file));
+      onUpdate([...currentImages, ...newImages]);
+    }
+  };
+  
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(true);
+  };
+  
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+  };
+  
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+    
+    const files = Array.from(e.dataTransfer.files);
+    const imageFiles = files.filter(file => file.type.startsWith('image/') || file.type.startsWith('video/'));
+    
+    if (imageFiles.length > 0) {
+      const newImages = imageFiles.map(file => URL.createObjectURL(file));
+      onUpdate([...currentImages, ...newImages]);
+    }
+  };
+  
+  const removeImage = (index: number) => {
+    const newImages = currentImages.filter((_, i) => i !== index);
+    onUpdate(newImages);
+  };
+  
+  return (
+    <div className="relative">
+      <div 
+        className={`flex items-center gap-2 min-h-[60px] ${
+          isDragging ? 'bg-blue-50 dark:bg-blue-900/20 border-2 border-dashed border-blue-400' : ''
+        }`}
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDrop}
+      >
+        {/* Image Thumbnails */}
+        {currentImages.length > 0 && (
+          <div className="flex gap-1">
+            {currentImages.slice(0, 2).map((image, index) => (
+              <div key={index} className="relative group">
+                <img 
+                  src={image} 
+                  alt={`Variant ${index + 1}`}
+                  className="w-10 h-10 object-cover rounded border border-gray-200 dark:border-gray-600"
+                />
+                <button
+                  onClick={() => removeImage(index)}
+                  className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white rounded-full text-xs opacity-0 group-hover:opacity-100 transition-opacity"
+                >
+                  ×
+                </button>
+              </div>
+            ))}
+            {currentImages.length > 2 && (
+              <div className="w-10 h-10 bg-gray-100 dark:bg-gray-700 rounded border border-gray-200 dark:border-gray-600 flex items-center justify-center text-xs text-gray-500 dark:text-gray-400">
+                +{currentImages.length - 2}
+              </div>
+            )}
+          </div>
+        )}
+        
+        {/* Upload Button */}
+        <div className="flex items-center gap-1">
+          <label className="cursor-pointer">
+            <input
+              type="file"
+              multiple
+              accept="image/*,video/*"
+              onChange={handleFileUpload}
+              className="hidden"
+            />
+            <div className="w-8 h-8 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 rounded border border-gray-300 dark:border-gray-600 flex items-center justify-center text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 transition-colors">
+              📷
+            </div>
+          </label>
+          
+          {currentImages.length > 0 && (
+            <button
+              onClick={() => setShowGallery(true)}
+              className="w-8 h-8 bg-blue-100 dark:bg-blue-900/30 hover:bg-blue-200 dark:hover:bg-blue-900/50 rounded border border-blue-300 dark:border-blue-600 flex items-center justify-center text-blue-600 dark:text-blue-400 text-sm transition-colors"
+              title="View Gallery"
+            >
+              👁️
+            </button>
+          )}
+        </div>
+        
+        {/* Channel Override Indicator */}
+        {viewMode === 'channel-specific' && selectedChannel !== 'master' && 
+         getVariantMediaImages(variant, 'channel-specific', selectedChannel)?.length > 0 && (
+          <span className="absolute -top-1 -right-1 w-2 h-2 bg-blue-500 rounded-full" 
+                title="Channel override active"></span>
+        )}
+      </div>
+      
+      {/* Media Gallery Modal */}
+      {showGallery && (
+        <VariantMediaGallery 
+          images={currentImages}
+          onClose={() => setShowGallery(false)}
+          onUpdate={onUpdate}
+          variant={variant}
+          channel={viewMode === 'channel-specific' ? selectedChannel : 'master'}
+        />
+      )}
+    </div>
+  );
+}
+
+// Helper function to get variant media images
+function getVariantMediaImages(variant: ProductVariant, viewMode: string, selectedChannel: string): string[] {
+  if (viewMode === 'channel-specific' && selectedChannel !== 'master') {
+    return variant.channelData[selectedChannel]?.images || variant.masterData.images || [];
+  }
+  return variant.masterData.images || [];
+}
+
+// Variant Media Gallery Component
+interface VariantMediaGalleryProps {
+  images: string[];
+  onClose: () => void;
+  onUpdate: (images: string[]) => void;
+  variant: ProductVariant;
+  channel: string;
+}
+
+function VariantMediaGallery({ images, onClose, onUpdate, variant, channel }: VariantMediaGalleryProps) {
+  const [selectedIndex, setSelectedIndex] = useState(0);
+  
+  const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = event.target.files;
+    if (files) {
+      const newImages = Array.from(files).map(file => URL.createObjectURL(file));
+      onUpdate([...images, ...newImages]);
+    }
+  };
+  
+  const removeImage = (index: number) => {
+    const newImages = images.filter((_, i) => i !== index);
+    onUpdate(newImages);
+    if (selectedIndex >= newImages.length) {
+      setSelectedIndex(Math.max(0, newImages.length - 1));
+    }
+  };
+  
+  
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
+      <div className="bg-white dark:bg-gray-800 rounded-xl max-w-4xl max-h-[90vh] overflow-hidden">
+        {/* Header */}
+        <div className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-700">
+          <div>
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+              Variant Media Gallery
+            </h3>
+            <p className="text-sm text-gray-500 dark:text-gray-400">
+              {Object.entries(variant.attributes).map(([key, value]) => `${key}: ${value}`).join(', ')}
+              {channel !== 'master' && ` • ${channel.charAt(0).toUpperCase() + channel.slice(1)}`}
+            </p>
+          </div>
+          <button
+            onClick={onClose}
+            className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+          >
+            ✕
+          </button>
+        </div>
+        
+        {/* Content */}
+        <div className="flex h-[60vh]">
+          {/* Main Preview */}
+          <div className="flex-1 flex items-center justify-center bg-gray-50 dark:bg-gray-900 p-4">
+            {images.length > 0 ? (
+              <div className="relative max-w-full max-h-full">
+                <img 
+                  src={images[selectedIndex]} 
+                  alt={`Variant media ${selectedIndex + 1}`}
+                  className="max-w-full max-h-full object-contain rounded-lg"
+                />
+                {images.length > 1 && (
+                  <>
+                    <button
+                      onClick={() => setSelectedIndex(Math.max(0, selectedIndex - 1))}
+                      disabled={selectedIndex === 0}
+                      className="absolute left-2 top-1/2 transform -translate-y-1/2 w-8 h-8 bg-black bg-opacity-50 text-white rounded-full disabled:opacity-30"
+                    >
+                      ‹
+                    </button>
+                    <button
+                      onClick={() => setSelectedIndex(Math.min(images.length - 1, selectedIndex + 1))}
+                      disabled={selectedIndex === images.length - 1}
+                      className="absolute right-2 top-1/2 transform -translate-y-1/2 w-8 h-8 bg-black bg-opacity-50 text-white rounded-full disabled:opacity-30"
+                    >
+                      ›
+                    </button>
+                  </>
+                )}
+              </div>
+            ) : (
+              <div className="text-center text-gray-500 dark:text-gray-400">
+                <div className="text-6xl mb-4">📷</div>
+                <p>No media files</p>
+                <p className="text-sm">Upload images or videos for this variant</p>
+              </div>
+            )}
+          </div>
+          
+          {/* Sidebar */}
+          <div className="w-64 border-l border-gray-200 dark:border-gray-700 p-4 overflow-y-auto">
+            {/* Upload Button */}
+            <label className="block w-full mb-4">
+              <input
+                type="file"
+                multiple
+                accept="image/*,video/*"
+                onChange={handleFileUpload}
+                className="hidden"
+              />
+              <div className="w-full p-3 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg text-center cursor-pointer hover:border-blue-400 dark:hover:border-blue-500 transition-colors">
+                <div className="text-2xl mb-2">📁</div>
+                <div className="text-sm text-gray-600 dark:text-gray-400">
+                  Click to upload<br />or drag & drop
+                </div>
+              </div>
+            </label>
+            
+            {/* Thumbnail Grid */}
+            <div className="space-y-2">
+              {images.map((image, index) => (
+                <div 
+                  key={index}
+                  className={`relative group cursor-pointer border-2 rounded-lg overflow-hidden ${
+                    selectedIndex === index 
+                      ? 'border-blue-500' 
+                      : 'border-gray-200 dark:border-gray-600 hover:border-gray-300 dark:hover:border-gray-500'
+                  }`}
+                  onClick={() => setSelectedIndex(index)}
+                >
+                  <img 
+                    src={image} 
+                    alt={`Thumbnail ${index + 1}`}
+                    className="w-full h-16 object-cover"
+                  />
+                  <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-20 transition-all duration-200"></div>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      removeImage(index);
+                    }}
+                    className="absolute top-1 right-1 w-5 h-5 bg-red-500 text-white rounded-full text-xs opacity-0 group-hover:opacity-100 transition-opacity"
+                  >
+                    ×
+                  </button>
+                  <div className="absolute bottom-1 left-1 bg-black bg-opacity-50 text-white text-xs px-1 rounded">
+                    {index + 1}
+                  </div>
+                </div>
+              ))}
+            </div>
+            
+            {/* Gallery Actions */}
+            {images.length > 0 && (
+              <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
+                <div className="text-sm text-gray-600 dark:text-gray-400 mb-2">
+                  {images.length} media file{images.length !== 1 ? 's' : ''}
+                </div>
+                <button
+                  onClick={() => onUpdate([])}
+                  className="w-full px-3 py-2 text-sm text-red-600 dark:text-red-400 border border-red-300 dark:border-red-600 rounded hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+                >
+                  Clear All
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

@@ -35,7 +35,7 @@ export interface ChannelFieldConfig {
   };
   helpText?: string;
   placeholder?: string;
-  defaultValue?: any;
+  defaultValue?: string | number | boolean;
   dependsOn?: string;
 }
 
@@ -64,12 +64,13 @@ export interface ChannelSpecificData {
   };
   
   // Channel-specific fields
-  customFields: Record<string, any>;
+  customFields: Record<string, unknown>;
   
   // Sync status
   lastSynced?: Date;
   syncErrors?: string[];
   pendingSync?: boolean;
+  syncStatus?: 'pending' | 'synced' | 'error';
 }
 
 // Amazon-specific interfaces

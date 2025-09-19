@@ -14,7 +14,7 @@ import ProductAnalytics from "./sections/ProductAnalytics";
 import ProductReviews from "./sections/ProductReviews";
 import ProductBundles from "./sections/ProductBundles";
 import ProductSidebar from "./ProductSidebar";
-import { useCreateProduct, useUpdateProduct, useCategories, useBrands, useChannelSync } from "@/lib/api/hooks/useProducts";
+import { useCreateProduct, useUpdateProduct, useCategories, useBrands } from "@/lib/api/hooks/useProducts";
 
 export interface ProductData {
   masterAttributes: {
@@ -200,8 +200,8 @@ export default function ProductCreateForm({ productId }: ProductCreateFormProps 
   const [currentProductId, setCurrentProductId] = useState<string | undefined>(productId);
   const [channelSyncFunctions, setChannelSyncFunctions] = useState<{
     validateChannelsForSync: () => { isValid: boolean; errors: string[] };
-    triggerAutoSync: () => Promise<any>;
-    syncAllChannels: () => Promise<any>;
+    triggerAutoSync: () => Promise<unknown>;
+    syncAllChannels: () => Promise<unknown>;
     handleChannelSync: (channelId: string, storeId?: string) => Promise<void>;
   } | null>(null);
   const [channelSyncStatus, setChannelSyncStatus] = useState<Record<string, {
@@ -312,8 +312,8 @@ export default function ProductCreateForm({ productId }: ProductCreateFormProps 
             
             try {
               const syncResults = await channelSyncFunctions.triggerAutoSync();
-              if (syncResults) {
-                const successCount = syncResults.filter((r: any) => r.success).length;
+              if (syncResults && Array.isArray(syncResults)) {
+                const successCount = syncResults.filter((r: unknown) => (r as { success: boolean }).success).length;
                 const failCount = syncResults.length - successCount;
                 
                 if (failCount === 0) {

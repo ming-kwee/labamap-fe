@@ -16,8 +16,8 @@ interface ChannelSyncProps {
   autoSyncEnabled?: boolean; // Enable auto-sync after save
   onSyncFunctionsReady?: (functions: {
     validateChannelsForSync: () => { isValid: boolean; errors: string[] };
-    triggerAutoSync: () => Promise<any>;
-    syncAllChannels: () => Promise<any>;
+    triggerAutoSync: () => Promise<unknown>;
+    syncAllChannels: () => Promise<unknown>;
     handleChannelSync: (channelId: string, storeId?: string) => Promise<void>;
   }) => void;
 }
