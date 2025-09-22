@@ -46,7 +46,7 @@ export interface ChannelFeature {
 }
 
 export interface ChannelLimitation {
-  type: 'field_length' | 'image_count' | 'image_size' | 'description_length' | 'title_length' | 'custom';
+  type: 'field_length' | 'image_count' | 'image_size' | 'description_length' | 'title_length' | 'video_count' | 'variation_count' | 'variation_options' | 'variant_count' | 'custom';
   field?: string;
   limit: number | string;
   description: string;

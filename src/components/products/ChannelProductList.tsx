@@ -4,6 +4,7 @@ import Label from "@/components/form/Label";
 import Button from "@/components/ui/button/Button";
 import Switch from "@/components/form/switch/Switch";
 import { ProductData } from "./ProductCreateForm";
+import ChannelProductEditModal from "./ChannelProductEditModal";
 
 interface ChannelProduct {
   id: string;
@@ -75,7 +76,7 @@ const defaultColumns: ColumnConfig[] = [
   { key: 'status', label: 'Status', width: 80, visible: true, editable: true, type: 'boolean' },
   { key: 'syncStatus', label: 'Sync', width: 100, visible: true, editable: false, type: 'select' },
   { key: 'lastSynced', label: 'Last Synced', width: 120, visible: true, editable: false, type: 'text' },
-  { key: 'actions', label: 'Actions', width: 120, visible: true, editable: false, type: 'text' },
+  { key: 'actions', label: 'Actions', width: 140, visible: true, editable: false, type: 'text' },
 ];
 
 // Mock data generator
@@ -158,6 +159,8 @@ export default function ChannelProductList({
   const [statusFilter, setStatusFilter] = useState('all');
   const [bulkEditMode, setBulkEditMode] = useState(false);
   const [sortConfig, setSortConfig] = useState<{field: string, direction: 'asc' | 'desc'} | null>(null);
+  const [editModalOpen, setEditModalOpen] = useState(false);
+  const [selectedProductForEdit, setSelectedProductForEdit] = useState<ChannelProduct | null>(null);
 
   // Initialize products
   useEffect(() => {
@@ -285,6 +288,22 @@ export default function ChannelProductList({
     }));
 
     onBulkUpdate(selectedIds, updates);
+  };
+
+  const handleEditProduct = (product: ChannelProduct) => {
+    setSelectedProductForEdit(product);
+    setEditModalOpen(true);
+  };
+
+  const handleSaveProduct = (productId: string, updates: Partial<ChannelProduct>) => {
+    setProducts(prev => prev.map(product => 
+      product.id === productId 
+        ? { ...product, ...updates, syncStatus: 'manual' as const }
+        : product
+    ));
+    onProductUpdate(productId, updates);
+    setEditModalOpen(false);
+    setSelectedProductForEdit(null);
   };
 
   const getSyncStatusIcon = (status: ChannelProduct['syncStatus']) => {
@@ -440,8 +459,16 @@ export default function ChannelProductList({
             <Button 
               size="sm" 
               variant="outline" 
+              onClick={() => handleEditProduct(product)}
+              className="text-theme-xs px-2 py-1 hover:bg-blue-50 dark:hover:bg-blue-900/20"
+            >
+              Edit
+            </Button>
+            <Button 
+              size="sm" 
+              variant="outline" 
               onClick={() => onBulkSync([product.id])}
-              className="text-theme-xs px-2 py-1"
+              className="text-theme-xs px-2 py-1 hover:bg-green-50 dark:hover:bg-green-900/20"
             >
               Sync
             </Button>
@@ -655,6 +682,17 @@ export default function ChannelProductList({
           </div>
         </div>
       </div>
+
+      {/* Channel Product Edit Modal */}
+      <ChannelProductEditModal
+        isOpen={editModalOpen}
+        onClose={() => {
+          setEditModalOpen(false);
+          setSelectedProductForEdit(null);
+        }}
+        product={selectedProductForEdit}
+        onSave={handleSaveProduct}
+      />
     </div>
   );
 }
