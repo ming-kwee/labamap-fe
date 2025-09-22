@@ -92,6 +92,11 @@ interface ChannelProductEditModalProps {
   variants?: ProductVariant[];
   onSave: (productId: string, updates: Partial<ChannelProduct>) => void;
   onVariantUpdate?: (variantId: string, updates: Partial<ProductVariant>) => void;
+  onOpenVariantDetails?: (variant: ProductVariant, channelId: string) => void;
+  // To integrate with existing VariantDetailsModal, the parent component should:
+  // 1. Import and manage the VariantDetailsModal state
+  // 2. Pass a callback that opens the VariantDetailsModal for the specific variant and channel
+  // 3. Handle the modal's onUpdate callback to sync changes back to the product variants
 }
 
 // Channel Variants List Component
@@ -99,14 +104,18 @@ interface ChannelVariantsListProps {
   variants: ProductVariant[];
   channelId: string;
   channelConfig: ChannelConfig;
+  viewMode: 'unified' | 'variants';
   onVariantUpdate?: (variantId: string, updates: Partial<ProductVariant>) => void;
+  onOpenVariantDetails?: (variant: ProductVariant, channelId: string) => void;
 }
 
 const ChannelVariantsList: React.FC<ChannelVariantsListProps> = ({
   variants,
   channelId,
   channelConfig,
-  onVariantUpdate
+  viewMode,
+  onVariantUpdate,
+  onOpenVariantDetails
 }) => {
   const [editingVariant, setEditingVariant] = useState<string | null>(null);
 
@@ -157,17 +166,128 @@ const ChannelVariantsList: React.FC<ChannelVariantsListProps> = ({
     );
   }
 
-  return (
+  // Variants View Mode: Render each variant as a unique product row
+  const renderVariantsView = () => (
     <div className="p-6">
-      <div className="mb-4">
-        <h3 className="text-title-sm font-medium text-gray-900 dark:text-white mb-2">
-          {channelConfig.displayName} Variants
-        </h3>
-        <p className="text-theme-sm text-gray-500 dark:text-gray-400">
-          Configure variant-specific settings for {channelConfig.displayName}. Changes here override the master variant data.
-        </p>
-      </div>
+      <div className="space-y-6">
+        {variants.map((variant) => {
+          const displayData = getVariantDisplayData(variant);
+          const hasChannelOverrides = variant.channelData[channelId] && Object.keys(variant.channelData[channelId]).length > 0;
+          
+          return (
+            <div key={variant.id} className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
+              {/* Variant Header */}
+              <div className="bg-gray-50 dark:bg-gray-900/50 px-4 py-3 border-b border-gray-200 dark:border-gray-700">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-2">
+                      <span className="text-theme-sm font-medium text-gray-900 dark:text-white">
+                        {formatAttributeDisplay(variant.attributes)}
+                      </span>
+                      <span className={`px-2 py-1 text-xs rounded-full ${
+                        displayData.enabled 
+                          ? 'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400'
+                          : 'bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-400'
+                      }`}>
+                        {displayData.enabled ? 'Active' : 'Inactive'}
+                      </span>
+                      {hasChannelOverrides && (
+                        <span className="px-2 py-1 text-xs rounded-full bg-blue-100 text-blue-800 dark:bg-blue-900/20 dark:text-blue-400">
+                          Channel Override
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => onOpenVariantDetails?.(variant, channelId)}
+                  >
+                    Edit Details
+                  </Button>
+                </div>
+              </div>
 
+              {/* Variant Content */}
+              <div className="p-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                  <div>
+                    <span className="text-theme-xs text-gray-500 dark:text-gray-400 uppercase tracking-wide">SKU</span>
+                    <div className="font-medium text-gray-900 dark:text-white mt-1">{displayData.sku}</div>
+                    {variant.channelData[channelId]?.sku && (
+                      <div className="text-theme-xs text-blue-600 dark:text-blue-400">Override: {variant.channelData[channelId].sku}</div>
+                    )}
+                  </div>
+                  <div>
+                    <span className="text-theme-xs text-gray-500 dark:text-gray-400 uppercase tracking-wide">Price</span>
+                    <div className="font-medium text-gray-900 dark:text-white mt-1">${displayData.price}</div>
+                    {variant.channelData[channelId]?.price !== undefined && (
+                      <div className="text-theme-xs text-blue-600 dark:text-blue-400">Override: ${variant.channelData[channelId].price}</div>
+                    )}
+                  </div>
+                  <div>
+                    <span className="text-theme-xs text-gray-500 dark:text-gray-400 uppercase tracking-wide">Inventory</span>
+                    <div className="font-medium text-gray-900 dark:text-white mt-1">{displayData.inventory}</div>
+                    {variant.channelData[channelId]?.inventory !== undefined && (
+                      <div className="text-theme-xs text-blue-600 dark:text-blue-400">Override: {variant.channelData[channelId].inventory}</div>
+                    )}
+                  </div>
+                  <div>
+                    <span className="text-theme-xs text-gray-500 dark:text-gray-400 uppercase tracking-wide">Title</span>
+                    <div className="font-medium text-gray-900 dark:text-white mt-1 truncate">{displayData.title}</div>
+                    {variant.channelData[channelId]?.title && (
+                      <div className="text-theme-xs text-blue-600 dark:text-blue-400 truncate">Override: {variant.channelData[channelId].title}</div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Additional Channel Data */}
+                {hasChannelOverrides && (
+                  <div className="mt-4 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
+                    <div className="flex items-start gap-2">
+                      <div className="text-blue-500 mt-0.5">
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                      </div>
+                      <div>
+                        <div className="text-theme-xs font-medium text-blue-900 dark:text-blue-300">
+                          Channel-specific overrides active
+                        </div>
+                        <div className="text-theme-xs text-blue-800 dark:text-blue-400 mt-1">
+                          Fields: {Object.keys(variant.channelData[channelId]).join(', ')}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          );
+        })}
+        
+        {variants.length === 0 && (
+          <div className="text-center py-12">
+            <div className="text-gray-400 mb-4">
+              <svg className="w-12 h-12 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+              </svg>
+            </div>
+            <h3 className="text-title-sm font-medium text-gray-900 dark:text-white mb-2">
+              No Variants Found
+            </h3>
+            <p className="text-theme-sm text-gray-500 dark:text-gray-400">
+              This product doesn&apos;t have any variants to configure for {channelConfig.displayName}.
+            </p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+
+  // Unified View Mode: Original compact view
+  const renderUnifiedView = () => (
+    <div className="p-6">
       <div className="space-y-4">
         {variants.map((variant) => {
           const displayData = getVariantDisplayData(variant);
@@ -282,6 +402,9 @@ const ChannelVariantsList: React.FC<ChannelVariantsListProps> = ({
       </div>
     </div>
   );
+
+  // Return the appropriate view based on viewMode
+  return viewMode === 'variants' ? renderVariantsView() : renderUnifiedView();
 };
 
 const ChannelProductEditModal: React.FC<ChannelProductEditModalProps> = ({
@@ -291,10 +414,12 @@ const ChannelProductEditModal: React.FC<ChannelProductEditModalProps> = ({
   variants = [],
   onSave,
   onVariantUpdate,
+  onOpenVariantDetails,
 }) => {
   const [formData, setFormData] = useState<Partial<ChannelProduct>>({});
   const [channelConfig, setChannelConfig] = useState<ChannelConfig | null>(null);
   const [activeTab, setActiveTab] = useState<'product' | 'variants'>('product');
+  const [variantViewMode, setVariantViewMode] = useState<'unified' | 'variants'>('unified');
 
   useEffect(() => {
     if (product) {
@@ -587,12 +712,55 @@ const ChannelProductEditModal: React.FC<ChannelProductEditModalProps> = ({
             )}
             </div>
           ) : (
-            <ChannelVariantsList 
-              variants={variants}
-              channelId={product.channelId}
-              channelConfig={channelConfig}
-              onVariantUpdate={onVariantUpdate}
-            />
+            <div>
+              {/* View Mode Toggle */}
+              <div className="p-6 border-b border-gray-200 dark:border-gray-700">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="text-title-sm font-medium text-gray-900 dark:text-white">
+                      {channelConfig.displayName} Variants ({variants.length})
+                    </h3>
+                    <p className="text-theme-sm text-gray-500 dark:text-gray-400 mt-1">
+                      Configure variant-specific settings for {channelConfig.displayName}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-theme-sm text-gray-700 dark:text-gray-300">View:</span>
+                    <div className="flex bg-gray-100 dark:bg-gray-800 rounded-lg p-1">
+                      <button
+                        onClick={() => setVariantViewMode('unified')}
+                        className={`px-3 py-1 text-theme-sm rounded-md transition-colors ${
+                          variantViewMode === 'unified'
+                            ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm'
+                            : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
+                        }`}
+                      >
+                        Unified
+                      </button>
+                      <button
+                        onClick={() => setVariantViewMode('variants')}
+                        className={`px-3 py-1 text-theme-sm rounded-md transition-colors ${
+                          variantViewMode === 'variants'
+                            ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm'
+                            : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
+                        }`}
+                      >
+                        Variants
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              
+              <ChannelVariantsList 
+                variants={variants}
+                channelId={product.channelId}
+                channelConfig={channelConfig}
+                viewMode={variantViewMode}
+                onVariantUpdate={onVariantUpdate}
+                onOpenVariantDetails={onOpenVariantDetails}
+              />
+            </div>
           )}
         </div>
 

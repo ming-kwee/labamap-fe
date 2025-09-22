@@ -45,6 +45,58 @@ interface ChannelProduct {
   
   // Product Image
   imageUrl: string;
+  
+  // Variants
+  variants?: ProductVariant[];
+}
+
+// Variant interface (matching the one in ChannelProductEditModal)
+interface ProductVariant {
+  id: string;
+  masterData: {
+    sku: string;
+    title?: string;
+    description?: string;
+    price: number;
+    inventory: number;
+    costPrice?: number;
+    comparePrice?: number;
+    weight?: number;
+    barcode?: string;
+    enabled: boolean;
+    taxable?: boolean;
+    trackInventory?: boolean;
+    lowStockThreshold?: number;
+    dimensions?: {
+      length: number;
+      width: number;
+      height: number;
+    };
+    images?: string[];
+  };
+  attributes: Record<string, string>;
+  channelData: Record<string, {
+    sku?: string;
+    title?: string;
+    description?: string;
+    price?: number;
+    inventory?: number;
+    costPrice?: number;
+    comparePrice?: number;
+    weight?: number;
+    barcode?: string;
+    enabled?: boolean;
+    taxable?: boolean;
+    trackInventory?: boolean;
+    lowStockThreshold?: number;
+    images?: string[];
+    customFields?: Record<string, unknown>;
+  }>;
+  globalSettings: {
+    position: number;
+    createdAt: Date;
+    updatedAt: Date;
+  };
 }
 
 interface ColumnConfig {
@@ -135,12 +187,94 @@ const generateMockChannelProducts = (masterProducts: ProductData[]): ChannelProd
           customFields: {},
           
           imageUrl: master.masterAttributes.product_images?.[0]?.src || '/images/products/placeholder.jpg',
+          
+          // Add sample variants for demonstration
+          variants: generateSampleVariants(master, channel.id, masterIndex),
         });
       }
     });
   });
 
   return products;
+};
+
+// Generate sample variants for products
+const generateSampleVariants = (master: ProductData, channelId: string, masterIndex: number): ProductVariant[] => {
+  const variantConfigs = [
+    // T-shirts/Clothing
+    { attributes: { Size: 'S', Color: 'Red' }, priceMultiplier: 1.0 },
+    { attributes: { Size: 'M', Color: 'Red' }, priceMultiplier: 1.0 },
+    { attributes: { Size: 'L', Color: 'Red' }, priceMultiplier: 1.1 },
+    { attributes: { Size: 'S', Color: 'Blue' }, priceMultiplier: 1.0 },
+    { attributes: { Size: 'M', Color: 'Blue' }, priceMultiplier: 1.0 },
+    { attributes: { Size: 'L', Color: 'Blue' }, priceMultiplier: 1.1 },
+    
+    // Phones/Electronics  
+    { attributes: { Storage: '64GB', Color: 'Black' }, priceMultiplier: 1.0 },
+    { attributes: { Storage: '128GB', Color: 'Black' }, priceMultiplier: 1.2 },
+    { attributes: { Storage: '256GB', Color: 'Black' }, priceMultiplier: 1.5 },
+    { attributes: { Storage: '64GB', Color: 'White' }, priceMultiplier: 1.0 },
+    { attributes: { Storage: '128GB', Color: 'White' }, priceMultiplier: 1.2 },
+    
+    // Books/Simple products (no variants)
+    { attributes: { Edition: 'Standard' }, priceMultiplier: 1.0 },
+    { attributes: { Edition: 'Premium' }, priceMultiplier: 1.3 },
+  ];
+
+  // Different products have different variant structures
+  let selectedVariants: typeof variantConfigs = [];
+  
+  if (masterIndex === 0) {
+    // First product: T-shirt variants
+    selectedVariants = variantConfigs.slice(0, 6);
+  } else if (masterIndex === 1) {
+    // Second product: Phone variants
+    selectedVariants = variantConfigs.slice(6, 11);
+  } else {
+    // Third product: Book variants
+    selectedVariants = variantConfigs.slice(11, 13);
+  }
+
+  return selectedVariants.map((config, index) => {
+    const basePrice = master.masterAttributes.basePrice * config.priceMultiplier;
+    const variantSku = `${master.masterAttributes.sku}-${Object.values(config.attributes).join('-').toUpperCase()}`;
+    
+    return {
+      id: `variant-${masterIndex}-${index}`,
+      masterData: {
+        sku: variantSku,
+        title: `${master.masterAttributes.product_name} - ${Object.entries(config.attributes).map(([k, v]) => `${k}: ${v}`).join(', ')}`,
+        description: master.masterAttributes.description,
+        price: basePrice,
+        inventory: Math.floor(Math.random() * 100) + 10,
+        costPrice: basePrice * 0.6,
+        comparePrice: basePrice * 1.2,
+        weight: 0.5 + Math.random() * 2,
+        barcode: `${variantSku}-${Date.now().toString().slice(-6)}`,
+        enabled: Math.random() > 0.1,
+        taxable: true,
+        trackInventory: true,
+        lowStockThreshold: 5,
+        images: master.masterAttributes.product_images?.slice(0, 2).map(img => img.src) || [],
+      },
+      attributes: Object.fromEntries(
+        Object.entries(config.attributes).filter(([_, value]) => value !== undefined)
+      ) as Record<string, string>,
+      channelData: {
+        [channelId]: Math.random() > 0.5 ? {
+          // Some variants have channel-specific overrides
+          price: basePrice * (0.9 + Math.random() * 0.2),
+          inventory: Math.floor(Math.random() * 50) + 5,
+          sku: `${variantSku}-${channelId.toUpperCase()}`,
+        } : {},
+      },
+      globalSettings: {
+        position: index + 1,
+        createdAt: new Date(Date.now() - Math.random() * 30 * 24 * 60 * 60 * 1000),
+        updatedAt: new Date(Date.now() - Math.random() * 7 * 24 * 60 * 60 * 1000),
+      },
+    };
+  });
 };
 
 export default function ChannelProductList({ 
@@ -161,6 +295,7 @@ export default function ChannelProductList({
   const [sortConfig, setSortConfig] = useState<{field: string, direction: 'asc' | 'desc'} | null>(null);
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [selectedProductForEdit, setSelectedProductForEdit] = useState<ChannelProduct | null>(null);
+  const [viewMode, setViewMode] = useState<'products' | 'variants'>('products');
 
   // Initialize products
   useEffect(() => {
@@ -493,6 +628,33 @@ export default function ChannelProductList({
           </div>
           
           <div className="flex items-center gap-3">
+            {/* View Mode Toggle */}
+            <div className="flex items-center gap-2">
+              <span className="text-theme-sm font-medium text-gray-700 dark:text-gray-300">View:</span>
+              <div className="flex bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-1 shadow-sm">
+                <button
+                  onClick={() => setViewMode('products')}
+                  className={`px-3 py-1.5 text-theme-sm font-medium rounded-md transition-all duration-200 ${
+                    viewMode === 'products'
+                      ? 'bg-brand-500 text-white shadow-sm'
+                      : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-50 dark:hover:bg-gray-700'
+                  }`}
+                >
+                  📦 Products
+                </button>
+                <button
+                  onClick={() => setViewMode('variants')}
+                  className={`px-3 py-1.5 text-theme-sm font-medium rounded-md transition-all duration-200 ${
+                    viewMode === 'variants'
+                      ? 'bg-brand-500 text-white shadow-sm'
+                      : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-50 dark:hover:bg-gray-700'
+                  }`}
+                >
+                  🔢 Variants
+                </button>
+              </div>
+            </div>
+            
             <Button onClick={() => setBulkEditMode(!bulkEditMode)} variant="outline">
               {bulkEditMode ? 'Exit Bulk Edit' : 'Bulk Edit'}
             </Button>
@@ -581,8 +743,10 @@ export default function ChannelProductList({
 
       {/* Data Grid */}
       <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full">
+        {viewMode === 'products' ? (
+          <div>
+            <div className="overflow-x-auto">
+            <table className="w-full">
             <thead className="bg-gray-50 dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700">
               <tr>
                 {columns.filter(col => col.visible).map((column) => (
@@ -635,17 +799,179 @@ export default function ChannelProductList({
               ))}
             </tbody>
           </table>
-        </div>
+          </div>
 
-        {filteredProducts.length === 0 && (
-          <div className="text-center py-12">
-            <div className="text-6xl mb-4">📦</div>
-            <h3 className="text-title-md font-medium text-gray-900 dark:text-white mb-2">
-              No products found
-            </h3>
-            <p className="text-theme-sm text-gray-500 dark:text-gray-400">
-              Try adjusting your filters or search terms
-            </p>
+          {filteredProducts.length === 0 && (
+            <div className="text-center py-12">
+              <div className="text-6xl mb-4">📦</div>
+              <h3 className="text-title-md font-medium text-gray-900 dark:text-white mb-2">
+                No products found
+              </h3>
+              <p className="text-theme-sm text-gray-500 dark:text-gray-400">
+                Try adjusting your filters or search terms
+              </p>
+            </div>
+          )}
+          </div>
+        ) : (
+          <div className="p-6">
+            <div className="mb-4">
+              <h3 className="text-title-sm font-medium text-gray-900 dark:text-white mb-2">
+                Variants View
+              </h3>
+              <p className="text-theme-sm text-gray-500 dark:text-gray-400">
+                Each variant is displayed as a separate row with its unique attributes and channel-specific data.
+              </p>
+            </div>
+            
+            {/* Variants List */}
+            <div className="space-y-6">
+              {filteredProducts.map((product) => (
+                <div key={product.id} className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
+                  {/* Product Header */}
+                  <div className="bg-gray-50 dark:bg-gray-900/50 px-4 py-3 border-b border-gray-200 dark:border-gray-700">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <span className="text-xl">{product.channelIcon}</span>
+                        <div>
+                          <h4 className="font-medium text-gray-900 dark:text-white">
+                            {product.title}
+                          </h4>
+                          <div className="text-theme-sm text-gray-500 dark:text-gray-400">
+                            {product.channelName} • {product.storeName} • SKU: {product.sku}
+                          </div>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className={`px-2 py-1 text-xs rounded-full ${
+                          product.isActive 
+                            ? 'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400'
+                            : 'bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-400'
+                        }`}>
+                          {product.isActive ? 'Active' : 'Inactive'}
+                        </span>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleEditProduct(product)}
+                        >
+                          Edit Product
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Variants */}
+                  {product.variants && product.variants.length > 0 ? (
+                    <div className="divide-y divide-gray-200 dark:divide-gray-700">
+                      {product.variants.map((variant) => {
+                        const channelData = variant.channelData[product.channelId] || {};
+                        const displayPrice = channelData.price !== undefined ? channelData.price : variant.masterData.price;
+                        const displayInventory = channelData.inventory !== undefined ? channelData.inventory : variant.masterData.inventory;
+                        const displaySku = channelData.sku || variant.masterData.sku;
+                        const hasOverrides = Object.keys(channelData).length > 0;
+                        
+                        return (
+                          <div key={variant.id} className="p-4 hover:bg-gray-50 dark:hover:bg-gray-700/50">
+                            <div className="flex items-center justify-between">
+                              <div className="flex-1 grid grid-cols-1 md:grid-cols-5 gap-4">
+                                {/* Variant Attributes */}
+                                <div>
+                                  <span className="text-theme-xs text-gray-500 dark:text-gray-400 uppercase tracking-wide">Variant</span>
+                                  <div className="font-medium text-gray-900 dark:text-white mt-1">
+                                    {Object.entries(variant.attributes)
+                                      .map(([key, value]) => `${key}: ${value}`)
+                                      .join(' / ')}
+                                  </div>
+                                  {hasOverrides && (
+                                    <div className="text-theme-xs text-blue-600 dark:text-blue-400 mt-1">
+                                      Channel Override
+                                    </div>
+                                  )}
+                                </div>
+                                
+                                {/* SKU */}
+                                <div>
+                                  <span className="text-theme-xs text-gray-500 dark:text-gray-400 uppercase tracking-wide">SKU</span>
+                                  <div className="font-medium text-gray-900 dark:text-white mt-1">{displaySku}</div>
+                                  {channelData.sku && (
+                                    <div className="text-theme-xs text-blue-600 dark:text-blue-400">Override</div>
+                                  )}
+                                </div>
+                                
+                                {/* Price */}
+                                <div>
+                                  <span className="text-theme-xs text-gray-500 dark:text-gray-400 uppercase tracking-wide">Price</span>
+                                  <div className="font-medium text-gray-900 dark:text-white mt-1">
+                                    ${displayPrice.toFixed(2)}
+                                  </div>
+                                  {channelData.price !== undefined && (
+                                    <div className="text-theme-xs text-blue-600 dark:text-blue-400">Override</div>
+                                  )}
+                                </div>
+                                
+                                {/* Inventory */}
+                                <div>
+                                  <span className="text-theme-xs text-gray-500 dark:text-gray-400 uppercase tracking-wide">Inventory</span>
+                                  <div className="font-medium text-gray-900 dark:text-white mt-1">{displayInventory}</div>
+                                  {channelData.inventory !== undefined && (
+                                    <div className="text-theme-xs text-blue-600 dark:text-blue-400">Override</div>
+                                  )}
+                                </div>
+                                
+                                {/* Status */}
+                                <div>
+                                  <span className="text-theme-xs text-gray-500 dark:text-gray-400 uppercase tracking-wide">Status</span>
+                                  <div className="mt-1">
+                                    <span className={`px-2 py-1 text-xs rounded-full ${
+                                      variant.masterData.enabled 
+                                        ? 'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400'
+                                        : 'bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-400'
+                                    }`}>
+                                      {variant.masterData.enabled ? 'Enabled' : 'Disabled'}
+                                    </span>
+                                  </div>
+                                </div>
+                              </div>
+                              
+                              {/* Actions */}
+                              <div className="flex items-center gap-2 ml-4">
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => {
+                                    setSelectedProductForEdit(product);
+                                    setEditModalOpen(true);
+                                  }}
+                                >
+                                  Edit Variant
+                                </Button>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <div className="p-4 text-center text-gray-500 dark:text-gray-400">
+                      No variants available for this product
+                    </div>
+                  )}
+                </div>
+              ))}
+              
+              {filteredProducts.length === 0 && (
+                <div className="text-center py-12">
+                  <div className="text-6xl mb-4">🔢</div>
+                  <h3 className="text-title-md font-medium text-gray-900 dark:text-white mb-2">
+                    No variants found
+                  </h3>
+                  <p className="text-theme-sm text-gray-500 dark:text-gray-400">
+                    Try adjusting your filters or search terms
+                  </p>
+                </div>
+              )}
+            </div>
           </div>
         )}
       </div>
