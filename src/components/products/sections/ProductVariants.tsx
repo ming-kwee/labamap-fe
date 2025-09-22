@@ -1,5 +1,6 @@
 "use client";
 import React, { useState, useEffect } from "react";
+import { createPortal } from "react-dom";
 import Input from "@/components/form/input/InputField";
 import Label from "@/components/form/Label";
 import Button from "@/components/ui/button/Button";
@@ -330,20 +331,6 @@ export default function ProductVariants({ data, onUpdate }: ProductVariantsProps
     return combinations;
   };
 
-  const updateVariant = (id: string, field: string, value: string | number | boolean) => {
-    // Map old field names to new structure
-    const fieldMap: Record<string, string> = {
-      'sku': 'sku',
-      'price': 'price',
-      'inventory': 'inventory',
-      'enabled': 'enabled',
-      'barcode': 'barcode',
-      'weight': 'weight'
-    };
-    
-    const mappedField = fieldMap[field] || field;
-    updateMasterVariantData(id, mappedField, value);
-  };
 
   const deleteVariant = (id: string) => {
     const newVariants = variants.filter(v => v.id !== id);
@@ -1309,9 +1296,13 @@ function VariantMediaGallery({ images, onClose, onUpdate, variant, channel }: Va
     }
   };
   
-  
-  return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
+  if (typeof window === 'undefined') {
+    return null;
+  }
+
+  return createPortal(
+    <div className="fixed inset-0 bg-black bg-opacity-50 z-[999999] flex items-center justify-center p-4"
+      style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 999999 }}>
       <div className="bg-white dark:bg-gray-800 rounded-xl max-w-4xl max-h-[90vh] overflow-hidden">
         {/* Header */}
         <div className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-700">
@@ -1441,9 +1432,12 @@ function VariantMediaGallery({ images, onClose, onUpdate, variant, channel }: Va
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
+
+
 
 // Variant Details Modal Component
 interface VariantDetailsModalProps {
@@ -1530,8 +1524,13 @@ function VariantDetailsModal({
     { id: 'channels', label: 'Channels', icon: '🌐' }
   ];
 
-  return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
+  if (typeof window === 'undefined') {
+    return null;
+  }
+
+  return createPortal(
+    <div className="fixed inset-0 bg-black bg-opacity-50 z-[999999] flex items-center justify-center p-4"
+      style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 999999 }}>
       <div className="bg-white dark:bg-gray-800 rounded-xl max-w-4xl w-full max-h-[90vh] overflow-hidden flex flex-col">
         {/* Header */}
         <div className="flex items-center justify-between p-6 border-b border-gray-200 dark:border-gray-700">
@@ -1688,7 +1687,8 @@ function VariantDetailsModal({
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
 
