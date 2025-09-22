@@ -17,7 +17,7 @@ export default function UserInfoCard() {
     <div className="p-5 border border-gray-200 rounded-2xl dark:border-gray-800 lg:p-6">
       <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
         <div>
-          <h4 className="text-lg font-semibold text-gray-800 dark:text-white/90 lg:mb-6">
+          <h4 className="text-title-md font-semibold text-gray-800 dark:text-white/90 lg:mb-6">
             Personal Information
           </h4>
 
@@ -95,7 +95,7 @@ export default function UserInfoCard() {
       <Modal isOpen={isOpen} onClose={closeModal} className="max-w-[700px] m-4">
         <div className="no-scrollbar relative w-full max-w-[700px] overflow-y-auto rounded-3xl bg-white p-4 dark:bg-gray-900 lg:p-11">
           <div className="px-2 pr-14">
-            <h4 className="mb-2 text-2xl font-semibold text-gray-800 dark:text-white/90">
+            <h4 className="mb-2 text-title-lg font-semibold text-gray-800 dark:text-white/90">
               Edit Personal Information
             </h4>
             <p className="mb-6 text-sm text-gray-500 dark:text-gray-400 lg:mb-7">
@@ -105,7 +105,7 @@ export default function UserInfoCard() {
           <form className="flex flex-col">
             <div className="custom-scrollbar h-[450px] overflow-y-auto px-2 pb-3">
               <div>
-                <h5 className="mb-5 text-lg font-medium text-gray-800 dark:text-white/90 lg:mb-6">
+                <h5 className="mb-5 text-title-md font-medium text-gray-800 dark:text-white/90 lg:mb-6">
                   Social Links
                 </h5>
 
@@ -141,7 +141,7 @@ export default function UserInfoCard() {
                 </div>
               </div>
               <div className="mt-7">
-                <h5 className="mb-5 text-lg font-medium text-gray-800 dark:text-white/90 lg:mb-6">
+                <h5 className="mb-5 text-title-md font-medium text-gray-800 dark:text-white/90 lg:mb-6">
                   Personal Information
                 </h5>
 

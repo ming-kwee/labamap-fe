@@ -14,7 +14,7 @@ export default function PublishSettings({ data, onUpdate }: PublishSettingsProps
   return (
     <div className="space-y-8">
       <div className="bg-white dark:bg-gray-800 rounded-xl p-6 border border-gray-200 dark:border-gray-700">
-        <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-6">Publish Settings</h2>
+        <h2 className="text-title-md font-semibold text-gray-900 dark:text-white mb-6">Publish Settings</h2>
         
         <div className="space-y-6">
           <div className="flex items-center justify-between">

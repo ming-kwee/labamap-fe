@@ -100,7 +100,7 @@ Whether you're looking for reliability, style, or performance, ${data.masterAttr
       <div className="bg-white dark:bg-gray-800 rounded-xl p-6 border border-gray-200 dark:border-gray-700">
         <div className="flex items-center justify-between mb-6">
           <div>
-            <h2 className="text-xl font-semibold text-gray-900 dark:text-white">Product Basics</h2>
+            <h2 className="text-title-md font-semibold text-gray-900 dark:text-white">Product Basics</h2>
             <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
               Essential product information and details
             </p>
@@ -123,7 +123,7 @@ Whether you're looking for reliability, style, or performance, ${data.masterAttr
               placeholder="Enter product name"
               defaultValue={data.masterAttributes.product_name}
               onChange={(e) => handleInputChange("product_name", e.target.value)}
-              className="text-lg font-medium"
+              className="text-title-md font-medium"
             />
           </div>
 

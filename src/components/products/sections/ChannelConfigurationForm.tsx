@@ -176,7 +176,7 @@ export default function ChannelConfigurationForm({
               {channelConfig.icon}
             </div>
             <div>
-              <h3 className="text-lg font-semibold text-orange-900 dark:text-orange-100 flex items-center gap-2">
+              <h3 className="text-title-md font-semibold text-orange-900 dark:text-orange-100 flex items-center gap-2">
                 {channelConfig.displayName}
                 <span className="px-2 py-1 text-xs bg-orange-100 dark:bg-orange-900/50 text-orange-700 dark:text-orange-300 rounded-full">
                   Override Settings

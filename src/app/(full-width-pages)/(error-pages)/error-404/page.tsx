@@ -34,7 +34,7 @@ export default function Error404() {
           height={152}
         />
 
-        <p className="mt-10 mb-6 text-base text-gray-700 dark:text-gray-400 sm:text-lg">
+        <p className="mt-10 mb-6 text-base text-gray-700 dark:text-gray-400 sm:text-title-md">
           We can’t seem to find the page you are looking for!
         </p>
 

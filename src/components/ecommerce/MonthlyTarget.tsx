@@ -77,7 +77,7 @@ export default function MonthlyTarget() {
       <div className="px-5 pt-5 bg-white shadow-default rounded-2xl pb-11 dark:bg-gray-900 sm:px-6 sm:pt-6">
         <div className="flex justify-between">
           <div>
-            <h3 className="text-lg font-semibold text-gray-800 dark:text-white/90">
+            <h3 className="text-title-md font-semibold text-gray-800 dark:text-white/90">
               Monthly Target
             </h3>
             <p className="mt-1 font-normal text-gray-500 text-theme-sm dark:text-gray-400">
@@ -135,7 +135,7 @@ export default function MonthlyTarget() {
           <p className="mb-1 text-center text-gray-500 text-theme-xs dark:text-gray-400 sm:text-sm">
             Target
           </p>
-          <p className="flex items-center justify-center gap-1 text-base font-semibold text-gray-800 dark:text-white/90 sm:text-lg">
+          <p className="flex items-center justify-center gap-1 text-base font-semibold text-gray-800 dark:text-white/90 sm:text-title-md">
             $20K
             <svg
               width="16"
@@ -160,7 +160,7 @@ export default function MonthlyTarget() {
           <p className="mb-1 text-center text-gray-500 text-theme-xs dark:text-gray-400 sm:text-sm">
             Revenue
           </p>
-          <p className="flex items-center justify-center gap-1 text-base font-semibold text-gray-800 dark:text-white/90 sm:text-lg">
+          <p className="flex items-center justify-center gap-1 text-base font-semibold text-gray-800 dark:text-white/90 sm:text-title-md">
             $20K
             <svg
               width="16"
@@ -185,7 +185,7 @@ export default function MonthlyTarget() {
           <p className="mb-1 text-center text-gray-500 text-theme-xs dark:text-gray-400 sm:text-sm">
             Today
           </p>
-          <p className="flex items-center justify-center gap-1 text-base font-semibold text-gray-800 dark:text-white/90 sm:text-lg">
+          <p className="flex items-center justify-center gap-1 text-base font-semibold text-gray-800 dark:text-white/90 sm:text-title-md">
             $20K
             <svg
               width="16"

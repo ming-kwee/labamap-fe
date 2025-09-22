@@ -488,7 +488,7 @@ export default function ProductVariants({ data, onUpdate }: ProductVariantsProps
       <div className="bg-white dark:bg-gray-800 rounded-xl p-6 border border-gray-200 dark:border-gray-700">
         <div className="flex items-center justify-between">
           <div>
-            <h2 className="text-xl font-semibold text-gray-900 dark:text-white">Product Variants</h2>
+            <h2 className="text-title-md font-semibold text-gray-900 dark:text-white">Product Variants</h2>
             <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
               Create variations of your product with different attributes
             </p>
@@ -516,7 +516,7 @@ export default function ProductVariants({ data, onUpdate }: ProductVariantsProps
           {/* Variant Options */}
           <div className="bg-white dark:bg-gray-800 rounded-xl p-6 border border-gray-200 dark:border-gray-700">
             <div className="flex items-center justify-between mb-6">
-              <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Variant Options</h3>
+              <h3 className="text-title-md font-semibold text-gray-900 dark:text-white">Variant Options</h3>
               <Button 
                 onClick={() => generateVariantCombinations()}
                 disabled={isGeneratingVariants || variantOptions.length === 0}
@@ -552,7 +552,7 @@ export default function ProductVariants({ data, onUpdate }: ProductVariantsProps
                         type="text"
                         value={option.name}
                         onChange={(e) => updateVariantOption(index, "name", e.target.value)}
-                        className="font-medium text-lg bg-transparent border-none outline-none text-gray-900 dark:text-white"
+                        className="font-medium text-title-md bg-transparent border-none outline-none text-gray-900 dark:text-white"
                       />
                       <button
                         onClick={() => removeVariantOption(index)}
@@ -688,7 +688,7 @@ export default function ProductVariants({ data, onUpdate }: ProductVariantsProps
 
               <div className="flex items-center justify-between mb-6">
                 <div>
-                  <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+                  <h3 className="text-title-md font-semibold text-gray-900 dark:text-white">
                     Generated Variants ({variants.length})
                   </h3>
                   <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
@@ -1307,7 +1307,7 @@ function VariantMediaGallery({ images, onClose, onUpdate, variant, channel }: Va
         {/* Header */}
         <div className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-700">
           <div>
-            <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+            <h3 className="text-title-md font-semibold text-gray-900 dark:text-white">
               Variant Media Gallery
             </h3>
             <p className="text-sm text-gray-500 dark:text-gray-400">
@@ -1535,7 +1535,7 @@ function VariantDetailsModal({
         {/* Header */}
         <div className="flex items-center justify-between p-6 border-b border-gray-200 dark:border-gray-700">
           <div>
-            <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
+            <h2 className="text-title-md font-semibold text-gray-900 dark:text-white">
               Variant Details
             </h2>
             <div className="flex flex-wrap gap-2 mt-2">
@@ -1548,7 +1548,7 @@ function VariantDetailsModal({
           </div>
           <button
             onClick={onClose}
-            className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 text-xl"
+            className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 text-title-md"
           >
             ✕
           </button>
@@ -1704,7 +1704,7 @@ function BasicInfoTab({ data, onUpdate, viewMode, selectedChannel }: BasicInfoTa
   return (
     <div className="space-y-6">
       <div>
-        <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-4">
+        <h3 className="text-title-md font-medium text-gray-900 dark:text-white mb-4">
           Basic Information
           {viewMode === 'channel' && (
             <span className="ml-2 text-sm text-blue-600 dark:text-blue-400">
@@ -1852,7 +1852,7 @@ function InventoryTab({ data, onUpdate, globalSettings, onUpdateGlobal, viewMode
   return (
     <div className="space-y-6">
       <div>
-        <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-4">
+        <h3 className="text-title-md font-medium text-gray-900 dark:text-white mb-4">
           Inventory Management
         </h3>
         
@@ -1953,7 +1953,7 @@ function SEOTab({ data, onUpdate, viewMode, selectedChannel }: SEOTabProps) {
   return (
     <div className="space-y-6">
       <div>
-        <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-4">
+        <h3 className="text-title-md font-medium text-gray-900 dark:text-white mb-4">
           SEO Settings
           {viewMode === 'channel' && (
             <span className="ml-2 text-sm text-blue-600 dark:text-blue-400">
@@ -2032,7 +2032,7 @@ function ShippingTab({ data, onUpdate, globalSettings, onUpdateGlobal }: Shippin
   return (
     <div className="space-y-6">
       <div>
-        <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-4">
+        <h3 className="text-title-md font-medium text-gray-900 dark:text-white mb-4">
           Shipping Information
         </h3>
         
@@ -2084,7 +2084,7 @@ function ChannelsTab({ variant, channelData, onUpdateChannel, availableChannels 
   return (
     <div className="space-y-6">
       <div>
-        <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-4">
+        <h3 className="text-title-md font-medium text-gray-900 dark:text-white mb-4">
           Channel Configuration
         </h3>
         

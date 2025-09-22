@@ -17,7 +17,7 @@ export default function ProductAnalytics({ }: ProductAnalyticsProps) {
   return (
     <div className="space-y-8">
       <div className="bg-white dark:bg-gray-800 rounded-xl p-6 border border-gray-200 dark:border-gray-700">
-        <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-6">Product Analytics</h2>
+        <h2 className="text-title-md font-semibold text-gray-900 dark:text-white mb-6">Product Analytics</h2>
         
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <div className="p-4 bg-blue-50 dark:bg-blue-900/10 rounded-lg">

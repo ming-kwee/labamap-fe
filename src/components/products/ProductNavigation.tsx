@@ -42,7 +42,7 @@ export default function ProductNavigation({ activeSection, onSectionChange }: Pr
             }`}
           >
             <div className="flex items-center gap-2 mb-1">
-              <span className="text-lg">{item.icon}</span>
+              <span className="text-title-md">{item.icon}</span>
               <span className="font-medium text-sm">{item.label}</span>
             </div>
             <p className="text-xs text-gray-500 dark:text-gray-400">{item.description}</p>

@@ -15,7 +15,7 @@ export default function ProductReviews({ }: ProductReviewsProps) {
   return (
     <div className="space-y-8">
       <div className="bg-white dark:bg-gray-800 rounded-xl p-6 border border-gray-200 dark:border-gray-700">
-        <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-6">Customer Reviews</h2>
+        <h2 className="text-title-md font-semibold text-gray-900 dark:text-white mb-6">Customer Reviews</h2>
         
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
           <div className="p-4 bg-yellow-50 dark:bg-yellow-900/10 rounded-lg">

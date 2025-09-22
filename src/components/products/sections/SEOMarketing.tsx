@@ -43,7 +43,7 @@ export default function SEOMarketing({ data, onUpdate }: SEOMarketingProps) {
       <div className="bg-white dark:bg-gray-800 rounded-xl p-6 border border-gray-200 dark:border-gray-700">
         <div className="flex items-center justify-between mb-6">
           <div>
-            <h2 className="text-xl font-semibold text-gray-900 dark:text-white">SEO & Marketing</h2>
+            <h2 className="text-title-md font-semibold text-gray-900 dark:text-white">SEO & Marketing</h2>
             <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
               Optimize your product for search engines and marketing campaigns
             </p>

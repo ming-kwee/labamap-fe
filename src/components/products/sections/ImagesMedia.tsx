@@ -239,7 +239,7 @@ export default function ImagesMedia({ data, onUpdate }: ImagesMediaProps) {
       <div className="bg-white dark:bg-gray-800 rounded-xl p-6 border border-gray-200 dark:border-gray-700">
         <div className="flex items-center justify-between mb-6">
           <div>
-            <h2 className="text-xl font-semibold text-gray-900 dark:text-white">Images & Media</h2>
+            <h2 className="text-title-md font-semibold text-gray-900 dark:text-white">Images & Media</h2>
             <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
               Upload and manage product images and videos
             </p>
@@ -300,7 +300,7 @@ export default function ImagesMedia({ data, onUpdate }: ImagesMediaProps) {
       {mediaFiles.length > 0 && (
         <div className="bg-white dark:bg-gray-800 rounded-xl p-6 border border-gray-200 dark:border-gray-700">
           <div className="flex items-center justify-between mb-6">
-            <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+            <h3 className="text-title-md font-semibold text-gray-900 dark:text-white">
               Media Gallery ({mediaFiles.length} files)
             </h3>
             <div className="text-sm text-gray-500 dark:text-gray-400">
@@ -420,7 +420,7 @@ export default function ImagesMedia({ data, onUpdate }: ImagesMediaProps) {
 
       {/* Media Tools */}
       <div className="bg-white dark:bg-gray-800 rounded-xl p-6 border border-gray-200 dark:border-gray-700">
-        <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Media Tools</h3>
+        <h3 className="text-title-md font-semibold text-gray-900 dark:text-white mb-4">Media Tools</h3>
         
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           <Button variant="outline" className="flex items-center gap-2">

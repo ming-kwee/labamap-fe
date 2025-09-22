@@ -123,14 +123,14 @@ export default function PricingInventory({ data, onUpdate }: PricingInventoryPro
       <div className="bg-white dark:bg-gray-800 rounded-xl p-6 border border-gray-200 dark:border-gray-700">
         <div className="flex items-center justify-between mb-6">
           <div>
-            <h2 className="text-xl font-semibold text-gray-900 dark:text-white">Pricing</h2>
+            <h2 className="text-title-md font-semibold text-gray-900 dark:text-white">Pricing</h2>
             <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
               Set pricing for your product across different markets
             </p>
           </div>
           <div className="text-right">
             <div className="text-sm text-gray-500 dark:text-gray-400">Profit Margin</div>
-            <div className={`text-lg font-semibold ${
+            <div className={`text-title-md font-semibold ${
               profitMargin > 50 ? "text-green-600" : 
               profitMargin > 20 ? "text-yellow-600" : "text-red-600"
             }`}>
@@ -226,7 +226,7 @@ export default function PricingInventory({ data, onUpdate }: PricingInventoryPro
                   className="text-left p-3 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 hover:border-blue-300 dark:hover:border-blue-600 transition-colors"
                 >
                   <div className="font-medium text-sm text-gray-900 dark:text-white">{rec.name}</div>
-                  <div className="text-lg font-semibold text-blue-600 dark:text-blue-400">
+                  <div className="text-title-md font-semibold text-blue-600 dark:text-blue-400">
                     {selectedCurrency.symbol}{rec.price.toFixed(2)}
                   </div>
                   <div className="text-xs text-gray-500 dark:text-gray-400">{rec.description}</div>
@@ -280,7 +280,7 @@ export default function PricingInventory({ data, onUpdate }: PricingInventoryPro
       <div className="bg-white dark:bg-gray-800 rounded-xl p-6 border border-gray-200 dark:border-gray-700">
         <div className="flex items-center justify-between mb-6">
           <div>
-            <h2 className="text-xl font-semibold text-gray-900 dark:text-white">Inventory Management</h2>
+            <h2 className="text-title-md font-semibold text-gray-900 dark:text-white">Inventory Management</h2>
             <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
               Track and manage your product inventory
             </p>
@@ -390,7 +390,7 @@ export default function PricingInventory({ data, onUpdate }: PricingInventoryPro
 
       {/* Advanced Pricing Options */}
       <div className="bg-white dark:bg-gray-800 rounded-xl p-6 border border-gray-200 dark:border-gray-700">
-        <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Advanced Pricing</h3>
+        <h3 className="text-title-md font-semibold text-gray-900 dark:text-white mb-4">Advanced Pricing</h3>
         
         <div className="space-y-4">
           {/* Bulk Pricing */}

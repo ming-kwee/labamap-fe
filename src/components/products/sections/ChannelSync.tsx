@@ -359,7 +359,7 @@ export default function ChannelSync({
       <div className="bg-white dark:bg-gray-800 rounded-xl p-6 border border-gray-200 dark:border-gray-700">
         <div className="flex items-center justify-between mb-6">
           <div>
-            <h2 className="text-xl font-semibold text-gray-900 dark:text-white">Enhanced Channel Management</h2>
+            <h2 className="text-title-md font-semibold text-gray-900 dark:text-white">Enhanced Channel Management</h2>
             <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
               Manage your product across multiple sales channels with dedicated interfaces
             </p>
@@ -411,7 +411,7 @@ export default function ChannelSync({
       {/* Channel Categories */}
       {Object.entries(channelsByCategory).map(([category, channels]) => (
         <div key={category} className="bg-white dark:bg-gray-800 rounded-xl p-6 border border-gray-200 dark:border-gray-700">
-          <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4 capitalize">
+          <h3 className="text-title-md font-semibold text-gray-900 dark:text-white mb-4 capitalize">
             {category} Channels
           </h3>
           
@@ -445,7 +445,7 @@ export default function ChannelSync({
                           {channel.displayName}
                         </h4>
                         <div className="flex items-center gap-2">
-                          <span className="text-lg" title={hasErrors ? 'Has errors' : isSynced ? 'Synced' : 'Not synced'}>
+                          <span className="text-title-md" title={hasErrors ? 'Has errors' : isSynced ? 'Synced' : 'Not synced'}>
                             {hasErrors ? '🔴' : isSynced ? '🟢' : '🟡'}
                           </span>
                           <Switch
@@ -512,7 +512,7 @@ export default function ChannelSync({
 
       {/* Global Sync Rules */}
       <div className="bg-white dark:bg-gray-800 rounded-xl p-6 border border-gray-200 dark:border-gray-700">
-        <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-6">Global Sync Rules & Automation</h3>
+        <h3 className="text-title-md font-semibold text-gray-900 dark:text-white mb-6">Global Sync Rules & Automation</h3>
         
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-900 rounded-lg">

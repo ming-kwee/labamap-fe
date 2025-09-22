@@ -111,10 +111,10 @@ export default function APIDemoPage() {
       <div className="max-w-6xl mx-auto">
         {/* Header */}
         <div className="text-center mb-8">
-          <h1 className="text-4xl font-bold text-gray-900 dark:text-white mb-4">
+          <h1 className="text-title-xl font-bold text-gray-900 dark:text-white mb-4">
             🤔 What is ExampleUsage for?
           </h1>
-          <p className="text-xl text-gray-600 dark:text-gray-300 mb-2">
+          <p className="text-theme-xl text-gray-600 dark:text-gray-300 mb-2">
             Click any example below to see what our API integration can do
           </p>
           <p className="text-gray-500 dark:text-gray-400">
@@ -134,7 +134,7 @@ export default function APIDemoPage() {
                   className={`${colors.bg} ${colors.border} border rounded-xl p-6 hover:shadow-lg transition-all cursor-pointer`}
                   onClick={() => setActiveExample(example.id)}
                 >
-                  <h3 className={`text-xl font-semibold ${colors.text} mb-3`}>
+                  <h3 className={`text-title-md font-semibold ${colors.text} mb-3`}>
                     {example.title}
                   </h3>
                   
@@ -188,7 +188,7 @@ export default function APIDemoPage() {
               </button>
               
               <div>
-                <h2 className="text-2xl font-bold text-gray-900 dark:text-white">
+                <h2 className="text-title-lg font-bold text-gray-900 dark:text-white">
                   {examples.find(ex => ex.id === activeExample)?.title}
                 </h2>
                 <p className="text-gray-600 dark:text-gray-300">
@@ -227,7 +227,7 @@ export default function APIDemoPage() {
         {/* Overall Purpose */}
         {!activeExample && (
           <div className="bg-gradient-to-r from-blue-500 to-purple-600 text-white rounded-xl p-8 text-center">
-            <h2 className="text-2xl font-bold mb-4">
+            <h2 className="text-title-lg font-bold mb-4">
               🎯 Purpose of ExampleUsage Components
             </h2>
             <div className="grid md:grid-cols-3 gap-6 text-left">
