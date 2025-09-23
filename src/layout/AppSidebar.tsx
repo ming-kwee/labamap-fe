@@ -43,7 +43,8 @@ const navItems: NavItem[] = [
     name: "Product Management",
     subItems: [
       { name: "Create Product", path: "/products/create", pro: false },
-      { name: "Channel Product List", path: "/products/channel-list", pro: false, new: true }
+      { name: "Channel Product List", path: "/products/channel-list", pro: false },
+      { name: "Channel Mapping Templates", path: "/products/channel-templates", pro: false, new: true }
     ],
   },
   {

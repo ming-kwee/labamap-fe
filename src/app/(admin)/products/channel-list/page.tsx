@@ -247,45 +247,6 @@ export default function ChannelProductListPage() {
         </div>
       </div>
 
-      {/* Key Features Info */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="bg-white dark:bg-gray-800 rounded-lg p-4 border border-gray-200 dark:border-gray-700">
-          <div className="flex items-center gap-3 mb-3">
-            <div className="w-10 h-10 bg-blue-100 dark:bg-blue-900/30 rounded-lg flex items-center justify-center">
-              <span className="text-title-md">🎯</span>
-            </div>
-            <div>
-              <h3 className="font-semibold text-gray-900 dark:text-white">Inline Editing</h3>
-              <p className="text-theme-xs text-gray-500 dark:text-gray-400">Click any cell to edit</p>
-            </div>
-          </div>
-        </div>
-
-        <div className="bg-white dark:bg-gray-800 rounded-lg p-4 border border-gray-200 dark:border-gray-700">
-          <div className="flex items-center gap-3 mb-3">
-            <div className="w-10 h-10 bg-green-100 dark:bg-green-900/30 rounded-lg flex items-center justify-center">
-              <span className="text-title-md">⚡</span>
-            </div>
-            <div>
-              <h3 className="font-semibold text-gray-900 dark:text-white">Bulk Operations</h3>
-              <p className="text-theme-xs text-gray-500 dark:text-gray-400">Select multiple for bulk actions</p>
-            </div>
-          </div>
-        </div>
-
-        <div className="bg-white dark:bg-gray-800 rounded-lg p-4 border border-gray-200 dark:border-gray-700">
-          <div className="flex items-center gap-3 mb-3">
-            <div className="w-10 h-10 bg-purple-100 dark:bg-purple-900/30 rounded-lg flex items-center justify-center">
-              <span className="text-title-md">🔄</span>
-            </div>
-            <div>
-              <h3 className="font-semibold text-gray-900 dark:text-white">Auto Sync</h3>
-              <p className="text-theme-xs text-gray-500 dark:text-gray-400">Real-time channel synchronization</p>
-            </div>
-          </div>
-        </div>
-      </div>
-
       {/* Channel Product List Component */}
       <ChannelProductList
         masterProducts={mockMasterProducts}
