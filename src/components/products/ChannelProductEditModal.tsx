@@ -90,6 +90,7 @@ interface ChannelProductEditModalProps {
   onClose: () => void;
   product: ChannelProduct | null;
   variants?: ProductVariant[];
+  selectedVariant?: ProductVariant | null; // NEW: specific variant to focus on when modal opens
   onSave: (productId: string, updates: Partial<ChannelProduct>) => void;
   onVariantUpdate?: (variantId: string, updates: Partial<ProductVariant>) => void;
   onOpenVariantDetails?: (variant: ProductVariant, channelId: string) => void;
@@ -412,6 +413,7 @@ const ChannelProductEditModal: React.FC<ChannelProductEditModalProps> = ({
   onClose,
   product,
   variants = [],
+  selectedVariant = null, // NEW: specific variant to focus on
   onSave,
   onVariantUpdate,
   onOpenVariantDetails,
@@ -428,6 +430,32 @@ const ChannelProductEditModal: React.FC<ChannelProductEditModalProps> = ({
       setChannelConfig(config || null);
     }
   }, [product]);
+
+  // NEW: Handle selectedVariant - switch to variants tab and set up data
+  useEffect(() => {
+    if (selectedVariant && isOpen) {
+      setActiveTab('variants');
+      setVariantViewMode('variants');
+      
+      // Pre-populate form data with variant-specific information
+      const channelData = selectedVariant.channelData[product?.channelId || ''] || {};
+      const variantTitle = channelData.title || selectedVariant.masterData.title || 
+        `${product?.title} - ${Object.entries(selectedVariant.attributes).map(([k, v]) => `${k}: ${v}`).join(', ')}`;
+      
+      setFormData(prev => ({
+        ...prev,
+        title: variantTitle,
+        sku: channelData.sku || selectedVariant.masterData.sku,
+        price: channelData.price !== undefined ? channelData.price : selectedVariant.masterData.price,
+        stock: channelData.inventory !== undefined ? channelData.inventory : selectedVariant.masterData.inventory,
+        // Keep other product data as is
+      }));
+    } else if (!selectedVariant && isOpen) {
+      // Reset to product tab when no specific variant is selected
+      setActiveTab('product');
+      setVariantViewMode('unified');
+    }
+  }, [selectedVariant, isOpen, product?.channelId, product?.title]);
 
   const handleInputChange = (field: string, value: unknown) => {
     setFormData(prev => ({
@@ -546,11 +574,30 @@ const ChannelProductEditModal: React.FC<ChannelProductEditModalProps> = ({
             <span className="text-2xl">{channelConfig.icon}</span>
             <div>
               <h2 className="text-title-md font-semibold text-gray-900 dark:text-white">
-                Edit {channelConfig.displayName} Product
+                Edit {channelConfig.displayName} {selectedVariant ? 'Variant' : 'Product'}
               </h2>
               <p className="text-theme-sm text-gray-500 dark:text-gray-400">
-                {product.title} • {product.sku}
+                {selectedVariant ? (
+                  <span>
+                    {Object.entries(selectedVariant.attributes).map(([k, v]) => `${k}: ${v}`).join(' / ')} • 
+                    SKU: {selectedVariant.channelData[product.channelId]?.sku || selectedVariant.masterData.sku}
+                  </span>
+                ) : (
+                  <span>{product.title} • {product.sku}</span>
+                )}
               </p>
+              {selectedVariant && (
+                <div className="flex items-center gap-2 mt-1">
+                  <span className="px-2 py-1 text-xs bg-blue-100 text-blue-800 dark:bg-blue-900/20 dark:text-blue-400 rounded-full">
+                    Variant Editing Mode
+                  </span>
+                  {selectedVariant.channelData[product.channelId] && Object.keys(selectedVariant.channelData[product.channelId]).length > 0 && (
+                    <span className="px-2 py-1 text-xs bg-purple-100 text-purple-800 dark:bg-purple-900/20 dark:text-purple-400 rounded-full">
+                      Channel Override
+                    </span>
+                  )}
+                </div>
+              )}
             </div>
           </div>
           <button
@@ -592,52 +639,92 @@ const ChannelProductEditModal: React.FC<ChannelProductEditModalProps> = ({
           {activeTab === 'product' ? (
             <div className="p-6 space-y-6">
 
+            {/* Variant Information (when editing a specific variant) */}
+            {selectedVariant && (
+              <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4 mb-6">
+                <div className="flex items-start gap-3">
+                  <div className="text-blue-500 mt-0.5">
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                  </div>
+                  <div className="flex-1">
+                    <h4 className="text-theme-sm font-medium text-blue-900 dark:text-blue-300 mb-2">
+                      Editing Variant: {Object.entries(selectedVariant.attributes).map(([k, v]) => `${k}: ${v}`).join(' / ')}
+                    </h4>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-theme-xs">
+                      <div>
+                        <span className="text-blue-800 dark:text-blue-400 font-medium">Master SKU:</span>
+                        <div className="text-blue-900 dark:text-blue-300">{selectedVariant.masterData.sku}</div>
+                      </div>
+                      <div>
+                        <span className="text-blue-800 dark:text-blue-400 font-medium">Master Price:</span>
+                        <div className="text-blue-900 dark:text-blue-300">${selectedVariant.masterData.price}</div>
+                      </div>
+                      <div>
+                        <span className="text-blue-800 dark:text-blue-400 font-medium">Master Inventory:</span>
+                        <div className="text-blue-900 dark:text-blue-300">{selectedVariant.masterData.inventory}</div>
+                      </div>
+                    </div>
+                    <p className="text-theme-xs text-blue-800 dark:text-blue-400 mt-2">
+                      The fields below will override the master variant data for {channelConfig?.displayName} only.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* Basic Product Fields */}
             <div className="space-y-4">
               <h3 className="text-title-sm font-medium text-gray-900 dark:text-white">
-                Basic Product Information
+                {selectedVariant ? `${channelConfig?.displayName} Variant Override Settings` : 'Basic Product Information'}
               </h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <Label>Product Title</Label>
+                  <Label>{selectedVariant ? 'Variant Title (Override)' : 'Product Title'}</Label>
                   <Input
                     type="text"
                     defaultValue={formData.title}
                     onChange={(e) => handleInputChange('title', e.target.value)}
+                    placeholder={selectedVariant ? `Master: ${selectedVariant.masterData.title}` : undefined}
                   />
                 </div>
                 <div>
-                  <Label>SKU</Label>
+                  <Label>{selectedVariant ? 'Variant SKU (Override)' : 'SKU'}</Label>
                   <Input
                     type="text"
                     defaultValue={formData.sku}
                     onChange={(e) => handleInputChange('sku', e.target.value)}
+                    placeholder={selectedVariant ? `Master: ${selectedVariant.masterData.sku}` : undefined}
                   />
                 </div>
                 <div>
-                  <Label>Price ({formData.currency})</Label>
+                  <Label>{selectedVariant ? 'Variant Price (Override)' : `Price (${formData.currency})`}</Label>
                   <Input
                     type="number"
                     defaultValue={formData.price}
                     onChange={(e) => handleInputChange('price', parseFloat(e.target.value) || 0)}
                     step={0.01}
+                    placeholder={selectedVariant ? `Master: $${selectedVariant.masterData.price}` : undefined}
                   />
                 </div>
                 <div>
-                  <Label>Compare Price ({formData.currency})</Label>
+                  <Label>{selectedVariant ? 'Compare Price (Override)' : `Compare Price (${formData.currency})`}</Label>
                   <Input
                     type="number"
                     defaultValue={formData.comparePrice}
                     onChange={(e) => handleInputChange('comparePrice', parseFloat(e.target.value) || 0)}
                     step={0.01}
+                    placeholder={selectedVariant ? `Master: $${selectedVariant.masterData.comparePrice}` : undefined}
                   />
                 </div>
                 <div>
-                  <Label>Stock Quantity</Label>
+                  <Label>{selectedVariant ? 'Stock Quantity (Override)' : 'Stock Quantity'}</Label>
                   <Input
                     type="number"
                     defaultValue={formData.stock}
                     onChange={(e) => handleInputChange('stock', parseInt(e.target.value) || 0)}
+                    placeholder={selectedVariant ? `Master: ${selectedVariant.masterData.inventory}` : undefined}
                   />
                 </div>
                 <div className="flex items-center gap-2">

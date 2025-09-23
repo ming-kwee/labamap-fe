@@ -41,7 +41,7 @@ interface ChannelProduct {
   // Channel-specific data
   visibility: boolean;
   tags: string[];
-  customFields: Record<string, any>;
+  customFields: Record<string, unknown>;
   
   // Product Image
   imageUrl: string;
@@ -258,7 +258,7 @@ const generateSampleVariants = (master: ProductData, channelId: string, masterIn
         images: master.masterAttributes.product_images?.slice(0, 2).map(img => img.src) || [],
       },
       attributes: Object.fromEntries(
-        Object.entries(config.attributes).filter(([_, value]) => value !== undefined)
+        Object.entries(config.attributes).filter(([, value]) => value !== undefined)
       ) as Record<string, string>,
       channelData: {
         [channelId]: Math.random() > 0.5 ? {
@@ -295,6 +295,7 @@ export default function ChannelProductList({
   const [sortConfig, setSortConfig] = useState<{field: string, direction: 'asc' | 'desc'} | null>(null);
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [selectedProductForEdit, setSelectedProductForEdit] = useState<ChannelProduct | null>(null);
+  const [selectedVariantForEdit, setSelectedVariantForEdit] = useState<ProductVariant | null>(null);
   const [viewMode, setViewMode] = useState<'products' | 'variants'>('products');
 
   // Initialize products
@@ -381,7 +382,7 @@ export default function ChannelProductList({
     }
   };
 
-  const handleCellEdit = (productId: string, field: string, value: any) => {
+  const handleCellEdit = (productId: string, field: string, value: unknown) => {
     setProducts(prev => prev.map(product => 
       product.id === productId 
         ? { ...product, [field]: value, syncStatus: 'manual' as const }
@@ -427,6 +428,13 @@ export default function ChannelProductList({
 
   const handleEditProduct = (product: ChannelProduct) => {
     setSelectedProductForEdit(product);
+    setSelectedVariantForEdit(null); // Clear any selected variant
+    setEditModalOpen(true);
+  };
+
+  const handleEditVariant = (product: ChannelProduct, variant: ProductVariant) => {
+    setSelectedProductForEdit(product);
+    setSelectedVariantForEdit(variant); // Set the specific variant to edit
     setEditModalOpen(true);
   };
 
@@ -439,6 +447,7 @@ export default function ChannelProductList({
     onProductUpdate(productId, updates);
     setEditModalOpen(false);
     setSelectedProductForEdit(null);
+    setSelectedVariantForEdit(null); // Clear variant selection
   };
 
   const getSyncStatusIcon = (status: ChannelProduct['syncStatus']) => {
@@ -939,10 +948,7 @@ export default function ChannelProductList({
                                 <Button
                                   variant="outline"
                                   size="sm"
-                                  onClick={() => {
-                                    setSelectedProductForEdit(product);
-                                    setEditModalOpen(true);
-                                  }}
+                                  onClick={() => handleEditVariant(product, variant)}
                                 >
                                   Edit Variant
                                 </Button>
@@ -1015,8 +1021,11 @@ export default function ChannelProductList({
         onClose={() => {
           setEditModalOpen(false);
           setSelectedProductForEdit(null);
+          setSelectedVariantForEdit(null);
         }}
         product={selectedProductForEdit}
+        variants={selectedProductForEdit?.variants}
+        selectedVariant={selectedVariantForEdit}
         onSave={handleSaveProduct}
       />
     </div>

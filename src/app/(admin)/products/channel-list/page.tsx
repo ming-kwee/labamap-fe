@@ -201,7 +201,7 @@ const mockMasterProducts: ProductData[] = [
 ];
 
 export default function ChannelProductListPage() {
-  const handleProductUpdate = async (productId: string, updates: any) => {
+  const handleProductUpdate = async (productId: string, updates: Record<string, unknown>) => {
     console.log("Updating product:", productId, updates);
     // Here you would typically call an API to update the product
     // For now, we'll just log the update
@@ -214,7 +214,7 @@ export default function ChannelProductListPage() {
     console.log("Bulk sync completed");
   };
 
-  const handleBulkUpdate = async (productIds: string[], updates: any) => {
+  const handleBulkUpdate = async (productIds: string[], updates: Record<string, unknown>) => {
     console.log("Bulk updating products:", productIds, updates);
     // Here you would typically call an API to bulk update products
   };
