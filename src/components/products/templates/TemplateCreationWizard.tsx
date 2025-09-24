@@ -4,6 +4,8 @@ import Button from "@/components/ui/button/Button";
 import Label from "@/components/form/Label";
 import Input from "@/components/form/input/InputField";
 import { ChannelTemplate } from "./ChannelTemplateManager";
+import MappingBuilder from "./MappingBuilder";
+import { SourceField, TargetField, ComplexFieldMapping } from "./types/ComplexMapping";
 
 interface TemplateCreationWizardProps {
   template?: ChannelTemplate | null;
@@ -25,12 +27,27 @@ const wizardSteps: WizardStep[] = [
   { id: 'review', title: 'Review & Save', description: 'Review template configuration' }
 ];
 
-const templateTypes = [
+interface TemplateType {
+  id: string;
+  title: string;
+  description: string;
+  icon: string;
+  featured?: boolean;
+}
+
+const templateTypes: TemplateType[] = [
   {
     id: 'field-mapping',
     title: 'Field Mapping Template',
     description: 'Map master product fields to channel-specific fields',
     icon: '🎯'
+  },
+  {
+    id: 'advanced-mapping',
+    title: 'Advanced Complex Mapping',
+    description: 'Amazon-style validation, eBay pricing, Shopify dimensions & Facebook rich content',
+    icon: '🚀',
+    featured: true
   },
   {
     id: 'content-generation',
@@ -104,6 +121,9 @@ const TemplateCreationWizard: React.FC<TemplateCreationWizardProps> = ({
   onCancel
 }) => {
   const [currentStep, setCurrentStep] = useState(0);
+  const [showAdvancedMapping, setShowAdvancedMapping] = useState(false);
+  const [complexMappings, setComplexMappings] = useState<ComplexFieldMapping[]>([]);
+  
   const [formData, setFormData] = useState<Partial<ChannelTemplate>>({
     name: template?.name || '',
     type: template?.type || 'field-mapping',
@@ -113,6 +133,13 @@ const TemplateCreationWizard: React.FC<TemplateCreationWizardProps> = ({
     isActive: template?.isActive ?? true,
     fieldMappings: template?.fieldMappings || []
   });
+
+  // State for actual field mappings
+  const [selectedMasterFields, setSelectedMasterFields] = useState<string[]>([]);
+  const [fieldMappings, setFieldMappings] = useState<Array<{
+    masterField: string;
+    channelMappings: Record<string, string>;
+  }>>([]);
 
   const handleNext = () => {
     if (currentStep < wizardSteps.length - 1) {
@@ -128,6 +155,70 @@ const TemplateCreationWizard: React.FC<TemplateCreationWizardProps> = ({
 
   const handleFieldChange = (field: string, value: unknown) => {
     setFormData(prev => ({ ...prev, [field]: value }));
+    
+    // Show advanced mapping builder for advanced-mapping type
+    if (field === 'type' && value === 'advanced-mapping') {
+      setShowAdvancedMapping(true);
+    }
+  };
+
+  const handleMasterFieldToggle = (fieldId: string) => {
+    setSelectedMasterFields(prev => 
+      prev.includes(fieldId) 
+        ? prev.filter(id => id !== fieldId)
+        : [...prev, fieldId]
+    );
+  };
+
+  const updateFieldMapping = (masterField: string, channel: string, targetField: string) => {
+    setFieldMappings(prev => {
+      const existing = prev.find(m => m.masterField === masterField);
+      if (existing) {
+        return prev.map(m => 
+          m.masterField === masterField 
+            ? { ...m, channelMappings: { ...m.channelMappings, [channel]: targetField }}
+            : m
+        );
+      } else {
+        return [...prev, { 
+          masterField, 
+          channelMappings: { [channel]: targetField }
+        }];
+      }
+    });
+  };
+
+  const getChannelFields = (channelId: string) => {
+    // Channel-specific fields based on real marketplace requirements
+    const channelFieldsMap: Record<string, Array<{id: string, name: string, maxLength?: number}>> = {
+      amazon: [
+        { id: 'title', name: 'Product Title', maxLength: 200 },
+        { id: 'bullet_point_1', name: 'Bullet Point 1', maxLength: 255 },
+        { id: 'bullet_point_2', name: 'Bullet Point 2', maxLength: 255 },
+        { id: 'description', name: 'Product Description', maxLength: 2000 },
+        { id: 'search_terms', name: 'Search Terms', maxLength: 249 }
+      ],
+      ebay: [
+        { id: 'title', name: 'Item Title', maxLength: 80 },
+        { id: 'subtitle', name: 'Subtitle', maxLength: 55 },
+        { id: 'description', name: 'Item Description' },
+        { id: 'condition', name: 'Item Condition' }
+      ],
+      shopify: [
+        { id: 'title', name: 'Product Title' },
+        { id: 'body_html', name: 'Description' },
+        { id: 'vendor', name: 'Vendor' },
+        { id: 'product_type', name: 'Product Type' },
+        { id: 'tags', name: 'Tags' }
+      ],
+      walmart: [
+        { id: 'productName', name: 'Product Name', maxLength: 75 },
+        { id: 'shortDescription', name: 'Short Description', maxLength: 4000 },
+        { id: 'mainImageUrl', name: 'Main Image URL' }
+      ]
+    };
+    
+    return channelFieldsMap[channelId] || [];
   };
 
   const handleChannelToggle = (channelId: string) => {
@@ -151,7 +242,7 @@ const TemplateCreationWizard: React.FC<TemplateCreationWizardProps> = ({
       updatedAt: new Date(),
       isActive: formData.isActive || true,
       usageCount: template?.usageCount || 0,
-      fieldMappings: formData.fieldMappings
+      fieldMappings: fieldMappings // Save the actual field mappings created by user
     };
     onSave(templateData);
   };
@@ -175,19 +266,39 @@ const TemplateCreationWizard: React.FC<TemplateCreationWizardProps> = ({
                 <button
                   key={type.id}
                   onClick={() => handleFieldChange('type', type.id)}
-                  className={`p-6 rounded-lg border-2 transition-all text-left ${
+                  className={`p-6 rounded-lg border-2 transition-all text-left relative ${
                     formData.type === type.id
                       ? 'border-brand-500 bg-brand-50 dark:bg-brand-900/20'
+                      : type.featured
+                      ? 'border-purple-300 bg-gradient-to-br from-purple-50 to-blue-50 dark:from-purple-900/20 dark:to-blue-900/20 hover:border-purple-400'
                       : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600'
                   }`}
                 >
+                  {type.featured && (
+                    <div className="absolute -top-2 -right-2 bg-purple-500 text-white text-xs px-2 py-1 rounded-full font-medium">
+                      NEW
+                    </div>
+                  )}
                   <div className="text-3xl mb-3">{type.icon}</div>
-                  <h3 className="font-semibold text-gray-900 dark:text-white mb-2">
+                  <h3 className={`font-semibold mb-2 ${
+                    type.featured 
+                      ? 'text-purple-900 dark:text-purple-300' 
+                      : 'text-gray-900 dark:text-white'
+                  }`}>
                     {type.title}
                   </h3>
-                  <p className="text-theme-sm text-gray-500 dark:text-gray-400">
+                  <p className={`text-theme-sm ${
+                    type.featured 
+                      ? 'text-purple-700 dark:text-purple-400' 
+                      : 'text-gray-500 dark:text-gray-400'
+                  }`}>
                     {type.description}
                   </p>
+                  {type.featured && (
+                    <div className="mt-3 text-xs text-purple-600 dark:text-purple-400 font-medium">
+                      ✨ Real-world examples: Amazon, eBay, Shopify, Facebook
+                    </div>
+                  )}
                 </button>
               ))}
             </div>
@@ -294,100 +405,175 @@ const TemplateCreationWizard: React.FC<TemplateCreationWizardProps> = ({
           <div className="space-y-6">
             <div className="text-center mb-6">
               <h2 className="text-title-lg font-semibold text-gray-900 dark:text-white mb-2">
-                MASTER FIELD MAPPING
+                FIELD MAPPING CONFIGURATION
               </h2>
               <p className="text-theme-sm text-gray-500 dark:text-gray-400">
-                Configure how master product fields map to channel-specific fields
+                Map master product fields to channel-specific fields with drag & drop or dropdown selection
               </p>
             </div>
 
             <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-6">
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                {/* Master Fields */}
-                <div>
-                  <h3 className="text-title-sm font-semibold text-gray-900 dark:text-white mb-4">
-                    Master Product Fields
-                  </h3>
-                  <div className="space-y-2 max-h-96 overflow-y-auto">
-                    {masterFields.map((field) => (
-                      <div
-                        key={field.id}
-                        className="flex items-center justify-between p-3 border border-gray-200 dark:border-gray-700 rounded-lg"
-                      >
-                        <div className="flex items-center gap-3">
-                          <input
-                            type="checkbox"
-                            defaultChecked={field.required}
-                            className="w-4 h-4 text-brand-500 border-gray-300 rounded focus:ring-brand-500"
-                          />
-                          <span className="text-theme-sm font-medium text-gray-900 dark:text-white">
-                            {field.name}
-                          </span>
-                          {field.required && (
-                            <span className="text-xs px-2 py-1 bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-400 rounded-full">
-                              Required
+              {formData.targetChannels && formData.targetChannels.length > 0 ? (
+                <div className="space-y-8">
+                  {/* Master Fields Selection */}
+                  <div>
+                    <h3 className="text-title-sm font-semibold text-gray-900 dark:text-white mb-4">
+                      1️⃣ Select Master Fields to Map
+                    </h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                      {masterFields.map((field) => (
+                        <div
+                          key={field.id}
+                          className={`p-3 border rounded-lg cursor-pointer transition-all ${
+                            selectedMasterFields.includes(field.id)
+                              ? 'border-brand-500 bg-brand-50 dark:bg-brand-900/20'
+                              : 'border-gray-200 dark:border-gray-700 hover:border-gray-300'
+                          }`}
+                          onClick={() => handleMasterFieldToggle(field.id)}
+                        >
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="checkbox"
+                              checked={selectedMasterFields.includes(field.id)}
+                              onChange={() => handleMasterFieldToggle(field.id)}
+                              className="w-4 h-4 text-brand-500 border-gray-300 rounded focus:ring-brand-500"
+                            />
+                            <span className="text-theme-sm font-medium text-gray-900 dark:text-white">
+                              {field.name}
                             </span>
-                          )}
+                            {field.required && (
+                              <span className="text-xs px-1 py-0.5 bg-red-100 text-red-600 dark:bg-red-900/20 dark:text-red-400 rounded">
+                                *
+                              </span>
+                            )}
+                          </div>
+                          <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                            {field.type}
+                          </div>
                         </div>
-                        <span className="text-xs text-gray-500 dark:text-gray-400">
-                          {field.type}
-                        </span>
+                      ))}
+                    </div>
+                    {selectedMasterFields.length > 0 && (
+                      <div className="mt-3 text-theme-sm text-green-600 dark:text-green-400">
+                        ✅ {selectedMasterFields.length} fields selected for mapping
                       </div>
-                    ))}
+                    )}
                   </div>
-                </div>
 
-                {/* Channel Mapping Rules */}
-                <div>
-                  <h3 className="text-title-sm font-semibold text-gray-900 dark:text-white mb-4">
-                    Channel Mapping Rules
-                  </h3>
-                  <div className="space-y-4">
-                    {formData.targetChannels?.slice(0, 3).map((channelId) => {
-                      const channel = availableChannels.find(c => c.id === channelId);
-                      return (
-                        <div key={channelId} className="border border-gray-200 dark:border-gray-700 rounded-lg p-4">
-                          <div className="flex items-center gap-2 mb-3">
-                            <span className="text-lg">{channel?.icon}</span>
-                            <span className="font-medium text-gray-900 dark:text-white">
-                              {channel?.name}
-                            </span>
-                          </div>
-                          <div className="space-y-2">
-                            <div className="text-theme-sm">
-                              <span className="text-gray-500 dark:text-gray-400">Title:</span>
-                              <span className="ml-2 text-gray-900 dark:text-white">
-                                {channelId === 'amazon' ? 'Title (200)' :
-                                 channelId === 'ebay' ? 'Item Title (80)' :
-                                 channelId === 'walmart' ? 'Name (75)' :
-                                 'Title (150)'}
+                  {/* Field Mapping Interface */}
+                  {selectedMasterFields.length > 0 && (
+                    <div>
+                      <h3 className="text-title-sm font-semibold text-gray-900 dark:text-white mb-4">
+                        2️⃣ Configure Field Mappings
+                      </h3>
+                      
+                      {selectedMasterFields.map(masterFieldId => {
+                        const masterField = masterFields.find(f => f.id === masterFieldId);
+                        if (!masterField) return null;
+                        
+                        return (
+                          <div key={masterFieldId} className="mb-6 p-4 border border-gray-200 dark:border-gray-700 rounded-lg">
+                            <div className="flex items-center gap-2 mb-4">
+                              <div className="w-3 h-3 bg-brand-500 rounded-full"></div>
+                              <span className="font-semibold text-gray-900 dark:text-white">
+                                {masterField.name}
+                              </span>
+                              <span className="text-xs text-gray-500 dark:text-gray-400">
+                                ({masterField.type})
                               </span>
                             </div>
-                            <div className="text-theme-sm">
-                              <span className="text-gray-500 dark:text-gray-400">Description:</span>
-                              <span className="ml-2 text-gray-900 dark:text-white">
-                                Description ({channelId === 'amazon' ? '2000' : '500'})
-                              </span>
+                            
+                            <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
+                              {formData.targetChannels?.map(channelId => {
+                                const channel = availableChannels.find(c => c.id === channelId);
+                                const channelFields = getChannelFields(channelId);
+                                const currentMapping = fieldMappings.find(m => m.masterField === masterFieldId)?.channelMappings[channelId];
+                                
+                                return (
+                                  <div key={channelId} className="border border-gray-200 dark:border-gray-700 rounded p-3">
+                                    <div className="flex items-center gap-2 mb-3">
+                                      <span className="text-lg">{channel?.icon}</span>
+                                      <span className="font-medium text-gray-900 dark:text-white text-sm">
+                                        {channel?.name}
+                                      </span>
+                                    </div>
+                                    
+                                    <select
+                                      value={currentMapping || ''}
+                                      onChange={(e) => updateFieldMapping(masterFieldId, channelId, e.target.value)}
+                                      className="w-full h-9 rounded border border-gray-300 px-2 py-1 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500 dark:border-gray-600 dark:bg-gray-700"
+                                    >
+                                      <option value="">Select target field</option>
+                                      {channelFields.map(targetField => (
+                                        <option key={targetField.id} value={targetField.id}>
+                                          {targetField.name}
+                                          {targetField.maxLength ? ` (${targetField.maxLength})` : ''}
+                                        </option>
+                                      ))}
+                                    </select>
+                                    
+                                    {currentMapping && (
+                                      <div className="mt-2 text-xs text-green-600 dark:text-green-400">
+                                        ✓ Mapped to {channelFields.find(f => f.id === currentMapping)?.name}
+                                      </div>
+                                    )}
+                                  </div>
+                                );
+                              })}
                             </div>
                           </div>
-                        </div>
-                      );
-                    })}
+                        );
+                      })}
+                    </div>
+                  )}
 
-                    <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
-                      <h4 className="text-theme-sm font-medium text-blue-900 dark:text-blue-300 mb-2">
-                        🎨 Transformation Rules
+                  {/* Mapping Summary */}
+                  {fieldMappings.length > 0 && (
+                    <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg p-4">
+                      <h4 className="text-theme-sm font-medium text-green-900 dark:text-green-300 mb-3">
+                        📋 Mapping Summary
                       </h4>
-                      <div className="space-y-1 text-theme-xs text-blue-800 dark:text-blue-400">
-                        <div>• Add brand prefix</div>
-                        <div>• Truncate with &quot;...&quot;</div>
-                        <div>• SEO keyword injection</div>
-                        <div>• Character validation</div>
+                      <div className="space-y-2">
+                        {fieldMappings.map(mapping => {
+                          const masterField = masterFields.find(f => f.id === mapping.masterField);
+                          const mappingCount = Object.keys(mapping.channelMappings).length;
+                          
+                          return (
+                            <div key={mapping.masterField} className="text-sm text-green-800 dark:text-green-400">
+                              <strong>{masterField?.name}</strong> mapped to {mappingCount} channel{mappingCount !== 1 ? 's' : ''}
+                              <div className="ml-4 text-xs">
+                                {Object.entries(mapping.channelMappings).map(([channelId, targetField]) => {
+                                  const channel = availableChannels.find(c => c.id === channelId);
+                                  const channelFields = getChannelFields(channelId);
+                                  const targetFieldName = channelFields.find(f => f.id === targetField)?.name;
+                                  return (
+                                    <div key={channelId}>
+                                      {channel?.icon} {channel?.name}: {targetFieldName}
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          );
+                        })}
                       </div>
                     </div>
-                  </div>
+                  )}
                 </div>
-              </div>
+              ) : (
+                <div className="text-center py-12">
+                  <div className="text-4xl mb-4">📋</div>
+                  <h3 className="text-title-sm font-medium text-gray-900 dark:text-white mb-2">
+                    No Target Channels Selected
+                  </h3>
+                  <p className="text-theme-sm text-gray-500 dark:text-gray-400 mb-4">
+                    Please go back to the previous step and select target channels first.
+                  </p>
+                  <Button variant="outline" onClick={() => setCurrentStep(1)}>
+                    ← Back to Basic Information
+                  </Button>
+                </div>
+              )}
             </div>
           </div>
         );
@@ -551,6 +737,70 @@ const TemplateCreationWizard: React.FC<TemplateCreationWizardProps> = ({
         return null;
     }
   };
+
+  // Show Advanced Mapping Builder when advanced-mapping is selected
+  if (showAdvancedMapping) {
+    // Create sample source and target fields for the mapping builder
+    const sampleSourceFields: SourceField[] = [
+      { fieldPath: 'masterAttributes.brand', displayName: 'Brand', dataType: 'string', required: true },
+      { fieldPath: 'masterAttributes.product_name', displayName: 'Product Name', dataType: 'string', required: true },
+      { fieldPath: 'masterAttributes.model', displayName: 'Model', dataType: 'string', required: false },
+      { fieldPath: 'masterAttributes.key_feature', displayName: 'Key Feature', dataType: 'string', required: false },
+      { fieldPath: 'masterAttributes.description', displayName: 'Description', dataType: 'string', required: true },
+      { fieldPath: 'masterAttributes.features', displayName: 'Features', dataType: 'array', required: false },
+      { fieldPath: 'masterAttributes.specifications', displayName: 'Specifications', dataType: 'object', required: false },
+      { fieldPath: 'masterAttributes.dimensions', displayName: 'Dimensions', dataType: 'object', required: false },
+      { fieldPath: 'pricingData.price', displayName: 'Price', dataType: 'number', required: true },
+      { fieldPath: 'pricingData.compare_at_price', displayName: 'Compare At Price', dataType: 'number', required: false },
+      { fieldPath: 'pricingData.cost', displayName: 'Cost', dataType: 'number', required: false }
+    ];
+
+    const sampleTargetFields: TargetField[] = [
+      { channelId: 'amazon', fieldPath: 'title', displayName: 'Amazon Title', dataType: 'string', maxLength: 200, required: true },
+      { channelId: 'amazon', fieldPath: 'bullet_points', displayName: 'Amazon Bullet Points', dataType: 'array', required: false },
+      { channelId: 'shopify', fieldPath: 'shipping_length', displayName: 'Shopify Shipping Length', dataType: 'number', required: false },
+      { channelId: 'shopify', fieldPath: 'shipping_width', displayName: 'Shopify Shipping Width', dataType: 'number', required: false },
+      { channelId: 'shopify', fieldPath: 'shipping_height', displayName: 'Shopify Shipping Height', dataType: 'number', required: false },
+      { channelId: 'shopify', fieldPath: 'dimension_unit', displayName: 'Shopify Dimension Unit', dataType: 'string', required: false },
+      { channelId: 'ebay', fieldPath: 'price', displayName: 'eBay Price', dataType: 'number', required: true },
+      { channelId: 'facebook', fieldPath: 'description', displayName: 'Facebook Rich Description', dataType: 'string', maxLength: 5000, required: false }
+    ];
+
+    return (
+      <div className="space-y-6">
+        <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-6">
+          <div className="flex items-center justify-between mb-6">
+            <div>
+              <h2 className="text-title-lg font-semibold text-gray-900 dark:text-white">
+                🚀 Advanced Complex Mapping Builder
+              </h2>
+              <p className="text-theme-sm text-gray-500 dark:text-gray-400 mt-1">
+                Create sophisticated field transformations with Amazon validation, eBay pricing, Shopify dimensions & Facebook rich content
+              </p>
+            </div>
+            <Button
+              variant="outline"
+              onClick={() => setShowAdvancedMapping(false)}
+            >
+              ← Back to Template Wizard
+            </Button>
+          </div>
+        </div>
+
+        <MappingBuilder
+          availableSourceFields={sampleSourceFields}
+          availableTargetFields={sampleTargetFields}
+          onSave={(mappings) => {
+            setComplexMappings(mappings);
+            // You could save these mappings to the template
+            setShowAdvancedMapping(false);
+            // Optionally continue to next step or complete the template
+          }}
+          onCancel={() => setShowAdvancedMapping(false)}
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
