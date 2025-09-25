@@ -3,7 +3,7 @@ import React, { useState } from "react";
 import Button from "@/components/ui/button/Button";
 import Label from "@/components/form/Label";
 import Input from "@/components/form/input/InputField";
-import { ChannelTemplate } from "./ChannelTemplateManager";
+import { ChannelTemplate, FieldMapping } from "./ChannelTemplateManager";
 import MappingBuilder from "./MappingBuilder";
 import { SourceField, TargetField, ComplexFieldMapping } from "./types/ComplexMapping";
 
@@ -19,13 +19,72 @@ interface WizardStep {
   description: string;
 }
 
-const wizardSteps: WizardStep[] = [
-  { id: 'type', title: 'Template Type', description: 'Select the type of template to create' },
-  { id: 'basic', title: 'Basic Information', description: 'Configure template name and details' },
-  { id: 'mapping', title: 'Field Mapping', description: 'Set up master field mappings' },
-  { id: 'rules', title: 'Transformation Rules', description: 'Define content transformation rules' },
-  { id: 'review', title: 'Review & Save', description: 'Review template configuration' }
-];
+// Dynamic wizard steps based on template type
+const getWizardSteps = (templateType: string): WizardStep[] => {
+  const baseSteps = [
+    { id: 'type', title: 'Template Type', description: 'Select the type of template to create' },
+    { id: 'basic', title: 'Basic Information', description: 'Configure template name and details' }
+  ];
+
+  switch (templateType) {
+    case 'field-mapping':
+      return [
+        ...baseSteps,
+        { id: 'mapping', title: 'Field Mapping', description: 'Map master fields to channel fields' },
+        { id: 'rules', title: 'Transformation Rules', description: 'Define field transformation rules' },
+        { id: 'review', title: 'Review & Save', description: 'Review template configuration' }
+      ];
+      
+    case 'content-generation':
+      return [
+        ...baseSteps,
+        { id: 'ai-settings', title: 'AI Configuration', description: 'Configure AI content generation settings' },
+        { id: 'content-rules', title: 'Content Rules', description: 'Define content generation parameters' },
+        { id: 'review', title: 'Review & Save', description: 'Review AI template configuration' }
+      ];
+      
+    case 'category-mapping':
+      return [
+        ...baseSteps,
+        { id: 'category-setup', title: 'Category Mapping', description: 'Map product categories to channel taxonomies' },
+        { id: 'category-rules', title: 'Category Rules', description: 'Define category mapping rules' },
+        { id: 'review', title: 'Review & Save', description: 'Review category template' }
+      ];
+      
+    case 'pricing-strategy':
+      return [
+        ...baseSteps,
+        { id: 'pricing-setup', title: 'Pricing Strategy', description: 'Configure dynamic pricing rules' },
+        { id: 'pricing-rules', title: 'Pricing Rules', description: 'Define pricing calculations and conditions' },
+        { id: 'review', title: 'Review & Save', description: 'Review pricing template' }
+      ];
+      
+    case 'validation-rules':
+      return [
+        ...baseSteps,
+        { id: 'validation-setup', title: 'Validation Rules', description: 'Configure data validation rules' },
+        { id: 'compliance', title: 'Compliance Settings', description: 'Define compliance and quality checks' },
+        { id: 'review', title: 'Review & Save', description: 'Review validation template' }
+      ];
+      
+    case 'complete-channel':
+      return [
+        ...baseSteps,
+        { id: 'field-mapping', title: 'Field Mapping', description: 'Configure field mappings' },
+        { id: 'content-ai', title: 'AI Content', description: 'Set up AI content generation' },
+        { id: 'pricing', title: 'Pricing Strategy', description: 'Configure pricing rules' },
+        { id: 'validation', title: 'Validation & Compliance', description: 'Set up validation rules' },
+        { id: 'review', title: 'Review & Save', description: 'Review complete template' }
+      ];
+      
+    default:
+      return [
+        ...baseSteps,
+        { id: 'configuration', title: 'Configuration', description: 'Configure template settings' },
+        { id: 'review', title: 'Review & Save', description: 'Review template configuration' }
+      ];
+  }
+};
 
 interface TemplateType {
   id: string;
@@ -122,7 +181,10 @@ const TemplateCreationWizard: React.FC<TemplateCreationWizardProps> = ({
 }) => {
   const [currentStep, setCurrentStep] = useState(0);
   const [showAdvancedMapping, setShowAdvancedMapping] = useState(false);
-  const [complexMappings, setComplexMappings] = useState<ComplexFieldMapping[]>([]);
+  const [, setComplexMappings] = useState<ComplexFieldMapping[]>([]);
+  const [currentWizardSteps, setCurrentWizardSteps] = useState<WizardStep[]>(
+    getWizardSteps('field-mapping')
+  );
   
   const [formData, setFormData] = useState<Partial<ChannelTemplate>>({
     name: template?.name || '',
@@ -136,13 +198,10 @@ const TemplateCreationWizard: React.FC<TemplateCreationWizardProps> = ({
 
   // State for actual field mappings
   const [selectedMasterFields, setSelectedMasterFields] = useState<string[]>([]);
-  const [fieldMappings, setFieldMappings] = useState<Array<{
-    masterField: string;
-    channelMappings: Record<string, string>;
-  }>>([]);
+  const [fieldMappings, setFieldMappings] = useState<FieldMapping[]>([]);
 
   const handleNext = () => {
-    if (currentStep < wizardSteps.length - 1) {
+    if (currentStep < currentWizardSteps.length - 1) {
       setCurrentStep(currentStep + 1);
     }
   };
@@ -156,9 +215,15 @@ const TemplateCreationWizard: React.FC<TemplateCreationWizardProps> = ({
   const handleFieldChange = (field: string, value: unknown) => {
     setFormData(prev => ({ ...prev, [field]: value }));
     
-    // Show advanced mapping builder for advanced-mapping type
-    if (field === 'type' && value === 'advanced-mapping') {
-      setShowAdvancedMapping(true);
+    // Update wizard steps when template type changes
+    if (field === 'type' && typeof value === 'string') {
+      setCurrentWizardSteps(getWizardSteps(value));
+      setCurrentStep(0); // Reset to first step when type changes
+      
+      // Show advanced mapping builder for advanced-mapping type
+      if (value === 'advanced-mapping') {
+        setShowAdvancedMapping(true);
+      }
     }
   };
 
@@ -176,13 +241,27 @@ const TemplateCreationWizard: React.FC<TemplateCreationWizardProps> = ({
       if (existing) {
         return prev.map(m => 
           m.masterField === masterField 
-            ? { ...m, channelMappings: { ...m.channelMappings, [channel]: targetField }}
+            ? { 
+                ...m, 
+                channelMappings: m.channelMappings.map(cm => 
+                  cm.channelId === channel 
+                    ? { ...cm, fieldName: targetField }
+                    : cm
+                ).concat(
+                  m.channelMappings.find(cm => cm.channelId === channel) 
+                    ? [] 
+                    : [{ channelId: channel, fieldName: targetField }]
+                )
+              }
             : m
         );
       } else {
         return [...prev, { 
           masterField, 
-          channelMappings: { [channel]: targetField }
+          channelMappings: [{ channelId: channel, fieldName: targetField }],
+          transformationRules: [],
+          priority: 1,
+          required: false
         }];
       }
     });
@@ -248,7 +327,7 @@ const TemplateCreationWizard: React.FC<TemplateCreationWizardProps> = ({
   };
 
   const renderStepContent = () => {
-    switch (wizardSteps[currentStep].id) {
+    switch (currentWizardSteps[currentStep]?.id) {
       case 'type':
         return (
           <div className="space-y-6">
@@ -487,7 +566,7 @@ const TemplateCreationWizard: React.FC<TemplateCreationWizardProps> = ({
                               {formData.targetChannels?.map(channelId => {
                                 const channel = availableChannels.find(c => c.id === channelId);
                                 const channelFields = getChannelFields(channelId);
-                                const currentMapping = fieldMappings.find(m => m.masterField === masterFieldId)?.channelMappings[channelId];
+                                const currentMapping = fieldMappings.find(m => m.masterField === masterFieldId)?.channelMappings.find(cm => cm.channelId === channelId)?.fieldName;
                                 
                                 return (
                                   <div key={channelId} className="border border-gray-200 dark:border-gray-700 rounded p-3">
@@ -536,18 +615,18 @@ const TemplateCreationWizard: React.FC<TemplateCreationWizardProps> = ({
                       <div className="space-y-2">
                         {fieldMappings.map(mapping => {
                           const masterField = masterFields.find(f => f.id === mapping.masterField);
-                          const mappingCount = Object.keys(mapping.channelMappings).length;
+                          const mappingCount = mapping.channelMappings.length;
                           
                           return (
                             <div key={mapping.masterField} className="text-sm text-green-800 dark:text-green-400">
                               <strong>{masterField?.name}</strong> mapped to {mappingCount} channel{mappingCount !== 1 ? 's' : ''}
                               <div className="ml-4 text-xs">
-                                {Object.entries(mapping.channelMappings).map(([channelId, targetField]) => {
-                                  const channel = availableChannels.find(c => c.id === channelId);
-                                  const channelFields = getChannelFields(channelId);
-                                  const targetFieldName = channelFields.find(f => f.id === targetField)?.name;
+                                {mapping.channelMappings.map(channelMapping => {
+                                  const channel = availableChannels.find(c => c.id === channelMapping.channelId);
+                                  const channelFields = getChannelFields(channelMapping.channelId);
+                                  const targetFieldName = channelFields.find(f => f.id === channelMapping.fieldName)?.name;
                                   return (
-                                    <div key={channelId}>
+                                    <div key={channelMapping.channelId}>
                                       {channel?.icon} {channel?.name}: {targetFieldName}
                                     </div>
                                   );
@@ -733,6 +812,451 @@ const TemplateCreationWizard: React.FC<TemplateCreationWizardProps> = ({
           </div>
         );
 
+      case 'ai-settings':
+        return (
+          <div className="space-y-6">
+            <div className="text-center mb-6">
+              <h2 className="text-title-lg font-semibold text-gray-900 dark:text-white mb-2">
+                🎨 AI Content Generation Settings
+              </h2>
+              <p className="text-theme-sm text-gray-500 dark:text-gray-400">
+                Configure AI-powered content generation rules for enhanced product descriptions
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {/* Content Generation Rules */}
+              <div className="space-y-4">
+                <h3 className="text-title-sm font-semibold text-gray-900 dark:text-white">
+                  Content Generation Rules
+                </h3>
+                
+                <div>
+                  <Label>Target Content Fields</Label>
+                  <div className="space-y-2">
+                    {['title', 'description', 'bullet_points', 'meta_description'].map((field) => (
+                      <label key={field} className="flex items-center gap-2">
+                        <input 
+                          type="checkbox" 
+                          className="rounded border-gray-300 text-brand-600 focus:ring-brand-500" 
+                          defaultChecked={field === 'description'}
+                        />
+                        <span className="text-theme-sm text-gray-900 dark:text-white capitalize">
+                          {field.replace('_', ' ')}
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <Label>AI Enhancement Level</Label>
+                  <select className="h-9 w-full rounded-md border border-gray-300 px-3 py-2 text-theme-sm focus:border-brand-500 focus:ring-2 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900">
+                    <option value="basic">Basic Enhancement</option>
+                    <option value="advanced">Advanced SEO Optimization</option>
+                    <option value="premium">Premium AI + Market Analysis</option>
+                  </select>
+                </div>
+
+                <div>
+                  <Label>Content Tone</Label>
+                  <select className="h-9 w-full rounded-md border border-gray-300 px-3 py-2 text-theme-sm focus:border-brand-500 focus:ring-2 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900">
+                    <option value="professional">Professional</option>
+                    <option value="friendly">Friendly</option>
+                    <option value="persuasive">Persuasive</option>
+                    <option value="technical">Technical</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* AI Configuration */}
+              <div className="space-y-4">
+                <h3 className="text-title-sm font-semibold text-gray-900 dark:text-white">
+                  AI Model Configuration
+                </h3>
+
+                <div>
+                  <Label>Target Keywords (SEO)</Label>
+                  <Input
+                    type="text"
+                    placeholder="e.g., wireless headphones, premium audio, noise cancelling"
+                    defaultValue={formData.aiSettings?.keywords || ''}
+                  />
+                  <p className="text-theme-xs text-gray-500 dark:text-gray-400 mt-1">
+                    Comma-separated keywords for SEO optimization
+                  </p>
+                </div>
+
+                <div>
+                  <Label>Content Template</Label>
+                  <textarea
+                    className="h-24 w-full rounded-md border border-gray-300 px-3 py-2 text-theme-sm focus:border-brand-500 focus:ring-2 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900"
+                    placeholder="Use {product_name}, {brand}, {features} as variables"
+                    defaultValue={formData.aiSettings?.template || 'Discover the amazing {product_name} by {brand}. {features}'}
+                    rows={4}
+                  />
+                </div>
+
+                <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
+                  <h4 className="text-theme-sm font-medium text-blue-900 dark:text-blue-300 mb-2">
+                    🚀 AI Enhancement Preview
+                  </h4>
+                  <div className="text-theme-xs text-blue-800 dark:text-blue-400 space-y-1">
+                    <div><strong>Original:</strong> &quot;Wireless headphones with good sound&quot;</div>
+                    <div><strong>AI Enhanced:</strong> &quot;Premium wireless headphones featuring advanced audio technology and superior comfort for all-day listening&quot;</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+
+      case 'category-setup':
+        return (
+          <div className="space-y-6">
+            <div className="text-center mb-6">
+              <h2 className="text-title-lg font-semibold text-gray-900 dark:text-white mb-2">
+                📂 Category Mapping Configuration
+              </h2>
+              <p className="text-theme-sm text-gray-500 dark:text-gray-400">
+                Set up intelligent category mapping across different sales channels
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {/* Master Category */}
+              <div className="space-y-4">
+                <h3 className="text-title-sm font-semibold text-gray-900 dark:text-white">
+                  Master Category Configuration
+                </h3>
+                
+                <div>
+                  <Label>Primary Category</Label>
+                  <select className="h-9 w-full rounded-md border border-gray-300 px-3 py-2 text-theme-sm focus:border-brand-500 focus:ring-2 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900">
+                    <option value="">Select primary category</option>
+                    <option value="electronics">Electronics</option>
+                    <option value="fashion">Fashion & Apparel</option>
+                    <option value="home">Home & Garden</option>
+                    <option value="sports">Sports & Outdoors</option>
+                    <option value="books">Books & Media</option>
+                  </select>
+                </div>
+
+                <div>
+                  <Label>Category Attributes</Label>
+                  <div className="space-y-2">
+                    {['Brand', 'Size', 'Color', 'Material', 'Age Group'].map((attr) => (
+                      <label key={attr} className="flex items-center gap-2">
+                        <input type="checkbox" className="rounded border-gray-300 text-brand-600 focus:ring-brand-500" />
+                        <span className="text-theme-sm text-gray-900 dark:text-white">{attr}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <Label>Auto-categorization Rules</Label>
+                  <textarea
+                    className="h-20 w-full rounded-md border border-gray-300 px-3 py-2 text-theme-sm focus:border-brand-500 focus:ring-2 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900"
+                    placeholder="If product_name contains 'phone' then Electronics > Mobile Phones"
+                    rows={3}
+                  />
+                </div>
+              </div>
+
+              {/* Channel Category Mapping */}
+              <div className="space-y-4">
+                <h3 className="text-title-sm font-semibold text-gray-900 dark:text-white">
+                  Channel-Specific Categories
+                </h3>
+
+                {['amazon', 'ebay', 'shopify'].map((channel) => (
+                  <div key={channel} className="border border-gray-200 dark:border-gray-700 rounded-lg p-4">
+                    <div className="flex items-center gap-2 mb-3">
+                      <span className="capitalize font-medium text-gray-900 dark:text-white">{channel}</span>
+                      <span className="text-xs bg-gray-100 dark:bg-gray-800 px-2 py-1 rounded text-gray-600 dark:text-gray-400">
+                        {channel === 'amazon' ? 'Browse Tree' : channel === 'ebay' ? 'Category ID' : 'Product Type'}
+                      </span>
+                    </div>
+                    <select className="h-8 w-full rounded-md border border-gray-300 px-2 py-1 text-theme-sm focus:border-brand-500 dark:border-gray-700 dark:bg-gray-900">
+                      <option value="">Select {channel} category</option>
+                      {channel === 'amazon' && (
+                        <>
+                          <option value="172282">Electronics &gt; Headphones</option>
+                          <option value="172541">Electronics &gt; Cell Phones</option>
+                        </>
+                      )}
+                      {channel === 'ebay' && (
+                        <>
+                          <option value="15032">Consumer Electronics</option>
+                          <option value="9355">Cell Phones &amp; Accessories</option>
+                        </>
+                      )}
+                      {channel === 'shopify' && (
+                        <>
+                          <option value="Electronics">Electronics</option>
+                          <option value="Accessories">Accessories</option>
+                        </>
+                      )}
+                    </select>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        );
+
+      case 'pricing-setup':
+        return (
+          <div className="space-y-6">
+            <div className="text-center mb-6">
+              <h2 className="text-title-lg font-semibold text-gray-900 dark:text-white mb-2">
+                💰 Pricing Strategy Configuration
+              </h2>
+              <p className="text-theme-sm text-gray-500 dark:text-gray-400">
+                Set up dynamic pricing rules and competitive strategies across channels
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {/* Pricing Strategy */}
+              <div className="space-y-4">
+                <h3 className="text-title-sm font-semibold text-gray-900 dark:text-white">
+                  Base Pricing Strategy
+                </h3>
+                
+                <div>
+                  <Label>Pricing Method</Label>
+                  <select className="h-9 w-full rounded-md border border-gray-300 px-3 py-2 text-theme-sm focus:border-brand-500 focus:ring-2 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900">
+                    <option value="markup">Cost + Markup %</option>
+                    <option value="competitive">Competitive Pricing</option>
+                    <option value="value">Value-Based Pricing</option>
+                    <option value="dynamic">Dynamic Market Pricing</option>
+                  </select>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label>Markup Percentage</Label>
+                    <Input
+                      type="number"
+                      placeholder="30"
+                      defaultValue="30"
+                      min="0"
+                      max="500"
+                    />
+                  </div>
+                  <div>
+                    <Label>Minimum Margin %</Label>
+                    <Input
+                      type="number"
+                      placeholder="15"
+                      defaultValue="15"
+                      min="0"
+                      max="100"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <Label>Bulk Pricing Tiers</Label>
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2 text-theme-sm">
+                      <span className="w-20">Qty 1-10:</span>
+                      <span className="w-16">100%</span>
+                      <span className="text-gray-500">of base price</span>
+                    </div>
+                    <div className="flex items-center gap-2 text-theme-sm">
+                      <span className="w-20">Qty 11-50:</span>
+                      <Input type="number" className="w-16 h-8" defaultValue="95" />
+                      <span className="text-gray-500">% of base price</span>
+                    </div>
+                    <div className="flex items-center gap-2 text-theme-sm">
+                      <span className="w-20">Qty 50+:</span>
+                      <Input type="number" className="w-16 h-8" defaultValue="90" />
+                      <span className="text-gray-500">% of base price</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Channel-Specific Pricing */}
+              <div className="space-y-4">
+                <h3 className="text-title-sm font-semibold text-gray-900 dark:text-white">
+                  Channel-Specific Adjustments
+                </h3>
+
+                {[
+                  { id: 'amazon', name: 'Amazon', fee: '15%' },
+                  { id: 'ebay', name: 'eBay', fee: '12%' },
+                  { id: 'shopify', name: 'Shopify', fee: '3%' }
+                ].map((channel) => (
+                  <div key={channel.id} className="border border-gray-200 dark:border-gray-700 rounded-lg p-4">
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium text-gray-900 dark:text-white">{channel.name}</span>
+                        <span className="text-xs bg-red-100 dark:bg-red-900/20 text-red-600 dark:text-red-400 px-2 py-1 rounded">
+                          {channel.fee} fees
+                        </span>
+                      </div>
+                      <label className="flex items-center gap-2">
+                        <input type="checkbox" className="rounded border-gray-300 text-brand-600 focus:ring-brand-500" defaultChecked />
+                        <span className="text-theme-xs text-gray-600 dark:text-gray-400">Auto-adjust</span>
+                      </label>
+                    </div>
+                    
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <Label>Price Adjustment %</Label>
+                        <Input
+                          type="number"
+                          defaultValue={channel.id === 'amazon' ? '5' : channel.id === 'ebay' ? '3' : '0'}
+                          className="h-8"
+                        />
+                      </div>
+                      <div>
+                        <Label>Competitive Buffer</Label>
+                        <select className="h-8 w-full rounded-md border border-gray-300 px-2 py-1 text-theme-sm focus:border-brand-500 dark:border-gray-700 dark:bg-gray-900">
+                          <option value="match">Match lowest</option>
+                          <option value="below1">$1 below</option>
+                          <option value="above1">$1 above</option>
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        );
+
+      case 'validation-setup':
+        return (
+          <div className="space-y-6">
+            <div className="text-center mb-6">
+              <h2 className="text-title-lg font-semibold text-gray-900 dark:text-white mb-2">
+                ✅ Validation Rules & Compliance
+              </h2>
+              <p className="text-theme-sm text-gray-500 dark:text-gray-400">
+                Set up data validation rules and ensure channel compliance requirements
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {/* Field Validation Rules */}
+              <div className="space-y-4">
+                <h3 className="text-title-sm font-semibold text-gray-900 dark:text-white">
+                  Field Validation Rules
+                </h3>
+                
+                <div className="space-y-3">
+                  {[
+                    { field: 'Product Title', rule: 'Length 10-200 chars', channel: 'Amazon' },
+                    { field: 'Description', rule: 'Required, max 5000 chars', channel: 'All' },
+                    { field: 'Price', rule: 'Must be > $0.01', channel: 'All' },
+                    { field: 'SKU', rule: 'Unique, alphanumeric', channel: 'All' }
+                  ].map((validation, index) => (
+                    <div key={index} className="flex items-center justify-between p-3 border border-gray-200 dark:border-gray-700 rounded-lg">
+                      <div>
+                        <div className="font-medium text-gray-900 dark:text-white text-theme-sm">
+                          {validation.field}
+                        </div>
+                        <div className="text-theme-xs text-gray-500 dark:text-gray-400">
+                          {validation.rule}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <span className="text-theme-xs text-gray-500 dark:text-gray-400">
+                          {validation.channel}
+                        </span>
+                        <input type="checkbox" className="rounded border-gray-300 text-brand-600 focus:ring-brand-500" defaultChecked />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                <div>
+                  <Label>Custom Validation Rule</Label>
+                  <textarea
+                    className="h-20 w-full rounded-md border border-gray-300 px-3 py-2 text-theme-sm focus:border-brand-500 focus:ring-2 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900"
+                    placeholder="if (price < cost * 1.1) then error('Price too low')"
+                    rows={3}
+                  />
+                </div>
+              </div>
+
+              {/* Channel Compliance */}
+              <div className="space-y-4">
+                <h3 className="text-title-sm font-semibold text-gray-900 dark:text-white">
+                  Channel Compliance Requirements
+                </h3>
+
+                {[
+                  { 
+                    channel: 'Amazon', 
+                    requirements: ['UPC/EAN required', 'Category approval needed', 'Image > 1000px'],
+                    color: 'orange'
+                  },
+                  { 
+                    channel: 'eBay', 
+                    requirements: ['PayPal required', 'Return policy mandatory', 'Item specifics'],
+                    color: 'blue'
+                  },
+                  { 
+                    channel: 'Shopify', 
+                    requirements: ['SEO title < 70 chars', 'Alt text required', 'Meta description'],
+                    color: 'green'
+                  }
+                ].map((compliance) => (
+                  <div key={compliance.channel} className="border border-gray-200 dark:border-gray-700 rounded-lg p-4">
+                    <div className="flex items-center gap-2 mb-3">
+                      <span className="font-medium text-gray-900 dark:text-white">{compliance.channel}</span>
+                      <span className={
+                        compliance.color === 'orange' 
+                          ? `text-xs bg-orange-100 dark:bg-orange-900/20 text-orange-600 dark:text-orange-400 px-2 py-1 rounded`
+                          : compliance.color === 'blue'
+                          ? `text-xs bg-blue-100 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 px-2 py-1 rounded`
+                          : `text-xs bg-green-100 dark:bg-green-900/20 text-green-600 dark:text-green-400 px-2 py-1 rounded`
+                      }>
+                        Compliance Check
+                      </span>
+                    </div>
+                    
+                    <div className="space-y-2">
+                      {compliance.requirements.map((req, index) => (
+                        <label key={index} className="flex items-center gap-2">
+                          <input type="checkbox" className="rounded border-gray-300 text-brand-600 focus:ring-brand-500" defaultChecked />
+                          <span className="text-theme-sm text-gray-900 dark:text-white">{req}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+
+                <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-4">
+                  <h4 className="text-theme-sm font-medium text-yellow-900 dark:text-yellow-300 mb-2">
+                    ⚠️ Validation Actions
+                  </h4>
+                  <div className="space-y-2">
+                    <label className="flex items-center gap-2">
+                      <input type="radio" name="validation-action" className="text-brand-600 focus:ring-brand-500" defaultChecked />
+                      <span className="text-theme-sm text-yellow-800 dark:text-yellow-400">Block sync on validation error</span>
+                    </label>
+                    <label className="flex items-center gap-2">
+                      <input type="radio" name="validation-action" className="text-brand-600 focus:ring-brand-500" />
+                      <span className="text-theme-sm text-yellow-800 dark:text-yellow-400">Warn but allow sync</span>
+                    </label>
+                    <label className="flex items-center gap-2">
+                      <input type="radio" name="validation-action" className="text-brand-600 focus:ring-brand-500" />
+                      <span className="text-theme-sm text-yellow-800 dark:text-yellow-400">Auto-fix when possible</span>
+                    </label>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+
       default:
         return null;
     }
@@ -804,10 +1328,25 @@ const TemplateCreationWizard: React.FC<TemplateCreationWizardProps> = ({
 
   return (
     <div className="space-y-6">
+      {/* Advanced Builder Header */}
+      <div className="text-center space-y-3 pb-6 border-b border-gray-200 dark:border-gray-700">
+        <div className="inline-flex items-center gap-2 px-4 py-2 bg-purple-100 dark:bg-purple-900/30 text-purple-800 dark:text-purple-200 rounded-full text-sm font-medium">
+          <span className="w-2 h-2 bg-purple-600 rounded-full"></span>
+          Advanced Template Builder
+        </div>
+        <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
+          {template ? 'Edit Advanced Template' : 'Create Advanced Template'}
+        </h1>
+        <p className="text-gray-600 dark:text-gray-300 max-w-2xl mx-auto">
+          Build complex templates with advanced field mappings, transformations, and custom rules. 
+          This tool provides maximum flexibility for power users who need complete control over their channel integrations.
+        </p>
+      </div>
+
       {/* Progress Steps */}
       <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-6">
         <div className="flex items-center justify-between mb-6">
-          {wizardSteps.map((step, index) => (
+          {currentWizardSteps.map((step, index) => (
             <div key={step.id} className="flex items-center">
               <div
                 className={`w-8 h-8 rounded-full flex items-center justify-center text-theme-sm font-medium ${
@@ -820,7 +1359,7 @@ const TemplateCreationWizard: React.FC<TemplateCreationWizardProps> = ({
               >
                 {index < currentStep ? '✓' : index + 1}
               </div>
-              {index < wizardSteps.length - 1 && (
+              {index < currentWizardSteps.length - 1 && (
                 <div
                   className={`w-16 h-1 mx-2 ${
                     index < currentStep ? 'bg-green-500' : 'bg-gray-200 dark:bg-gray-700'
@@ -833,10 +1372,10 @@ const TemplateCreationWizard: React.FC<TemplateCreationWizardProps> = ({
 
         <div className="text-center">
           <h3 className="text-title-sm font-semibold text-gray-900 dark:text-white">
-            {wizardSteps[currentStep].title}
+            {currentWizardSteps[currentStep].title}
           </h3>
           <p className="text-theme-sm text-gray-500 dark:text-gray-400 mt-1">
-            {wizardSteps[currentStep].description}
+            {currentWizardSteps[currentStep].description}
           </p>
         </div>
       </div>
@@ -856,7 +1395,7 @@ const TemplateCreationWizard: React.FC<TemplateCreationWizardProps> = ({
         </Button>
 
         <div className="flex items-center gap-3">
-          {currentStep < wizardSteps.length - 1 ? (
+          {currentStep < currentWizardSteps.length - 1 ? (
             <Button onClick={handleNext}>
               Continue
             </Button>

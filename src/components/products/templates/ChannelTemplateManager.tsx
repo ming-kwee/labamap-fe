@@ -4,6 +4,9 @@ import Button from "@/components/ui/button/Button";
 import TemplateCreationWizard from "./TemplateCreationWizard";
 import TemplatesList from "./TemplatesList";
 import TemplatePreview from "./TemplatePreview";
+import TemplateEntrySelector, { TemplateCreationPath } from "./TemplateEntrySelector";
+import QuickStartTemplateSelector from "./QuickStartTemplateSelector";
+import GuidedSetupWizard from "./GuidedSetupWizard";
 
 // Template interfaces
 export interface ChannelTemplate {
@@ -23,6 +26,14 @@ export interface ChannelTemplate {
   
   // Content generation rules
   contentRules?: ContentRule[];
+  
+  // AI Settings for content generation
+  aiSettings?: {
+    keywords?: string;
+    template?: string;
+    enhancementLevel?: string;
+    contentTone?: string;
+  };
   
   // Validation rules
   validationRules?: ValidationRule[];
@@ -75,7 +86,7 @@ export interface PricingRule {
 }
 
 const ChannelTemplateManager: React.FC = () => {
-  const [view, setView] = useState<'list' | 'create' | 'preview'>('list');
+  const [view, setView] = useState<'list' | 'entry-selector' | 'quick-start' | 'guided-setup' | 'advanced-builder' | 'preview'>('list');
   const [selectedTemplate, setSelectedTemplate] = useState<ChannelTemplate | null>(null);
   const [templates, setTemplates] = useState<ChannelTemplate[]>([]);
 
@@ -140,7 +151,27 @@ const ChannelTemplateManager: React.FC = () => {
   }, []);
 
   const handleCreateTemplate = () => {
-    setView('create');
+    setView('entry-selector');
+    setSelectedTemplate(null);
+  };
+
+  const handleSelectCreationPath = (path: TemplateCreationPath) => {
+    setSelectedTemplate(null);
+    switch (path) {
+      case 'quick-start':
+        setView('quick-start');
+        break;
+      case 'guided-setup':
+        setView('guided-setup');
+        break;
+      case 'advanced-builder':
+        setView('advanced-builder');
+        break;
+    }
+  };
+
+  const handleBackToEntrySelector = () => {
+    setView('entry-selector');
     setSelectedTemplate(null);
   };
 
@@ -151,7 +182,7 @@ const ChannelTemplateManager: React.FC = () => {
 
   const handleEditTemplate = (template: ChannelTemplate) => {
     setSelectedTemplate(template);
-    setView('create');
+    setView('advanced-builder');
   };
 
   const handleSaveTemplate = (template: ChannelTemplate) => {
@@ -206,7 +237,10 @@ const ChannelTemplateManager: React.FC = () => {
           <div className="flex items-center gap-2">
             <span className="text-theme-sm text-gray-500 dark:text-gray-400">
               {view === 'list' ? 'Template Library' : 
-               view === 'create' ? (selectedTemplate ? 'Edit Template' : 'Create New Template') : 
+               view === 'entry-selector' ? 'Choose Creation Method' :
+               view === 'quick-start' ? 'Quick Start Templates' :
+               view === 'guided-setup' ? 'Guided Setup Wizard' :
+               view === 'advanced-builder' ? (selectedTemplate ? 'Edit Template' : 'Advanced Template Builder') : 
                'Template Preview'}
             </span>
           </div>
@@ -235,7 +269,25 @@ const ChannelTemplateManager: React.FC = () => {
         />
       )}
 
-      {view === 'create' && (
+      {view === 'entry-selector' && (
+        <TemplateEntrySelector onSelectPath={handleSelectCreationPath} />
+      )}
+
+      {view === 'quick-start' && (
+        <QuickStartTemplateSelector
+          onSelectTemplate={handleSaveTemplate}
+          onBack={handleBackToEntrySelector}
+        />
+      )}
+
+      {view === 'guided-setup' && (
+        <GuidedSetupWizard
+          onSave={handleSaveTemplate}
+          onCancel={handleBackToEntrySelector}
+        />
+      )}
+
+      {view === 'advanced-builder' && (
         <TemplateCreationWizard
           template={selectedTemplate}
           onSave={handleSaveTemplate}
