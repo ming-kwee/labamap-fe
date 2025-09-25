@@ -19,38 +19,16 @@ interface WizardStep {
   description: string;
 }
 
-// Dynamic wizard steps based on template type
+// Streamlined wizard steps - removed unnecessary "Template Type" step
 const getWizardSteps = (): WizardStep[] => {
-  const baseSteps = [
-    { id: 'type', title: 'Template Type', description: 'Select the type of template to create' },
-    { id: 'basic', title: 'Basic Information', description: 'Configure template name and details' }
-  ];
-
-  // All templates now use the advanced builder flow
   return [
-    ...baseSteps,
+    { id: 'basic', title: 'Basic Information', description: 'Configure template name and details' },
     { id: 'advanced-mapping', title: 'Advanced Mappings', description: 'Create field transformations, validation, AI content, pricing & category mappings' },
     { id: 'review', title: 'Review & Save', description: 'Review your advanced template configuration' }
   ];
 };
 
-interface TemplateType {
-  id: string;
-  title: string;
-  description: string;
-  icon: string;
-  featured?: boolean;
-}
-
-const templateTypes: TemplateType[] = [
-  {
-    id: 'advanced-builder',
-    title: 'Advanced Template Builder',
-    description: 'Complete solution: field mapping, validation, AI content, pricing strategies & transformations',
-    icon: '🚀',
-    featured: true
-  }
-];
+// Template type is now fixed to 'advanced-builder' - no selection needed
 
 const availableChannels = [
   { id: 'amazon', name: 'Amazon', icon: '📦' },
@@ -126,11 +104,6 @@ const TemplateCreationWizard: React.FC<TemplateCreationWizardProps> = ({
 
   const handleFieldChange = (field: string, value: unknown) => {
     setFormData(prev => ({ ...prev, [field]: value }));
-    
-    // Reset to first step when type changes (though we now only have one type)
-    if (field === 'type' && typeof value === 'string') {
-      setCurrentStep(0);
-    }
   };
 
   const handleMasterFieldToggle = (fieldId: string) => {
@@ -235,80 +208,6 @@ const TemplateCreationWizard: React.FC<TemplateCreationWizardProps> = ({
 
   const renderStepContent = () => {
     switch (currentWizardSteps[currentStep]?.id) {
-      case 'type':
-        return (
-          <div className="space-y-6">
-            <div className="text-center mb-6">
-              <h2 className="text-title-lg font-semibold text-gray-900 dark:text-white mb-2">
-                CREATE NEW TEMPLATE
-              </h2>
-              <p className="text-theme-sm text-gray-500 dark:text-gray-400">
-                Choose the type of template you want to create
-              </p>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {templateTypes.map((type) => (
-                <button
-                  key={type.id}
-                  onClick={() => handleFieldChange('type', type.id)}
-                  className={`p-6 rounded-lg border-2 transition-all text-left relative ${
-                    formData.type === type.id
-                      ? 'border-brand-500 bg-brand-50 dark:bg-brand-900/20'
-                      : type.featured
-                      ? 'border-purple-300 bg-gradient-to-br from-purple-50 to-blue-50 dark:from-purple-900/20 dark:to-blue-900/20 hover:border-purple-400'
-                      : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600'
-                  }`}
-                >
-                  {type.featured && (
-                    <div className="absolute -top-2 -right-2 bg-purple-500 text-white text-xs px-2 py-1 rounded-full font-medium">
-                      NEW
-                    </div>
-                  )}
-                  <div className="text-3xl mb-3">{type.icon}</div>
-                  <h3 className={`font-semibold mb-2 ${
-                    type.featured 
-                      ? 'text-purple-900 dark:text-purple-300' 
-                      : 'text-gray-900 dark:text-white'
-                  }`}>
-                    {type.title}
-                  </h3>
-                  <p className={`text-theme-sm ${
-                    type.featured 
-                      ? 'text-purple-700 dark:text-purple-400' 
-                      : 'text-gray-500 dark:text-gray-400'
-                  }`}>
-                    {type.description}
-                  </p>
-                  {type.featured && (
-                    <div className="mt-3 text-xs text-purple-600 dark:text-purple-400 font-medium">
-                      ✨ Real-world examples: Amazon, eBay, Shopify, Facebook
-                    </div>
-                  )}
-                </button>
-              ))}
-            </div>
-
-            {formData.type && (
-              <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
-                <div className="flex items-start gap-3">
-                  <div className="text-blue-500 text-2xl">
-                    {templateTypes.find(t => t.id === formData.type)?.icon}
-                  </div>
-                  <div>
-                    <h4 className="text-theme-sm font-medium text-blue-900 dark:text-blue-300 mb-1">
-                      Selected: {templateTypes.find(t => t.id === formData.type)?.title}
-                    </h4>
-                    <p className="text-theme-xs text-blue-800 dark:text-blue-400">
-                      {templateTypes.find(t => t.id === formData.type)?.description}
-                    </p>
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-        );
-
       case 'basic':
         return (
           <div className="space-y-6">
@@ -1017,7 +916,7 @@ const TemplateCreationWizard: React.FC<TemplateCreationWizardProps> = ({
                           Type
                         </span>
                         <div className="text-theme-sm font-medium text-gray-900 dark:text-white">
-                          {templateTypes.find(t => t.id === formData.type)?.title}
+                          Advanced Template Builder
                         </div>
                       </div>
                       <div>
