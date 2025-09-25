@@ -20,77 +20,18 @@ interface WizardStep {
 }
 
 // Dynamic wizard steps based on template type
-const getWizardSteps = (templateType: string): WizardStep[] => {
+const getWizardSteps = (): WizardStep[] => {
   const baseSteps = [
     { id: 'type', title: 'Template Type', description: 'Select the type of template to create' },
     { id: 'basic', title: 'Basic Information', description: 'Configure template name and details' }
   ];
 
-  switch (templateType) {
-    case 'field-mapping':
-      return [
-        ...baseSteps,
-        { id: 'mapping', title: 'Field Mapping', description: 'Map master fields to channel fields' },
-        { id: 'rules', title: 'Transformation Rules', description: 'Define field transformation rules' },
-        { id: 'review', title: 'Review & Save', description: 'Review template configuration' }
-      ];
-
-    case 'advanced-mapping':
-      return [
-        ...baseSteps,
-        { id: 'advanced-mapping', title: 'Complex Mappings', description: 'Create advanced field transformations with Amazon validation, eBay pricing, etc.' },
-        { id: 'review', title: 'Review & Save', description: 'Review advanced template configuration' }
-      ];
-      
-    case 'content-generation':
-      return [
-        ...baseSteps,
-        { id: 'ai-settings', title: 'AI Configuration', description: 'Configure AI content generation settings' },
-        { id: 'content-rules', title: 'Content Rules', description: 'Define content generation parameters' },
-        { id: 'review', title: 'Review & Save', description: 'Review AI template configuration' }
-      ];
-      
-    case 'category-mapping':
-      return [
-        ...baseSteps,
-        { id: 'category-setup', title: 'Category Mapping', description: 'Map product categories to channel taxonomies' },
-        { id: 'category-rules', title: 'Category Rules', description: 'Define category mapping rules' },
-        { id: 'review', title: 'Review & Save', description: 'Review category template' }
-      ];
-      
-    case 'pricing-strategy':
-      return [
-        ...baseSteps,
-        { id: 'pricing-setup', title: 'Pricing Strategy', description: 'Configure dynamic pricing rules' },
-        { id: 'pricing-rules', title: 'Pricing Rules', description: 'Define pricing calculations and conditions' },
-        { id: 'review', title: 'Review & Save', description: 'Review pricing template' }
-      ];
-      
-    case 'validation-rules':
-      return [
-        ...baseSteps,
-        { id: 'validation-setup', title: 'Validation Rules', description: 'Configure data validation rules' },
-        { id: 'compliance', title: 'Compliance Settings', description: 'Define compliance and quality checks' },
-        { id: 'review', title: 'Review & Save', description: 'Review validation template' }
-      ];
-      
-    case 'complete-channel':
-      return [
-        ...baseSteps,
-        { id: 'field-mapping', title: 'Field Mapping', description: 'Configure field mappings' },
-        { id: 'content-ai', title: 'AI Content', description: 'Set up AI content generation' },
-        { id: 'pricing', title: 'Pricing Strategy', description: 'Configure pricing rules' },
-        { id: 'validation', title: 'Validation & Compliance', description: 'Set up validation rules' },
-        { id: 'review', title: 'Review & Save', description: 'Review complete template' }
-      ];
-      
-    default:
-      return [
-        ...baseSteps,
-        { id: 'configuration', title: 'Configuration', description: 'Configure template settings' },
-        { id: 'review', title: 'Review & Save', description: 'Review template configuration' }
-      ];
-  }
+  // All templates now use the advanced builder flow
+  return [
+    ...baseSteps,
+    { id: 'advanced-mapping', title: 'Advanced Mappings', description: 'Create field transformations, validation, AI content, pricing & category mappings' },
+    { id: 'review', title: 'Review & Save', description: 'Review your advanced template configuration' }
+  ];
 };
 
 interface TemplateType {
@@ -103,47 +44,11 @@ interface TemplateType {
 
 const templateTypes: TemplateType[] = [
   {
-    id: 'field-mapping',
-    title: 'Field Mapping Template',
-    description: 'Map master product fields to channel-specific fields',
-    icon: '🎯'
-  },
-  {
-    id: 'advanced-mapping',
-    title: 'Advanced Complex Mapping',
-    description: 'Amazon-style validation, eBay pricing, Shopify dimensions & Facebook rich content',
+    id: 'advanced-builder',
+    title: 'Advanced Template Builder',
+    description: 'Complete solution: field mapping, validation, AI content, pricing strategies & transformations',
     icon: '🚀',
     featured: true
-  },
-  {
-    id: 'content-generation',
-    title: 'Content Generation Template',
-    description: 'AI-powered content generation and optimization',
-    icon: '🎨'
-  },
-  {
-    id: 'category-mapping',
-    title: 'Category Mapping Template',
-    description: 'Map product categories across different channels',
-    icon: '📁'
-  },
-  {
-    id: 'pricing-strategy',
-    title: 'Pricing Strategy Template',
-    description: 'Dynamic pricing rules and strategies',
-    icon: '💰'
-  },
-  {
-    id: 'validation-rules',
-    title: 'Validation Rules Template',
-    description: 'Data validation and compliance rules',
-    icon: '✅'
-  },
-  {
-    id: 'complete-channel',
-    title: 'Complete Channel Template',
-    description: 'Comprehensive template with all features',
-    icon: '🚀'
   }
 ];
 
@@ -188,18 +93,19 @@ const TemplateCreationWizard: React.FC<TemplateCreationWizardProps> = ({
 }) => {
   const [currentStep, setCurrentStep] = useState(0);
   const [complexMappings, setComplexMappings] = useState<ComplexFieldMapping[]>([]);
-  const [currentWizardSteps, setCurrentWizardSteps] = useState<WizardStep[]>(
-    getWizardSteps('field-mapping')
+  const [currentWizardSteps] = useState<WizardStep[]>(
+    getWizardSteps()
   );
   
-  const [formData, setFormData] = useState<Partial<ChannelTemplate>>({
+  const [formData, setFormData] = useState<Partial<ChannelTemplate> & { activeAdvancedTab?: string }>({
     name: template?.name || '',
-    type: template?.type || 'field-mapping',
+    type: template?.type || 'advanced-builder',
     category: template?.category || '',
     targetChannels: template?.targetChannels || [],
     description: template?.description || '',
     isActive: template?.isActive ?? true,
-    fieldMappings: template?.fieldMappings || []
+    fieldMappings: template?.fieldMappings || [],
+    activeAdvancedTab: 'mappings'
   });
 
   // State for actual field mappings
@@ -221,10 +127,9 @@ const TemplateCreationWizard: React.FC<TemplateCreationWizardProps> = ({
   const handleFieldChange = (field: string, value: unknown) => {
     setFormData(prev => ({ ...prev, [field]: value }));
     
-    // Update wizard steps when template type changes
+    // Reset to first step when type changes (though we now only have one type)
     if (field === 'type' && typeof value === 'string') {
-      setCurrentWizardSteps(getWizardSteps(value));
-      setCurrentStep(0); // Reset to first step when type changes
+      setCurrentStep(0);
     }
   };
 
@@ -314,7 +219,7 @@ const TemplateCreationWizard: React.FC<TemplateCreationWizardProps> = ({
     const templateData: ChannelTemplate = {
       id: template?.id || '',
       name: formData.name || '',
-      type: formData.type || 'field-mapping',
+      type: 'advanced-builder',
       category: formData.category || '',
       targetChannels: formData.targetChannels || [],
       description: formData.description || '',
@@ -323,7 +228,7 @@ const TemplateCreationWizard: React.FC<TemplateCreationWizardProps> = ({
       isActive: formData.isActive || true,
       usageCount: template?.usageCount || 0,
       fieldMappings: fieldMappings, // Save the actual field mappings created by user
-      complexMappings: formData.type === 'advanced-mapping' ? complexMappings : undefined // Save complex mappings for advanced templates
+      complexMappings: complexMappings // Save complex mappings for all templates
     };
     onSave(templateData);
   };
@@ -481,7 +386,7 @@ const TemplateCreationWizard: React.FC<TemplateCreationWizardProps> = ({
           </div>
         );
 
-      case 'mapping':
+      case 'unused-mapping':
         return (
           <div className="space-y-6">
             <div className="text-center mb-6">
@@ -690,43 +595,323 @@ const TemplateCreationWizard: React.FC<TemplateCreationWizardProps> = ({
           <div className="space-y-6">
             <div className="text-center mb-6">
               <h2 className="text-title-lg font-semibold text-gray-900 dark:text-white mb-2">
-                🚀 ADVANCED COMPLEX MAPPING
+                🚀 ADVANCED TEMPLATE BUILDER
               </h2>
               <p className="text-theme-sm text-gray-500 dark:text-gray-400">
-                Create sophisticated field transformations with Amazon validation, eBay pricing, Shopify dimensions & Facebook rich content
+                Complete solution: field transformations, AI content generation, dynamic pricing & validation rules
               </p>
             </div>
 
-            <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
-              <MappingBuilder
-                availableSourceFields={sampleSourceFields}
-                availableTargetFields={sampleTargetFields}
-                onSave={(mappings) => {
-                  setComplexMappings(mappings);
-                  // Automatically move to next step after saving mappings
-                  handleNext();
-                }}
-                onCancel={() => {
-                  // Stay on current step, user can use Previous button if needed
-                }}
-              />
+            {/* Tab Navigation */}
+            <div className="border-b border-gray-200 dark:border-gray-700">
+              <nav className="flex space-x-8">
+                {[
+                  { id: 'mappings', name: 'Field Mappings', icon: '🎯' },
+                  { id: 'ai-content', name: 'AI Content', icon: '🎨' },
+                  { id: 'pricing', name: 'Pricing Strategy', icon: '💰' }
+                ].map((tab) => (
+                  <button
+                    key={tab.id}
+                    className={`whitespace-nowrap py-2 px-1 border-b-2 font-medium text-sm flex items-center gap-2 ${
+                      (formData.activeAdvancedTab || 'mappings') === tab.id
+                        ? 'border-brand-500 text-brand-600'
+                        : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                    }`}
+                    onClick={() => setFormData(prev => ({ ...prev, activeAdvancedTab: tab.id }))}
+                  >
+                    <span>{tab.icon}</span>
+                    {tab.name}
+                  </button>
+                ))}
+              </nav>
             </div>
 
-            {complexMappings.length > 0 && (
-              <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg p-4">
-                <h4 className="text-theme-sm font-medium text-green-900 dark:text-green-300 mb-3">
-                  ✅ Complex Mappings Created
-                </h4>
-                <div className="text-sm text-green-800 dark:text-green-400">
-                  Successfully created {complexMappings.length} advanced field mapping{complexMappings.length !== 1 ? 's' : ''}.
-                  You can continue to review your template configuration.
+            {/* Tab Content */}
+            <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
+              
+              {/* Field Mappings Tab */}
+              {(!formData.activeAdvancedTab || formData.activeAdvancedTab === 'mappings') && (
+                <MappingBuilder
+                  availableSourceFields={sampleSourceFields}
+                  availableTargetFields={sampleTargetFields}
+                  onSave={(mappings) => {
+                    setComplexMappings(mappings);
+                    // Switch to AI Content tab after mappings are saved
+                    setFormData(prev => ({ ...prev, activeAdvancedTab: 'ai-content' }));
+                  }}
+                  onCancel={() => {
+                    // Stay on current step, user can use Previous button if needed
+                  }}
+                />
+              )}
+
+              {/* AI Content Generation Tab */}
+              {formData.activeAdvancedTab === 'ai-content' && (
+                <div className="p-6 space-y-6">
+                  <div className="text-center mb-6">
+                    <h3 className="text-title-md font-semibold text-gray-900 dark:text-white mb-2">
+                      🎨 AI Content Generation
+                    </h3>
+                    <p className="text-theme-sm text-gray-500 dark:text-gray-400">
+                      Configure AI-powered content generation rules for enhanced product descriptions
+                    </p>
+                  </div>
+
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    {/* Content Generation Rules */}
+                    <div className="space-y-4">
+                      <h4 className="text-title-sm font-semibold text-gray-900 dark:text-white">
+                        Content Generation Rules
+                      </h4>
+                      
+                      <div>
+                        <Label>Target Content Fields</Label>
+                        <div className="space-y-2">
+                          {['title', 'description', 'bullet_points', 'meta_description'].map((field) => (
+                            <label key={field} className="flex items-center gap-2">
+                              <input 
+                                type="checkbox" 
+                                className="rounded border-gray-300 text-brand-600 focus:ring-brand-500" 
+                                defaultChecked={field === 'description'}
+                              />
+                              <span className="text-theme-sm text-gray-900 dark:text-white capitalize">
+                                {field.replace('_', ' ')}
+                              </span>
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div>
+                        <Label>AI Enhancement Level</Label>
+                        <select className="h-9 w-full rounded-md border border-gray-300 px-3 py-2 text-theme-sm focus:border-brand-500 focus:ring-2 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900">
+                          <option value="basic">Basic Enhancement</option>
+                          <option value="advanced">Advanced SEO Optimization</option>
+                          <option value="premium">Premium AI + Market Analysis</option>
+                        </select>
+                      </div>
+
+                      <div>
+                        <Label>Content Tone</Label>
+                        <select className="h-9 w-full rounded-md border border-gray-300 px-3 py-2 text-theme-sm focus:border-brand-500 focus:ring-2 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900">
+                          <option value="professional">Professional</option>
+                          <option value="friendly">Friendly</option>
+                          <option value="persuasive">Persuasive</option>
+                          <option value="technical">Technical</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    {/* AI Configuration */}
+                    <div className="space-y-4">
+                      <h4 className="text-title-sm font-semibold text-gray-900 dark:text-white">
+                        AI Model Configuration
+                      </h4>
+
+                      <div>
+                        <Label>Target Keywords (SEO)</Label>
+                        <Input
+                          type="text"
+                          placeholder="e.g., wireless headphones, premium audio, noise cancelling"
+                          defaultValue={formData.aiSettings?.keywords || ''}
+                        />
+                        <p className="text-theme-xs text-gray-500 dark:text-gray-400 mt-1">
+                          Comma-separated keywords for SEO optimization
+                        </p>
+                      </div>
+
+                      <div>
+                        <Label>Content Template</Label>
+                        <textarea
+                          className="h-24 w-full rounded-md border border-gray-300 px-3 py-2 text-theme-sm focus:border-brand-500 focus:ring-2 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900"
+                          placeholder="Use {product_name}, {brand}, {features} as variables"
+                          defaultValue={formData.aiSettings?.template || 'Discover the amazing {product_name} by {brand}. {features}'}
+                          rows={4}
+                        />
+                      </div>
+
+                      <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
+                        <h5 className="text-theme-sm font-medium text-blue-900 dark:text-blue-300 mb-2">
+                          🚀 AI Enhancement Preview
+                        </h5>
+                        <div className="text-theme-xs text-blue-800 dark:text-blue-400 space-y-1">
+                          <div><strong>Original:</strong> &quot;Wireless headphones with good sound&quot;</div>
+                          <div><strong>AI Enhanced:</strong> &quot;Premium wireless headphones featuring advanced audio technology and superior comfort for all-day listening&quot;</div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex justify-end gap-3 pt-4 border-t border-gray-200 dark:border-gray-700">
+                    <Button
+                      variant="outline"
+                      onClick={() => setFormData(prev => ({ ...prev, activeAdvancedTab: 'mappings' }))}
+                    >
+                      ← Back to Mappings
+                    </Button>
+                    <Button
+                      onClick={() => setFormData(prev => ({ ...prev, activeAdvancedTab: 'pricing' }))}
+                    >
+                      Continue to Pricing →
+                    </Button>
+                  </div>
                 </div>
+              )}
+
+              {/* Dynamic Pricing Tab */}
+              {formData.activeAdvancedTab === 'pricing' && (
+                <div className="p-6 space-y-6">
+                  <div className="text-center mb-6">
+                    <h3 className="text-title-md font-semibold text-gray-900 dark:text-white mb-2">
+                      💰 Dynamic Pricing Strategy
+                    </h3>
+                    <p className="text-theme-sm text-gray-500 dark:text-gray-400">
+                      Set up dynamic pricing rules and competitive strategies across channels
+                    </p>
+                  </div>
+
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    {/* Pricing Strategy */}
+                    <div className="space-y-4">
+                      <h4 className="text-title-sm font-semibold text-gray-900 dark:text-white">
+                        Base Pricing Strategy
+                      </h4>
+                      
+                      <div>
+                        <Label>Pricing Method</Label>
+                        <select className="h-9 w-full rounded-md border border-gray-300 px-3 py-2 text-theme-sm focus:border-brand-500 focus:ring-2 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900">
+                          <option value="markup">Cost + Markup %</option>
+                          <option value="competitive">Competitive Pricing</option>
+                          <option value="value">Value-Based Pricing</option>
+                          <option value="dynamic">Dynamic Market Pricing</option>
+                        </select>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <Label>Markup Percentage</Label>
+                          <Input
+                            type="number"
+                            placeholder="30"
+                            defaultValue="30"
+                            min="0"
+                            max="500"
+                          />
+                        </div>
+                        <div>
+                          <Label>Minimum Margin %</Label>
+                          <Input
+                            type="number"
+                            placeholder="15"
+                            defaultValue="15"
+                            min="0"
+                            max="100"
+                          />
+                        </div>
+                      </div>
+
+                      <div>
+                        <Label>Bulk Pricing Tiers</Label>
+                        <div className="space-y-2">
+                          <div className="flex items-center gap-2 text-theme-sm">
+                            <span className="w-20">Qty 1-10:</span>
+                            <span className="w-16">100%</span>
+                            <span className="text-gray-500">of base price</span>
+                          </div>
+                          <div className="flex items-center gap-2 text-theme-sm">
+                            <span className="w-20">Qty 11-50:</span>
+                            <Input type="number" className="w-16 h-8" defaultValue="95" />
+                            <span className="text-gray-500">% of base price</span>
+                          </div>
+                          <div className="flex items-center gap-2 text-theme-sm">
+                            <span className="w-20">Qty 50+:</span>
+                            <Input type="number" className="w-16 h-8" defaultValue="90" />
+                            <span className="text-gray-500">% of base price</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Channel-Specific Pricing */}
+                    <div className="space-y-4">
+                      <h4 className="text-title-sm font-semibold text-gray-900 dark:text-white">
+                        Channel-Specific Adjustments
+                      </h4>
+
+                      {[
+                        { id: 'amazon', name: 'Amazon', fee: '15%' },
+                        { id: 'ebay', name: 'eBay', fee: '12%' },
+                        { id: 'shopify', name: 'Shopify', fee: '3%' }
+                      ].map((channel) => (
+                        <div key={channel.id} className="border border-gray-200 dark:border-gray-700 rounded-lg p-4">
+                          <div className="flex items-center justify-between mb-3">
+                            <div className="flex items-center gap-2">
+                              <span className="font-medium text-gray-900 dark:text-white">{channel.name}</span>
+                              <span className="text-xs bg-red-100 dark:bg-red-900/20 text-red-600 dark:text-red-400 px-2 py-1 rounded">
+                                {channel.fee} fees
+                              </span>
+                            </div>
+                            <label className="flex items-center gap-2">
+                              <input type="checkbox" className="rounded border-gray-300 text-brand-600 focus:ring-brand-500" defaultChecked />
+                              <span className="text-theme-xs text-gray-600 dark:text-gray-400">Auto-adjust</span>
+                            </label>
+                          </div>
+                          
+                          <div className="grid grid-cols-2 gap-3">
+                            <div>
+                              <Label className="text-xs">Price Adjustment</Label>
+                              <Input type="number" placeholder="+5" className="h-8" />
+                            </div>
+                            <div>
+                              <Label className="text-xs">Competition Factor</Label>
+                              <select className="h-8 w-full text-xs rounded border border-gray-300 focus:border-brand-500 dark:border-gray-700 dark:bg-gray-900">
+                                <option value="match">Match lowest</option>
+                                <option value="beat">Beat by 5%</option>
+                                <option value="ignore">Ignore competition</option>
+                              </select>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="flex justify-between gap-3 pt-4 border-t border-gray-200 dark:border-gray-700">
+                    <Button
+                      variant="outline"
+                      onClick={() => setFormData(prev => ({ ...prev, activeAdvancedTab: 'ai-content' }))}
+                    >
+                      ← Back to AI Content
+                    </Button>
+                    <Button
+                      onClick={() => {
+                        // Move to next step after pricing is configured
+                        handleNext();
+                      }}
+                    >
+                      Complete Advanced Setup →
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Progress Indicators */}
+            <div className="flex justify-center gap-4 text-sm">
+              <div className={`flex items-center gap-2 ${complexMappings.length > 0 ? 'text-green-600' : 'text-gray-400'}`}>
+                {complexMappings.length > 0 ? '✅' : '⏳'} Field Mappings ({complexMappings.length})
               </div>
-            )}
+              <div className={`flex items-center gap-2 ${formData.aiSettings?.keywords ? 'text-green-600' : 'text-gray-400'}`}>
+                {formData.aiSettings?.keywords ? '✅' : '⏳'} AI Content Rules
+              </div>
+              <div className="flex items-center gap-2 text-green-600">
+                ✅ Pricing Strategy
+              </div>
+            </div>
           </div>
         );
 
-      case 'rules':
+      case 'unused-rules':
         return (
           <div className="space-y-6">
             <div className="text-center mb-6">
@@ -877,8 +1062,8 @@ const TemplateCreationWizard: React.FC<TemplateCreationWizardProps> = ({
                   </div>
                 )}
 
-                {/* Show Complex Mappings Summary for advanced-mapping templates */}
-                {formData.type === 'advanced-mapping' && complexMappings.length > 0 && (
+                {/* Show Complex Mappings Summary for advanced templates */}
+                {complexMappings.length > 0 && (
                   <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
                     <h3 className="text-title-sm font-semibold text-blue-900 dark:text-blue-300 mb-4">
                       🚀 Advanced Complex Mappings
@@ -905,7 +1090,7 @@ const TemplateCreationWizard: React.FC<TemplateCreationWizardProps> = ({
           </div>
         );
 
-      case 'ai-settings':
+      case 'unused-ai-settings':
         return (
           <div className="space-y-6">
             <div className="text-center mb-6">
@@ -1004,7 +1189,7 @@ const TemplateCreationWizard: React.FC<TemplateCreationWizardProps> = ({
           </div>
         );
 
-      case 'category-setup':
+      case 'unused-category-setup':
         return (
           <div className="space-y-6">
             <div className="text-center mb-6">
@@ -1099,7 +1284,7 @@ const TemplateCreationWizard: React.FC<TemplateCreationWizardProps> = ({
           </div>
         );
 
-      case 'pricing-setup':
+      case 'unused-pricing-setup':
         return (
           <div className="space-y-6">
             <div className="text-center mb-6">
@@ -1223,7 +1408,7 @@ const TemplateCreationWizard: React.FC<TemplateCreationWizardProps> = ({
           </div>
         );
 
-      case 'validation-setup':
+      case 'unused-validation-setup':
         return (
           <div className="space-y-6">
             <div className="text-center mb-6">

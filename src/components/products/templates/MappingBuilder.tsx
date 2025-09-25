@@ -340,7 +340,7 @@ const MappingBuilder: React.FC<MappingBuilderProps> = ({
   }
 
   return (
-    <div className="space-y-6">
+    <div className=" px-6 py-6 space-y-6">
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-title-lg font-semibold text-gray-900 dark:text-white">
