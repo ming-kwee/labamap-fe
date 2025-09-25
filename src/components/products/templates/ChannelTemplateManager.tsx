@@ -6,7 +6,6 @@ import TemplatesList from "./TemplatesList";
 import TemplatePreview from "./TemplatePreview";
 import TemplateEntrySelector, { TemplateCreationPath } from "./TemplateEntrySelector";
 import QuickStartTemplateSelector from "./QuickStartTemplateSelector";
-import GuidedSetupWizard from "./GuidedSetupWizard";
 
 // Template interfaces
 export interface ChannelTemplate {
@@ -89,7 +88,7 @@ export interface PricingRule {
 }
 
 const ChannelTemplateManager: React.FC = () => {
-  const [view, setView] = useState<'list' | 'entry-selector' | 'quick-start' | 'guided-setup' | 'advanced-builder' | 'preview'>('list');
+  const [view, setView] = useState<'list' | 'entry-selector' | 'quick-start' | 'advanced-builder' | 'preview'>('list');
   const [selectedTemplate, setSelectedTemplate] = useState<ChannelTemplate | null>(null);
   const [templates, setTemplates] = useState<ChannelTemplate[]>([]);
 
@@ -163,9 +162,6 @@ const ChannelTemplateManager: React.FC = () => {
     switch (path) {
       case 'quick-start':
         setView('quick-start');
-        break;
-      case 'guided-setup':
-        setView('guided-setup');
         break;
       case 'advanced-builder':
         setView('advanced-builder');
@@ -242,7 +238,6 @@ const ChannelTemplateManager: React.FC = () => {
               {view === 'list' ? 'Template Library' : 
                view === 'entry-selector' ? 'Choose Creation Method' :
                view === 'quick-start' ? 'Quick Start Templates' :
-               view === 'guided-setup' ? 'Guided Setup Wizard' :
                view === 'advanced-builder' ? (selectedTemplate ? 'Edit Template' : 'Advanced Template Builder') : 
                'Template Preview'}
             </span>
@@ -283,12 +278,6 @@ const ChannelTemplateManager: React.FC = () => {
         />
       )}
 
-      {view === 'guided-setup' && (
-        <GuidedSetupWizard
-          onSave={handleSaveTemplate}
-          onCancel={handleBackToEntrySelector}
-        />
-      )}
 
       {view === 'advanced-builder' && (
         <TemplateCreationWizard

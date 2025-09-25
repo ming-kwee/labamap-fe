@@ -1,9 +1,9 @@
 "use client";
 import React from "react";
 import Button from "@/components/ui/button/Button";
-import { TimeIcon, BoltIcon, InfoIcon } from "@/icons";
+import { BoltIcon, InfoIcon } from "@/icons";
 
-export type TemplateCreationPath = 'quick-start' | 'guided-setup' | 'advanced-builder';
+export type TemplateCreationPath = 'quick-start' | 'advanced-builder';
 
 interface TemplateEntrySelectorProps {
   onSelectPath: (path: TemplateCreationPath) => void;
@@ -28,32 +28,16 @@ const TemplateEntrySelector: React.FC<TemplateEntrySelectorProps> = ({ onSelectP
       recommended: true
     },
     {
-      id: 'guided-setup' as const,
-      title: 'Guided Setup Wizard',
-      subtitle: 'Complete in 15-30 minutes',
-      description: 'Step-by-step guidance for customizing your product listings. Ideal when you need specific configurations for your business needs.',
-      icon: <TimeIcon className="w-8 h-8 text-blue-600" />,
-      features: [
-        'Category-specific guidance',
-        'Smart defaults with customization',
-        'Business-focused explanations',
-        'Flexible configuration options'
-      ],
-      buttonText: 'Start Guided Setup',
-      buttonVariant: 'outline' as const,
-      recommended: false
-    },
-    {
       id: 'advanced-builder' as const,
       title: 'Advanced Template Builder',
       subtitle: 'Full customization power',
-      description: 'Complete control over field mappings, transformations, and complex rules. For power users who need maximum flexibility.',
+      description: 'Complete control over field mappings, transformations, and complex rules. For power users who need maximum flexibility and real-world complexity.',
       icon: <InfoIcon className="w-8 h-8 text-purple-600" />,
       features: [
         'Complex field transformations',
-        'Custom validation rules',
-        'Advanced AI configurations',
-        'Multi-channel optimization'
+        'Amazon validation & eBay pricing',
+        'Shopify dimensions & Facebook rich content',
+        'Real-world business scenarios'
       ],
       buttonText: 'Open Advanced Builder',
       buttonVariant: 'outline' as const,
@@ -72,7 +56,7 @@ const TemplateEntrySelector: React.FC<TemplateEntrySelectorProps> = ({ onSelectP
         </p>
       </div>
 
-      <div className="grid md:grid-cols-3 gap-6">
+      <div className="grid md:grid-cols-2 gap-6 max-w-4xl mx-auto">
         {pathOptions.map((option) => (
           <div
             key={option.id}
