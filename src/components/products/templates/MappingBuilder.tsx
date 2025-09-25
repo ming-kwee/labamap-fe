@@ -16,7 +16,6 @@ import ConditionalBuilder from "./builders/ConditionalBuilder";
 import ComputedFieldsBuilder from "./builders/ComputedFieldsBuilder";
 import TemplateBuilder from "./builders/TemplateBuilder";
 import StructuralTransformBuilder from "./builders/StructuralTransformBuilder";
-import MappingPreview from "./MappingPreview";
 
 interface MappingBuilderProps {
   initialMappings?: ComplexFieldMapping[];

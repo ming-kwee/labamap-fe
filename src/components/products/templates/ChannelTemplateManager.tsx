@@ -12,7 +12,7 @@ import GuidedSetupWizard from "./GuidedSetupWizard";
 export interface ChannelTemplate {
   id: string;
   name: string;
-  type: 'field-mapping' | 'content-generation' | 'category-mapping' | 'pricing-strategy' | 'validation-rules' | 'complete-channel';
+  type: 'field-mapping' | 'content-generation' | 'category-mapping' | 'pricing-strategy' | 'validation-rules' | 'complete-channel' | 'advanced-mapping';
   category: string;
   targetChannels: string[];
   description: string;
@@ -23,6 +23,9 @@ export interface ChannelTemplate {
   
   // Field mapping configuration
   fieldMappings?: FieldMapping[];
+  
+  // Advanced complex mappings
+  complexMappings?: import('./types/ComplexMapping').ComplexFieldMapping[];
   
   // Content generation rules
   contentRules?: ContentRule[];

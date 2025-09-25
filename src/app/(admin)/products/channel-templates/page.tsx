@@ -30,7 +30,7 @@ export default function ChannelTemplatesPage() {
       </div>
 
       {/* Key Features Info */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+      {/* <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
         <div className="bg-white dark:bg-gray-800 rounded-lg p-4 border border-gray-200 dark:border-gray-700">
           <div className="flex items-center gap-3 mb-3">
             <div className="w-10 h-10 bg-blue-100 dark:bg-blue-900/30 rounded-lg flex items-center justify-center">
@@ -78,7 +78,7 @@ export default function ChannelTemplatesPage() {
             </div>
           </div>
         </div>
-      </div>
+      </div> */}
 
       {/* Template Manager Component */}
       <ChannelTemplateManager />

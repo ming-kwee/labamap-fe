@@ -1,5 +1,5 @@
 "use client";
-import React, { useState, useCallback } from "react";
+import React, { useState } from "react";
 import Button from "@/components/ui/button/Button";
 import Label from "@/components/form/Label";
 import Input from "@/components/form/input/InputField";
@@ -7,8 +7,7 @@ import {
   ComplexFieldMapping, 
   SourceField, 
   TargetField, 
-  StructuralConfig,
-  StructuralRule 
+  StructuralConfig 
 } from "../types/ComplexMapping";
 
 interface StructuralTransformBuilderProps {
@@ -30,10 +29,7 @@ const StructuralTransformBuilder: React.FC<StructuralTransformBuilderProps> = ({
   const [description, setDescription] = useState(initialMapping?.description || '');
   const [targetField, setTargetField] = useState(initialMapping?.targetField.fieldPath || '');
   
-  // Facebook-style rich description configuration
-  const [transformType, setTransformType] = useState<'rich_description' | 'html_format' | 'custom'>(
-    'rich_description'
-  );
+  // Facebook-style rich description configuration (unused for now but kept for future enhancement)
   
   const [sourceFields, setSourceFields] = useState({
     description: '',

@@ -166,6 +166,104 @@ function applyFieldMapping(
 // Result: "Sony WH-1000XM4 - Noise Cancelling"
 ```
 
+#### Many-to-One Mapping (Multiple Fields to Object)
+```typescript
+// Master Data (separate fields):
+// masterAttributes.length = 25
+// masterAttributes.width = 20
+// masterAttributes.height = 10
+// masterAttributes.weight = 2.5
+// masterAttributes.dimension_unit = "cm"
+// masterAttributes.weight_unit = "kg"
+
+// Mapping Rule (Many-to-One Object):
+{
+  type: "object_composition",
+  params: {
+    sourceFields: [
+      "masterAttributes.length",
+      "masterAttributes.width", 
+      "masterAttributes.height",
+      "masterAttributes.weight",
+      "masterAttributes.dimension_unit",
+      "masterAttributes.weight_unit"
+    ],
+    targetField: "shipping_info",
+    objectStructure: {
+      dimensions: {
+        length: "masterAttributes.length",
+        width: "masterAttributes.width", 
+        height: "masterAttributes.height",
+        unit: "masterAttributes.dimension_unit"
+      },
+      weight: {
+        value: "masterAttributes.weight",
+        unit: "masterAttributes.weight_unit"
+      }
+    }
+  }
+}
+
+// Result: Single shipping_info object
+// shipping_info: {
+//   dimensions: { length: 25, width: 20, height: 10, unit: "cm" },
+//   weight: { value: 2.5, unit: "kg" }
+// }
+```
+
+#### Many-to-One Mapping (Multiple Fields to Array)
+```typescript
+// Master Data (separate feature fields):
+// masterAttributes.feature_1 = "Wireless Charging"
+// masterAttributes.feature_2 = "Water Resistant"
+// masterAttributes.feature_3 = "Fast Charging"
+// masterAttributes.color_primary = "Black"
+// masterAttributes.color_secondary = "Silver"
+// masterAttributes.material_body = "Aluminum"
+// masterAttributes.material_screen = "Gorilla Glass"
+
+// Mapping Rule (Many-to-One Array):
+{
+  type: "array_composition",
+  params: {
+    targetField: "product_highlights",
+    arrayItems: [
+      {
+        category: "features",
+        items: [
+          "masterAttributes.feature_1",
+          "masterAttributes.feature_2", 
+          "masterAttributes.feature_3"
+        ],
+        filter: "exclude_empty"
+      },
+      {
+        category: "colors",
+        items: [
+          "masterAttributes.color_primary",
+          "masterAttributes.color_secondary"
+        ],
+        transform: "lowercase"
+      },
+      {
+        category: "materials", 
+        items: [
+          "masterAttributes.material_body",
+          "masterAttributes.material_screen"
+        ]
+      }
+    ]
+  }
+}
+
+// Result: Single array with categorized items
+// product_highlights: [
+//   { category: "features", values: ["Wireless Charging", "Water Resistant", "Fast Charging"] },
+//   { category: "colors", values: ["black", "silver"] },
+//   { category: "materials", values: ["Aluminum", "Gorilla Glass"] }
+// ]
+```
+
 #### One-to-Many Mapping (Shopify Dimensions)
 ```typescript
 // Master Data:

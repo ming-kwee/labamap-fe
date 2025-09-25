@@ -34,6 +34,13 @@ const getWizardSteps = (templateType: string): WizardStep[] => {
         { id: 'rules', title: 'Transformation Rules', description: 'Define field transformation rules' },
         { id: 'review', title: 'Review & Save', description: 'Review template configuration' }
       ];
+
+    case 'advanced-mapping':
+      return [
+        ...baseSteps,
+        { id: 'advanced-mapping', title: 'Complex Mappings', description: 'Create advanced field transformations with Amazon validation, eBay pricing, etc.' },
+        { id: 'review', title: 'Review & Save', description: 'Review advanced template configuration' }
+      ];
       
     case 'content-generation':
       return [
@@ -180,8 +187,7 @@ const TemplateCreationWizard: React.FC<TemplateCreationWizardProps> = ({
   onCancel
 }) => {
   const [currentStep, setCurrentStep] = useState(0);
-  const [showAdvancedMapping, setShowAdvancedMapping] = useState(false);
-  const [, setComplexMappings] = useState<ComplexFieldMapping[]>([]);
+  const [complexMappings, setComplexMappings] = useState<ComplexFieldMapping[]>([]);
   const [currentWizardSteps, setCurrentWizardSteps] = useState<WizardStep[]>(
     getWizardSteps('field-mapping')
   );
@@ -219,11 +225,6 @@ const TemplateCreationWizard: React.FC<TemplateCreationWizardProps> = ({
     if (field === 'type' && typeof value === 'string') {
       setCurrentWizardSteps(getWizardSteps(value));
       setCurrentStep(0); // Reset to first step when type changes
-      
-      // Show advanced mapping builder for advanced-mapping type
-      if (value === 'advanced-mapping') {
-        setShowAdvancedMapping(true);
-      }
     }
   };
 
@@ -321,7 +322,8 @@ const TemplateCreationWizard: React.FC<TemplateCreationWizardProps> = ({
       updatedAt: new Date(),
       isActive: formData.isActive || true,
       usageCount: template?.usageCount || 0,
-      fieldMappings: fieldMappings // Save the actual field mappings created by user
+      fieldMappings: fieldMappings, // Save the actual field mappings created by user
+      complexMappings: formData.type === 'advanced-mapping' ? complexMappings : undefined // Save complex mappings for advanced templates
     };
     onSave(templateData);
   };
@@ -657,6 +659,73 @@ const TemplateCreationWizard: React.FC<TemplateCreationWizardProps> = ({
           </div>
         );
 
+      case 'advanced-mapping':
+        // Create sample source and target fields for the mapping builder
+        const sampleSourceFields: SourceField[] = [
+          { fieldPath: 'masterAttributes.brand', displayName: 'Brand', dataType: 'string', required: true },
+          { fieldPath: 'masterAttributes.product_name', displayName: 'Product Name', dataType: 'string', required: true },
+          { fieldPath: 'masterAttributes.model', displayName: 'Model', dataType: 'string', required: false },
+          { fieldPath: 'masterAttributes.key_feature', displayName: 'Key Feature', dataType: 'string', required: false },
+          { fieldPath: 'masterAttributes.description', displayName: 'Description', dataType: 'string', required: true },
+          { fieldPath: 'masterAttributes.features', displayName: 'Features', dataType: 'array', required: false },
+          { fieldPath: 'masterAttributes.specifications', displayName: 'Specifications', dataType: 'object', required: false },
+          { fieldPath: 'masterAttributes.dimensions', displayName: 'Dimensions', dataType: 'object', required: false },
+          { fieldPath: 'pricingData.price', displayName: 'Price', dataType: 'number', required: true },
+          { fieldPath: 'pricingData.compare_at_price', displayName: 'Compare At Price', dataType: 'number', required: false },
+          { fieldPath: 'pricingData.cost', displayName: 'Cost', dataType: 'number', required: false }
+        ];
+
+        const sampleTargetFields: TargetField[] = [
+          { channelId: 'amazon', fieldPath: 'title', displayName: 'Amazon Title', dataType: 'string', maxLength: 200, required: true },
+          { channelId: 'amazon', fieldPath: 'bullet_points', displayName: 'Amazon Bullet Points', dataType: 'array', required: false },
+          { channelId: 'shopify', fieldPath: 'shipping_length', displayName: 'Shopify Shipping Length', dataType: 'number', required: false },
+          { channelId: 'shopify', fieldPath: 'shipping_width', displayName: 'Shopify Shipping Width', dataType: 'number', required: false },
+          { channelId: 'shopify', fieldPath: 'shipping_height', displayName: 'Shopify Shipping Height', dataType: 'number', required: false },
+          { channelId: 'shopify', fieldPath: 'dimension_unit', displayName: 'Shopify Dimension Unit', dataType: 'string', required: false },
+          { channelId: 'ebay', fieldPath: 'price', displayName: 'eBay Price', dataType: 'number', required: true },
+          { channelId: 'facebook', fieldPath: 'description', displayName: 'Facebook Rich Description', dataType: 'string', maxLength: 5000, required: false }
+        ];
+
+        return (
+          <div className="space-y-6">
+            <div className="text-center mb-6">
+              <h2 className="text-title-lg font-semibold text-gray-900 dark:text-white mb-2">
+                🚀 ADVANCED COMPLEX MAPPING
+              </h2>
+              <p className="text-theme-sm text-gray-500 dark:text-gray-400">
+                Create sophisticated field transformations with Amazon validation, eBay pricing, Shopify dimensions & Facebook rich content
+              </p>
+            </div>
+
+            <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
+              <MappingBuilder
+                availableSourceFields={sampleSourceFields}
+                availableTargetFields={sampleTargetFields}
+                onSave={(mappings) => {
+                  setComplexMappings(mappings);
+                  // Automatically move to next step after saving mappings
+                  handleNext();
+                }}
+                onCancel={() => {
+                  // Stay on current step, user can use Previous button if needed
+                }}
+              />
+            </div>
+
+            {complexMappings.length > 0 && (
+              <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg p-4">
+                <h4 className="text-theme-sm font-medium text-green-900 dark:text-green-300 mb-3">
+                  ✅ Complex Mappings Created
+                </h4>
+                <div className="text-sm text-green-800 dark:text-green-400">
+                  Successfully created {complexMappings.length} advanced field mapping{complexMappings.length !== 1 ? 's' : ''}.
+                  You can continue to review your template configuration.
+                </div>
+              </div>
+            )}
+          </div>
+        );
+
       case 'rules':
         return (
           <div className="space-y-6">
@@ -804,6 +873,30 @@ const TemplateCreationWizard: React.FC<TemplateCreationWizardProps> = ({
                     </span>
                     <div className="text-theme-sm text-gray-900 dark:text-white mt-1">
                       {formData.description}
+                    </div>
+                  </div>
+                )}
+
+                {/* Show Complex Mappings Summary for advanced-mapping templates */}
+                {formData.type === 'advanced-mapping' && complexMappings.length > 0 && (
+                  <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
+                    <h3 className="text-title-sm font-semibold text-blue-900 dark:text-blue-300 mb-4">
+                      🚀 Advanced Complex Mappings
+                    </h3>
+                    <div className="space-y-2">
+                      {complexMappings.map((mapping, index) => (
+                        <div key={mapping.id || index} className="text-theme-sm">
+                          <div className="font-medium text-blue-900 dark:text-blue-300">
+                            {mapping.name} ({mapping.type})
+                          </div>
+                          <div className="text-theme-xs text-blue-700 dark:text-blue-400">
+                            {mapping.sourceFields.length} source field{mapping.sourceFields.length !== 1 ? 's' : ''} → {mapping.targetField.displayName}
+                          </div>
+                        </div>
+                      ))}
+                      <div className="mt-3 text-theme-xs text-blue-800 dark:text-blue-400">
+                        Total: {complexMappings.length} advanced mapping{complexMappings.length !== 1 ? 's' : ''} configured
+                      </div>
                     </div>
                   </div>
                 )}
@@ -1262,69 +1355,6 @@ const TemplateCreationWizard: React.FC<TemplateCreationWizardProps> = ({
     }
   };
 
-  // Show Advanced Mapping Builder when advanced-mapping is selected
-  if (showAdvancedMapping) {
-    // Create sample source and target fields for the mapping builder
-    const sampleSourceFields: SourceField[] = [
-      { fieldPath: 'masterAttributes.brand', displayName: 'Brand', dataType: 'string', required: true },
-      { fieldPath: 'masterAttributes.product_name', displayName: 'Product Name', dataType: 'string', required: true },
-      { fieldPath: 'masterAttributes.model', displayName: 'Model', dataType: 'string', required: false },
-      { fieldPath: 'masterAttributes.key_feature', displayName: 'Key Feature', dataType: 'string', required: false },
-      { fieldPath: 'masterAttributes.description', displayName: 'Description', dataType: 'string', required: true },
-      { fieldPath: 'masterAttributes.features', displayName: 'Features', dataType: 'array', required: false },
-      { fieldPath: 'masterAttributes.specifications', displayName: 'Specifications', dataType: 'object', required: false },
-      { fieldPath: 'masterAttributes.dimensions', displayName: 'Dimensions', dataType: 'object', required: false },
-      { fieldPath: 'pricingData.price', displayName: 'Price', dataType: 'number', required: true },
-      { fieldPath: 'pricingData.compare_at_price', displayName: 'Compare At Price', dataType: 'number', required: false },
-      { fieldPath: 'pricingData.cost', displayName: 'Cost', dataType: 'number', required: false }
-    ];
-
-    const sampleTargetFields: TargetField[] = [
-      { channelId: 'amazon', fieldPath: 'title', displayName: 'Amazon Title', dataType: 'string', maxLength: 200, required: true },
-      { channelId: 'amazon', fieldPath: 'bullet_points', displayName: 'Amazon Bullet Points', dataType: 'array', required: false },
-      { channelId: 'shopify', fieldPath: 'shipping_length', displayName: 'Shopify Shipping Length', dataType: 'number', required: false },
-      { channelId: 'shopify', fieldPath: 'shipping_width', displayName: 'Shopify Shipping Width', dataType: 'number', required: false },
-      { channelId: 'shopify', fieldPath: 'shipping_height', displayName: 'Shopify Shipping Height', dataType: 'number', required: false },
-      { channelId: 'shopify', fieldPath: 'dimension_unit', displayName: 'Shopify Dimension Unit', dataType: 'string', required: false },
-      { channelId: 'ebay', fieldPath: 'price', displayName: 'eBay Price', dataType: 'number', required: true },
-      { channelId: 'facebook', fieldPath: 'description', displayName: 'Facebook Rich Description', dataType: 'string', maxLength: 5000, required: false }
-    ];
-
-    return (
-      <div className="space-y-6">
-        <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-6">
-          <div className="flex items-center justify-between mb-6">
-            <div>
-              <h2 className="text-title-lg font-semibold text-gray-900 dark:text-white">
-                🚀 Advanced Complex Mapping Builder
-              </h2>
-              <p className="text-theme-sm text-gray-500 dark:text-gray-400 mt-1">
-                Create sophisticated field transformations with Amazon validation, eBay pricing, Shopify dimensions & Facebook rich content
-              </p>
-            </div>
-            <Button
-              variant="outline"
-              onClick={() => setShowAdvancedMapping(false)}
-            >
-              ← Back to Template Wizard
-            </Button>
-          </div>
-        </div>
-
-        <MappingBuilder
-          availableSourceFields={sampleSourceFields}
-          availableTargetFields={sampleTargetFields}
-          onSave={(mappings) => {
-            setComplexMappings(mappings);
-            // You could save these mappings to the template
-            setShowAdvancedMapping(false);
-            // Optionally continue to next step or complete the template
-          }}
-          onCancel={() => setShowAdvancedMapping(false)}
-        />
-      </div>
-    );
-  }
 
   return (
     <div className="space-y-6">
