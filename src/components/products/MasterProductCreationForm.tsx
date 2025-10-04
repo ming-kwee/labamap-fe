@@ -42,7 +42,6 @@ export default function MasterProductCreationForm({
   // Smart Form State
   const [categoryRequiredFields, setCategoryRequiredFields] = useState<string[]>([]);
   const [categorySuggestedFields, setCategorySuggestedFields] = useState<string[]>([]);
-  const [selectedChannels, setSelectedChannels] = useState<string[]>([]);
   const [fieldSuggestions, setFieldSuggestions] = useState<Record<string, string>>({});
   const [showCategorySpecificFields, setShowCategorySpecificFields] = useState(false);
   const [categoryConfig, setCategoryConfig] = useState<CategoryConfiguration | null>(null);
@@ -58,12 +57,6 @@ export default function MasterProductCreationForm({
     }
   }, [formData.category]);
 
-  // Channel-specific requirements
-  useEffect(() => {
-    if (selectedChannels.length > 0) {
-      adaptFormToChannels(selectedChannels);
-    }
-  }, [selectedChannels]);
 
   const loadFieldDefinitions = async () => {
     try {
@@ -181,19 +174,6 @@ export default function MasterProductCreationForm({
     }
   };
 
-  const adaptFormToChannels = async (channels: string[]) => {
-    try {
-      // Apply channel-specific requirements
-      const channelRequirements = getChannelRequirements(channels);
-      
-      // Update validation rules based on channels
-      channels.forEach(channel => {
-        applyChannelSpecificValidation(channel);
-      });
-    } catch (error) {
-      console.error('Error adapting form to channels:', error);
-    }
-  };
 
   const getCategoryConfiguration = async (category: string): Promise<CategoryConfiguration> => {
     try {
@@ -427,42 +407,6 @@ export default function MasterProductCreationForm({
     }
   };
 
-  const getChannelRequirements = (channels: string[]) => {
-    const requirements: Record<string, any> = {};
-    
-    channels.forEach(channel => {
-      switch (channel) {
-        case 'amazon':
-          requirements.gtin = true;
-          requirements.brand = true;
-          break;
-        case 'shopify':
-          requirements.seo = true;
-          break;
-        case 'walmart':
-          requirements.gtin = true;
-          requirements.compliance = true;
-          break;
-      }
-    });
-    
-    return requirements;
-  };
-
-  const applyChannelSpecificValidation = (channel: string) => {
-    // Apply channel-specific validation rules
-    switch (channel) {
-      case 'amazon':
-        // Amazon-specific validation
-        break;
-      case 'shopify':
-        // Shopify-specific validation
-        break;
-      case 'walmart':
-        // Walmart-specific validation
-        break;
-    }
-  };
 
   // Enhanced field change with smart dependencies
   const handleSmartFieldChange = (fieldName: string, value: any) => {
@@ -525,7 +469,7 @@ export default function MasterProductCreationForm({
   // Enhanced Field Component
   const EnhancedField = ({ fieldName, children, showHelper = true }: { 
     fieldName: string, 
-    children: React.ReactElement, 
+    children: React.ReactElement<any>, 
     showHelper?: boolean 
   }) => {
     const enhancement = getFieldEnhancement(fieldName, formData.category || '');
@@ -534,9 +478,9 @@ export default function MasterProductCreationForm({
     return (
       <div className="space-y-2">
         {React.cloneElement(children, {
-          className: `${children.props.className || ''} ${enhancement.className}`.trim(),
-          placeholder: enhancement.placeholder || children.props.placeholder,
-          required: enhancement.required || children.props.required
+          className: `${children.props?.className || ''} ${enhancement.className}`.trim(),
+          placeholder: enhancement.placeholder || children.props?.placeholder,
+          required: enhancement.required || children.props?.required
         })}
         
         {showHelper && enhancement.helper && !error && (
@@ -721,52 +665,31 @@ export default function MasterProductCreationForm({
                   </Select>
                 </div>
 
-                {/* Channel Selection */}
-                <div className="space-y-2">
-                  <Label>Target Channels</Label>
-                  <div className="flex flex-wrap gap-2">
-                    {['shopify', 'amazon', 'ebay', 'walmart', 'facebook'].map(channel => (
-                      <label key={channel} className="flex items-center space-x-2 cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={selectedChannels.includes(channel)}
-                          onChange={(e) => {
-                            if (e.target.checked) {
-                              setSelectedChannels(prev => [...prev, channel]);
-                            } else {
-                              setSelectedChannels(prev => prev.filter(c => c !== channel));
-                            }
-                          }}
-                          className="rounded border-gray-300"
-                        />
-                        <span className="text-sm capitalize">{channel}</span>
-                      </label>
-                    ))}
-                  </div>
-                </div>
 
                 {/* Smart Field Suggestions */}
                 {Object.keys(fieldSuggestions).length > 0 && (
-                  <div className="space-y-2 p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800">
-                    <h4 className="text-sm font-medium text-blue-800 dark:text-blue-200">💡 Smart Suggestions</h4>
-                    {Object.entries(fieldSuggestions).map(([field, suggestion]) => (
-                      <div key={field} className="text-xs text-blue-700 dark:text-blue-300">
-                        <strong>{field}:</strong> {suggestion}
-                      </div>
-                    ))}
+                  <div className="p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800">
+                    <h4 className="text-sm font-medium text-blue-800 dark:text-blue-200 mb-2">💡 Smart Suggestions</h4>
+                    <div className="space-y-1">
+                      {Object.entries(fieldSuggestions).map(([field, suggestion]) => (
+                        <div key={field} className="text-xs text-blue-700 dark:text-blue-300">
+                          <strong>{field}:</strong> {suggestion}
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 )}
 
                 {/* Category-Specific Required Fields Notice */}
                 {categoryRequiredFields.length > 0 && (
-                  <div className="p-4 bg-amber-50 dark:bg-amber-900/20 rounded-lg border border-amber-200 dark:border-amber-800">
-                    <h4 className="text-sm font-medium text-amber-800 dark:text-amber-200">⚠️ Required for {formData.category}</h4>
-                    <div className="text-xs text-amber-700 dark:text-amber-300 mt-1">
+                  <div className="p-3 bg-amber-50 dark:bg-amber-900/20 rounded-lg border border-amber-200 dark:border-amber-800">
+                    <h4 className="text-sm font-medium text-amber-800 dark:text-amber-200 mb-1">⚠️ Required for {formData.category}</h4>
+                    <div className="text-xs text-amber-700 dark:text-amber-300">
                       Fields: {categoryRequiredFields.join(', ')}
                     </div>
                     {categoryConfig && categoryConfig.confidenceScore && (
-                      <div className="text-xs text-amber-600 dark:text-amber-400 mt-2 flex items-center space-x-1">
-                        <span>📊 Configuration confidence: {categoryConfig.confidenceScore.toFixed(1)}%</span>
+                      <div className="text-xs text-amber-600 dark:text-amber-400 mt-1 flex items-center space-x-1">
+                        <span>📊 {categoryConfig.confidenceScore.toFixed(1)}%</span>
                         {categoryConfig.source && (
                           <span className="bg-amber-200 dark:bg-amber-800 px-1 rounded text-xs">
                             {categoryConfig.source}

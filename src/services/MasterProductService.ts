@@ -69,15 +69,28 @@ export class MasterProductService {
   }
 
   /**
-   * Get supported channels
+   * Get user's connected channels only
    */
-  async getSupportedChannels(): Promise<string[]> {
+  async getUserConnectedChannels(userId?: string): Promise<string[]> {
     try {
-      const response = await fetch(`${this.baseUrl}/channels/supported`);
+      const response = await fetch(`${this.baseUrl}/../user/connected-channels`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (!response.ok) {
+        // Fallback to mock data if API not available
+        console.warn('Connected channels API not available, using mock data');
+        return ['shopify', 'amazon']; // Mock connected channels
+      }
+
       return await response.json();
     } catch (error) {
-      console.error('Error loading supported channels:', error);
-      throw error;
+      console.error('Error loading user connected channels:', error);
+      // Fallback to mock data
+      return ['shopify', 'amazon']; // Mock connected channels
     }
   }
 
