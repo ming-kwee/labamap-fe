@@ -148,6 +148,11 @@ export interface CreateMasterProductRequest {
   model?: string;
   material?: string;
   color?: string;
+  
+  // Variant fields
+  hasVariants?: boolean;
+  variantOptions?: VariantOption[];
+  variants?: ProductVariant[];
 }
 
 export interface ProductCreationResponse {

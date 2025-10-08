@@ -1,0 +1,311 @@
+{
+  "ruleRegistry": {
+    "version": "1.0",
+    "lastUpdated": "2025-01-06T00:00:00Z",
+    "rules": [
+      {
+        "ruleId": "SKU_GENERATION",
+        "ruleType": "PRE_PROCESSING",
+        "priority": 100,
+        "enabled": true,
+        "applicableFields": ["sku"],
+        "implementation": "SkuGenerationRule",
+        "description": "Auto-generate SKU when missing using brand-category-hash pattern",
+        "configuration": {
+          "pattern": "{brandCode}-{categoryCode}-{hash}",
+          "brandCodeLength": 3,
+          "categoryCodeLength": 4,
+          "hashLength": 6,
+          "condition": "sku_missing",
+          "overwriteExisting": false
+        },
+        "applicableCategories": ["*"],
+        "supportedChannels": ["*"]
+      },
+      {
+        "ruleId": "NAME_NORMALIZATION",
+        "ruleType": "PRE_PROCESSING",
+        "priority": 90,
+        "enabled": true,
+        "applicableFields": ["name"],
+        "implementation": "NameNormalizationRule",
+        "description": "Normalize product name formatting and structure",
+        "configuration": {
+          "trimSpaces": true,
+          "capitalizeWords": true,
+          "removeSpecialChars": false,
+          "maxLength": 500,
+          "minLength": 3,
+          "prohibitedWords": ["test", "sample", "lorem", "ipsum"]
+        },
+        "applicableCategories": ["*"],
+        "supportedChannels": ["*"]
+      },
+      {
+        "ruleId": "PRICE_NORMALIZATION",
+        "ruleType": "PRE_PROCESSING",
+        "priority": 80,
+        "enabled": true,
+        "applicableFields": ["price", "compare-price"],
+        "implementation": "PriceNormalizationRule",
+        "description": "Normalize price format and precision",
+        "configuration": {
+          "precision": 2,
+          "roundingMode": "HALF_UP",
+          "convertCurrency": false,
+          "baseCurrency": "USD"
+        },
+        "applicableCategories": ["*"],
+        "supportedChannels": ["*"]
+      },
+      {
+        "ruleId": "CATEGORY_ENHANCEMENT",
+        "ruleType": "PRE_PROCESSING",
+        "priority": 70,
+        "enabled": true,
+        "applicableFields": ["category", "attributes"],
+        "implementation": "CategoryEnhancementRule",
+        "description": "Add category-specific required fields",
+        "configuration": {
+          "categoryMappings": {
+            "electronics": {
+              "requiredFields": ["warranty", "model", "brand"],
+              "defaultValues": {
+                "warranty": "1 year manufacturer warranty",
+                "energy_rating": "Not specified"
+              }
+            },
+            "clothing": {
+              "requiredFields": ["size", "material", "care_instructions"],
+              "defaultValues": {
+                "care_instructions": "Machine wash cold, tumble dry low"
+              }
+            },
+            "books": {
+              "requiredFields": ["author", "isbn", "publisher"],
+              "defaultValues": {
+                "format": "Paperback"
+              }
+            },
+            "jewelry": {
+              "requiredFields": ["material", "authenticity"],
+              "defaultValues": {
+                "authenticity": "Certified authentic"
+              }
+            }
+          }
+        },
+        "applicableCategories": ["electronics", "clothing", "books", "jewelry"],
+        "supportedChannels": ["*"]
+      },
+      {
+        "ruleId": "PRICE_VALIDATION",
+        "ruleType": "BUSINESS_LOGIC",
+        "priority": 200,
+        "enabled": true,
+        "applicableFields": ["price"],
+        "implementation": "PriceValidationRule",
+        "description": "Validate price against business rules and channel requirements",
+        "configuration": {
+          "categoryLimits": {
+            "electronics": {"minPrice": 1.0, "maxPrice": 50000.0},
+            "clothing": {"minPrice": 5.0, "maxPrice": 2000.0},
+            "books": {"minPrice": 0.99, "maxPrice": 500.0},
+            "jewelry": {"minPrice": 10.0, "maxPrice": 100000.0}
+          },
+          "channelRules": {
+            "amazon": {"minPrice": 1.0, "currency": "USD", "requiresGTIN": false},
+            "walmart": {"minPrice": 0.50, "currency": "USD", "requiresGTIN": true},
+            "shopify": {"minPrice": 0.01, "currency": "USD", "allowsComparePrice": true},
+            "ebay": {"minPrice": 0.99, "currency": "USD", "supportsBidding": true}
+          },
+          "competitivePricing": {
+            "enabled": true,
+            "varianceThreshold": 0.25,
+            "warningOnly": true
+          }
+        },
+        "applicableCategories": ["*"],
+        "supportedChannels": ["amazon", "walmart", "shopify", "ebay"]
+      },
+      {
+        "ruleId": "INVENTORY_VALIDATION",
+        "ruleType": "BUSINESS_LOGIC",
+        "priority": 180,
+        "enabled": true,
+        "applicableFields": ["quantity", "inventory"],
+        "implementation": "InventoryValidationRule",
+        "description": "Validate inventory levels and allocation",
+        "configuration": {
+          "minimumStock": 1,
+          "maximumStock": 999999,
+          "channelAllocation": {
+            "amazon": 0.6,
+            "shopify": 0.25,
+            "walmart": 0.15
+          },
+          "reserveStock": 5,
+          "autoBackorder": false
+        },
+        "applicableCategories": ["*"],
+        "supportedChannels": ["*"]
+      },
+      {
+        "ruleId": "REQUIRED_FIELDS_VALIDATION",
+        "ruleType": "BUSINESS_LOGIC",
+        "priority": 150,
+        "enabled": true,
+        "applicableFields": ["*"],
+        "implementation": "RequiredFieldsValidationRule",
+        "description": "Ensure all required fields are present based on category and channel",
+        "configuration": {
+          "channelRequirements": {
+            "amazon": {
+              "requiredFields": ["name", "price", "brand", "description"],
+              "conditionalFields": {
+                "gtin": {"when": "category_in", "values": ["electronics", "books"]},
+                "model": {"when": "category_equals", "values": ["electronics"]}
+              }
+            },
+            "walmart": {
+              "requiredFields": ["name", "price", "brand", "gtin", "manufacturer"],
+              "conditionalFields": {
+                "model": {"when": "category_equals", "values": ["electronics"]}
+              }
+            },
+            "shopify": {
+              "requiredFields": ["name", "price", "description"],
+              "conditionalFields": {}
+            }
+          },
+          "categoryRequirements": {
+            "electronics": ["warranty", "model"],
+            "clothing": ["size", "material"],
+            "books": ["author", "isbn"],
+            "jewelry": ["material", "authenticity"]
+          }
+        },
+        "applicableCategories": ["*"],
+        "supportedChannels": ["*"]
+      },
+      {
+        "ruleId": "BRAND_STANDARDIZATION",
+        "ruleType": "BUSINESS_LOGIC",
+        "priority": 120,
+        "enabled": true,
+        "applicableFields": ["brand"],
+        "implementation": "BrandStandardizationRule",
+        "description": "Standardize brand names and validate against approved brands",
+        "configuration": {
+          "standardizedBrands": {
+            "apple inc": "Apple",
+            "apple computer": "Apple", 
+            "samsung electronics": "Samsung",
+            "samsung group": "Samsung",
+            "microsoft corp": "Microsoft",
+            "microsoft corporation": "Microsoft"
+          },
+          "approvedBrands": ["Apple", "Samsung", "Microsoft", "Sony", "Nike", "Adidas"],
+          "requireApproval": false,
+          "autoCorrect": true
+        },
+        "applicableCategories": ["*"],
+        "supportedChannels": ["*"]
+      },
+      {
+        "ruleId": "SEO_ENHANCEMENT",
+        "ruleType": "DATA_ENHANCEMENT",
+        "priority": 300,
+        "enabled": true,
+        "applicableFields": ["name", "description"],
+        "implementation": "SeoEnhancementRule",
+        "description": "Generate SEO-optimized titles, descriptions, and metadata",
+        "configuration": {
+          "titleFormat": "${name} | ${brand} | Premium Quality",
+          "maxTitleLength": 60,
+          "metaDescriptionFormat": "Shop ${name} from ${brand}. ${shortDescription} Fast shipping and satisfaction guaranteed.",
+          "maxMetaLength": 160,
+          "generateUrlSlug": true,
+          "includeStructuredData": true,
+          "socialMediaTags": true
+        },
+        "applicableCategories": ["*"],
+        "supportedChannels": ["shopify", "magento", "woocommerce"]
+      },
+      {
+        "ruleId": "PRICE_FORMATTING",
+        "ruleType": "DATA_ENHANCEMENT",
+        "priority": 280,
+        "enabled": true,
+        "applicableFields": ["price", "compare-price"],
+        "implementation": "PriceFormattingRule",
+        "description": "Format prices for display and channel requirements",
+        "configuration": {
+          "currencyFormat": "USD",
+          "displayFormat": "$#,##0.00",
+          "includeComparePricing": true,
+          "discountCalculation": true,
+          "channelSpecific": {
+            "amazon": {"showSavings": true, "percentageDiscount": true},
+            "shopify": {"showCompareAt": true, "savingsLabel": "Save"},
+            "walmart": {"roundToCents": true, "noDecimals": false}
+          }
+        },
+        "applicableCategories": ["*"],
+        "supportedChannels": ["*"]
+      },
+      {
+        "ruleId": "IMAGE_OPTIMIZATION",
+        "ruleType": "DATA_ENHANCEMENT",
+        "priority": 260,
+        "enabled": true,
+        "applicableFields": ["images", "image_urls"],
+        "implementation": "ImageOptimizationRule",
+        "description": "Optimize and validate product images",
+        "configuration": {
+          "requiredImages": 1,
+          "maxImages": 10,
+          "supportedFormats": ["jpg", "jpeg", "png", "webp"],
+          "minResolution": {"width": 800, "height": 600},
+          "maxFileSize": "5MB",
+          "compressionQuality": 85,
+          "generateThumbnails": true,
+          "channelRequirements": {
+            "amazon": {"minResolution": {"width": 1000, "height": 1000}, "maxImages": 9},
+            "shopify": {"minResolution": {"width": 800, "height": 800}, "maxImages": 10},
+            "walmart": {"minResolution": {"width": 2000, "height": 2000}, "maxImages": 8}
+          }
+        },
+        "applicableCategories": ["*"],
+        "supportedChannels": ["*"]
+      },
+      {
+        "ruleId": "DESCRIPTION_ENHANCEMENT",
+        "ruleType": "DATA_ENHANCEMENT",
+        "priority": 240,
+        "enabled": true,
+        "applicableFields": ["description"],
+        "implementation": "DescriptionEnhancementRule",
+        "description": "Enhance product descriptions with rich content and formatting",
+        "configuration": {
+          "addFeatureList": true,
+          "includeBenefits": true,
+          "addSpecifications": true,
+          "formatAsHTML": false,
+          "channelFormats": {
+            "amazon": {"bulletPoints": true, "maxLength": 2000},
+            "shopify": {"htmlFormat": true, "includeSpecs": true},
+            "walmart": {"plainText": true, "maxLength": 4000}
+          },
+          "keywords": {
+            "extract": true,
+            "optimize": true,
+            "maxKeywords": 20
+          }
+        },
+        "applicableCategories": ["*"],
+        "supportedChannels": ["*"]
+      }
+    ]
+  }
+}
