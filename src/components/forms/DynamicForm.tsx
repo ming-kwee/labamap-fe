@@ -821,127 +821,176 @@ const DynamicForm: React.FC<DynamicFormProps> = ({
               </p>
             </div>
             <div className="p-4">
-              <div className="space-y-4">
-                {existingVariants.map((variant, index) => (
-                  <div key={index} className="border border-gray-200 rounded-lg p-4 bg-gray-50">
-                    {/* Variant Header */}
-                    <div className="flex items-center justify-between mb-3">
-                      <div className="flex-1">
-                        <div className="font-medium text-sm text-gray-900">
-                          {variantFields.map((varField, fieldIndex) => {
-                            const value = variant[varField.fieldName];
-                            if (!value) return null;
-                            return (
-                              <span key={varField.fieldName}>
-                                {fieldIndex > 0 && ' • '}
-                                {varField.label}: {value}
-                              </span>
-                            );
-                          })}
-                        </div>
-                        <div className="text-xs text-gray-600 mt-1">
-                          SKU: {variant.sku}
-                        </div>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => removeVariant(index)}
-                        className="px-2 py-1 text-xs text-red-600 hover:bg-red-50 rounded"
-                        title="Remove variant"
+              {/* Horizontal Scrollable Grid Container */}
+              <div className="overflow-x-auto">
+                <div className="min-w-max">
+                  {/* Grid Header */}
+                  <div className="grid grid-cols-[40px_1fr_100px_100px_100px_100px_100px_100px_100px_60px] gap-2 py-2 px-2 bg-gray-100 rounded-t-lg border-b border-gray-200 text-xs font-medium text-gray-700">
+                    <div className="text-center">⋮⋮</div>
+                    <div>Variant</div>
+                    <div>Price ($)</div>
+                    <div>Compare ($)</div>
+                    <div>Cost ($)</div>
+                    <div>Inventory</div>
+                    <div>Weight (lbs)</div>
+                    <div>Low Alert</div>
+                    <div>Track Inv.</div>
+                    <div className="text-center">✕</div>
+                  </div>
+
+                  {/* Grid Rows */}
+                  <div className="bg-white rounded-b-lg border border-t-0 border-gray-200">
+                    {existingVariants.map((variant, index) => (
+                      <div
+                        key={index}
+                        draggable="true"
+                        onDragStart={(e) => {
+                          e.dataTransfer.setData('text/plain', index.toString());
+                          e.currentTarget.style.opacity = '0.5';
+                        }}
+                        onDragEnd={(e) => {
+                          e.currentTarget.style.opacity = '1';
+                        }}
+                        onDragOver={(e) => e.preventDefault()}
+                        onDrop={(e) => {
+                          e.preventDefault();
+                          const draggedIndex = parseInt(e.dataTransfer.getData('text/plain'));
+                          const dropIndex = index;
+                          
+                          if (draggedIndex !== dropIndex) {
+                            const updatedVariants = [...existingVariants];
+                            const draggedItem = updatedVariants[draggedIndex];
+                            updatedVariants.splice(draggedIndex, 1);
+                            updatedVariants.splice(dropIndex, 0, draggedItem);
+                            handleFieldChange(field.fieldName, JSON.stringify({ variants: updatedVariants }));
+                          }
+                        }}
+                        className={`grid grid-cols-[40px_1fr_100px_100px_100px_100px_100px_100px_100px_60px] gap-2 py-3 px-2 border-b border-gray-100 hover:bg-gray-50 transition-all cursor-move ${
+                          index === existingVariants.length - 1 ? 'border-b-0' : ''
+                        }`}
+                        title="Drag to reorder variants"
                       >
-                        ✕ Remove
-                      </button>
-                    </div>
+                        {/* Drag Handle */}
+                        <div className="flex items-center justify-center">
+                          <div className="text-gray-400 cursor-grab active:cursor-grabbing text-sm">
+                            ⋮⋮
+                          </div>
+                        </div>
 
-                    {/* Variant Management Fields */}
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                      <div>
-                        <label className="block text-xs font-medium text-gray-700 mb-1">Price ($)</label>
-                        <input
-                          type="number"
-                          min="0"
-                          step="0.01"
-                          value={variant.price || 0}
-                          onChange={(e) => updateVariantField(index, 'price', parseFloat(e.target.value) || 0)}
-                          className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
-                        />
-                      </div>
-                      
-                      <div>
-                        <label className="block text-xs font-medium text-gray-700 mb-1">Compare Price ($)</label>
-                        <input
-                          type="number"
-                          min="0"
-                          step="0.01"
-                          value={variant.comparePrice || 0}
-                          onChange={(e) => updateVariantField(index, 'comparePrice', parseFloat(e.target.value) || 0)}
-                          className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
-                        />
-                      </div>
-                      
-                      <div>
-                        <label className="block text-xs font-medium text-gray-700 mb-1">Inventory</label>
-                        <input
-                          type="number"
-                          min="0"
-                          value={variant.inventory || 0}
-                          onChange={(e) => updateVariantField(index, 'inventory', parseInt(e.target.value) || 0)}
-                          className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
-                        />
-                      </div>
-                      
-                      <div>
-                        <label className="block text-xs font-medium text-gray-700 mb-1">Weight (lbs)</label>
-                        <input
-                          type="number"
-                          min="0"
-                          step="0.01"
-                          value={variant.weight || 0}
-                          onChange={(e) => updateVariantField(index, 'weight', parseFloat(e.target.value) || 0)}
-                          className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
-                        />
-                      </div>
-                    </div>
+                        {/* Variant Info */}
+                        <div className="flex flex-col justify-center min-w-0">
+                          <div className="font-medium text-sm text-gray-900 truncate">
+                            {variantFields.map((varField, fieldIndex) => {
+                              const value = variant[varField.fieldName];
+                              if (!value) return null;
+                              return (
+                                <span key={varField.fieldName}>
+                                  {fieldIndex > 0 && ' • '}
+                                  {varField.label}: {value}
+                                </span>
+                              );
+                            })}
+                          </div>
+                          <div className="text-xs text-gray-600 truncate">
+                            SKU: {variant.sku}
+                          </div>
+                        </div>
 
-                    {/* Additional Variant Fields */}
-                    <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mt-3">
-                      <div>
-                        <label className="block text-xs font-medium text-gray-700 mb-1">Cost Price ($)</label>
-                        <input
-                          type="number"
-                          min="0"
-                          step="0.01"
-                          value={variant.costPrice || 0}
-                          onChange={(e) => updateVariantField(index, 'costPrice', parseFloat(e.target.value) || 0)}
-                          className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
-                        />
-                      </div>
-                      
-                      <div>
-                        <label className="block text-xs font-medium text-gray-700 mb-1">Low Stock Alert</label>
-                        <input
-                          type="number"
-                          min="0"
-                          value={variant.lowStockAlert || 5}
-                          onChange={(e) => updateVariantField(index, 'lowStockAlert', parseInt(e.target.value) || 5)}
-                          className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
-                        />
-                      </div>
-                      
-                      <div className="flex items-center">
-                        <label className="flex items-center text-xs text-gray-700">
+                        {/* Price */}
+                        <div className="flex items-center">
+                          <input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={variant.price || 0}
+                            onChange={(e) => updateVariantField(index, 'price', parseFloat(e.target.value) || 0)}
+                            className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                          />
+                        </div>
+
+                        {/* Compare Price */}
+                        <div className="flex items-center">
+                          <input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={variant.comparePrice || 0}
+                            onChange={(e) => updateVariantField(index, 'comparePrice', parseFloat(e.target.value) || 0)}
+                            className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                          />
+                        </div>
+
+                        {/* Cost Price */}
+                        <div className="flex items-center">
+                          <input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={variant.costPrice || 0}
+                            onChange={(e) => updateVariantField(index, 'costPrice', parseFloat(e.target.value) || 0)}
+                            className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                          />
+                        </div>
+
+                        {/* Inventory */}
+                        <div className="flex items-center">
+                          <input
+                            type="number"
+                            min="0"
+                            value={variant.inventory || 0}
+                            onChange={(e) => updateVariantField(index, 'inventory', parseInt(e.target.value) || 0)}
+                            className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                          />
+                        </div>
+
+                        {/* Weight */}
+                        <div className="flex items-center">
+                          <input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={variant.weight || 0}
+                            onChange={(e) => updateVariantField(index, 'weight', parseFloat(e.target.value) || 0)}
+                            className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                          />
+                        </div>
+
+                        {/* Low Stock Alert */}
+                        <div className="flex items-center">
+                          <input
+                            type="number"
+                            min="0"
+                            value={variant.lowStockAlert || 5}
+                            onChange={(e) => updateVariantField(index, 'lowStockAlert', parseInt(e.target.value) || 5)}
+                            className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                          />
+                        </div>
+
+                        {/* Track Inventory */}
+                        <div className="flex items-center justify-center">
                           <input
                             type="checkbox"
                             checked={variant.trackInventory !== false}
                             onChange={(e) => updateVariantField(index, 'trackInventory', e.target.checked)}
-                            className="mr-2 text-blue-600"
+                            className="text-blue-600"
                           />
-                          Track Inventory
-                        </label>
+                        </div>
+
+                        {/* Remove Button */}
+                        <div className="flex items-center justify-center">
+                          <button
+                            type="button"
+                            onClick={() => removeVariant(index)}
+                            className="w-6 h-6 text-xs text-red-600 hover:bg-red-50 rounded flex items-center justify-center"
+                            title="Remove variant"
+                          >
+                            ✕
+                          </button>
+                        </div>
                       </div>
-                    </div>
+                    ))}
                   </div>
-                ))}
+                </div>
               </div>
             </div>
           </div>
