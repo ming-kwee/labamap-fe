@@ -6,7 +6,7 @@
 export interface MasterAttribute {
   fieldName: string;
   dataType: string;
-  channelId: string | null;
+  channelId?: string | null;
   required: boolean;
   description: string;
   category: string;
@@ -18,11 +18,18 @@ export interface MasterAttribute {
     minLength?: number;
     min?: number;
     max?: number;
+    precision?: number;
     enum?: string[];
+    maxItems?: number;
+    itemMaxLength?: number;
   };
   isChannelField: boolean;
   priority: number;
   mappingHint: string;
+  conditionalVisibility?: {
+    showWhen?: string;
+    hideWhen?: string;
+  };
 }
 
 export interface FormFieldDefinition extends MasterAttribute {
@@ -55,6 +62,24 @@ export class MasterAttributesService {
       return this.attributesCache;
     }
 
+    // Check if we're running on server-side (Node.js environment)
+    if (typeof window === 'undefined') {
+      // Server-side: read file directly from filesystem
+      try {
+        const fs = require('fs');
+        const path = require('path');
+        const filePath = path.join(process.cwd(), 'src', 'master-attributes-ecommerce.json');
+        const fileContent = fs.readFileSync(filePath, 'utf8');
+        const data = JSON.parse(fileContent);
+        this.attributesCache = data.masterAttributes || data;
+        return this.attributesCache || [];
+      } catch (error) {
+        console.error('Failed to load master attributes from file system:', error);
+        return [];
+      }
+    }
+
+    // Client-side: try API first, then public file
     try {
       // Try API first
       const response = await fetch(`${this.baseUrl}/all`);
@@ -66,11 +91,11 @@ export class MasterAttributesService {
       console.warn('API not available, loading from static file');
     }
 
-    // Fallback to static file
+    // Fallback to static file (client-side only)
     try {
-      const response = await fetch('/master-attributes-comprehensive.json');
+      const response = await fetch('/master-attributes-ecommerce.json');
       const data = await response.json();
-      this.attributesCache = data.masterAttributes;
+      this.attributesCache = data.masterAttributes || data;
       return this.attributesCache || [];
     } catch (error) {
       console.error('Failed to load master attributes:', error);
@@ -250,7 +275,7 @@ export class MasterAttributesService {
     }
   }
 
-  private determineSection(attribute: MasterAttribute, category?: string): FormFieldDefinition['section'] {
+  private determineSection(attribute: MasterAttribute, _category?: string): FormFieldDefinition['section'] {
     // Channel-specific fields
     if (attribute.isChannelField || attribute.category === 'channel_specific') {
       return 'channel_specific';

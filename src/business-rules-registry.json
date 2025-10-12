@@ -4,25 +4,6 @@
     "lastUpdated": "2025-01-06T00:00:00Z",
     "rules": [
       {
-        "ruleId": "SKU_GENERATION",
-        "ruleType": "PRE_PROCESSING",
-        "priority": 100,
-        "enabled": true,
-        "applicableFields": ["sku"],
-        "implementation": "SkuGenerationRule",
-        "description": "Auto-generate SKU when missing using brand-category-hash pattern",
-        "configuration": {
-          "pattern": "{brandCode}-{categoryCode}-{hash}",
-          "brandCodeLength": 3,
-          "categoryCodeLength": 4,
-          "hashLength": 6,
-          "condition": "sku_missing",
-          "overwriteExisting": false
-        },
-        "applicableCategories": ["*"],
-        "supportedChannels": ["*"]
-      },
-      {
         "ruleId": "NAME_NORMALIZATION",
         "ruleType": "PRE_PROCESSING",
         "priority": 90,

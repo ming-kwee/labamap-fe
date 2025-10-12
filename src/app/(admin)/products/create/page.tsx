@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card/Card';
 import Button from '@/components/ui/button/Button';
@@ -15,6 +15,7 @@ import {
   Eye
 } from '@/components/ui/icons/Icons';
 import MasterProductCreationForm from '@/components/products/MasterProductCreationForm';
+import DynamicProductCreationFormClean from '@/components/products/DynamicProductCreationFormClean';
 import ChannelSelectionInterface from '@/components/products/ChannelSelectionInterface';
 import ChannelPayloadReview from '@/components/products/ChannelPayloadReview';
 import { MasterProduct } from '@/types/product';
@@ -30,9 +31,12 @@ interface WorkflowState {
   publishResults: PublishResult[];
 }
 
+type FormType = 'master' | 'dynamic';
+
 export default function CreateProductPage() {
   const router = useRouter();
   const [currentStep, setCurrentStep] = useState<WorkflowStep>('product');
+  const [formType, setFormType] = useState<FormType>('dynamic'); // Default to dynamic form for testing variants
   const [workflowState, setWorkflowState] = useState<WorkflowState>({
     masterProduct: null,
     availableChannels: [],
@@ -74,6 +78,14 @@ export default function CreateProductPage() {
 
   const currentStepIndex = steps.findIndex(step => step.id === currentStep);
   const progressPercentage = ((currentStepIndex + 1) / steps.length) * 100;
+
+  // Memoize stable props to prevent re-renders
+  const stableTargetChannels = useMemo(() => ['shopify', 'amazon', 'walmart', 'ebay'], []);
+  const stableProductCategory = useMemo(() => 'electronics', []);
+  const stableUserRole = useMemo(() => 'BUSINESS_USER' as const, []);
+  const stableComplianceMode = useMemo(() => 'STANDARD' as const, []);
+  const stableWorkflowStep = useMemo(() => 'DRAFT' as const, []);
+  const stableDebugMode = useMemo(() => process.env.NODE_ENV === 'development', []);
 
   const handleProductCreated = (product: MasterProduct, availableChannels: string[]) => {
     setWorkflowState(prev => ({
@@ -122,9 +134,19 @@ export default function CreateProductPage() {
   const renderStepContent = () => {
     switch (currentStep) {
       case 'product':
-        return (
+        return formType === 'master' ? (
           <MasterProductCreationForm 
             onProductCreated={handleProductCreated}
+          />
+        ) : (
+          <DynamicProductCreationFormClean 
+            onProductCreated={handleProductCreated}
+            targetChannels={stableTargetChannels}
+            productCategory={stableProductCategory}
+            userRole={stableUserRole}
+            complianceMode={stableComplianceMode}
+            workflowStep={stableWorkflowStep}
+            debugMode={stableDebugMode}
           />
         );
       
@@ -188,13 +210,66 @@ export default function CreateProductPage() {
             <h1 className="text-3xl font-bold">Create New Product</h1>
             <p className="text-gray-600">Complete omnichannel product creation workflow</p>
           </div>
-          <Button 
-            variant="outline" 
-            onClick={() => router.push('/products')}
-          >
-            Back to Products
-          </Button>
+          <div className="flex items-center space-x-4">
+            {/* Form Type Selector */}
+            {currentStep === 'product' && !workflowState.masterProduct && (
+              <div className="flex items-center space-x-2 bg-gray-100 rounded-lg p-1">
+                <button
+                  onClick={() => setFormType('master')}
+                  className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${
+                    formType === 'master'
+                      ? 'bg-white text-gray-900 shadow-sm'
+                      : 'text-gray-600 hover:text-gray-900'
+                  }`}
+                >
+                  Master Form
+                </button>
+                <button
+                  onClick={() => setFormType('dynamic')}
+                  className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${
+                    formType === 'dynamic'
+                      ? 'bg-white text-gray-900 shadow-sm'
+                      : 'text-gray-600 hover:text-gray-900'
+                  }`}
+                >
+                  Dynamic Form
+                </button>
+              </div>
+            )}
+            <Button 
+              variant="outline" 
+              onClick={() => router.push('/products')}
+            >
+              Back to Products
+            </Button>
+          </div>
         </div>
+
+        {/* Form Type Description */}
+        {currentStep === 'product' && !workflowState.masterProduct && (
+          <Card className="bg-blue-50 border-blue-200">
+            <CardContent className="p-4">
+              <div className="flex items-start space-x-3">
+                <div className="w-2 h-2 bg-blue-500 rounded-full mt-2"></div>
+                <div>
+                  <p className="text-sm text-blue-900">
+                    {formType === 'master' ? (
+                      <>
+                        <strong>Master Form:</strong> Traditional form with predefined fields and sections.
+                        Uses static form components with fixed layout and business logic.
+                      </>
+                    ) : (
+                      <>
+                        <strong>Dynamic Form:</strong> Streamlined ecommerce-focused form for multi-channel sync to 
+                        Shopify, Amazon, Walmart, eBay, and other major ecommerce platforms. Optimized for fast product creation.
+                      </>
+                    )}
+                  </p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Progress Bar */}
         <Card>

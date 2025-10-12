@@ -1987,71 +1987,11 @@
       "isChannelField": false,
       "priority": 50,
       "mappingHint": "supplier_name"
-    },
-    {
-      "fieldName": "variantType",
-      "dataType": "String",
-      "channelId": null,
-      "required": false,
-      "description": "Type of product variant (size, color, style, etc.)",
-      "category": "variants",
-      "group": "attribute",
-      "supportedChannels": ["amazon", "shopify", "walmart", "ebay", "etsy", "google", "facebook", "magento", "woocommerce"],
-      "validationRules": {
-        "enum": ["Size", "Color", "Material", "Style", "Pattern", "Finish"]
-      },
-      "isChannelField": false,
-      "priority": 90,
-      "mappingHint": "variant_type"
-    },
-    {
-      "fieldName": "variantOptions",
-      "dataType": "String",
-      "channelId": null,
-      "required": false,
-      "description": "Available options for this variant type",
-      "category": "variants",
-      "group": "attribute",
-      "supportedChannels": ["amazon", "shopify", "walmart", "ebay", "etsy", "google", "facebook", "magento", "woocommerce"],
-      "validationRules": {
-        "maxLength": 500
-      },
-      "isChannelField": false,
-      "priority": 85,
-      "mappingHint": "variant_options"
-    },
-    {
-      "fieldName": "hasVariants",
-      "dataType": "Boolean",
-      "channelId": null,
-      "required": false,
-      "description": "Whether this product has variants",
-      "category": "variants",
-      "group": "attribute",
-      "supportedChannels": ["amazon", "shopify", "walmart", "ebay", "etsy", "google", "facebook", "magento", "woocommerce"],
-      "validationRules": {},
-      "isChannelField": false,
-      "priority": 95,
-      "mappingHint": "has_variants"
-    },
-    {
-      "fieldName": "variantConfigurator",
-      "dataType": "JSON",
-      "channelId": null,
-      "required": false,
-      "description": "Configure variant options (e.g., Size: S,M,L | Color: Red,Blue,Green)",
-      "category": "variants",
-      "group": "attribute",
-      "supportedChannels": ["amazon", "shopify", "walmart", "ebay", "etsy", "google", "facebook", "magento", "woocommerce"],
-      "validationRules": {},
-      "isChannelField": false,
-      "priority": 90,
-      "mappingHint": "variant_configurator"
     }
   ],
   "metadata": {
     "version": "2.0.0",
-    "totalAttributes": 119,
+    "totalAttributes": 115,
     "createdAt": "2025-10-05",
     "description": "Comprehensive master attribute definitions for omnichannel ecommerce platform",
     "supportedChannels": [

@@ -5,7 +5,7 @@ import { join } from 'path';
 export async function GET() {
   try {
     // Read the master attributes JSON file
-    const filePath = join(process.cwd(), 'master-attributes-comprehensive.json');
+    const filePath = join(process.cwd(), 'src', 'master-attributes-comprehensive.json');
     const fileContents = readFileSync(filePath, 'utf8');
     const data = JSON.parse(fileContents);
     

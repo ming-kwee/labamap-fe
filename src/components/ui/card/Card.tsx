@@ -9,6 +9,7 @@ interface CardProps {
 interface CardHeaderProps {
   children: React.ReactNode;
   className?: string;
+  onClick?: () => void;
 }
 
 interface CardContentProps {
@@ -32,9 +33,9 @@ export const Card: React.FC<CardProps> = ({ children, className = "", onClick })
   );
 };
 
-export const CardHeader: React.FC<CardHeaderProps> = ({ children, className = "" }) => {
+export const CardHeader: React.FC<CardHeaderProps> = ({ children, className = "", onClick }) => {
   return (
-    <div className={`px-6 py-5 ${className}`}>
+    <div className={`px-6 py-5 ${className}`} onClick={onClick}>
       {children}
     </div>
   );

@@ -146,6 +146,9 @@ export interface CreateMasterProductRequest {
   profitMargin?: number;
   warranty?: string;
   model?: string;
+  
+  // Dynamic form fields
+  channel?: string;
   material?: string;
   color?: string;
   

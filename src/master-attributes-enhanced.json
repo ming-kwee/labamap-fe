@@ -1,0 +1,433 @@
+{
+  "version": "2.1.0",
+  "lastUpdated": "2025-01-08T10:30:00Z",
+  "organization": "retail-division",
+  "generatedBy": "business-rules-engine",
+  "masterAttributes": [
+    {
+      "fieldName": "name",
+      "dataType": "String",
+      "required": true,
+      "description": "Product Name",
+      "category": "identification",
+      "group": "attribute",
+      "priority": 1,
+      "governance": {
+        "createdBy": "product-team@company.com",
+        "businessOwner": "product-team@company.com",
+        "technicalOwner": "platform-team@company.com",
+        "lastModifiedBy": "sarah.johnson@company.com",
+        "organizationId": "retail-division",
+        "department": "product-management",
+        "modificationLevel": "BUSINESS_USER",
+        "approvalRequired": true,
+        "currentApprover": "product-director@company.com"
+      },
+      "lifecycle": {
+        "status": "ACTIVE",
+        "version": 3,
+        "effectiveFrom": "2025-01-01T00:00:00Z",
+        "createdAt": "2024-11-01T10:30:00Z",
+        "updatedAt": "2025-01-05T14:22:00Z",
+        "changeReason": "Updated validation rules for international markets"
+      },
+      "businessContext": {
+        "purpose": "Primary product identifier for customers",
+        "impactLevel": "HIGH",
+        "regulatoryRequirements": [],
+        "businessJustification": "Core field for product identification and SEO"
+      },
+      "permissions": {
+        "canEdit": ["product-team", "product-director", "marketing-team"],
+        "canView": ["all-business-users"],
+        "canApprove": ["product-director"],
+        "restrictedChannels": []
+      },
+      "validationRules": {
+        "minLength": 3,
+        "maxLength": 500,
+        "pattern": null
+      },
+      "supportedChannels": ["shopify", "amazon", "walmart", "ebay", "facebook", "google"],
+      "applicableCategories": ["all"],
+      "ruleReferences": {
+        "preProcessing": ["NAME_NORMALIZATION"],
+        "businessLogic": ["REQUIRED_FIELDS_VALIDATION"],
+        "dataEnhancement": ["SEO_ENHANCEMENT"]
+      },
+      "isChannelField": false,
+      "mappingHint": "Primary product title"
+    },
+    {
+      "fieldName": "price",
+      "dataType": "Double",
+      "required": true,
+      "description": "Base Price (USD)",
+      "category": "pricing",
+      "group": "attribute",
+      "priority": 2,
+      "governance": {
+        "createdBy": "pricing-team@company.com",
+        "businessOwner": "pricing-team@company.com",
+        "technicalOwner": "platform-team@company.com",
+        "lastModifiedBy": "mike.chen@company.com",
+        "organizationId": "retail-division",
+        "department": "pricing",
+        "modificationLevel": "BUSINESS_USER",
+        "approvalRequired": true,
+        "currentApprover": "pricing-director@company.com"
+      },
+      "lifecycle": {
+        "status": "ACTIVE",
+        "version": 5,
+        "effectiveFrom": "2025-01-01T00:00:00Z",
+        "createdAt": "2024-10-01T09:00:00Z",
+        "updatedAt": "2025-01-07T16:45:00Z",
+        "changeReason": "Updated precision requirements for international currencies"
+      },
+      "businessContext": {
+        "purpose": "Core pricing field for revenue optimization",
+        "impactLevel": "CRITICAL",
+        "regulatoryRequirements": ["PCI-DSS", "Financial Regulations"],
+        "businessJustification": "Critical revenue field requiring strict validation and approval"
+      },
+      "permissions": {
+        "canEdit": ["pricing-team", "pricing-director"],
+        "canView": ["all-business-users"],
+        "canApprove": ["pricing-director", "cfo"],
+        "restrictedChannels": []
+      },
+      "validationRules": {
+        "min": 0.01,
+        "max": 999999.99,
+        "precision": 2
+      },
+      "supportedChannels": ["shopify", "amazon", "walmart", "ebay", "facebook", "google"],
+      "applicableCategories": ["all"],
+      "ruleReferences": {
+        "preProcessing": ["PRICE_NORMALIZATION"],
+        "businessLogic": ["PRICE_VALIDATION"],
+        "dataEnhancement": ["PRICE_FORMATTING"]
+      },
+      "isChannelField": false,
+      "mappingHint": "Base selling price before channel-specific adjustments"
+    },
+    {
+      "fieldName": "category",
+      "dataType": "Enum",
+      "required": true,
+      "description": "Product Category",
+      "category": "classification",
+      "group": "attribute",
+      "priority": 3,
+      "governance": {
+        "createdBy": "product-team@company.com",
+        "businessOwner": "category-manager@company.com",
+        "technicalOwner": "platform-team@company.com",
+        "lastModifiedBy": "category-manager@company.com",
+        "organizationId": "retail-division",
+        "department": "merchandising",
+        "modificationLevel": "BUSINESS_USER",
+        "approvalRequired": false,
+        "currentApprover": null
+      },
+      "lifecycle": {
+        "status": "ACTIVE",
+        "version": 2,
+        "effectiveFrom": "2024-12-01T00:00:00Z",
+        "createdAt": "2024-10-01T09:00:00Z",
+        "updatedAt": "2024-12-01T10:00:00Z",
+        "changeReason": "Added new product categories for Q1 2025"
+      },
+      "businessContext": {
+        "purpose": "Product classification for merchandising and filtering",
+        "impactLevel": "HIGH",
+        "regulatoryRequirements": [],
+        "businessJustification": "Essential for product organization and channel optimization"
+      },
+      "permissions": {
+        "canEdit": ["product-team", "category-manager", "merchandising-team"],
+        "canView": ["all-business-users"],
+        "canApprove": ["category-manager"],
+        "restrictedChannels": []
+      },
+      "validationRules": {
+        "enum": ["electronics", "clothing", "home", "books", "sports", "beauty", "automotive", "jewelry", "toys", "health"]
+      },
+      "supportedChannels": ["shopify", "amazon", "walmart", "ebay", "facebook", "google"],
+      "applicableCategories": ["all"],
+      "ruleReferences": {
+        "preProcessing": [],
+        "businessLogic": ["CATEGORY_VALIDATION"],
+        "dataEnhancement": ["CATEGORY_ENHANCEMENT"]
+      },
+      "isChannelField": false,
+      "mappingHint": "Primary product category"
+    },
+    {
+      "fieldName": "description",
+      "dataType": "Text",
+      "required": false,
+      "description": "Product Description",
+      "category": "content",
+      "group": "attribute",
+      "priority": 10,
+      "governance": {
+        "createdBy": "content-team@company.com",
+        "businessOwner": "content-team@company.com",
+        "technicalOwner": "platform-team@company.com",
+        "lastModifiedBy": "content-writer@company.com",
+        "organizationId": "retail-division",
+        "department": "marketing",
+        "modificationLevel": "BUSINESS_USER",
+        "approvalRequired": false,
+        "currentApprover": null
+      },
+      "lifecycle": {
+        "status": "ACTIVE",
+        "version": 1,
+        "effectiveFrom": "2024-10-01T00:00:00Z",
+        "createdAt": "2024-10-01T09:00:00Z",
+        "updatedAt": "2024-10-01T09:00:00Z",
+        "changeReason": "Initial field creation"
+      },
+      "businessContext": {
+        "purpose": "Detailed product information for customers",
+        "impactLevel": "MEDIUM",
+        "regulatoryRequirements": [],
+        "businessJustification": "Important for customer conversion and SEO"
+      },
+      "permissions": {
+        "canEdit": ["content-team", "marketing-team", "product-team"],
+        "canView": ["all-business-users"],
+        "canApprove": ["content-manager"],
+        "restrictedChannels": []
+      },
+      "validationRules": {
+        "maxLength": 5000,
+        "minLength": 10
+      },
+      "supportedChannels": ["shopify", "amazon", "walmart", "ebay", "facebook", "google"],
+      "applicableCategories": ["all"],
+      "ruleReferences": {
+        "preProcessing": ["DESCRIPTION_CLEANUP"],
+        "businessLogic": [],
+        "dataEnhancement": ["DESCRIPTION_ENHANCEMENT", "SEO_ENHANCEMENT"]
+      },
+      "isChannelField": false,
+      "mappingHint": "Product description for customer-facing display"
+    },
+    {
+      "fieldName": "brand",
+      "dataType": "String",
+      "required": false,
+      "description": "Brand Name",
+      "category": "identification",
+      "group": "attribute",
+      "priority": 5,
+      "governance": {
+        "createdBy": "brand-team@company.com",
+        "businessOwner": "brand-manager@company.com",
+        "technicalOwner": "platform-team@company.com",
+        "lastModifiedBy": "brand-manager@company.com",
+        "organizationId": "retail-division",
+        "department": "brand-management",
+        "modificationLevel": "BUSINESS_USER",
+        "approvalRequired": false,
+        "currentApprover": null
+      },
+      "lifecycle": {
+        "status": "ACTIVE",
+        "version": 2,
+        "effectiveFrom": "2024-11-15T00:00:00Z",
+        "createdAt": "2024-10-01T09:00:00Z",
+        "updatedAt": "2024-11-15T11:30:00Z",
+        "changeReason": "Updated brand validation for new partnerships"
+      },
+      "businessContext": {
+        "purpose": "Brand identification for product attribution",
+        "impactLevel": "MEDIUM",
+        "regulatoryRequirements": ["Trademark Compliance"],
+        "businessJustification": "Important for brand filtering and channel requirements"
+      },
+      "permissions": {
+        "canEdit": ["brand-team", "brand-manager", "product-team"],
+        "canView": ["all-business-users"],
+        "canApprove": ["brand-manager"],
+        "restrictedChannels": []
+      },
+      "validationRules": {
+        "maxLength": 100,
+        "minLength": 2
+      },
+      "supportedChannels": ["shopify", "amazon", "walmart", "ebay", "facebook", "google"],
+      "applicableCategories": ["all"],
+      "ruleReferences": {
+        "preProcessing": ["BRAND_NORMALIZATION"],
+        "businessLogic": ["BRAND_VALIDATION"],
+        "dataEnhancement": []
+      },
+      "isChannelField": false,
+      "mappingHint": "Product brand or manufacturer"
+    },
+    {
+      "fieldName": "sku",
+      "dataType": "String",
+      "required": false,
+      "description": "Stock Keeping Unit",
+      "category": "identification",
+      "group": "attribute",
+      "priority": 4,
+      "governance": {
+        "createdBy": "inventory-team@company.com",
+        "businessOwner": "inventory-manager@company.com",
+        "technicalOwner": "platform-team@company.com",
+        "lastModifiedBy": "inventory-manager@company.com",
+        "organizationId": "retail-division",
+        "department": "inventory",
+        "modificationLevel": "BUSINESS_USER",
+        "approvalRequired": false,
+        "currentApprover": null
+      },
+      "lifecycle": {
+        "status": "ACTIVE",
+        "version": 3,
+        "effectiveFrom": "2024-12-01T00:00:00Z",
+        "createdAt": "2024-10-01T09:00:00Z",
+        "updatedAt": "2024-12-01T13:15:00Z",
+        "changeReason": "Updated SKU generation pattern for new categories"
+      },
+      "businessContext": {
+        "purpose": "Unique product identifier for inventory management",
+        "impactLevel": "HIGH",
+        "regulatoryRequirements": [],
+        "businessJustification": "Critical for inventory tracking and channel synchronization"
+      },
+      "permissions": {
+        "canEdit": ["inventory-team", "inventory-manager", "product-team"],
+        "canView": ["all-business-users"],
+        "canApprove": ["inventory-manager"],
+        "restrictedChannels": []
+      },
+      "validationRules": {
+        "maxLength": 50,
+        "pattern": "^[A-Z0-9-]+$"
+      },
+      "supportedChannels": ["shopify", "amazon", "walmart", "ebay", "facebook", "google"],
+      "applicableCategories": ["all"],
+      "ruleReferences": {
+        "preProcessing": ["SKU_GENERATION"],
+        "businessLogic": ["SKU_VALIDATION"],
+        "dataEnhancement": []
+      },
+      "isChannelField": false,
+      "mappingHint": "Auto-generated if not provided, based on brand-category pattern"
+    },
+    {
+      "fieldName": "gtin",
+      "dataType": "String",
+      "required": false,
+      "description": "Global Trade Item Number",
+      "category": "identification",
+      "group": "attribute",
+      "priority": 15,
+      "governance": {
+        "createdBy": "compliance-team@company.com",
+        "businessOwner": "compliance-manager@company.com",
+        "technicalOwner": "platform-team@company.com",
+        "lastModifiedBy": "compliance-manager@company.com",
+        "organizationId": "retail-division",
+        "department": "compliance",
+        "modificationLevel": "BUSINESS_USER",
+        "approvalRequired": false,
+        "currentApprover": null
+      },
+      "lifecycle": {
+        "status": "ACTIVE",
+        "version": 1,
+        "effectiveFrom": "2024-11-01T00:00:00Z",
+        "createdAt": "2024-11-01T09:00:00Z",
+        "updatedAt": "2024-11-01T09:00:00Z",
+        "changeReason": "Added for marketplace compliance requirements"
+      },
+      "businessContext": {
+        "purpose": "Global product identification for marketplace compliance",
+        "impactLevel": "MEDIUM",
+        "regulatoryRequirements": ["GS1 Standards"],
+        "businessJustification": "Required for major marketplaces like Walmart"
+      },
+      "permissions": {
+        "canEdit": ["compliance-team", "compliance-manager", "product-team"],
+        "canView": ["all-business-users"],
+        "canApprove": ["compliance-manager"],
+        "restrictedChannels": []
+      },
+      "validationRules": {
+        "pattern": "^[0-9]{8,14}$",
+        "minLength": 8,
+        "maxLength": 14
+      },
+      "supportedChannels": ["amazon", "walmart", "google"],
+      "applicableCategories": ["electronics", "clothing", "home", "sports", "beauty", "health"],
+      "ruleReferences": {
+        "preProcessing": [],
+        "businessLogic": ["GTIN_VALIDATION"],
+        "dataEnhancement": []
+      },
+      "isChannelField": true,
+      "mappingHint": "Required for Walmart, recommended for Amazon and Google"
+    },
+    {
+      "fieldName": "warranty",
+      "dataType": "Enum",
+      "required": false,
+      "description": "Warranty Period",
+      "category": "product_details",
+      "group": "attribute",
+      "priority": 25,
+      "governance": {
+        "createdBy": "product-team@company.com",
+        "businessOwner": "product-manager@company.com",
+        "technicalOwner": "platform-team@company.com",
+        "lastModifiedBy": "product-manager@company.com",
+        "organizationId": "retail-division",
+        "department": "product-management",
+        "modificationLevel": "BUSINESS_USER",
+        "approvalRequired": false,
+        "currentApprover": null
+      },
+      "lifecycle": {
+        "status": "ACTIVE",
+        "version": 1,
+        "effectiveFrom": "2024-11-01T00:00:00Z",
+        "createdAt": "2024-11-01T09:00:00Z",
+        "updatedAt": "2024-11-01T09:00:00Z",
+        "changeReason": "Added for electronics category support"
+      },
+      "businessContext": {
+        "purpose": "Warranty information for customer confidence",
+        "impactLevel": "MEDIUM",
+        "regulatoryRequirements": ["Consumer Protection Laws"],
+        "businessJustification": "Important for electronics and appliances"
+      },
+      "permissions": {
+        "canEdit": ["product-team", "product-manager"],
+        "canView": ["all-business-users"],
+        "canApprove": ["product-manager"],
+        "restrictedChannels": []
+      },
+      "validationRules": {
+        "enum": ["no_warranty", "30_days", "90_days", "1_year", "2_years", "3_years", "5_years"]
+      },
+      "supportedChannels": ["shopify", "amazon", "walmart", "ebay"],
+      "applicableCategories": ["electronics", "automotive", "home"],
+      "ruleReferences": {
+        "preProcessing": [],
+        "businessLogic": [],
+        "dataEnhancement": ["WARRANTY_ENHANCEMENT"]
+      },
+      "isChannelField": false,
+      "mappingHint": "Warranty period offered with the product"
+    }
+  ]
+}
