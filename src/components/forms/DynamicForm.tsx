@@ -103,6 +103,31 @@ const DynamicForm: React.FC<DynamicFormProps> = ({
    */
   const isFieldVisible = (field: FormField, data: DynamicFormData): boolean => {
     if (field.hidden) return false;
+    
+    // Special handling for variant configurator - always check its conditional logic
+    if (field.fieldName === 'variantConfigurator') {
+      if (!field.conditionalVisibility) return true;
+      const { showWhen, hideWhen } = field.conditionalVisibility;
+      if (showWhen && !evaluateCondition(showWhen, data)) return false;
+      if (hideWhen && evaluateCondition(hideWhen, data)) return false;
+      return true;
+    }
+    
+    // Hide other variant-related fields when variants are enabled (they're now part of variant configurator)
+    if (data.hasVariants) {
+      const isVariantAttributeField = (
+        // Fields in the variants category (except hasVariants and variantConfigurator)
+        (field.category === 'variants' && field.fieldName !== 'hasVariants' && field.fieldName !== 'variantConfigurator') ||
+        // Common variant attribute fields that show when hasVariants is true
+        (['size', 'color', 'material', 'style', 'pattern', 'finish'].includes(field.fieldName) && 
+         field.conditionalVisibility?.showWhen?.includes('hasVariants === true'))
+      );
+      
+      if (isVariantAttributeField) {
+        return false;
+      }
+    }
+    
     if (!field.conditionalVisibility) return true;
     
     const { showWhen, hideWhen } = field.conditionalVisibility;
@@ -246,6 +271,14 @@ const DynamicForm: React.FC<DynamicFormProps> = ({
     if (fieldName === 'hasVariants') {
       console.log('hasVariants changed! Old data:', formData, 'New data:', newData);
       console.log('Will trigger visibility update...');
+      console.log('Looking for variantConfigurator field in schema...');
+      const variantConfigField = schema.fields.find(f => f.fieldName === 'variantConfigurator');
+      if (variantConfigField) {
+        console.log('Found variantConfigurator field:', variantConfigField);
+        console.log('Conditional visibility:', variantConfigField.conditionalVisibility);
+      } else {
+        console.log('variantConfigurator field NOT found in schema!');
+      }
     }
     
     // Clear validation errors for this field
@@ -522,185 +555,404 @@ const DynamicForm: React.FC<DynamicFormProps> = ({
   };
 
   /**
-   * Render variant configurator for managing product variants
+   * Render improved variant configurator with better UX
    */
-  const renderVariantConfigurator = (field: FormField) => {
-    const variantConfig = formData[field.fieldName] ? JSON.parse(formData[field.fieldName] as string) : { options: [], variants: [] };
+  // Get all fields that should be available for variant creation
+  const getVariantFields = React.useCallback(() => {
+    return schema.fields.filter(field => {
+      // Exclude the configurator itself and hasVariants checkbox
+      if (field.fieldName === 'variantConfigurator' || field.fieldName === 'hasVariants') {
+        return false;
+      }
+      
+      // Include fields that are variant attribute fields
+      return (
+        // Fields that show when hasVariants is true (like size, color)
+        (field.conditionalVisibility?.showWhen?.includes('hasVariants === true')) ||
+        // Fields in the variants category 
+        (field.category === 'variants') ||
+        // Common variant attribute fields
+        (['size', 'color', 'material', 'style', 'pattern', 'finish'].includes(field.fieldName))
+      );
+    });
+  }, [schema.fields]);
+
+  // Generate variants dynamically based on current form selections
+  const generateDynamicVariants = React.useCallback(() => {
+    const variantFields = getVariantFields();
+    const variants = [];
     
-    const addVariantOption = () => {
-      const optionName = prompt('Enter option name (e.g., Size, Color):');
-      const optionValues = prompt('Enter option values separated by commas (e.g., S,M,L):');
+    // Get current selections for variant fields
+    const variantSelections = {};
+    let hasAnySelection = false;
+    
+    variantFields.forEach(field => {
+      const value = formData[field.fieldName];
+      if (value && value !== '') {
+        variantSelections[field.fieldName] = value;
+        hasAnySelection = true;
+      }
+    });
+    
+    // Only create variant if there are selections
+    if (!hasAnySelection) {
+      return variants;
+    }
+    
+    // Generate SKU from selections
+    const skuParts = [formData.name || 'PRODUCT'];
+    Object.entries(variantSelections).forEach(([fieldName, value]) => {
+      skuParts.push(value);
+    });
+    const sku = skuParts.join('-').replace(/\s+/g, '-').toUpperCase();
+    
+    // Create variant object
+    const variant = {
+      ...variantSelections,
+      sku,
+      price: formData.price || 0,
+      comparePrice: formData.comparePrice || 0,
+      costPrice: formData.costPrice || 0,
+      weight: formData.weight || 0,
+      inventory: 0,
+      lowStockAlert: formData.lowStockAlert || 5
+    };
+    
+    variants.push(variant);
+    return variants;
+  }, [formData, getVariantFields]);
+
+  // Remove automatic variant generation to prevent infinite loops
+  // Variants will only be generated when user explicitly creates them
+
+  const renderVariantConfigurator = (field: FormField) => {
+    // Get dynamic variant fields from schema
+    const variantFields = getVariantFields();
+    
+    // Parse existing variants from form data
+    let existingVariants = [];
+    try {
+      const variantData = formData[field.fieldName];
+      if (variantData && typeof variantData === 'string') {
+        const parsed = JSON.parse(variantData);
+        existingVariants = parsed.variants || [];
+      }
+    } catch (error) {
+      // Invalid JSON, start with empty array
+      existingVariants = [];
+    }
+
+    const handleGenerateVariant = () => {
+      const newVariants = generateDynamicVariants();
+      if (newVariants.length === 0) {
+        alert('Please select at least one variant attribute first');
+        return;
+      }
+
+      const newVariant = newVariants[0];
       
-      if (optionName && optionValues) {
-        const newOption = {
-          name: optionName.trim(),
-          values: optionValues.split(',').map(v => v.trim()).filter(v => v)
-        };
-        
-        const newConfig = {
-          ...variantConfig,
-          options: [...(variantConfig.options || []), newOption]
-        };
-        
-        // Auto-generate variants when options change
-        if (newConfig.options.length > 0) {
-          newConfig.variants = generateVariantCombinations(newConfig.options);
-        }
-        
-        handleFieldChange(field.fieldName, JSON.stringify(newConfig));
-      }
-    };
-
-    const removeVariantOption = (index: number) => {
-      const newOptions = variantConfig.options.filter((_: any, i: number) => i !== index);
-      const newConfig = {
-        ...variantConfig,
-        options: newOptions,
-        variants: newOptions.length > 0 ? generateVariantCombinations(newOptions) : []
-      };
-      handleFieldChange(field.fieldName, JSON.stringify(newConfig));
-    };
-
-    const generateVariantCombinations = (options: any[]): any[] => {
-      if (options.length === 0) return [];
-      if (options.length === 1) {
-        return options[0].values.map((value: string) => ({ 
-          [options[0].name]: value,
-          sku: `${formData.name || 'PRODUCT'}-${value}`.replace(/\s+/g, '-').toUpperCase(),
-          price: formData.price || 0,
-          inventory: 0,
-          weight: formData.weight || 0
-        }));
-      }
-
-      const combinations: any[] = [];
-      const generateCombos = (currentCombo: any, optionIndex: number) => {
-        if (optionIndex === options.length) {
-          const variantName = Object.values(currentCombo).join('-');
-          combinations.push({
-            ...currentCombo,
-            sku: `${formData.name || 'PRODUCT'}-${variantName}`.replace(/\s+/g, '-').toUpperCase(),
-            price: formData.price || 0,
-            inventory: 0,
-            weight: formData.weight || 0
-          });
-          return;
-        }
-
-        const option = options[optionIndex];
-        option.values.forEach((value: string) => {
-          generateCombos({ ...currentCombo, [option.name]: value }, optionIndex + 1);
+      // Check if variant already exists by comparing all variant attributes
+      const exists = existingVariants.some(existing => {
+        return variantFields.every(varField => {
+          const newValue = newVariant[varField.fieldName];
+          const existingValue = existing[varField.fieldName];
+          return newValue === existingValue;
         });
-      };
+      });
 
-      generateCombos({}, 0);
-      return combinations;
+      if (exists) {
+        alert('This variant combination already exists');
+        return;
+      }
+
+      const updatedVariants = [...existingVariants, ...newVariants];
+      handleFieldChange(field.fieldName, JSON.stringify({ variants: updatedVariants }));
     };
 
-    const updateVariantData = (variantIndex: number, field: string, value: any) => {
-      const newVariants = [...(variantConfig.variants || [])];
-      newVariants[variantIndex] = { ...newVariants[variantIndex], [field]: value };
-      
-      const newConfig = {
-        ...variantConfig,
-        variants: newVariants
+    const updateVariantField = (variantIndex: number, fieldName: string, value: any) => {
+      const updatedVariants = [...existingVariants];
+      updatedVariants[variantIndex] = { 
+        ...updatedVariants[variantIndex], 
+        [fieldName]: value 
       };
-      handleFieldChange(field.fieldName, JSON.stringify(newConfig));
+      handleFieldChange(field.fieldName, JSON.stringify({ variants: updatedVariants }));
+    };
+
+    const removeVariant = (variantIndex: number) => {
+      const updatedVariants = existingVariants.filter((_, index) => index !== variantIndex);
+      handleFieldChange(field.fieldName, JSON.stringify({ variants: updatedVariants }));
+    };
+
+    // Render dynamic field input based on field type
+    const renderVariantFieldInput = (varField: FormField, currentValue: any) => {
+      const fieldId = `variant-${varField.fieldName}`;
+      
+      switch (varField.fieldType) {
+        case 'select':
+          return (
+            <select
+              id={fieldId}
+              value={currentValue || ''}
+              onChange={(e) => handleFieldChange(varField.fieldName, e.target.value)}
+              className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+            >
+              <option value="">Select {varField.label}</option>
+              {varField.options?.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          );
+        
+        case 'number':
+          return (
+            <input
+              id={fieldId}
+              type="number"
+              value={currentValue || ''}
+              onChange={(e) => handleFieldChange(varField.fieldName, e.target.value)}
+              className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+              placeholder={varField.placeholder}
+            />
+          );
+        
+        case 'text':
+        default:
+          return (
+            <input
+              id={fieldId}
+              type="text"
+              value={currentValue || ''}
+              onChange={(e) => handleFieldChange(varField.fieldName, e.target.value)}
+              className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+              placeholder={varField.placeholder}
+            />
+          );
+      }
     };
 
     return (
-      <div className="space-y-4 p-4 border border-gray-200 rounded-lg">
-        {/* Variant Options Configuration */}
-        <div>
-          <h4 className="font-medium text-gray-900 mb-3">Configure Variant Options</h4>
-          
-          {variantConfig.options?.map((option: any, index: number) => (
-            <div key={index} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg mb-2">
-              <div>
-                <span className="font-medium">{option.name}:</span>
-                <span className="ml-2 text-gray-600">{option.values.join(', ')}</span>
-              </div>
-              <button
-                type="button"
-                onClick={() => removeVariantOption(index)}
-                className="text-red-500 hover:text-red-700"
-              >
-                Remove
-              </button>
-            </div>
-          ))}
-          
-          <button
-            type="button"
-            onClick={addVariantOption}
-            className="mt-2 px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
-          >
-            Add Variant Option
-          </button>
+      <div className="space-y-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+        {/* Instructions */}
+        <div className="bg-white p-3 rounded border border-blue-200">
+          <h4 className="font-medium text-blue-900 mb-2">✨ Product Variants</h4>
+          <p className="text-sm text-blue-700 mb-2">
+            Create different variations of your product (e.g., Small Red, Large Blue) by selecting combinations below.
+          </p>
+          <div className="text-xs text-blue-600">
+            💡 <strong>Tip:</strong> Create one variant at a time by selecting size/color and clicking "Add Variant".
+          </div>
         </div>
 
-        {/* Generated Variants Table */}
-        {variantConfig.variants && variantConfig.variants.length > 0 && (
-          <div>
-            <h4 className="font-medium text-gray-900 mb-3">Generated Variants ({variantConfig.variants.length})</h4>
-            <div className="overflow-x-auto">
-              <table className="min-w-full border border-gray-200">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="border border-gray-200 px-3 py-2 text-left">Combination</th>
-                    <th className="border border-gray-200 px-3 py-2 text-left">SKU</th>
-                    <th className="border border-gray-200 px-3 py-2 text-left">Price</th>
-                    <th className="border border-gray-200 px-3 py-2 text-left">Inventory</th>
-                    <th className="border border-gray-200 px-3 py-2 text-left">Weight</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {variantConfig.variants.map((variant: any, index: number) => {
-                    const variantOptions = variantConfig.options?.map((opt: any) => `${opt.name}: ${variant[opt.name]}`).join(' | ') || '';
-                    
+        {/* Dynamic Variant Creation */}
+        <div className="bg-white p-4 rounded border border-gray-200">
+          <div className="mb-4">
+            <h4 className="text-sm font-medium text-gray-700 mb-3">Create New Variant:</h4>
+            <p className="text-xs text-gray-600 mb-3">
+              Configure variant attributes below and click "Add Variant" to create a new product variation.
+            </p>
+          </div>
+          
+          {/* Dynamic Variant Fields Grid */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-4">
+            {variantFields.map((varField) => (
+              <div key={varField.fieldName}>
+                <label className="block text-xs font-medium text-gray-700 mb-1">
+                  {varField.label}
+                  {varField.required && <span className="text-red-500 ml-1">*</span>}
+                </label>
+                {renderVariantFieldInput(varField, formData[varField.fieldName])}
+                {varField.helpText && (
+                  <div className="text-xs text-gray-500 mt-1">{varField.helpText}</div>
+                )}
+              </div>
+            ))}
+            
+            {/* Add Variant Button */}
+            <div className="flex items-end">
+              <button
+                type="button"
+                onClick={handleGenerateVariant}
+                className="w-full px-4 py-2 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
+              >
+                Add Variant
+              </button>
+            </div>
+          </div>
+
+          {/* Current Selection Preview */}
+          {(() => {
+            const currentVariants = generateDynamicVariants();
+            const hasSelections = currentVariants.length > 0;
+            
+            return hasSelections && (
+              <div className="bg-blue-50 border border-blue-200 rounded p-3">
+                <div className="text-xs text-blue-700 mb-1">Preview:</div>
+                <div className="text-sm font-medium text-blue-900">
+                  {variantFields.map((varField, index) => {
+                    const value = formData[varField.fieldName];
+                    if (!value) return null;
                     return (
-                      <tr key={index}>
-                        <td className="border border-gray-200 px-3 py-2">{variantOptions}</td>
-                        <td className="border border-gray-200 px-3 py-2">
-                          <input
-                            type="text"
-                            value={variant.sku || ''}
-                            onChange={(e) => updateVariantData(index, 'sku', e.target.value)}
-                            className="w-full px-2 py-1 border border-gray-300 rounded"
-                          />
-                        </td>
-                        <td className="border border-gray-200 px-3 py-2">
-                          <input
-                            type="number"
-                            step="0.01"
-                            value={variant.price || 0}
-                            onChange={(e) => updateVariantData(index, 'price', parseFloat(e.target.value) || 0)}
-                            className="w-full px-2 py-1 border border-gray-300 rounded"
-                          />
-                        </td>
-                        <td className="border border-gray-200 px-3 py-2">
-                          <input
-                            type="number"
-                            value={variant.inventory || 0}
-                            onChange={(e) => updateVariantData(index, 'inventory', parseInt(e.target.value) || 0)}
-                            className="w-full px-2 py-1 border border-gray-300 rounded"
-                          />
-                        </td>
-                        <td className="border border-gray-200 px-3 py-2">
-                          <input
-                            type="number"
-                            step="0.01"
-                            value={variant.weight || 0}
-                            onChange={(e) => updateVariantData(index, 'weight', parseFloat(e.target.value) || 0)}
-                            className="w-full px-2 py-1 border border-gray-300 rounded"
-                          />
-                        </td>
-                      </tr>
+                      <span key={varField.fieldName}>
+                        {index > 0 && ' • '}
+                        {varField.label}: {value}
+                      </span>
                     );
                   })}
-                </tbody>
-              </table>
+                </div>
+                <div className="text-xs text-blue-600 mt-1">
+                  SKU: {currentVariants[0]?.sku}
+                </div>
+              </div>
+            );
+          })()}
+        </div>
+
+        {/* Created Variants */}
+        {existingVariants.length > 0 ? (
+          <div className="bg-white rounded border border-gray-200">
+            <div className="px-4 py-3 bg-gray-50 border-b border-gray-200">
+              <h4 className="font-medium text-gray-900">
+                Product Variants ({existingVariants.length})
+              </h4>
+              <p className="text-xs text-gray-600">
+                Manage pricing, inventory, and other variant-specific settings
+              </p>
             </div>
+            <div className="p-4">
+              <div className="space-y-4">
+                {existingVariants.map((variant, index) => (
+                  <div key={index} className="border border-gray-200 rounded-lg p-4 bg-gray-50">
+                    {/* Variant Header */}
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="flex-1">
+                        <div className="font-medium text-sm text-gray-900">
+                          {variantFields.map((varField, fieldIndex) => {
+                            const value = variant[varField.fieldName];
+                            if (!value) return null;
+                            return (
+                              <span key={varField.fieldName}>
+                                {fieldIndex > 0 && ' • '}
+                                {varField.label}: {value}
+                              </span>
+                            );
+                          })}
+                        </div>
+                        <div className="text-xs text-gray-600 mt-1">
+                          SKU: {variant.sku}
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => removeVariant(index)}
+                        className="px-2 py-1 text-xs text-red-600 hover:bg-red-50 rounded"
+                        title="Remove variant"
+                      >
+                        ✕ Remove
+                      </button>
+                    </div>
+
+                    {/* Variant Management Fields */}
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                      <div>
+                        <label className="block text-xs font-medium text-gray-700 mb-1">Price ($)</label>
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={variant.price || 0}
+                          onChange={(e) => updateVariantField(index, 'price', parseFloat(e.target.value) || 0)}
+                          className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        />
+                      </div>
+                      
+                      <div>
+                        <label className="block text-xs font-medium text-gray-700 mb-1">Compare Price ($)</label>
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={variant.comparePrice || 0}
+                          onChange={(e) => updateVariantField(index, 'comparePrice', parseFloat(e.target.value) || 0)}
+                          className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        />
+                      </div>
+                      
+                      <div>
+                        <label className="block text-xs font-medium text-gray-700 mb-1">Inventory</label>
+                        <input
+                          type="number"
+                          min="0"
+                          value={variant.inventory || 0}
+                          onChange={(e) => updateVariantField(index, 'inventory', parseInt(e.target.value) || 0)}
+                          className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        />
+                      </div>
+                      
+                      <div>
+                        <label className="block text-xs font-medium text-gray-700 mb-1">Weight (lbs)</label>
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={variant.weight || 0}
+                          onChange={(e) => updateVariantField(index, 'weight', parseFloat(e.target.value) || 0)}
+                          className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Additional Variant Fields */}
+                    <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mt-3">
+                      <div>
+                        <label className="block text-xs font-medium text-gray-700 mb-1">Cost Price ($)</label>
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={variant.costPrice || 0}
+                          onChange={(e) => updateVariantField(index, 'costPrice', parseFloat(e.target.value) || 0)}
+                          className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        />
+                      </div>
+                      
+                      <div>
+                        <label className="block text-xs font-medium text-gray-700 mb-1">Low Stock Alert</label>
+                        <input
+                          type="number"
+                          min="0"
+                          value={variant.lowStockAlert || 5}
+                          onChange={(e) => updateVariantField(index, 'lowStockAlert', parseInt(e.target.value) || 5)}
+                          className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        />
+                      </div>
+                      
+                      <div className="flex items-center">
+                        <label className="flex items-center text-xs text-gray-700">
+                          <input
+                            type="checkbox"
+                            checked={variant.trackInventory !== false}
+                            onChange={(e) => updateVariantField(index, 'trackInventory', e.target.checked)}
+                            className="mr-2 text-blue-600"
+                          />
+                          Track Inventory
+                        </label>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="bg-white p-4 rounded border border-gray-200 text-center">
+            <div className="text-gray-400 mb-2">
+              📦 No variants created yet
+            </div>
+            <p className="text-sm text-gray-600">
+              Configure variant attributes above and click "Add Variant" to create product variations
+            </p>
           </div>
         )}
       </div>
@@ -720,7 +972,7 @@ const DynamicForm: React.FC<DynamicFormProps> = ({
     }
     
     return (
-      <div key={field.fieldName} className={`form-field ${field.width === 'full' ? 'col-span-2' : ''}`}>
+      <div key={field.fieldName} className={`form-field ${field.width === 'full' || field.fieldName === 'variantConfigurator' ? 'col-span-2' : ''}`}>
         <label htmlFor={field.fieldName} className="block text-sm font-medium text-gray-700 mb-1">
           {field.label}
           {isRequired && <span className="text-red-500 ml-1">*</span>}
