@@ -3,7 +3,7 @@
  * Renders forms based on business-controlled schemas with conditional logic
  */
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card/Card';
 import Button from '@/components/ui/button/Button';
 import { Alert, AlertDescription } from '@/components/ui/alert/AlertComponents';
@@ -16,6 +16,18 @@ import {
   DynamicFormSchema,
   FormLogic
 } from '@/types/dynamicForm';
+
+interface ImageFile {
+  id: string;
+  file?: File;
+  url: string;
+  name: string;
+  size?: number;
+  type?: string;
+  isPrimary: boolean;
+  altText?: string;
+  description?: string;
+}
 
 const DynamicForm: React.FC<DynamicFormProps> = ({
   schema,
@@ -34,6 +46,9 @@ const DynamicForm: React.FC<DynamicFormProps> = ({
   const [visibleFields, setVisibleFields] = useState<Set<string>>(new Set());
   const [isValidating, setIsValidating] = useState(false);
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
+  const [uploadedImages, setUploadedImages] = useState<Record<string, ImageFile[]>>({});
+  const [dragActive, setDragActive] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Initialize visible fields and expanded groups
   useEffect(() => {
@@ -63,6 +78,43 @@ const DynamicForm: React.FC<DynamicFormProps> = ({
   useEffect(() => {
     onChange?.(formData);
   }, [formData, onChange]);
+
+  // Initialize images from form data for all image fields
+  useEffect(() => {
+    console.log('[DynamicForm] ALL FIELDS IN SCHEMA:', schema.fields.map(f => ({ name: f.fieldName, type: f.fieldType })));
+    
+    const imageFields = schema.fields.filter(field => 
+      field.fieldType === 'image' || field.fieldType === 'file' || field.fieldType === 'media'
+    );
+    
+    console.log('[DynamicForm] Image fields found:', imageFields.map(f => f.fieldName));
+    console.log('[DynamicForm] Image fields details:', imageFields);
+    
+    const updatedImages: Record<string, ImageFile[]> = {};
+    
+    imageFields.forEach(field => {
+      const fieldValue = formData[field.fieldName];
+      console.log(`[DynamicForm] Field ${field.fieldName} value:`, fieldValue);
+      
+      if (Array.isArray(fieldValue) && fieldValue.length > 0) {
+        const images: ImageFile[] = fieldValue.map((url: string, index: number) => ({
+          id: `existing-${field.fieldName}-${index}`,
+          url,
+          name: `Image ${index + 1}`,
+          isPrimary: index === 0,
+          altText: `Product image ${index + 1}`
+        }));
+        updatedImages[field.fieldName] = images;
+        console.log(`[DynamicForm] Initialized ${images.length} images for ${field.fieldName}`);
+      } else {
+        console.log(`[DynamicForm] No initial images for ${field.fieldName}`);
+      }
+    });
+    
+    if (Object.keys(updatedImages).length > 0) {
+      setUploadedImages(prev => ({ ...prev, ...updatedImages }));
+    }
+  }, [schema.fields, formData]);
 
   /**
    * Update field visibility based on conditional logic
@@ -116,8 +168,8 @@ const DynamicForm: React.FC<DynamicFormProps> = ({
     // Hide other variant-related fields when variants are enabled (they're now part of variant configurator)
     if (data.hasVariants) {
       const isVariantAttributeField = (
-        // Fields in the variants category (except hasVariants and variantConfigurator)
-        (field.category === 'variants' && field.fieldName !== 'hasVariants' && field.fieldName !== 'variantConfigurator') ||
+        // Fields in the variants group (except hasVariants and variantConfigurator)
+        (field.group === 'variants' && field.fieldName !== 'hasVariants' && field.fieldName !== 'variantConfigurator') ||
         // Common variant attribute fields that show when hasVariants is true
         (['size', 'color', 'material', 'style', 'pattern', 'finish'].includes(field.fieldName) && 
          field.conditionalVisibility?.showWhen?.includes('hasVariants === true'))
@@ -206,7 +258,7 @@ const DynamicForm: React.FC<DynamicFormProps> = ({
         const match = condition.match(/(\w+)\.includes\(['"]([^'"]+)['"]\)/);
         if (match) {
           const [, arrayName, value] = match;
-          const array = evalContext[arrayName];
+          const array = (evalContext as any)[arrayName];
           return Array.isArray(array) && array.includes(value);
         }
       }
@@ -549,6 +601,14 @@ const DynamicForm: React.FC<DynamicFormProps> = ({
       case 'variant-configurator':
         return renderVariantConfigurator(field);
       
+      case 'channel-settings':
+        return renderChannelSettings(field);
+      
+      case 'file':
+      case 'image':
+      case 'media':
+        return renderImageGallery(field);
+      
       default:
         return <input type="text" {...commonProps} />;
     }
@@ -569,8 +629,8 @@ const DynamicForm: React.FC<DynamicFormProps> = ({
       return (
         // Fields that show when hasVariants is true (like size, color)
         (field.conditionalVisibility?.showWhen?.includes('hasVariants === true')) ||
-        // Fields in the variants category 
-        (field.category === 'variants') ||
+        // Fields in the variants group
+        (field.group === 'variants') ||
         // Common variant attribute fields
         (['size', 'color', 'material', 'style', 'pattern', 'finish'].includes(field.fieldName))
       );
@@ -580,10 +640,10 @@ const DynamicForm: React.FC<DynamicFormProps> = ({
   // Generate variants dynamically based on current form selections
   const generateDynamicVariants = React.useCallback(() => {
     const variantFields = getVariantFields();
-    const variants = [];
+    const variants: any[] = [];
     
     // Get current selections for variant fields
-    const variantSelections = {};
+    const variantSelections: Record<string, any> = {};
     let hasAnySelection = false;
     
     variantFields.forEach(field => {
@@ -625,6 +685,727 @@ const DynamicForm: React.FC<DynamicFormProps> = ({
   // Remove automatic variant generation to prevent infinite loops
   // Variants will only be generated when user explicitly creates them
 
+  /**
+   * Render Channel Settings - Platform-specific configurations
+   */
+  const renderChannelSettings = (field: FormField) => {
+    const channels = ['shopify', 'amazon', 'walmart', 'ebay', 'etsy', 'magento', 'woocommerce'];
+    
+    // Get current channel settings from form data
+    const channelSettings = formData[field.fieldName] || {};
+    
+    // Update channel settings
+    const updateChannelSettings = (channelName: string, settingKey: string, value: any) => {
+      const newSettings = {
+        ...channelSettings,
+        [channelName]: {
+          ...channelSettings[channelName],
+          [settingKey]: value
+        }
+      };
+      
+      setFormData({ 
+        ...formData, 
+        [field.fieldName]: newSettings 
+      });
+    };
+    
+    // Toggle channel enabled/disabled
+    const toggleChannel = (channelName: string, enabled: boolean) => {
+      const newSettings = {
+        ...channelSettings,
+        [channelName]: {
+          ...channelSettings[channelName],
+          enabled,
+          // Set default values when enabling
+          ...(enabled && !channelSettings[channelName] ? {
+            title: formData.name || '',
+            description: formData.description || '',
+            price: formData.price || '',
+            status: 'draft',
+            publishSchedule: 'immediate'
+          } : {})
+        }
+      };
+      
+      setFormData({ 
+        ...formData, 
+        [field.fieldName]: newSettings 
+      });
+    };
+
+    // Get channel-specific configuration
+    const getChannelConfig = (channelName: string) => {
+      const configs: Record<string, any> = {
+        shopify: {
+          icon: '🛍️',
+          color: 'bg-green-100 border-green-500',
+          fields: ['title', 'description', 'price', 'status', 'seo', 'inventory', 'publishSchedule']
+        },
+        amazon: {
+          icon: '📦',
+          color: 'bg-orange-100 border-orange-500',
+          fields: ['title', 'description', 'price', 'asin', 'category', 'fulfillmentBy', 'keywords']
+        },
+        walmart: {
+          icon: '🏪',
+          color: 'bg-blue-100 border-blue-500',
+          fields: ['title', 'description', 'price', 'upc', 'category', 'brand', 'publishSchedule']
+        },
+        ebay: {
+          icon: '🔨',
+          color: 'bg-yellow-100 border-yellow-500',
+          fields: ['title', 'description', 'price', 'condition', 'shippingPolicy', 'returnPolicy']
+        },
+        etsy: {
+          icon: '🎨',
+          color: 'bg-purple-100 border-purple-500',
+          fields: ['title', 'description', 'price', 'tags', 'materials', 'handmade', 'occasion']
+        },
+        magento: {
+          icon: '🔧',
+          color: 'bg-red-100 border-red-500',
+          fields: ['title', 'description', 'price', 'status', 'visibility', 'categories', 'attributes']
+        },
+        woocommerce: {
+          icon: '🌐',
+          color: 'bg-indigo-100 border-indigo-500',
+          fields: ['title', 'description', 'price', 'status', 'categories', 'tags', 'inventory']
+        }
+      };
+      return configs[channelName] || { icon: '📊', color: 'bg-gray-100 border-gray-500', fields: ['title', 'description', 'price'] };
+    };
+
+    return (
+      <div className="w-full space-y-6">
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h3 className="text-lg font-semibold text-gray-900">Channel Settings</h3>
+            <p className="text-sm text-gray-500">Configure platform-specific settings for each sales channel</p>
+          </div>
+          <div className="flex items-center space-x-2">
+            <button
+              type="button"
+              onClick={() => {
+                // Enable all channels with default settings
+                const allChannelsEnabled = channels.reduce((acc, ch) => ({
+                  ...acc,
+                  [ch]: {
+                    enabled: true,
+                    title: formData.name || '',
+                    description: formData.description || '',
+                    price: formData.price || '',
+                    status: 'draft',
+                    publishSchedule: 'immediate'
+                  }
+                }), {});
+                setFormData({ ...formData, [field.fieldName]: allChannelsEnabled });
+              }}
+              className="px-3 py-1 text-xs bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+            >
+              Enable All
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                // Disable all channels
+                const allChannelsDisabled = channels.reduce((acc, ch) => ({
+                  ...acc,
+                  [ch]: { enabled: false }
+                }), {});
+                setFormData({ ...formData, [field.fieldName]: allChannelsDisabled });
+              }}
+              className="px-3 py-1 text-xs bg-gray-600 text-white rounded-md hover:bg-gray-700 transition-colors"
+            >
+              Disable All
+            </button>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 gap-4">
+          {channels.map((channelName) => {
+            const config = getChannelConfig(channelName);
+            const settings = channelSettings[channelName] || {};
+            const isEnabled = settings.enabled || false;
+
+            return (
+              <div key={channelName} className={`border-2 rounded-lg p-4 transition-all ${
+                isEnabled ? config.color + ' shadow-md' : 'bg-gray-50 border-gray-200'
+              }`}>
+                {/* Channel Header */}
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center space-x-3">
+                    <span className="text-2xl">{config.icon}</span>
+                    <div>
+                      <h4 className="font-semibold text-gray-900 capitalize">{channelName}</h4>
+                      <p className="text-xs text-gray-500">
+                        {isEnabled ? 'Active' : 'Disabled'}
+                      </p>
+                    </div>
+                  </div>
+                  <label className="relative inline-flex items-center cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={isEnabled}
+                      onChange={(e) => toggleChannel(channelName, e.target.checked)}
+                      className="sr-only peer"
+                    />
+                    <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                  </label>
+                </div>
+
+                {/* Channel Settings - Only show when enabled */}
+                {isEnabled && (
+                  <div className="space-y-4">
+                    {/* Common Fields */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Product Title
+                        </label>
+                        <input
+                          type="text"
+                          value={settings.title || ''}
+                          onChange={(e) => updateChannelSettings(channelName, 'title', e.target.value)}
+                          placeholder={formData.name || 'Enter product title...'}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                        />
+                      </div>
+
+                      <div className="md:col-span-2 xl:col-span-3">
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Description
+                        </label>
+                        <textarea
+                          value={settings.description || ''}
+                          onChange={(e) => updateChannelSettings(channelName, 'description', e.target.value)}
+                          placeholder={formData.description || 'Enter channel-specific description...'}
+                          rows={2}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Price
+                        </label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          value={settings.price || ''}
+                          onChange={(e) => updateChannelSettings(channelName, 'price', e.target.value)}
+                          placeholder={formData.price || '0.00'}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Status
+                        </label>
+                        <select
+                          value={settings.status || 'draft'}
+                          onChange={(e) => updateChannelSettings(channelName, 'status', e.target.value)}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                        >
+                          <option value="draft">Draft</option>
+                          <option value="active">Active</option>
+                          <option value="archived">Archived</option>
+                        </select>
+                      </div>
+
+                      {/* Channel-specific fields */}
+                      {channelName === 'amazon' && (
+                        <>
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">
+                              ASIN
+                            </label>
+                            <input
+                              type="text"
+                              value={settings.asin || ''}
+                              onChange={(e) => updateChannelSettings(channelName, 'asin', e.target.value)}
+                              placeholder="B01EXAMPLE"
+                              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">
+                              Fulfillment
+                            </label>
+                            <select
+                              value={settings.fulfillmentBy || 'merchant'}
+                              onChange={(e) => updateChannelSettings(channelName, 'fulfillmentBy', e.target.value)}
+                              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                            >
+                              <option value="merchant">Merchant</option>
+                              <option value="amazon">Amazon FBA</option>
+                            </select>
+                          </div>
+                        </>
+                      )}
+
+                      {channelName === 'walmart' && (
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            UPC Code
+                          </label>
+                          <input
+                            type="text"
+                            value={settings.upc || ''}
+                            onChange={(e) => updateChannelSettings(channelName, 'upc', e.target.value)}
+                            placeholder="123456789012"
+                            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                          />
+                        </div>
+                      )}
+
+                      {channelName === 'etsy' && (
+                        <>
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">
+                              Tags
+                            </label>
+                            <input
+                              type="text"
+                              value={settings.tags || ''}
+                              onChange={(e) => updateChannelSettings(channelName, 'tags', e.target.value)}
+                              placeholder="handmade, unique, gift"
+                              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                            />
+                          </div>
+                          <div className="flex items-center pt-6">
+                            <label className="flex items-center space-x-2 text-sm">
+                              <input
+                                type="checkbox"
+                                checked={settings.handmade || false}
+                                onChange={(e) => updateChannelSettings(channelName, 'handmade', e.target.checked)}
+                                className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                              />
+                              <span>Handmade</span>
+                            </label>
+                          </div>
+                        </>
+                      )}
+
+                      {/* Publish Schedule */}
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Publish Schedule
+                        </label>
+                        <select
+                          value={settings.publishSchedule || 'immediate'}
+                          onChange={(e) => updateChannelSettings(channelName, 'publishSchedule', e.target.value)}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                        >
+                          <option value="immediate">Publish Immediately</option>
+                          <option value="manual">Manual Approval</option>
+                          <option value="scheduled">Schedule for Later</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    {/* Quick Actions */}
+                    <div className="flex items-center justify-between pt-3 border-t border-gray-200">
+                      <div className="flex space-x-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            // Copy from main product data
+                            updateChannelSettings(channelName, 'title', formData.name || '');
+                            updateChannelSettings(channelName, 'description', formData.description || '');
+                            updateChannelSettings(channelName, 'price', formData.price || '');
+                          }}
+                          className="px-2 py-1 text-xs bg-gray-100 text-gray-700 rounded hover:bg-gray-200 transition-colors"
+                        >
+                          📋 Copy from Main
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const newSettings = { ...channelSettings };
+                            delete newSettings[channelName];
+                            setFormData({ ...formData, [field.fieldName]: newSettings });
+                          }}
+                          className="px-2 py-1 text-xs bg-red-100 text-red-700 rounded hover:bg-red-200 transition-colors"
+                        >
+                          🗑️ Reset
+                        </button>
+                      </div>
+                      <div className="text-xs text-gray-500">
+                        Last updated: Now
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Channel Summary */}
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+          <h4 className="font-medium text-blue-900 mb-2">Channel Summary</h4>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-sm">
+            <div className="text-blue-700">
+              <span className="font-medium">Active:</span> {channels.filter(ch => channelSettings[ch]?.enabled).length}
+            </div>
+            <div className="text-blue-700">
+              <span className="font-medium">Total:</span> {channels.length}
+            </div>
+            <div className="text-blue-700">
+              <span className="font-medium">Configured:</span> {Object.keys(channelSettings).filter(ch => channelSettings[ch]?.title).length}
+            </div>
+            <div className="text-blue-700">
+              <span className="font-medium">Ready to Publish:</span> {Object.keys(channelSettings).filter(ch => 
+                channelSettings[ch]?.enabled && 
+                channelSettings[ch]?.title && 
+                channelSettings[ch]?.description && 
+                channelSettings[ch]?.price
+              ).length}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  /**
+   * Render Image Gallery with drag-and-drop upload
+   */
+  const renderImageGallery = (field: FormField) => {
+    const maxImages = field.validationRules?.maxItems || 10;
+    const acceptedTypes = 'image/*';
+    const fieldImages = uploadedImages[field.fieldName] || [];
+    
+    console.log(`[renderImageGallery] ===== RENDERING IMAGE GALLERY =====`);
+    console.log(`[renderImageGallery] Field: ${field.fieldName}, Type: ${field.fieldType}`);
+    console.log(`[renderImageGallery] Field Images:`, fieldImages);
+    console.log(`[renderImageGallery] All uploaded images:`, uploadedImages);
+    console.log(`[renderImageGallery] Max Images: ${maxImages}`);
+
+    const handleFileUpload = (files: FileList | File[]) => {
+      const fileArray = Array.from(files);
+      const newImages: ImageFile[] = [];
+
+      fileArray.forEach((file, index) => {
+        if (fieldImages.length + newImages.length < maxImages) {
+          const reader = new FileReader();
+          reader.onload = (e) => {
+            const newImage: ImageFile = {
+              id: `upload-${Date.now()}-${index}`,
+              file,
+              url: e.target?.result as string,
+              name: file.name,
+              size: file.size,
+              type: file.type,
+              isPrimary: fieldImages.length === 0 && index === 0,
+              altText: `Product image - ${file.name}`
+            };
+            
+            setUploadedImages(prev => {
+              const updatedFieldImages = [...(prev[field.fieldName] || []), newImage];
+              const updated = { ...prev, [field.fieldName]: updatedFieldImages };
+              // Update form data with URLs
+              const urls = updatedFieldImages.map(img => img.url);
+              handleFieldChange(field.fieldName, urls);
+              return updated;
+            });
+          };
+          reader.readAsDataURL(file);
+        }
+      });
+    };
+
+    const handleDrop = (e: React.DragEvent) => {
+      e.preventDefault();
+      setDragActive(false);
+      
+      const files = e.dataTransfer.files;
+      if (files) {
+        handleFileUpload(files);
+      }
+    };
+
+    const handleDragOver = (e: React.DragEvent) => {
+      e.preventDefault();
+      setDragActive(true);
+    };
+
+    const handleDragLeave = (e: React.DragEvent) => {
+      e.preventDefault();
+      setDragActive(false);
+    };
+
+    const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+      const files = e.target.files;
+      if (files) {
+        handleFileUpload(files);
+      }
+    };
+
+    const removeImage = (imageId: string) => {
+      setUploadedImages(prev => {
+        const currentFieldImages = prev[field.fieldName] || [];
+        const updated = currentFieldImages.filter(img => img.id !== imageId);
+        // If we removed the primary image, make the first remaining image primary
+        if (updated.length > 0 && !updated.some(img => img.isPrimary)) {
+          updated[0].isPrimary = true;
+        }
+        // Update form data
+        const urls = updated.map(img => img.url);
+        handleFieldChange(field.fieldName, urls);
+        return { ...prev, [field.fieldName]: updated };
+      });
+    };
+
+    const setPrimaryImage = (imageId: string) => {
+      setUploadedImages(prev => {
+        const currentFieldImages = prev[field.fieldName] || [];
+        const updated = currentFieldImages.map(img => ({
+          ...img,
+          isPrimary: img.id === imageId
+        }));
+        return { ...prev, [field.fieldName]: updated };
+      });
+    };
+
+    const updateImageData = (imageId: string, updates: Partial<ImageFile>) => {
+      setUploadedImages(prev => {
+        const currentFieldImages = prev[field.fieldName] || [];
+        const updated = currentFieldImages.map(img => img.id === imageId ? { ...img, ...updates } : img);
+        return { ...prev, [field.fieldName]: updated };
+      });
+    };
+
+    const reorderImages = (dragIndex: number, hoverIndex: number) => {
+      setUploadedImages(prev => {
+        const currentFieldImages = prev[field.fieldName] || [];
+        const updated = [...currentFieldImages];
+        const draggedImage = updated[dragIndex];
+        updated.splice(dragIndex, 1);
+        updated.splice(hoverIndex, 0, draggedImage);
+        
+        // Update form data
+        const urls = updated.map(img => img.url);
+        handleFieldChange(field.fieldName, urls);
+        return { ...prev, [field.fieldName]: updated };
+      });
+    };
+
+    return (
+      <div className="w-full space-y-4 p-4 border border-blue-200 rounded-lg bg-blue-50">
+        {/* Debug Info */}
+        <div className="text-xs text-blue-600 mb-2">
+          🖼️ Image Gallery Field: {field.fieldName} | Type: {field.fieldType} | Images: {fieldImages.length}
+        </div>
+        
+        {/* Upload Area */}
+        <div
+          className={`border-2 border-dashed rounded-lg p-6 text-center transition-all cursor-pointer hover:border-blue-400 hover:bg-blue-50 ${
+            dragActive ? 'border-blue-500 bg-blue-50' : 'border-gray-300 bg-white'
+          }`}
+          onDrop={handleDrop}
+          onDragOver={handleDragOver}
+          onDragLeave={handleDragLeave}
+          onClick={() => fileInputRef.current?.click()}
+        >
+          <input
+            ref={fileInputRef}
+            type="file"
+            multiple
+            accept={acceptedTypes}
+            onChange={handleFileSelect}
+            className="hidden"
+          />
+          
+          <div className="space-y-2">
+            <div className="text-4xl">📸</div>
+            <div className="text-lg font-medium text-gray-700">
+              {fieldImages.length === 0 ? 'Upload Product Images' : 'Add More Images'}
+            </div>
+            <div className="text-sm text-gray-500">
+              Drag and drop images here, or click to browse
+            </div>
+            <div className="text-xs text-gray-400">
+              Maximum {maxImages} images • Supports JPG, PNG, GIF, WebP
+            </div>
+            {fieldImages.length > 0 && (
+              <div className="text-xs text-blue-600">
+                {fieldImages.length} of {maxImages} images uploaded
+              </div>
+            )}
+          </div>
+          
+          {/* Test button for demo purposes - shown when no images */}
+          {process.env.NODE_ENV === 'development' && fieldImages.length === 0 && (
+            <div className="mt-4 text-center">
+              <button
+                type="button"
+                onClick={() => {
+                  const sampleImages: ImageFile[] = [
+                    {
+                      id: 'sample-1',
+                      url: 'https://picsum.photos/400/400?random=1',
+                      name: 'Sample Image 1',
+                      isPrimary: true,
+                      altText: 'Sample product image 1'
+                    },
+                    {
+                      id: 'sample-2', 
+                      url: 'https://picsum.photos/400/400?random=2',
+                      name: 'Sample Image 2',
+                      isPrimary: false,
+                      altText: 'Sample product image 2'
+                    }
+                  ];
+                  setUploadedImages(prev => ({
+                    ...prev,
+                    [field.fieldName]: sampleImages
+                  }));
+                  handleFieldChange(field.fieldName, sampleImages.map(img => img.url));
+                }}
+                className="px-4 py-2 text-sm bg-green-600 text-white rounded hover:bg-green-700 shadow-sm"
+              >
+                📋 Add Sample Images (for testing)
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* Image Gallery */}
+        {fieldImages.length > 0 && (
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <h4 className="font-medium text-gray-700">Product Images</h4>
+              <div className="text-sm text-gray-500">
+                {fieldImages.length} image{fieldImages.length !== 1 ? 's' : ''}
+              </div>
+            </div>
+            
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
+              {fieldImages.map((image, index) => (
+                <div
+                  key={image.id}
+                  className="relative group bg-white border border-gray-200 rounded-lg overflow-hidden hover:shadow-md transition-all"
+                  draggable
+                  onDragStart={(e) => e.dataTransfer.setData('text/plain', index.toString())}
+                  onDragOver={(e) => e.preventDefault()}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    const dragIndex = parseInt(e.dataTransfer.getData('text/plain'));
+                    reorderImages(dragIndex, index);
+                  }}
+                >
+                  {/* Primary Badge */}
+                  {image.isPrimary && (
+                    <div className="absolute top-2 left-2 z-10 bg-blue-600 text-white text-xs px-2 py-1 rounded">
+                      Primary
+                    </div>
+                  )}
+                  
+                  {/* Image */}
+                  <div className="aspect-square relative bg-gray-100 border border-gray-200">
+                    <img
+                      src={image.url}
+                      alt={image.altText || image.name}
+                      className="w-full h-full object-cover transition-opacity duration-200"
+                      onLoad={(e) => {
+                        console.log(`[Image] Successfully loaded: ${image.name}`, image.url);
+                        e.currentTarget.style.opacity = '1';
+                      }}
+                      onError={(e) => {
+                        console.error(`[Image] Failed to load: ${image.name}`, image.url);
+                        // Show a fallback
+                        e.currentTarget.style.display = 'none';
+                        const parent = e.currentTarget.parentElement;
+                        if (parent && !parent.querySelector('.fallback-icon')) {
+                          const fallback = document.createElement('div');
+                          fallback.className = 'fallback-icon w-full h-full flex items-center justify-center text-gray-400 text-4xl bg-gray-50';
+                          fallback.innerHTML = '🖼️';
+                          parent.appendChild(fallback);
+                        }
+                      }}
+                      style={{ opacity: 0 }}
+                    />
+                    
+                    {/* Overlay Controls */}
+                    <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-30 transition-all flex items-center justify-center">
+                      <div className="opacity-0 group-hover:opacity-100 transition-all flex space-x-2">
+                        {!image.isPrimary && (
+                          <button
+                            type="button"
+                            onClick={() => setPrimaryImage(image.id)}
+                            className="bg-blue-600 text-white p-2 rounded-full hover:bg-blue-700 text-xs"
+                            title="Set as primary image"
+                          >
+                            ⭐
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => removeImage(image.id)}
+                          className="bg-red-600 text-white p-2 rounded-full hover:bg-red-700 text-xs"
+                          title="Remove image"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  {/* Image Info */}
+                  <div className="p-3 space-y-2">
+                    <div className="text-sm font-medium text-gray-700 truncate">
+                      {image.name}
+                    </div>
+                    {image.size && (
+                      <div className="text-xs text-gray-500">
+                        {(image.size / 1024 / 1024).toFixed(1)} MB
+                      </div>
+                    )}
+                    
+                    {/* Alt Text Input */}
+                    <input
+                      type="text"
+                      placeholder="Alt text..."
+                      value={image.altText || ''}
+                      onChange={(e) => updateImageData(image.id, { altText: e.target.value })}
+                      className="w-full text-xs px-2 py-1 border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    />
+                  </div>
+                  
+                  {/* Drag Handle */}
+                  <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-all bg-gray-700 text-white p-1 rounded cursor-move text-xs">
+                    ⋮⋮
+                  </div>
+                </div>
+              ))}
+            </div>
+            
+            {/* Gallery Actions */}
+            <div className="flex flex-wrap gap-2 pt-2 border-t border-gray-100">
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={fieldImages.length >= maxImages}
+                className="px-3 py-1.5 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed"
+              >
+                + Add Images
+              </button>
+              
+              {fieldImages.length > 1 && (
+                <div className="text-xs text-gray-500 flex items-center">
+                  💡 Drag images to reorder • First image will be used as primary
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
+
   const renderVariantConfigurator = (field: FormField) => {
     // Get dynamic variant fields from schema
     const variantFields = getVariantFields();
@@ -652,7 +1433,7 @@ const DynamicForm: React.FC<DynamicFormProps> = ({
       const newVariant = newVariants[0];
       
       // Check if variant already exists by comparing all variant attributes
-      const exists = existingVariants.some(existing => {
+      const exists = existingVariants.some((existing: any) => {
         return variantFields.every(varField => {
           const newValue = newVariant[varField.fieldName];
           const existingValue = existing[varField.fieldName];
@@ -679,7 +1460,7 @@ const DynamicForm: React.FC<DynamicFormProps> = ({
     };
 
     const removeVariant = (variantIndex: number) => {
-      const updatedVariants = existingVariants.filter((_, index) => index !== variantIndex);
+      const updatedVariants = existingVariants.filter((_: any, index: number) => index !== variantIndex);
       handleFieldChange(field.fieldName, JSON.stringify({ variants: updatedVariants }));
     };
 
@@ -840,7 +1621,7 @@ const DynamicForm: React.FC<DynamicFormProps> = ({
 
                   {/* Grid Rows */}
                   <div className="bg-white rounded-b-lg border border-t-0 border-gray-200">
-                    {existingVariants.map((variant, index) => (
+                    {existingVariants.map((variant: any, index: number) => (
                       <div
                         key={index}
                         draggable="true"
@@ -1181,7 +1962,7 @@ const DynamicForm: React.FC<DynamicFormProps> = ({
       {/* Form Actions */}
       <div className="mt-8 flex justify-between items-center pt-6 border-t">
         <div className="text-sm text-gray-500">
-          Estimated completion time: {Math.ceil(schema.metadata.estimatedCompletionTime / 60)} minutes
+          Estimated completion time: {Math.ceil((schema.metadata?.estimatedCompletionTime || 300) / 60)} minutes
         </div>
         
         <div className="flex gap-3">

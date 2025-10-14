@@ -33,9 +33,11 @@ export type FormFieldType =
   | 'datetime-local'
   | 'file' 
   | 'image'
+  | 'media'
   | 'color'
   | 'range'
-  | 'variant-configurator';
+  | 'variant-configurator'
+  | 'channel-settings';
 
 // Field Options
 export interface FormFieldOption {
@@ -56,6 +58,7 @@ export interface FormFieldValidationRules {
   pattern?: string;
   precision?: number;
   enum?: string[];
+  maxItems?: number; // For array fields like images
   customValidators?: string[];
 }
 

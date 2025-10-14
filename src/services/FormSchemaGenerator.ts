@@ -244,9 +244,24 @@ export class FormSchemaGenerator {
    * Map data types to form field types
    */
   private mapDataTypeToFormFieldType(dataType: string, fieldName?: string): FormFieldType {
+    console.log(`[FormSchemaGenerator] Mapping field "${fieldName}" with dataType "${dataType}"`);
+    
     // Special handling for variant configurator
     if (fieldName === 'variantConfigurator') {
+      console.log(`[FormSchemaGenerator] ✅ Mapping variantConfigurator to variant-configurator`);
       return 'variant-configurator';
+    }
+    
+    // Special handling for images field - treat Array type as image gallery
+    if (fieldName === 'images' && dataType === 'Array') {
+      console.log(`[FormSchemaGenerator] ✅ Mapping images field with Array type to image`);
+      return 'image';
+    }
+    
+    // Special handling for channelSettings field - treat Object type as channel-settings
+    if (fieldName === 'channelSettings' && dataType === 'Object') {
+      console.log(`[FormSchemaGenerator] ✅ Mapping channelSettings field with Object type to channel-settings`);
+      return 'channel-settings';
     }
 
     const typeMap: Record<string, FormFieldType> = {
@@ -285,7 +300,9 @@ export class FormSchemaGenerator {
       }
     }
     
-    return typeMap[dataType] || 'text';
+    const result = typeMap[dataType] || 'text';
+    console.log(`[FormSchemaGenerator] Final mapping for "${fieldName}": ${dataType} -> ${result}`);
+    return result;
   }
   
   /**
