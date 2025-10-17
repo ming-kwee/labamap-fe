@@ -133,7 +133,9 @@ export function useDynamicForm(options: UseDynamicFormOptions): UseDynamicFormRe
       console.log('[useDynamicForm] 🔍 Parsed schema fields:', parsedSchema.fields);
       console.log('[useDynamicForm] 📊 Schema has', parsedSchema.fields?.length || 0, 'fields total');
       
+      console.log('[useDynamicForm] 🔥 SETTING SCHEMA in state with', parsedSchema.fields?.length, 'fields');
       setSchema(parsedSchema);
+      console.log('[useDynamicForm] 🔥 Schema state updated');
       
       // Call onSchemaLoaded if provided
       if (onSchemaLoaded && typeof onSchemaLoaded === 'function') {
@@ -158,17 +160,53 @@ export function useDynamicForm(options: UseDynamicFormOptions): UseDynamicFormRe
   }, [stableContext, onSchemaLoaded]);
   console.log('[useDynamicForm] fetchSchema callback created');
 
-  // Simple initialization - call fetchSchema once per hook instance
+  // Simple one-time initialization
   useEffect(() => {
-    console.log('[useDynamicForm] 🔥 useEffect triggered, hasInitialized:', hasInitialized.current);
     if (!hasInitialized.current) {
-      console.log('[useDynamicForm] 🔥 MOUNT INIT - calling fetchSchema once');
+      console.log('[useDynamicForm] 🔥 USEEFFECT INIT - calling fetchSchema');
       hasInitialized.current = true;
-      fetchSchema();
-    } else {
-      console.log('[useDynamicForm] ⏭️ Skipping - already initialized');
+      
+      // Call schema fetch directly with minimal dependencies
+      const loadSchema = async () => {
+        if (loadingRef.current) {
+          return;
+        }
+
+        loadingRef.current = true;
+        setIsLoadingSchema(true);
+        setSchemaError(null);
+
+        try {
+          const { BackendAPIService, createBackendContext } = await import('@/lib/api/backendService');
+          
+          const backendContext = createBackendContext(
+            'user-123',
+            'retail-division',
+            'BUSINESS_USER',
+            ['shopify', 'amazon', 'walmart', 'ebay'],
+            'electronics',
+            ['read', 'write', 'create']
+          );
+          
+          const result: any = await BackendAPIService.generateFormSchema(backendContext);
+          const parsedSchema = result.formSchema ? result.formSchema : result;
+          
+          console.log('[useDynamicForm] ✅ Schema loaded with', parsedSchema.fields?.length, 'fields');
+          setSchema(parsedSchema);
+          
+        } catch (error) {
+          const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+          setSchemaError(`Backend API error: ${errorMessage}`);
+          console.error('[useDynamicForm] ❌ Error:', error);
+        } finally {
+          setIsLoadingSchema(false);
+          loadingRef.current = false;
+        }
+      };
+      
+      loadSchema();
     }
-  }, []); // Empty dependency - run once per component mount
+  }, []); // No dependencies to prevent infinite loops
 
   /**
    * Refresh schema
@@ -252,6 +290,8 @@ export function useDynamicForm(options: UseDynamicFormOptions): UseDynamicFormRe
   // Computed properties
   const hasUnsavedChanges = JSON.stringify(formData) !== JSON.stringify(originalData);
   const isFormValid = validationResult?.isValid ?? false;
+
+  console.log('[useDynamicForm] 📤 RETURNING schema to parent:', schema ? `${schema.fields?.length || 0} fields` : 'null');
 
   return {
     // Schema state

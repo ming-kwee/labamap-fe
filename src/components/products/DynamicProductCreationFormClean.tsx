@@ -1,3 +1,5 @@
+"use client";
+
 /**
  * Clean Dynamic Product Creation Form
  * 
@@ -12,7 +14,6 @@ import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import { Alert, AlertDescription } from '@/components/ui/alert/AlertComponents';
 import { Loader2, AlertCircle } from '@/components/ui/icons/Icons';
 import DynamicForm from '@/components/forms/DynamicForm';
-import { useDynamicForm } from '@/hooks/useDynamicForm';
 import { DynamicFormData, FormValidationResult } from '@/types/dynamicForm';
 import { MasterProduct, ProductVariant } from '@/types/product';
 
@@ -44,42 +45,70 @@ export default function DynamicProductCreationFormClean({
   const [showJsonPreview, setShowJsonPreview] = useState(false);
   const [currentFormData, setCurrentFormData] = useState<DynamicFormData>(initialData || {});
 
-  // Stable targetChannels to prevent infinite loops
-  const stableTargetChannels = useMemo(() => targetChannels, [JSON.stringify(targetChannels)]);
-  
-  // Stable context object to prevent infinite loops
+  // Create truly stable context - no dependencies to prevent infinite loops
   const stableContext = useMemo(() => ({
     userId: 'user-123',
-    organizationId,
-    userRole,
-    targetChannels: stableTargetChannels,
-    productCategory,
+    organizationId: 'retail-division',
+    userRole: 'BUSINESS_USER' as const,
+    targetChannels: ['shopify', 'amazon', 'walmart', 'ebay'],
+    productCategory: 'electronics',
     permissions: ['read', 'write', 'create']
-  }), [organizationId, userRole, stableTargetChannels, productCategory]);
+  }), []); // Empty dependency array for true stability
 
-  // Stable initial data to prevent infinite loops
-  const stableInitialData = useMemo(() => initialData, [JSON.stringify(initialData)]);
-  
-  // Prepare initial data with category from context
+  // Create truly stable initial data
   const enrichedInitialData = useMemo(() => ({
-    ...stableInitialData,
-    category: productCategory // Ensure category is set for conditional visibility
-  }), [stableInitialData, productCategory]);
+    category: 'electronics' // Ensure category is set for conditional visibility
+  }), []); // Empty dependency array for true stability
 
-  // Use the dynamic form hook for schema generation
-  console.log('[DynamicProductCreationFormClean] Using context:', stableContext);
-  console.log('[DynamicProductCreationFormClean] Initial data with category:', enrichedInitialData);
-  
-  const {
-    schema,
-    formData,
-    isLoadingSchema,
-    schemaError,
-    updateFormData
-  } = useDynamicForm({
-    context: stableContext,
-    initialData: enrichedInitialData
-  });
+  // Create a simple state-based approach to avoid infinite loop
+  const [schema, setSchema] = useState<any>(null);
+  const [isLoadingSchema, setIsLoadingSchema] = useState(true);
+  const [schemaError, setSchemaError] = useState<string | null>(null);
+  const [formData, setFormData] = useState<DynamicFormData>(enrichedInitialData);
+
+  // Load schema once on mount
+  useEffect(() => {
+    let mounted = true;
+    
+    const loadSchema = async () => {
+      try {
+        const { BackendAPIService, createBackendContext } = await import('@/lib/api/backendService');
+        
+        const backendContext = createBackendContext(
+          'user-123',
+          'retail-division',
+          'BUSINESS_USER',
+          ['shopify', 'amazon', 'walmart', 'ebay'],
+          'electronics',
+          ['read', 'write', 'create']
+        );
+        
+        const result: any = await BackendAPIService.generateFormSchema(backendContext);
+        const parsedSchema = result.formSchema ? result.formSchema : result;
+        
+        if (mounted) {
+          console.log('[DynamicProductCreationFormClean] ✅ Schema loaded with', parsedSchema.fields?.length, 'fields');
+          console.log('[DynamicProductCreationFormClean] 🔍 Setting schema:', parsedSchema);
+          setSchema(parsedSchema);
+          setIsLoadingSchema(false);
+        }
+        
+      } catch (error) {
+        if (mounted) {
+          const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+          setSchemaError(`Backend API error: ${errorMessage}`);
+          console.error('[DynamicProductCreationFormClean] ❌ Error:', error);
+          setIsLoadingSchema(false);
+        }
+      }
+    };
+    
+    loadSchema();
+    
+    return () => {
+      mounted = false;
+    };
+  }, []); // Only run once
 
   // Debug schema
   useEffect(() => {
@@ -97,12 +126,12 @@ export default function DynamicProductCreationFormClean({
     }
   }, [schema]);
 
-  // Handle form data changes
+  // Handle form data changes with local state
   const handleFormDataChange = useCallback((newData: DynamicFormData) => {
-    // Update current form data for real-time preview
+    console.log('[DynamicProductCreationFormClean] Form data changed:', newData);
     setCurrentFormData(newData);
-    updateFormData(newData);
-  }, [updateFormData]);
+    setFormData(newData);
+  }, []);
 
   // Handle validation changes
   const handleValidationChange = useCallback((result: FormValidationResult) => {
@@ -315,8 +344,16 @@ export default function DynamicProductCreationFormClean({
     }
   };
 
+  console.log('[DynamicProductCreationFormClean] RENDER STATE CHECK:', {
+    isLoadingSchema,
+    schemaError,
+    hasSchema: !!schema,
+    schemaFields: schema?.fields?.length || 0
+  });
+
   // Loading state
   if (isLoadingSchema) {
+    console.log('[DynamicProductCreationFormClean] 🔄 SHOWING LOADING STATE');
     return (
       <div className="max-w-4xl mx-auto p-6 flex items-center justify-center">
         <div className="text-center">
@@ -329,6 +366,7 @@ export default function DynamicProductCreationFormClean({
 
   // Error state
   if (schemaError || !schema) {
+    console.log('[DynamicProductCreationFormClean] ❌ SHOWING ERROR STATE:', { schemaError, hasSchema: !!schema });
     return (
       <div className="max-w-4xl mx-auto p-6">
         <Alert variant="destructive">
@@ -340,6 +378,8 @@ export default function DynamicProductCreationFormClean({
       </div>
     );
   }
+
+  console.log('[DynamicProductCreationFormClean] ✅ RENDERING FORM with schema:', schema?.fields?.length, 'fields');
 
   return (
     <div className="max-w-4xl mx-auto space-y-6">
@@ -363,18 +403,190 @@ export default function DynamicProductCreationFormClean({
 
       {/* Main Content Layout */}
       <div className={`${showJsonPreview ? 'grid grid-cols-1 lg:grid-cols-2 gap-6' : ''}`}>
-        {/* Clean Dynamic Form */}
+        {/* Dynamic Form */}
         <div className={showJsonPreview ? 'lg:col-span-1' : ''}>
-          <DynamicForm
-            schema={schema}
-            data={formData}
-            onChange={handleFormDataChange}
-            onSubmit={handleSubmit}
-            onValidate={handleValidationChange}
-            disabled={isSubmitting}
-            showBusinessContext={false}
-            showGovernanceInfo={false}
-          />
+          {schema && schema.fields ? (
+            <div className="space-y-6">
+              <h2 className="text-xl font-semibold">Product Information</h2>
+              
+              {/* Essential Fields */}
+              <div className="space-y-4">
+                <h3 className="text-lg font-medium text-gray-800">Essential Information</h3>
+                {schema.fields
+                  .filter((field: any) => field.group === 'essential' || ['name', 'description', 'price', 'category'].includes(field.fieldName))
+                  .slice(0, 6)
+                  .map((field: any) => (
+                    <div key={field.fieldName} className="space-y-2">
+                      <label className="block font-medium">{field.label}</label>
+                      {field.fieldType.toLowerCase() === 'textarea' ? (
+                        <textarea
+                          placeholder={field.placeholder}
+                          value={formData[field.fieldName] || ''}
+                          onChange={(e) => handleFormDataChange({...formData, [field.fieldName]: e.target.value})}
+                          className="w-full p-2 border rounded"
+                          rows={3}
+                        />
+                      ) : field.fieldType.toLowerCase() === 'select' ? (
+                        <select
+                          value={formData[field.fieldName] || ''}
+                          onChange={(e) => handleFormDataChange({...formData, [field.fieldName]: e.target.value})}
+                          className="w-full p-2 border rounded"
+                        >
+                          <option value="">{field.placeholder}</option>
+                          {field.options?.map((option: any) => (
+                            <option key={option.value} value={option.value}>
+                              {option.label}
+                            </option>
+                          ))}
+                        </select>
+                      ) : (
+                        <input
+                          type={field.fieldType.toLowerCase() === 'text' ? 'text' : field.fieldType}
+                          placeholder={field.placeholder}
+                          value={formData[field.fieldName] || ''}
+                          onChange={(e) => handleFormDataChange({...formData, [field.fieldName]: e.target.value})}
+                          className="w-full p-2 border rounded"
+                        />
+                      )}
+                      <p className="text-sm text-gray-600">{field.helpText}</p>
+                    </div>
+                  ))}
+              </div>
+
+              {/* Variants Section */}
+              <div className="border-t pt-6">
+                <h3 className="text-lg font-medium text-gray-800 mb-4">🎯 Product Variants</h3>
+                {schema.fields
+                  .filter((field: any) => field.fieldName === 'hasVariants' || field.fieldName === 'variantConfigurator')
+                  .map((field: any) => {
+                    if (field.fieldName === 'hasVariants') {
+                      return (
+                        <div key={field.fieldName} className="mb-6 p-4 border-2 border-blue-200 rounded-lg bg-blue-50">
+                          <label className="flex items-center cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={formData[field.fieldName] || false}
+                              onChange={(e) => {
+                                console.log('hasVariants checkbox clicked:', e.target.checked);
+                                handleFormDataChange({...formData, [field.fieldName]: e.target.checked});
+                              }}
+                              className="mr-3 w-4 h-4"
+                            />
+                            <span className="font-medium text-lg">{field.label}</span>
+                          </label>
+                          <p className="text-sm text-gray-600 mt-2">{field.helpText}</p>
+                          <div className="mt-2 text-sm">
+                            <strong>Current value:</strong> {formData[field.fieldName] ? 'TRUE ✅' : 'FALSE ❌'}
+                          </div>
+                        </div>
+                      );
+                    }
+                    
+                    if (field.fieldName === 'variantConfigurator') {
+                      const hasVariantsEnabled = formData['hasVariants'] || false;
+                      
+                      return (
+                        <div key={field.fieldName} className={`mb-6 p-4 border rounded-lg transition-all ${
+                          hasVariantsEnabled ? 'bg-green-50 border-green-300' : 'bg-gray-50 border-gray-300 opacity-60'
+                        }`}>
+                          <h4 className="font-medium text-lg mb-2">{field.label}</h4>
+                          <p className="text-sm text-gray-600 mb-4">{field.helpText}</p>
+                          
+                          {!hasVariantsEnabled && (
+                            <div className="p-3 bg-yellow-100 border border-yellow-300 rounded mb-4">
+                              <strong>⚠️ Enable "Has Product Variants" checkbox above to activate this section</strong>
+                            </div>
+                          )}
+                          
+                          <div className="space-y-4">
+                            <div className="p-3 bg-white rounded border">
+                              <strong>✅ Variant Field Active!</strong>
+                              <br />Type: {field.fieldType}
+                              <br />Status: {hasVariantsEnabled ? '🟢 ACTIVE' : '🔴 INACTIVE'}
+                            </div>
+                            
+                            {hasVariantsEnabled && (
+                              <div className="space-y-3">
+                                <div>
+                                  <label className="block font-medium mb-2">Variant Configuration:</label>
+                                  <textarea
+                                    placeholder="Enter variant configuration as JSON... e.g. {&quot;colors&quot;: [&quot;red&quot;, &quot;blue&quot;], &quot;sizes&quot;: [&quot;S&quot;, &quot;M&quot;, &quot;L&quot;]}"
+                                    value={formData[field.fieldName] || ''}
+                                    onChange={(e) => handleFormDataChange({...formData, [field.fieldName]: e.target.value})}
+                                    className="w-full p-3 border rounded"
+                                    rows={6}
+                                  />
+                                </div>
+                                
+                                <div className="grid grid-cols-2 gap-4">
+                                  <div>
+                                    <label className="block font-medium mb-1">Variant Price:</label>
+                                    <input
+                                      type="number"
+                                      placeholder="0.00"
+                                      step="0.01"
+                                      className="w-full p-2 border rounded"
+                                    />
+                                  </div>
+                                  <div>
+                                    <label className="block font-medium mb-1">Variant Cost:</label>
+                                    <input
+                                      type="number"
+                                      placeholder="0.00"
+                                      step="0.01"
+                                      className="w-full p-2 border rounded"
+                                    />
+                                  </div>
+                                </div>
+                                
+                                <button 
+                                  type="button"
+                                  className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+                                  onClick={() => {
+                                    const sampleVariants = JSON.stringify({
+                                      "variants": [
+                                        {"color": "red", "size": "S", "price": 29.99, "sku": "PROD-RED-S"},
+                                        {"color": "red", "size": "M", "price": 29.99, "sku": "PROD-RED-M"},
+                                        {"color": "blue", "size": "S", "price": 29.99, "sku": "PROD-BLUE-S"},
+                                        {"color": "blue", "size": "M", "price": 29.99, "sku": "PROD-BLUE-M"}
+                                      ],
+                                      "options": {
+                                        "color": ["red", "blue"],
+                                        "size": ["S", "M", "L"]
+                                      }
+                                    }, null, 2);
+                                    handleFormDataChange({...formData, [field.fieldName]: sampleVariants});
+                                  }}
+                                >
+                                  Load Sample Variants
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    }
+                    return null;
+                  })}
+              </div>
+
+              {/* Submit Button */}
+              <div className="border-t pt-6">
+                <button
+                  type="button"
+                  onClick={() => handleSubmit(formData)}
+                  disabled={isSubmitting}
+                  className="px-6 py-2 bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50"
+                >
+                  {isSubmitting ? 'Creating Product...' : 'Create Product'}
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="p-4 text-center text-gray-500">
+              No schema available
+            </div>
+          )}
         </div>
 
         {/* Real-time JSON Preview */}

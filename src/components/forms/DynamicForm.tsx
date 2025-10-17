@@ -1,3 +1,5 @@
+"use client";
+
 /**
  * Dynamic Form Component
  * Renders forms based on business-controlled schemas with conditional logic
@@ -102,9 +104,10 @@ const DynamicForm: React.FC<DynamicFormProps> = ({
     
     console.log('[DynamicForm] ALL FIELDS IN SCHEMA:', schema.fields.map(f => ({ name: f.fieldName, type: f.fieldType })));
     
-    const imageFields = schema.fields.filter(field => 
-      field.fieldType === 'image' || field.fieldType === 'file' || field.fieldType === 'media'
-    );
+    const imageFields = schema.fields.filter(field => {
+      const normalizedType = field.fieldType.toLowerCase();
+      return normalizedType === 'image' || normalizedType === 'file' || normalizedType === 'media';
+    });
     
     console.log('[DynamicForm] Image fields found:', imageFields.map(f => f.fieldName));
     console.log('[DynamicForm] Image fields details:', imageFields);
@@ -141,7 +144,7 @@ const DynamicForm: React.FC<DynamicFormProps> = ({
       return;
     }
     
-    const variantFields = schema.fields.filter(field => field.fieldType === 'variant-configurator');
+    const variantFields = schema.fields.filter(field => field.fieldType.toLowerCase() === 'variant-configurator');
     
     variantFields.forEach(field => {
       const variantData = formData[field.fieldName];
@@ -384,7 +387,7 @@ const DynamicForm: React.FC<DynamicFormProps> = ({
     
     // Update local variants if this is a variant configurator field (prevents circular dependency)
     const isVariantField = schema?.fields?.some(field => 
-      field.fieldName === fieldName && field.fieldType === 'variant-configurator'
+      field.fieldName === fieldName && field.fieldType.toLowerCase() === 'variant-configurator'
     ) || false;
     
     if (isVariantField && value) {
@@ -519,7 +522,7 @@ const DynamicForm: React.FC<DynamicFormProps> = ({
     }
     
     // Type-specific validations
-    if (field.fieldType === 'number') {
+    if (field.fieldType.toLowerCase() === 'number') {
       const numValue = Number(value);
       if (isNaN(numValue)) {
         errors.push(`${field.label} must be a valid number`);
@@ -535,7 +538,8 @@ const DynamicForm: React.FC<DynamicFormProps> = ({
       }
     }
     
-    if (field.fieldType === 'text' || field.fieldType === 'textarea') {
+    const normalizedType = field.fieldType.toLowerCase();
+    if (normalizedType === 'text' || normalizedType === 'textarea') {
       const strValue = String(value);
       
       if (rules.minLength !== undefined && strValue.length < rules.minLength) {
@@ -614,12 +618,15 @@ const DynamicForm: React.FC<DynamicFormProps> = ({
       } ${isDisabled ? 'bg-gray-100 cursor-not-allowed' : 'bg-white'}`
     };
 
-    switch (field.fieldType) {
+    // Normalize field type to lowercase for consistent handling
+    const normalizedFieldType = field.fieldType.toLowerCase();
+    
+    switch (normalizedFieldType) {
       case 'text':
       case 'email':
       case 'url':
       case 'tel':
-        return <input type={field.fieldType} {...commonProps} />;
+        return <input type={normalizedFieldType} {...commonProps} />;
       
       case 'number':
         return (
@@ -674,6 +681,7 @@ const DynamicForm: React.FC<DynamicFormProps> = ({
         return <input type={field.fieldType} {...commonProps} />;
       
       case 'variant-configurator':
+      case 'variant_configurator':
         return renderVariantConfigurator(field);
       
       case 'channel-settings':
@@ -1564,7 +1572,7 @@ const DynamicForm: React.FC<DynamicFormProps> = ({
     const renderVariantFieldInput = (varField: FormField, currentValue: any) => {
       const fieldId = `variant-${varField.fieldName}`;
       
-      switch (varField.fieldType) {
+      switch (varField.fieldType.toLowerCase()) {
         case 'select':
           return (
             <select
