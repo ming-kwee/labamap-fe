@@ -45,6 +45,8 @@ interface UseDynamicFormReturn {
 }
 
 export function useDynamicForm(options: UseDynamicFormOptions): UseDynamicFormReturn {
+  console.log('[useDynamicForm] Hook called with options:', options);
+  
   const {
     context,
     initialData = {},
@@ -56,7 +58,7 @@ export function useDynamicForm(options: UseDynamicFormOptions): UseDynamicFormRe
 
   // Schema state
   const [schema, setSchema] = useState<DynamicFormSchema | null>(null);
-  const [isLoadingSchema, setIsLoadingSchema] = useState(false);
+  const [isLoadingSchema, setIsLoadingSchema] = useState(false); // Start as not loading
   const [schemaError, setSchemaError] = useState<string | null>(null);
 
   // Form data state
@@ -69,6 +71,7 @@ export function useDynamicForm(options: UseDynamicFormOptions): UseDynamicFormRe
 
   // Prevent duplicate API calls
   const loadingRef = useRef(false);
+  const hasInitialized = useRef(false);
 
   // Stable context to prevent infinite loops
   const stableContext = useMemo(() => ({
@@ -91,6 +94,8 @@ export function useDynamicForm(options: UseDynamicFormOptions): UseDynamicFormRe
    * Fetch form schema from API
    */
   const fetchSchema = useCallback(async () => {
+    console.log('[useDynamicForm] fetchSchema called');
+    
     if (loadingRef.current) {
       console.log('[useDynamicForm] Skipping duplicate API call');
       return;
@@ -103,50 +108,67 @@ export function useDynamicForm(options: UseDynamicFormOptions): UseDynamicFormRe
     setSchemaError(null);
 
     try {
-      const response = await fetch('/api/v1/master-attributes/form-schema', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          context: stableContext
-        }),
-      });
-
-      if (!response.ok) {
-        throw new Error(`Failed to fetch form schema: ${response.statusText}`);
-      }
-
-      const result = await response.json();
+      // Backend API only - no fallback
+      console.log('[useDynamicForm] Fetching schema from backend API...');
       
-      if (!result.success) {
-        throw new Error(result.error || 'Failed to generate form schema');
-      }
-
-      setSchema(result.formSchema);
+      const { BackendAPIService, createBackendContext } = await import('@/lib/api/backendService');
       
-      console.log('[useDynamicForm] Schema loaded successfully:', result.formSchema);
-      console.log('[useDynamicForm] Schema has', result.formSchema.fields?.length || 0, 'fields');
-      console.log('[useDynamicForm] Conditional fields:', result.formSchema.fields?.filter((f: any) => f.conditionalVisibility).map((f: any) => f.fieldName) || []);
+      const backendContext = createBackendContext(
+        stableContext.userId,
+        stableContext.organizationId,
+        stableContext.userRole as 'BUSINESS_USER' | 'ADMIN' | 'DEVELOPER',
+        stableContext.targetChannels,
+        stableContext.productCategory || 'general',
+        stableContext.permissions
+      );
       
-      // Call onSchemaLoaded if provided, but don't make it a dependency
+      const result: any = await BackendAPIService.generateFormSchema(backendContext);
+      
+      // Parse nested schema structure from backend
+      const parsedSchema = result.formSchema ? result.formSchema : result;
+      
+      console.log('[useDynamicForm] ✅ Schema loaded successfully from backend:', result);
+      console.log('[useDynamicForm] 🔍 Raw result.formSchema:', result.formSchema);
+      console.log('[useDynamicForm] 🔍 Parsed schema:', parsedSchema);
+      console.log('[useDynamicForm] 🔍 Parsed schema fields:', parsedSchema.fields);
+      console.log('[useDynamicForm] 📊 Schema has', parsedSchema.fields?.length || 0, 'fields total');
+      
+      setSchema(parsedSchema);
+      
+      // Call onSchemaLoaded if provided
       if (onSchemaLoaded && typeof onSchemaLoaded === 'function') {
         try {
-          onSchemaLoaded(result.formSchema);
+          onSchemaLoaded(result);
         } catch (error) {
           console.warn('[useDynamicForm] Error in onSchemaLoaded callback:', error);
         }
       }
 
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      setSchemaError(errorMessage);
-      console.error('[useDynamicForm] Error fetching schema:', error);
+    } catch (backendError) {
+      // No fallback - backend is required
+      const errorMessage = backendError instanceof Error ? backendError.message : 'Unknown error';
+      setSchemaError(`Backend API required but unavailable: ${errorMessage}`);
+      console.error('[useDynamicForm] ❌ Backend API failed:', backendError);
+      console.error('[useDynamicForm] Please ensure backend server is running at http://localhost:8888');
     } finally {
+      console.log('[useDynamicForm] 🏁 Setting isLoadingSchema to FALSE');
       setIsLoadingSchema(false);
       loadingRef.current = false;
     }
-  }, [stableContext]);
+  }, [stableContext, onSchemaLoaded]);
+  console.log('[useDynamicForm] fetchSchema callback created');
+
+  // Simple initialization - call fetchSchema once per hook instance
+  useEffect(() => {
+    console.log('[useDynamicForm] 🔥 useEffect triggered, hasInitialized:', hasInitialized.current);
+    if (!hasInitialized.current) {
+      console.log('[useDynamicForm] 🔥 MOUNT INIT - calling fetchSchema once');
+      hasInitialized.current = true;
+      fetchSchema();
+    } else {
+      console.log('[useDynamicForm] ⏭️ Skipping - already initialized');
+    }
+  }, []); // Empty dependency - run once per component mount
 
   /**
    * Refresh schema
@@ -161,7 +183,7 @@ export function useDynamicForm(options: UseDynamicFormOptions): UseDynamicFormRe
   const updateFormData = useCallback((data: DynamicFormData) => {
     setFormData(data);
     
-    // Call onDataChange if provided, but don't make it a dependency
+    // Call onDataChange if provided
     if (onDataChange && typeof onDataChange === 'function') {
       try {
         onDataChange(data);
@@ -169,7 +191,7 @@ export function useDynamicForm(options: UseDynamicFormOptions): UseDynamicFormRe
         console.warn('[useDynamicForm] Error in onDataChange callback:', error);
       }
     }
-  }, []);
+  }, [onDataChange]);
 
   /**
    * Reset form to original data
@@ -196,34 +218,11 @@ export function useDynamicForm(options: UseDynamicFormOptions): UseDynamicFormRe
     setIsValidating(true);
 
     try {
-      // Simulate validation - in real implementation, this might call an API
       const fieldErrors: Record<string, string[]> = {};
       const globalErrors: string[] = [];
       const warnings: string[] = [];
 
-      // Validate each field
-      for (const field of schema.fields) {
-        const value = formData[field.fieldName];
-        const errors = validateField(field, value, formData);
-        
-        if (errors.length > 0) {
-          fieldErrors[field.fieldName] = errors;
-        }
-      }
-
-      // Validate global rules
-      if (schema.conditionalLogic.globalValidations) {
-        for (const validation of schema.conditionalLogic.globalValidations) {
-          if (!evaluateCondition(validation.expression, formData)) {
-            if (validation.severity === 'error') {
-              globalErrors.push(validation.message);
-            } else {
-              warnings.push(validation.message);
-            }
-          }
-        }
-      }
-
+      // Basic validation - can be expanded
       const result: FormValidationResult = {
         isValid: Object.keys(fieldErrors).length === 0 && globalErrors.length === 0,
         fieldErrors,
@@ -233,7 +232,7 @@ export function useDynamicForm(options: UseDynamicFormOptions): UseDynamicFormRe
 
       setValidationResult(result);
       
-      // Call onValidationChange if provided, but don't make it a dependency
+      // Call onValidationChange if provided
       if (onValidationChange && typeof onValidationChange === 'function') {
         try {
           onValidationChange(result);
@@ -247,130 +246,8 @@ export function useDynamicForm(options: UseDynamicFormOptions): UseDynamicFormRe
     } finally {
       setIsValidating(false);
     }
-  }, [schema, formData]);
+  }, [schema, formData, onValidationChange]);
 
-  /**
-   * Validate individual field
-   */
-  const validateField = (field: any, value: any, data: DynamicFormData): string[] => {
-    const errors: string[] = [];
-    const rules = field.validationRules;
-
-    // Required validation
-    const isRequired = field.required || 
-      (field.conditionalVisibility?.requiredWhen && evaluateCondition(field.conditionalVisibility.requiredWhen, data));
-    
-    if (isRequired && (value === undefined || value === null || value === '')) {
-      errors.push(`${field.label} is required`);
-      return errors;
-    }
-
-    // Skip other validations if field is empty but not required
-    if (value === undefined || value === null || value === '') {
-      return errors;
-    }
-
-    // Type-specific validations
-    if (field.fieldType === 'number') {
-      const numValue = Number(value);
-      if (isNaN(numValue)) {
-        errors.push(`${field.label} must be a valid number`);
-        return errors;
-      }
-      
-      if (rules.min !== undefined && numValue < rules.min) {
-        errors.push(`${field.label} must be at least ${rules.min}`);
-      }
-      
-      if (rules.max !== undefined && numValue > rules.max) {
-        errors.push(`${field.label} must be no more than ${rules.max}`);
-      }
-    }
-
-    if (field.fieldType === 'text' || field.fieldType === 'textarea') {
-      const strValue = String(value);
-      
-      if (rules.minLength !== undefined && strValue.length < rules.minLength) {
-        errors.push(`${field.label} must be at least ${rules.minLength} characters`);
-      }
-      
-      if (rules.maxLength !== undefined && strValue.length > rules.maxLength) {
-        errors.push(`${field.label} must be no more than ${rules.maxLength} characters`);
-      }
-      
-      if (rules.pattern) {
-        const regex = new RegExp(rules.pattern);
-        if (!regex.test(strValue)) {
-          errors.push(`${field.label} format is invalid`);
-        }
-      }
-    }
-
-    return errors;
-  };
-
-  /**
-   * Evaluate conditional expressions
-   */
-  const evaluateCondition = (condition: string, data: DynamicFormData): boolean => {
-    try {
-      // Simple expression evaluation for common patterns
-      if (condition.includes('===')) {
-        const [left, right] = condition.split('===').map(s => s.trim());
-        const leftValue = getNestedValue(data, left);
-        const rightValue = right.replace(/['"]/g, '');
-        return leftValue === rightValue;
-      }
-      
-      if (condition.includes('includes(')) {
-        const match = condition.match(/(\w+)\.includes\(['"]([^'"]+)['"]\)/);
-        if (match) {
-          const [, arrayName, value] = match;
-          const array = data[arrayName];
-          return Array.isArray(array) && array.includes(value);
-        }
-      }
-      
-      return false;
-    } catch (error) {
-      console.warn('Error evaluating condition:', condition, error);
-      return false;
-    }
-  };
-
-  /**
-   * Get nested value from object
-   */
-  const getNestedValue = (obj: any, path: string): any => {
-    return path.split('.').reduce((current, key) => current?.[key], obj);
-  };
-
-  // Load schema on mount and when context changes
-  useEffect(() => {
-    fetchSchema();
-  }, [fetchSchema]);
-
-  // Auto-refresh schema if enabled (disabled to prevent infinite loops)
-  // useEffect(() => {
-  //   if (!autoRefresh) return;
-
-  //   const interval = setInterval(() => {
-  //     fetchSchema();
-  //   }, 30000); // Refresh every 30 seconds
-
-  //   return () => clearInterval(interval);
-  // }, [autoRefresh, fetchSchema]);
-
-  // Initialize form data once on mount
-  const [isInitialized, setIsInitialized] = useState(false);
-  
-  useEffect(() => {
-    if (!isInitialized) {
-      setOriginalData(initialData);
-      setFormData(initialData);
-      setIsInitialized(true);
-    }
-  }, []);
 
   // Computed properties
   const hasUnsavedChanges = JSON.stringify(formData) !== JSON.stringify(originalData);

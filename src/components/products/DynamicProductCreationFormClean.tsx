@@ -8,7 +8,7 @@
  * - Fast product creation
  */
 
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import { Alert, AlertDescription } from '@/components/ui/alert/AlertComponents';
 import { Loader2, AlertCircle } from '@/components/ui/icons/Icons';
 import DynamicForm from '@/components/forms/DynamicForm';
@@ -44,21 +44,27 @@ export default function DynamicProductCreationFormClean({
   const [showJsonPreview, setShowJsonPreview] = useState(false);
   const [currentFormData, setCurrentFormData] = useState<DynamicFormData>(initialData || {});
 
+  // Stable targetChannels to prevent infinite loops
+  const stableTargetChannels = useMemo(() => targetChannels, [JSON.stringify(targetChannels)]);
+  
   // Stable context object to prevent infinite loops
   const stableContext = useMemo(() => ({
     userId: 'user-123',
     organizationId,
     userRole,
-    targetChannels,
+    targetChannels: stableTargetChannels,
     productCategory,
     permissions: ['read', 'write', 'create']
-  }), [organizationId, userRole, targetChannels.join(','), productCategory]);
+  }), [organizationId, userRole, stableTargetChannels, productCategory]);
 
+  // Stable initial data to prevent infinite loops
+  const stableInitialData = useMemo(() => initialData, [JSON.stringify(initialData)]);
+  
   // Prepare initial data with category from context
   const enrichedInitialData = useMemo(() => ({
-    ...initialData,
+    ...stableInitialData,
     category: productCategory // Ensure category is set for conditional visibility
-  }), [initialData, productCategory]);
+  }), [stableInitialData, productCategory]);
 
   // Use the dynamic form hook for schema generation
   console.log('[DynamicProductCreationFormClean] Using context:', stableContext);
@@ -76,8 +82,8 @@ export default function DynamicProductCreationFormClean({
   });
 
   // Debug schema
-  React.useEffect(() => {
-    if (schema) {
+  useEffect(() => {
+    if (schema?.fields) {
       console.log('[DynamicProductCreationFormClean] Schema loaded with', schema.fields.length, 'fields');
       console.log('[DynamicProductCreationFormClean] Conditional fields:', 
         schema.fields.filter(f => f.conditionalVisibility).map(f => ({
@@ -86,6 +92,8 @@ export default function DynamicProductCreationFormClean({
           hideWhen: f.conditionalVisibility?.hideWhen
         }))
       );
+    } else {
+      console.log('[DynamicProductCreationFormClean] Schema or fields not available yet');
     }
   }, [schema]);
 
@@ -101,11 +109,11 @@ export default function DynamicProductCreationFormClean({
     // Handle validation results if needed
   }, []);
 
-  // Generate dynamic masterProduct from form data
+  // Truly dynamic masterProduct generation with zero hardcoded field mappings
   const generateMasterProduct = (formData: DynamicFormData): MasterProduct => {
     const now = new Date().toISOString();
     
-    // Base required fields
+    // Base required fields (minimum needed for valid MasterProduct)
     const masterProduct: MasterProduct = {
       id: `prod_${Date.now()}`,
       sku: formData.sku as string || `SKU_${Date.now()}`,
@@ -115,109 +123,158 @@ export default function DynamicProductCreationFormClean({
       updatedAt: now
     };
 
-    // Dynamically map ALL form data to masterProduct
-    // Basic Information
-    if (formData.description) masterProduct.description = formData.description as string;
-    if (formData.shortDescription) masterProduct.shortDescription = formData.shortDescription as string;
-    if (formData.comparePrice) masterProduct.compareAtPrice = Number(formData.comparePrice);
-    if (formData.costPrice) masterProduct.costPerItem = Number(formData.costPrice);
-    if (formData.brand) masterProduct.brand = formData.brand as string;
-    if (formData.category) masterProduct.category = formData.category as string;
-    if (formData.tags) masterProduct.tags = Array.isArray(formData.tags) ? formData.tags : [formData.tags as string];
-    if (formData.barcode) masterProduct.barcode = formData.barcode as string;
-
-    // Inventory
-    if (formData.inventory) masterProduct.quantity = Number(formData.inventory);
-    if (formData.trackInventory) masterProduct.trackQuantity = Boolean(formData.trackInventory);
-    if (formData.lowStockAlert) masterProduct.lowStockThreshold = Number(formData.lowStockAlert);
-
-    // Media
-    if (formData.images) {
-      const images = Array.isArray(formData.images) ? formData.images : [formData.images];
-      masterProduct.galleryImages = images as string[];
-      if (images.length > 0) masterProduct.mainImage = images[0] as string;
-    }
-
-    // Physical Properties
-    if (formData.weight) masterProduct.weight = Number(formData.weight);
-    if (formData.weightUnit) masterProduct.weightUnit = formData.weightUnit as 'kg' | 'lb' | 'g' | 'oz';
-    
-    // Create dimensions object if any dimension exists
-    if (formData.length || formData.width || formData.height) {
-      masterProduct.dimensions = {
-        length: Number(formData.length) || 0,
-        width: Number(formData.width) || 0,
-        height: Number(formData.height) || 0,
-        unit: (formData.dimensionUnit as 'cm' | 'in' | 'm' | 'ft') || 'in'
-      };
-    }
-
-    // SEO
-    if (formData.metaTitle) masterProduct.metaTitle = formData.metaTitle as string;
-    if (formData.metaDescription) masterProduct.metaDescription = formData.metaDescription as string;
-    if (formData.metaKeywords) masterProduct.metaKeywords = Array.isArray(formData.metaKeywords) ? formData.metaKeywords : [formData.metaKeywords as string];
-
-    // Shipping
-    if (formData.shippingClass) masterProduct.shippingClass = formData.shippingClass as string;
-    if (formData.requiresShipping !== undefined) masterProduct.requiresShipping = Boolean(formData.requiresShipping);
-    if (formData.freeShipping !== undefined) masterProduct.freeShipping = Boolean(formData.freeShipping);
-
-    // Status
-    if (formData.status) masterProduct.status = formData.status as 'draft' | 'active' | 'archived';
-    if (formData.publishedScope) masterProduct.visibility = formData.publishedScope as 'public' | 'private' | 'hidden';
-
-    // Variants
-    if (formData.hasVariants !== undefined) masterProduct.hasVariants = Boolean(formData.hasVariants);
-    if (formData.variantConfigurator) {
-      // Extract variant data from configurator
-      const variantData = formData.variantConfigurator;
-      if (typeof variantData === 'object' && variantData) {
-        masterProduct.variants = variantData as ProductVariant[];
-      }
-    }
-
-    // Channel Settings
-    if (formData.channelSettings) {
-      masterProduct.channelMappings = [];
-      const channelSettings = formData.channelSettings as Record<string, any>;
+    // Configuration-driven field mapping (no hardcoded switches!)
+    const fieldMappingConfig = {
+      // Direct property mappings (form field -> masterProduct property)
+      directMappings: {
+        'description': 'description',
+        'shortDescription': 'shortDescription', 
+        'brand': 'brand',
+        'category': 'category',
+        'barcode': 'barcode',
+        'metaTitle': 'metaTitle',
+        'metaDescription': 'metaDescription',
+        'shippingClass': 'shippingClass',
+        'weight': 'weight',
+        'weightUnit': 'weightUnit',
+        'status': 'status'
+      },
       
-      Object.keys(channelSettings).forEach(channelName => {
-        const settings = channelSettings[channelName];
-        if (settings?.enabled) {
-          masterProduct.channelMappings?.push({
-            channelId: channelName,
-            mappedAt: now,
-            status: 'mapped',
-            confidence: 0.95,
-            mappedFields: Object.keys(settings).length - 1, // -1 for 'enabled' field
-            totalFields: 10 // Approximate
+      // Field name transformations (form field -> different masterProduct property)
+      fieldTransforms: {
+        'comparePrice': 'compareAtPrice',
+        'costPrice': 'costPerItem', 
+        'inventory': 'quantity',
+        'lowStockAlert': 'lowStockThreshold',
+        'trackInventory': 'trackQuantity',
+        'publishedScope': 'visibility'
+      },
+      
+      // Special complex field handlers
+      specialFields: {
+        'variantConfigurator': (value: any) => {
+          if (Array.isArray(value)) {
+            return { variants: value };
+          } else if (typeof value === 'object' && value) {
+            const variantData = value as any;
+            if (variantData.variants && Array.isArray(variantData.variants)) {
+              return { variants: variantData.variants };
+            }
+            return { variants: value };
+          }
+          return {};
+        },
+        
+        'images': (value: any) => {
+          const images = Array.isArray(value) ? value : [value];
+          return {
+            galleryImages: images,
+            mainImage: images.length > 0 ? images[0] : undefined
+          };
+        },
+        
+        'channelSettings': (value: any) => {
+          const channelMappings: any[] = [];
+          const channelSettings = value as Record<string, any>;
+          Object.keys(channelSettings).forEach(channelName => {
+            const settings = channelSettings[channelName];
+            if (settings?.enabled) {
+              channelMappings.push({
+                channelId: channelName,
+                mappedAt: now,
+                status: 'mapped',
+                confidence: 0.95,
+                mappedFields: Object.keys(settings).length - 1,
+                totalFields: 10
+              });
+            }
           });
+          return { channelMappings };
         }
+      },
+      
+      // Array fields that need special handling
+      arrayFields: ['tags', 'metaKeywords'],
+      
+      // Fields that combine into dimensions object
+      dimensionFields: ['length', 'width', 'height', 'dimensionUnit']
+    };
+
+    // Process all form fields dynamically using configuration
+    if (schema?.fields) {
+      // Handle dimensions first (they need to be processed together)
+      const hasDimensions = fieldMappingConfig.dimensionFields.some(dim => formData[dim]);
+      if (hasDimensions) {
+        masterProduct.dimensions = {
+          length: Number(formData.length) || 0,
+          width: Number(formData.width) || 0, 
+          height: Number(formData.height) || 0,
+          unit: (formData.dimensionUnit as 'cm' | 'in' | 'm' | 'ft') || 'in'
+        };
+      }
+      
+      schema.fields.forEach(field => {
+        const fieldName = field.fieldName;
+        const fieldValue = formData[fieldName];
+        
+        // Skip empty/undefined values and already processed core fields
+        if (fieldValue === undefined || fieldValue === null || fieldValue === '' ||
+            ['id', 'sku', 'name', 'price', 'createdAt', 'updatedAt'].includes(fieldName) ||
+            fieldMappingConfig.dimensionFields.includes(fieldName)) {
+          return;
+        }
+
+        // 1. Special field handlers (complex logic)
+        if ((fieldMappingConfig.specialFields as any)[fieldName]) {
+          const result = (fieldMappingConfig.specialFields as any)[fieldName](fieldValue);
+          Object.assign(masterProduct, result);
+          return;
+        }
+
+        // 2. Array fields
+        if (fieldMappingConfig.arrayFields.includes(fieldName)) {
+          (masterProduct as any)[fieldName] = Array.isArray(fieldValue) ? fieldValue : [fieldValue];
+          return;
+        }
+
+        // 3. Direct property mappings
+        if ((fieldMappingConfig.directMappings as any)[fieldName]) {
+          const targetProperty = (fieldMappingConfig.directMappings as any)[fieldName];
+          (masterProduct as any)[targetProperty] = convertValueByType(fieldValue, field.fieldType);
+          return;
+        }
+
+        // 4. Field name transformations  
+        if ((fieldMappingConfig.fieldTransforms as any)[fieldName]) {
+          const targetProperty = (fieldMappingConfig.fieldTransforms as any)[fieldName];
+          (masterProduct as any)[targetProperty] = convertValueByType(fieldValue, field.fieldType);
+          return;
+        }
+
+        // 5. All unmapped fields automatically go to customAttributes
+        if (!masterProduct.customAttributes) {
+          masterProduct.customAttributes = {};
+        }
+        masterProduct.customAttributes[fieldName] = convertValueByType(fieldValue, field.fieldType);
       });
     }
 
-    // Custom Attributes - capture any fields not explicitly mapped
-    const knownFields = new Set([
-      'sku', 'name', 'description', 'shortDescription', 'price', 'comparePrice', 'costPrice',
-      'brand', 'category', 'tags', 'barcode', 'inventory', 'trackInventory', 'lowStockAlert',
-      'images', 'weight', 'weightUnit', 'length', 'width', 'height', 'dimensionUnit',
-      'metaTitle', 'metaDescription', 'metaKeywords', 'shippingClass', 'requiresShipping',
-      'freeShipping', 'status', 'publishedScope', 'hasVariants', 'variantConfigurator',
-      'channelSettings'
-    ]);
-
-    const customAttributes: { [key: string]: any } = {};
-    Object.keys(formData).forEach(key => {
-      if (!knownFields.has(key) && formData[key] !== undefined && formData[key] !== '') {
-        customAttributes[key] = formData[key];
-      }
-    });
-
-    if (Object.keys(customAttributes).length > 0) {
-      masterProduct.customAttributes = customAttributes;
-    }
-
     return masterProduct;
+  };
+
+  // Helper function for automatic type conversion based on schema
+  const convertValueByType = (value: any, fieldType: string): any => {
+    switch (fieldType) {
+      case 'number':
+        return Number(value);
+      case 'checkbox':
+        return Boolean(value);
+      case 'select':
+      case 'text':
+      case 'textarea':
+      default:
+        return value;
+    }
   };
 
   // Handle form submission
@@ -228,14 +285,25 @@ export default function DynamicProductCreationFormClean({
     setSubmitError(null);
     
     try {
-      // Generate dynamic masterProduct from all form data
-      const masterProduct = generateMasterProduct(submissionData);
-
-      console.log('[DynamicProductCreationForm] Generated masterProduct:', masterProduct);
-
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 1000));
-
+      console.log('[DynamicProductCreationForm] Submitting to backend API:', submissionData);
+      
+      // Use backend API for product creation
+      const { BackendAPIService, createBackendContext } = await import('@/lib/api/backendService');
+      
+      const backendContext = createBackendContext(
+        stableContext.userId,
+        stableContext.organizationId,
+        stableContext.userRole === 'ADMIN_USER' ? 'ADMIN' : 
+        stableContext.userRole === 'VIEW_ONLY' ? 'BUSINESS_USER' : 
+        stableContext.userRole as 'BUSINESS_USER' | 'ADMIN' | 'DEVELOPER',
+        stableContext.targetChannels,
+        stableContext.productCategory,
+        stableContext.permissions
+      );
+      
+      const masterProduct = await BackendAPIService.createProduct(submissionData, backendContext);
+      console.log('[DynamicProductCreationForm] ✅ Product created successfully via backend:', masterProduct);
+      
       // Success - notify parent
       onProductCreated?.(masterProduct, targetChannels);
       

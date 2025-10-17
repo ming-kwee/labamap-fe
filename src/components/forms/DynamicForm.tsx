@@ -48,6 +48,7 @@ const DynamicForm: React.FC<DynamicFormProps> = ({
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
   const [uploadedImages, setUploadedImages] = useState<Record<string, ImageFile[]>>({});
   const [dragActive, setDragActive] = useState(false);
+  const [localVariants, setLocalVariants] = useState<Record<string, any[]>>({});
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Initialize visible fields and expanded groups
@@ -62,9 +63,21 @@ const DynamicForm: React.FC<DynamicFormProps> = ({
     setExpandedGroups(defaultExpanded);
   }, [schema]);
 
-  // Update form data when data prop changes
+  // Track if we're in the middle of an internal update to prevent circular updates
+  const isInternalUpdateRef = useRef(false);
+  
+  // Update form data when data prop changes (avoid circular updates)
   useEffect(() => {
     console.log('[DynamicForm] Data prop changed to:', data);
+    
+    // Skip update if this is from our own internal change
+    if (isInternalUpdateRef.current) {
+      console.log('[DynamicForm] Skipping data prop update (internal change)');
+      isInternalUpdateRef.current = false;
+      return;
+    }
+    
+    console.log('[DynamicForm] External data change, updating formData');
     setFormData(data);
   }, [data]);
 
@@ -81,6 +94,12 @@ const DynamicForm: React.FC<DynamicFormProps> = ({
 
   // Initialize images from form data for all image fields
   useEffect(() => {
+    // Safety check for schema
+    if (!schema || !schema.fields || !Array.isArray(schema.fields)) {
+      console.log('[DynamicForm] Schema not available yet, skipping image initialization');
+      return;
+    }
+    
     console.log('[DynamicForm] ALL FIELDS IN SCHEMA:', schema.fields.map(f => ({ name: f.fieldName, type: f.fieldType })));
     
     const imageFields = schema.fields.filter(field => 
@@ -115,6 +134,45 @@ const DynamicForm: React.FC<DynamicFormProps> = ({
       setUploadedImages(prev => ({ ...prev, ...updatedImages }));
     }
   }, [schema.fields, formData]);
+
+  // Initialize variants from form data only once when component mounts
+  useEffect(() => {
+    if (!schema || !schema.fields || !Array.isArray(schema.fields)) {
+      return;
+    }
+    
+    const variantFields = schema.fields.filter(field => field.fieldType === 'variant-configurator');
+    
+    variantFields.forEach(field => {
+      const variantData = formData[field.fieldName];
+      if (variantData && !localVariants[field.fieldName]) {
+        try {
+          let initialVariants: any[] = [];
+          
+          if (Array.isArray(variantData)) {
+            initialVariants = variantData;
+          } else if (typeof variantData === 'string') {
+            const parsed = JSON.parse(variantData);
+            initialVariants = parsed.variants || [];
+          } else if (typeof variantData === 'object') {
+            initialVariants = variantData.variants || [variantData];
+          }
+          
+          if (initialVariants.length > 0) {
+            setLocalVariants(prev => ({
+              ...prev,
+              [field.fieldName]: initialVariants
+            }));
+          }
+        } catch (error) {
+          console.error('Error parsing variant data:', error);
+        }
+      }
+    });
+  }, [schema.fields]); // Only depend on schema.fields, not formData to prevent loops
+
+  // Update form data when local variants change (debounced to prevent loops)
+  // REMOVED: This was causing infinite loops with form data updates
 
   /**
    * Update field visibility based on conditional logic
@@ -316,15 +374,32 @@ const DynamicForm: React.FC<DynamicFormProps> = ({
    */
   const handleFieldChange = (fieldName: string, value: any) => {
     console.log('Field changed:', fieldName, 'new value:', value, 'type:', typeof value);
+    
+    // Set flag to prevent circular update when parent updates data prop
+    isInternalUpdateRef.current = true;
+    
+    // Update form data
     const newData = { ...formData, [fieldName]: value };
     setFormData(newData);
+    
+    // Update local variants if this is a variant configurator field (prevents circular dependency)
+    const isVariantField = schema?.fields?.some(field => 
+      field.fieldName === fieldName && field.fieldType === 'variant-configurator'
+    ) || false;
+    
+    if (isVariantField && value) {
+      setLocalVariants(prev => ({
+        ...prev,
+        [fieldName]: Array.isArray(value) ? value : []
+      }));
+    }
     
     // Special debugging for hasVariants
     if (fieldName === 'hasVariants') {
       console.log('hasVariants changed! Old data:', formData, 'New data:', newData);
       console.log('Will trigger visibility update...');
       console.log('Looking for variantConfigurator field in schema...');
-      const variantConfigField = schema.fields.find(f => f.fieldName === 'variantConfigurator');
+      const variantConfigField = schema?.fields?.find(f => f.fieldName === 'variantConfigurator');
       if (variantConfigField) {
         console.log('Found variantConfigurator field:', variantConfigField);
         console.log('Conditional visibility:', variantConfigField.conditionalVisibility);
@@ -619,6 +694,8 @@ const DynamicForm: React.FC<DynamicFormProps> = ({
    */
   // Get all fields that should be available for variant creation
   const getVariantFields = React.useCallback(() => {
+    if (!schema?.fields) return [];
+    
     return schema.fields.filter(field => {
       // Exclude the configurator itself and hasVariants checkbox
       if (field.fieldName === 'variantConfigurator' || field.fieldName === 'hasVariants') {
@@ -1410,18 +1487,9 @@ const DynamicForm: React.FC<DynamicFormProps> = ({
     // Get dynamic variant fields from schema
     const variantFields = getVariantFields();
     
-    // Parse existing variants from form data
-    let existingVariants = [];
-    try {
-      const variantData = formData[field.fieldName];
-      if (variantData && typeof variantData === 'string') {
-        const parsed = JSON.parse(variantData);
-        existingVariants = parsed.variants || [];
-      }
-    } catch (error) {
-      // Invalid JSON, start with empty array
-      existingVariants = [];
-    }
+    // Get variants for this specific field from component-level state
+    const fieldVariants = localVariants[field.fieldName] || [];
+    
 
     const handleGenerateVariant = () => {
       const newVariants = generateDynamicVariants();
@@ -1433,7 +1501,7 @@ const DynamicForm: React.FC<DynamicFormProps> = ({
       const newVariant = newVariants[0];
       
       // Check if variant already exists by comparing all variant attributes
-      const exists = existingVariants.some((existing: any) => {
+      const exists = fieldVariants.some((existing: any) => {
         return variantFields.every(varField => {
           const newValue = newVariant[varField.fieldName];
           const existingValue = existing[varField.fieldName];
@@ -1446,22 +1514,50 @@ const DynamicForm: React.FC<DynamicFormProps> = ({
         return;
       }
 
-      const updatedVariants = [...existingVariants, ...newVariants];
-      handleFieldChange(field.fieldName, JSON.stringify({ variants: updatedVariants }));
+      setLocalVariants(prev => {
+        const updated = [...fieldVariants, ...newVariants];
+        
+        // Update main form data to trigger real-time JSON preview
+        handleFieldChange(field.fieldName, updated);
+        
+        return {
+          ...prev,
+          [field.fieldName]: updated
+        };
+      });
     };
 
     const updateVariantField = (variantIndex: number, fieldName: string, value: any) => {
-      const updatedVariants = [...existingVariants];
-      updatedVariants[variantIndex] = { 
-        ...updatedVariants[variantIndex], 
-        [fieldName]: value 
-      };
-      handleFieldChange(field.fieldName, JSON.stringify({ variants: updatedVariants }));
+      setLocalVariants(prev => {
+        const updated = [...fieldVariants];
+        updated[variantIndex] = { 
+          ...updated[variantIndex], 
+          [fieldName]: value 
+        };
+        const newVariantData = {
+          ...prev,
+          [field.fieldName]: updated
+        };
+        
+        // Update main form data to trigger real-time JSON preview
+        handleFieldChange(field.fieldName, updated);
+        
+        return newVariantData;
+      });
     };
 
     const removeVariant = (variantIndex: number) => {
-      const updatedVariants = existingVariants.filter((_: any, index: number) => index !== variantIndex);
-      handleFieldChange(field.fieldName, JSON.stringify({ variants: updatedVariants }));
+      setLocalVariants(prev => {
+        const updated = fieldVariants.filter((_: any, index: number) => index !== variantIndex);
+        
+        // Update main form data to trigger real-time JSON preview
+        handleFieldChange(field.fieldName, updated);
+        
+        return {
+          ...prev,
+          [field.fieldName]: updated
+        };
+      });
     };
 
     // Render dynamic field input based on field type
@@ -1591,11 +1687,11 @@ const DynamicForm: React.FC<DynamicFormProps> = ({
         </div>
 
         {/* Created Variants */}
-        {existingVariants.length > 0 ? (
+        {fieldVariants.length > 0 ? (
           <div className="bg-white rounded border border-gray-200">
             <div className="px-4 py-3 bg-gray-50 border-b border-gray-200">
               <h4 className="font-medium text-gray-900">
-                Product Variants ({existingVariants.length})
+                Product Variants ({fieldVariants.length})
               </h4>
               <p className="text-xs text-gray-600">
                 Manage pricing, inventory, and other variant-specific settings
@@ -1621,7 +1717,7 @@ const DynamicForm: React.FC<DynamicFormProps> = ({
 
                   {/* Grid Rows */}
                   <div className="bg-white rounded-b-lg border border-t-0 border-gray-200">
-                    {existingVariants.map((variant: any, index: number) => (
+                    {fieldVariants.map((variant: any, index: number) => (
                       <div
                         key={index}
                         draggable="true"
@@ -1639,15 +1735,20 @@ const DynamicForm: React.FC<DynamicFormProps> = ({
                           const dropIndex = index;
                           
                           if (draggedIndex !== dropIndex) {
-                            const updatedVariants = [...existingVariants];
-                            const draggedItem = updatedVariants[draggedIndex];
-                            updatedVariants.splice(draggedIndex, 1);
-                            updatedVariants.splice(dropIndex, 0, draggedItem);
-                            handleFieldChange(field.fieldName, JSON.stringify({ variants: updatedVariants }));
+                            setLocalVariants(prev => {
+                              const updated = [...fieldVariants];
+                              const draggedItem = updated[draggedIndex];
+                              updated.splice(draggedIndex, 1);
+                              updated.splice(dropIndex, 0, draggedItem);
+                              return {
+                                ...prev,
+                                [field.fieldName]: updated
+                              };
+                            });
                           }
                         }}
                         className={`grid grid-cols-[40px_1fr_100px_100px_100px_100px_100px_100px_100px_60px] gap-2 py-3 px-2 border-b border-gray-100 hover:bg-gray-50 transition-all cursor-move ${
-                          index === existingVariants.length - 1 ? 'border-b-0' : ''
+                          index === fieldVariants.length - 1 ? 'border-b-0' : ''
                         }`}
                         title="Drag to reorder variants"
                       >
@@ -1841,6 +1942,11 @@ const DynamicForm: React.FC<DynamicFormProps> = ({
    * Render fields grouped by sections
    */
   const renderGroupedFields = () => {
+    // Safety check for schema and fields
+    if (!schema || !schema.fields || !Array.isArray(schema.fields)) {
+      return null;
+    }
+    
     if (!schema.groups || schema.groups.length === 0) {
       const visibleFormFields = schema.fields.filter(f => visibleFields.has(f.fieldName));
       return (
@@ -1962,7 +2068,7 @@ const DynamicForm: React.FC<DynamicFormProps> = ({
       {/* Form Actions */}
       <div className="mt-8 flex justify-between items-center pt-6 border-t">
         <div className="text-sm text-gray-500">
-          Estimated completion time: {Math.ceil((schema.metadata?.estimatedCompletionTime || 300) / 60)} minutes
+          Estimated completion time: {Math.ceil((schema?.metadata?.estimatedCompletionTime || 300) / 60)} minutes
         </div>
         
         <div className="flex gap-3">
