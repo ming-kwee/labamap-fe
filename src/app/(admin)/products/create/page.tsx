@@ -212,7 +212,7 @@ export default function CreateProductPage() {
           </div>
           <div className="flex items-center space-x-4">
             {/* Form Type Selector */}
-            {currentStep === 'product' && !workflowState.masterProduct && (
+            {currentStep === 'product' && (
               <div className="flex items-center space-x-2 bg-gray-100 rounded-lg p-1">
                 <button
                   onClick={() => setFormType('master')}
@@ -246,7 +246,7 @@ export default function CreateProductPage() {
         </div>
 
         {/* Form Type Description */}
-        {currentStep === 'product' && !workflowState.masterProduct && (
+        {currentStep === 'product' && (
           <Card className="bg-blue-50 border-blue-200">
             <CardContent className="p-4">
               <div className="flex items-start space-x-3">

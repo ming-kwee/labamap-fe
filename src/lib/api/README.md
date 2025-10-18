@@ -709,3 +709,78 @@ await createProduct.mutate(data);
 ```
 
 This centralized API system provides a robust, scalable, and maintainable foundation for all your API communications. It's designed to grow with your application and can be easily extended for additional functionality.
+
+
+
+
+
+
+⏺ Great! Now I can see the backend API is working and returning data. Let me compare the field
+  structure. I can see from this response that the backend returns fields with:
+
+  Backend API structure:
+  - fieldType: "TEXT", "TEXTAREA"
+  - label: "Product Name"
+  - placeholder: "Enter product name..."
+  - helpText: "Product Name"
+  - group: "essential"
+  - order: 1
+  - width: "HALF"
+  - appearance: {variant, size, theme}
+
+  Fallback JSON structure (master-attributes-ecommerce.json):
+  - dataType: "String", "Text"
+  - description: "Product Name"
+  - category: "basic_info"
+  - group: "attribute"
+  - priority: 1
+
+  The key differences:
+
+  1. Field Types: Backend uses fieldType ("TEXT", "TEXTAREA") vs Fallback uses dataType ("String",
+   "Text")
+  2. Grouping: Backend uses group ("essential") vs Fallback uses category ("basic_info")
+  3. Layout: Backend has width, order, appearance properties vs Fallback has simpler priority
+  4. Validation: Different validation rule structures
+
+  This explains why the forms look different! The backend API is returning a more sophisticated
+  schema with layout and appearance properties, while the fallback uses a simpler attribute-based
+  structure.
+
+  Let me check how these different field types are being rendered in the DynamicForm component:
+
+⏺ Search(pattern: "fieldType.*TEXT|dataType.*String", path: "src/components/forms")
+  ⎿  Found 0 files 
+
+⏺ Search(pattern: "**/DynamicForm.tsx")
+  ⎿  Found 1 file (ctrl+r to expand)
+
+⏺ Search(pattern: "fieldType|switch.*field", path: "src/components/forms/DynamicForm.tsx",
+        output_mode: "content")
+  ⎿  Found 87 lines (ctrl+r to expand)
+
+⏺ Perfect! Now I can see the issue clearly. Let me check what field types the backend is returning
+   vs what the DynamicForm component expects:
+
+  Backend API Returns:
+  - fieldType: "TEXT" (uppercase)
+  - fieldType: "TEXTAREA" (uppercase)
+
+  DynamicForm Component Expects:
+  - fieldType: "text" (lowercase)
+  - fieldType: "textarea" (lowercase)
+
+  The switch statement at line 617 uses lowercase field types, but the backend returns uppercase
+  field types! This is why the form looks different - the field type matching is failing.
+
+  The answer to your question is: Yes, the form looks very different because the backend API 
+  returns data in a different format than the fallback master-attributes-ecommerce.json file:
+
+  1. Field Types: Backend uses uppercase ("TEXT", "TEXTAREA") vs lowercase expected ("text",
+  "textarea")
+  2. Schema Structure: Backend returns a complete form schema with layout properties vs fallback
+  returns simple attribute definitions
+  3. Property Names: Different property naming (e.g., fieldType vs dataType)
+
+  This mismatch means the DynamicForm component isn't rendering the fields correctly because the
+  field type switch statement doesn't match the uppercase field types from the backend.

@@ -4,8 +4,8 @@ import Label from '@/components/ui/label/Label';
 import Textarea from '@/components/ui/textarea/Textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select/Select';
 import { Loader2 } from '@/components/ui/icons/Icons';
-import EnhancedField from './EnhancedField';
-import { SmartSuggestions, RequiredFieldsNotice } from './SmartPanels';
+import EnhancedField from '../../src/components/products/form/EnhancedField';
+import { SmartSuggestions, RequiredFieldsNotice } from '../../src/components/products/form/SmartPanels';
 
 interface EssentialInformationProps {
   formData: any;

@@ -3,7 +3,8 @@
  * This replaces the mock Next.js APIs with actual backend endpoints
  */
 
-import { DynamicFormSchema, MasterProduct, DynamicFormData } from '@/types/dynamicForm';
+import { DynamicFormSchema, DynamicFormData } from '@/types/dynamicForm';
+import { MasterProduct } from '@/types/product';
 
 const BACKEND_BASE_URL = 'http://localhost:8888/labamap/api/v1/ecommerce';
 

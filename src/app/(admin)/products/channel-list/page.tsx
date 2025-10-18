@@ -1,6 +1,5 @@
 "use client";
-import ChannelProductList from "@/components/products/ChannelProductList";
-import { ProductData } from "@/components/products/ProductCreateForm";
+import { ProductData } from "@/types/product";
 
 // Mock master products data for demonstration
 const mockMasterProducts: ProductData[] = [
@@ -201,23 +200,21 @@ const mockMasterProducts: ProductData[] = [
 ];
 
 export default function ChannelProductListPage() {
-  const handleProductUpdate = async (productId: string, updates: Record<string, unknown>) => {
-    console.log("Updating product:", productId, updates);
-    // Here you would typically call an API to update the product
-    // For now, we'll just log the update
-  };
+  // Note: These handlers were previously used by ChannelProductList component
+  // Keeping them commented for reference
+  // const handleProductUpdate = async (productId: string, updates: Record<string, unknown>) => {
+  //   console.log("Updating product:", productId, updates);
+  // };
 
-  const handleBulkSync = async (productIds: string[]) => {
-    console.log("Bulk syncing products:", productIds);
-    // Simulate API call
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    console.log("Bulk sync completed");
-  };
+  // const handleBulkSync = async (productIds: string[]) => {
+  //   console.log("Bulk syncing products:", productIds);
+  //   await new Promise(resolve => setTimeout(resolve, 1000));
+  //   console.log("Bulk sync completed");
+  // };
 
-  const handleBulkUpdate = async (productIds: string[], updates: Record<string, unknown>) => {
-    console.log("Bulk updating products:", productIds, updates);
-    // Here you would typically call an API to bulk update products
-  };
+  // const handleBulkUpdate = async (productIds: string[], updates: Record<string, unknown>) => {
+  //   console.log("Bulk updating products:", productIds, updates);
+  // };
 
   return (
     <div className="space-y-6">
@@ -247,13 +244,24 @@ export default function ChannelProductListPage() {
         </div>
       </div>
 
-      {/* Channel Product List Component */}
-      <ChannelProductList
-        masterProducts={mockMasterProducts}
-        onProductUpdate={handleProductUpdate}
-        onBulkSync={handleBulkSync}
-        onBulkUpdate={handleBulkUpdate}
-      />
+      {/* Channel Product List Component - Temporarily Disabled */}
+      <div className="bg-white dark:bg-gray-800 rounded-xl p-6 border border-gray-200 dark:border-gray-700">
+        <div className="text-center">
+          <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
+            Channel Product List
+          </h3>
+          <p className="text-gray-600 dark:text-gray-400 mb-4">
+            ChannelProductList component has been removed during cleanup.
+            This page shows {mockMasterProducts.length} mock products.
+          </p>
+          <a 
+            href="/products/create" 
+            className="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+          >
+            Create New Product
+          </a>
+        </div>
+      </div>
 
       {/* Implementation Notes */}
       <div className="bg-gray-50 dark:bg-gray-900/50 rounded-xl p-6 border border-gray-200 dark:border-gray-700">

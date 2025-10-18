@@ -12,10 +12,15 @@
 
 import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import { Alert, AlertDescription } from '@/components/ui/alert/AlertComponents';
-import { Loader2, AlertCircle } from '@/components/ui/icons/Icons';
+import { Loader2, AlertCircle, Package, Settings, Star } from '@/components/ui/icons/Icons';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card/Card';
+import Button from '@/components/ui/button/Button';
 import DynamicForm from '@/components/forms/DynamicForm';
-import { DynamicFormData, FormValidationResult } from '@/types/dynamicForm';
+import { DynamicFormData, FormValidationResult, FormField } from '@/types/dynamicForm';
 import { MasterProduct, ProductVariant } from '@/types/product';
+import VariantConfiguratorDynamic from './VariantConfiguratorDynamic';
+
+// Old VariantConfigurator removed - replaced with VariantConfiguratorSimple
 
 interface DynamicProductCreationFormCleanProps {
   onProductCreated?: (product: MasterProduct, availableChannels: string[]) => void;
@@ -115,7 +120,7 @@ export default function DynamicProductCreationFormClean({
     if (schema?.fields) {
       console.log('[DynamicProductCreationFormClean] Schema loaded with', schema.fields.length, 'fields');
       console.log('[DynamicProductCreationFormClean] Conditional fields:', 
-        schema.fields.filter(f => f.conditionalVisibility).map(f => ({
+        schema.fields.filter((f: FormField) => f.conditionalVisibility).map((f: FormField) => ({
           name: f.fieldName,
           showWhen: f.conditionalVisibility?.showWhen,
           hideWhen: f.conditionalVisibility?.hideWhen
@@ -131,6 +136,16 @@ export default function DynamicProductCreationFormClean({
     console.log('[DynamicProductCreationFormClean] Form data changed:', newData);
     setCurrentFormData(newData);
     setFormData(newData);
+  }, []);
+
+  // Create a field-specific update handler for better state management
+  const handleFieldChange = useCallback((fieldName: string, value: any) => {
+    setCurrentFormData(prev => {
+      const newData = { ...prev, [fieldName]: value };
+      console.log('[DynamicProductCreationFormClean] Field changed:', fieldName, value);
+      setFormData(newData); // Keep both states in sync
+      return newData;
+    });
   }, []);
 
   // Handle validation changes
@@ -242,7 +257,7 @@ export default function DynamicProductCreationFormClean({
         };
       }
       
-      schema.fields.forEach(field => {
+      schema.fields.forEach((field: FormField) => {
         const fieldName = field.fieldName;
         const fieldValue = formData[fieldName];
         
@@ -319,12 +334,25 @@ export default function DynamicProductCreationFormClean({
       // Use backend API for product creation
       const { BackendAPIService, createBackendContext } = await import('@/lib/api/backendService');
       
+      // Map user roles to backend expected format
+      const mapUserRole = (role: 'BUSINESS_USER' | 'ADMIN_USER' | 'DEVELOPER' | 'VIEW_ONLY'): 'BUSINESS_USER' | 'ADMIN' | 'DEVELOPER' => {
+        switch (role) {
+          case 'ADMIN_USER':
+            return 'ADMIN';
+          case 'VIEW_ONLY':
+            return 'BUSINESS_USER';
+          case 'DEVELOPER':
+            return 'DEVELOPER';
+          case 'BUSINESS_USER':
+          default:
+            return 'BUSINESS_USER';
+        }
+      };
+
       const backendContext = createBackendContext(
         stableContext.userId,
         stableContext.organizationId,
-        stableContext.userRole === 'ADMIN_USER' ? 'ADMIN' : 
-        stableContext.userRole === 'VIEW_ONLY' ? 'BUSINESS_USER' : 
-        stableContext.userRole as 'BUSINESS_USER' | 'ADMIN' | 'DEVELOPER',
+        mapUserRole(stableContext.userRole),
         stableContext.targetChannels,
         stableContext.productCategory,
         stableContext.permissions
@@ -382,7 +410,7 @@ export default function DynamicProductCreationFormClean({
   console.log('[DynamicProductCreationFormClean] ✅ RENDERING FORM with schema:', schema?.fields?.length, 'fields');
 
   return (
-    <div className="max-w-4xl mx-auto space-y-6">
+    <div className="max-w-7xl mx-auto space-y-6">
       {/* Submit Error */}
       {submitError && (
         <Alert variant="destructive">
@@ -391,256 +419,312 @@ export default function DynamicProductCreationFormClean({
         </Alert>
       )}
 
-      {/* JSON Preview Toggle */}
-      <div className="flex justify-end">
-        <button
-          onClick={() => setShowJsonPreview(!showJsonPreview)}
-          className="px-3 py-1 text-sm bg-blue-100 text-blue-700 rounded-md hover:bg-blue-200 transition-colors"
-        >
-          {showJsonPreview ? '🙈 Hide' : '👁️ Show'} Real-time JSON Preview
-        </button>
-      </div>
+      {/* Header Card */}
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-3">
+              <Package className="h-6 w-6 text-blue-600" />
+              <div>
+                <CardTitle className="text-2xl">Create New Product</CardTitle>
+                <p className="text-gray-600 mt-1">Build your product for multi-channel distribution</p>
+              </div>
+            </div>
+            {/* JSON Preview Toggle */}
+            <Button
+              variant="outline"
+              onClick={() => setShowJsonPreview(!showJsonPreview)}
+              className="text-sm"
+            >
+              {showJsonPreview ? '🙈 Hide' : '👁️ Show'} JSON Preview
+            </Button>
+          </div>
+        </CardHeader>
+      </Card>
 
       {/* Main Content Layout */}
-      <div className={`${showJsonPreview ? 'grid grid-cols-1 lg:grid-cols-2 gap-6' : ''}`}>
+      <div className={`${showJsonPreview ? 'grid grid-cols-1 xl:grid-cols-3 gap-6' : ''}`}>
         {/* Dynamic Form */}
-        <div className={showJsonPreview ? 'lg:col-span-1' : ''}>
+        <div className={showJsonPreview ? 'xl:col-span-2' : ''}>
           {schema && schema.fields ? (
             <div className="space-y-6">
-              <h2 className="text-xl font-semibold">Product Information</h2>
               
-              {/* Essential Fields */}
-              <div className="space-y-4">
-                <h3 className="text-lg font-medium text-gray-800">Essential Information</h3>
-                {schema.fields
-                  .filter((field: any) => field.group === 'essential' || ['name', 'description', 'price', 'category'].includes(field.fieldName))
-                  .slice(0, 6)
-                  .map((field: any) => (
-                    <div key={field.fieldName} className="space-y-2">
-                      <label className="block font-medium">{field.label}</label>
-                      {field.fieldType.toLowerCase() === 'textarea' ? (
-                        <textarea
-                          placeholder={field.placeholder}
-                          value={formData[field.fieldName] || ''}
-                          onChange={(e) => handleFormDataChange({...formData, [field.fieldName]: e.target.value})}
-                          className="w-full p-2 border rounded"
-                          rows={3}
-                        />
-                      ) : field.fieldType.toLowerCase() === 'select' ? (
-                        <select
-                          value={formData[field.fieldName] || ''}
-                          onChange={(e) => handleFormDataChange({...formData, [field.fieldName]: e.target.value})}
-                          className="w-full p-2 border rounded"
-                        >
-                          <option value="">{field.placeholder}</option>
-                          {field.options?.map((option: any) => (
-                            <option key={option.value} value={option.value}>
-                              {option.label}
-                            </option>
-                          ))}
-                        </select>
-                      ) : (
-                        <input
-                          type={field.fieldType.toLowerCase() === 'text' ? 'text' : field.fieldType}
-                          placeholder={field.placeholder}
-                          value={formData[field.fieldName] || ''}
-                          onChange={(e) => handleFormDataChange({...formData, [field.fieldName]: e.target.value})}
-                          className="w-full p-2 border rounded"
-                        />
-                      )}
-                      <p className="text-sm text-gray-600">{field.helpText}</p>
-                    </div>
-                  ))}
-              </div>
+              {/* Essential Information Card */}
+              <Card>
+                <CardHeader>
+                  <div className="flex items-center space-x-2">
+                    <Package className="h-5 w-5 text-blue-600" />
+                    <CardTitle className="text-lg">Essential Information</CardTitle>
+                  </div>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  {schema.fields
+                    .filter((field: any) => field.group === 'essential' || ['name', 'description', 'price', 'category'].includes(field.fieldName))
+                    .slice(0, 6)
+                    .map((field: any) => (
+                      <div key={field.fieldName} className="space-y-2">
+                        <label className="block text-sm font-medium text-gray-700">{field.label}</label>
+                        {field.fieldType.toLowerCase() === 'textarea' ? (
+                          <textarea
+                            placeholder={field.placeholder}
+                            value={formData[field.fieldName] || ''}
+                            onChange={(e) => handleFieldChange(field.fieldName, e.target.value)}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                            rows={3}
+                          />
+                        ) : field.fieldType.toLowerCase() === 'select' ? (
+                          <select
+                            value={formData[field.fieldName] || ''}
+                            onChange={(e) => handleFieldChange(field.fieldName, e.target.value)}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                          >
+                            <option value="">{field.placeholder}</option>
+                            {field.options?.map((option: any) => (
+                              <option key={option.value} value={option.value}>
+                                {option.label}
+                              </option>
+                            ))}
+                          </select>
+                        ) : (
+                          <input
+                            type={field.fieldType.toLowerCase() === 'text' ? 'text' : field.fieldType}
+                            placeholder={field.placeholder}
+                            value={formData[field.fieldName] || ''}
+                            onChange={(e) => handleFieldChange(field.fieldName, e.target.value)}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                          />
+                        )}
+                        {field.helpText && (
+                          <p className="text-xs text-gray-500">{field.helpText}</p>
+                        )}
+                      </div>
+                    ))}
+                </CardContent>
+              </Card>
 
-              {/* Variants Section */}
-              <div className="border-t pt-6">
-                <h3 className="text-lg font-medium text-gray-800 mb-4">🎯 Product Variants</h3>
-                {schema.fields
-                  .filter((field: any) => field.fieldName === 'hasVariants' || field.fieldName === 'variantConfigurator')
-                  .map((field: any) => {
-                    if (field.fieldName === 'hasVariants') {
-                      return (
-                        <div key={field.fieldName} className="mb-6 p-4 border-2 border-blue-200 rounded-lg bg-blue-50">
-                          <label className="flex items-center cursor-pointer">
-                            <input
-                              type="checkbox"
-                              checked={formData[field.fieldName] || false}
-                              onChange={(e) => {
-                                console.log('hasVariants checkbox clicked:', e.target.checked);
-                                handleFormDataChange({...formData, [field.fieldName]: e.target.checked});
-                              }}
-                              className="mr-3 w-4 h-4"
-                            />
-                            <span className="font-medium text-lg">{field.label}</span>
-                          </label>
-                          <p className="text-sm text-gray-600 mt-2">{field.helpText}</p>
-                          <div className="mt-2 text-sm">
-                            <strong>Current value:</strong> {formData[field.fieldName] ? 'TRUE ✅' : 'FALSE ❌'}
+              {/* Product Variants Card */}
+              <Card>
+                <CardHeader>
+                  <div className="flex items-center space-x-2">
+                    <Settings className="h-5 w-5 text-purple-600" />
+                    <CardTitle className="text-lg">Product Variants</CardTitle>
+                  </div>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  {schema.fields
+                    .filter((field: any) => field.fieldName === 'hasVariants' || field.fieldName === 'variantConfigurator')
+                    .map((field: any) => {
+                      if (field.fieldName === 'hasVariants') {
+                        return (
+                          <div key={field.fieldName} className="p-4 bg-gradient-to-r from-blue-50 to-purple-50 border border-blue-200 rounded-lg">
+                            <label className="flex items-center cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={formData[field.fieldName] || false}
+                                onChange={(e) => {
+                                  console.log('hasVariants checkbox clicked:', e.target.checked);
+                                  handleFieldChange(field.fieldName, e.target.checked);
+                                }}
+                                className="mr-3 w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
+                              />
+                              <span className="font-medium text-lg text-gray-800">{field.label}</span>
+                            </label>
+                            <p className="text-sm text-gray-600 mt-2 ml-7">{field.helpText}</p>
+                            <div className="mt-3 ml-7">
+                              <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                                formData[field.fieldName] ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
+                              }`}>
+                                {formData[field.fieldName] ? '✅ Enabled' : '❌ Disabled'}
+                              </span>
+                            </div>
                           </div>
-                        </div>
-                      );
-                    }
-                    
-                    if (field.fieldName === 'variantConfigurator') {
-                      const hasVariantsEnabled = formData['hasVariants'] || false;
+                        );
+                      }
                       
-                      return (
-                        <div key={field.fieldName} className={`mb-6 p-4 border rounded-lg transition-all ${
-                          hasVariantsEnabled ? 'bg-green-50 border-green-300' : 'bg-gray-50 border-gray-300 opacity-60'
-                        }`}>
-                          <h4 className="font-medium text-lg mb-2">{field.label}</h4>
-                          <p className="text-sm text-gray-600 mb-4">{field.helpText}</p>
-                          
-                          {!hasVariantsEnabled && (
-                            <div className="p-3 bg-yellow-100 border border-yellow-300 rounded mb-4">
-                              <strong>⚠️ Enable "Has Product Variants" checkbox above to activate this section</strong>
-                            </div>
-                          )}
-                          
-                          <div className="space-y-4">
-                            <div className="p-3 bg-white rounded border">
-                              <strong>✅ Variant Field Active!</strong>
-                              <br />Type: {field.fieldType}
-                              <br />Status: {hasVariantsEnabled ? '🟢 ACTIVE' : '🔴 INACTIVE'}
-                            </div>
-                            
-                            {hasVariantsEnabled && (
-                              <div className="space-y-3">
-                                <div>
-                                  <label className="block font-medium mb-2">Variant Configuration:</label>
-                                  <textarea
-                                    placeholder="Enter variant configuration as JSON... e.g. {&quot;colors&quot;: [&quot;red&quot;, &quot;blue&quot;], &quot;sizes&quot;: [&quot;S&quot;, &quot;M&quot;, &quot;L&quot;]}"
-                                    value={formData[field.fieldName] || ''}
-                                    onChange={(e) => handleFormDataChange({...formData, [field.fieldName]: e.target.value})}
-                                    className="w-full p-3 border rounded"
-                                    rows={6}
+                      if (field.fieldName === 'variantConfigurator') {
+                        const hasVariantsEnabled = formData['hasVariants'] || false;
+                        
+                        return (
+                          <div key={field.fieldName} className={`transition-all duration-300 ${
+                            hasVariantsEnabled ? 'opacity-100' : 'opacity-60'
+                          }`}>
+                            <div className={`p-4 border rounded-lg ${
+                              hasVariantsEnabled 
+                                ? 'bg-gradient-to-r from-green-50 to-blue-50 border-green-300' 
+                                : 'bg-gray-50 border-gray-300'
+                            }`}>
+                              <h4 className="font-medium text-lg mb-2 flex items-center">
+                                <Star className="h-4 w-4 mr-2 text-purple-600" />
+                                {field.label}
+                              </h4>
+                              <p className="text-sm text-gray-600 mb-4">{field.helpText}</p>
+                              
+                              {!hasVariantsEnabled && (
+                                <div className="p-3 bg-yellow-100 border border-yellow-300 rounded-lg mb-4">
+                                  <div className="flex items-center">
+                                    <AlertCircle className="h-4 w-4 text-yellow-600 mr-2" />
+                                    <span className="text-sm font-medium text-yellow-800">
+                                      Enable "Has Product Variants" above to configure variants
+                                    </span>
+                                  </div>
+                                </div>
+                              )}
+                              
+                              {hasVariantsEnabled && (
+                                <div className="bg-white rounded-lg border border-gray-200 p-4">
+                                  <VariantConfiguratorDynamic 
+                                    value={formData[field.fieldName]}
+                                    onChange={(value) => handleFieldChange(field.fieldName, value)}
+                                    schema={schema}
                                   />
                                 </div>
-                                
-                                <div className="grid grid-cols-2 gap-4">
-                                  <div>
-                                    <label className="block font-medium mb-1">Variant Price:</label>
-                                    <input
-                                      type="number"
-                                      placeholder="0.00"
-                                      step="0.01"
-                                      className="w-full p-2 border rounded"
-                                    />
-                                  </div>
-                                  <div>
-                                    <label className="block font-medium mb-1">Variant Cost:</label>
-                                    <input
-                                      type="number"
-                                      placeholder="0.00"
-                                      step="0.01"
-                                      className="w-full p-2 border rounded"
-                                    />
-                                  </div>
-                                </div>
-                                
-                                <button 
-                                  type="button"
-                                  className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
-                                  onClick={() => {
-                                    const sampleVariants = JSON.stringify({
-                                      "variants": [
-                                        {"color": "red", "size": "S", "price": 29.99, "sku": "PROD-RED-S"},
-                                        {"color": "red", "size": "M", "price": 29.99, "sku": "PROD-RED-M"},
-                                        {"color": "blue", "size": "S", "price": 29.99, "sku": "PROD-BLUE-S"},
-                                        {"color": "blue", "size": "M", "price": 29.99, "sku": "PROD-BLUE-M"}
-                                      ],
-                                      "options": {
-                                        "color": ["red", "blue"],
-                                        "size": ["S", "M", "L"]
-                                      }
-                                    }, null, 2);
-                                    handleFormDataChange({...formData, [field.fieldName]: sampleVariants});
-                                  }}
-                                >
-                                  Load Sample Variants
-                                </button>
-                              </div>
-                            )}
+                              )}
+                            </div>
                           </div>
-                        </div>
-                      );
-                    }
-                    return null;
-                  })}
-              </div>
+                        );
+                      }
+                      return null;
+                    })}
+                </CardContent>
+              </Card>
 
-              {/* Submit Button */}
-              <div className="border-t pt-6">
-                <button
-                  type="button"
-                  onClick={() => handleSubmit(formData)}
-                  disabled={isSubmitting}
-                  className="px-6 py-2 bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50"
-                >
-                  {isSubmitting ? 'Creating Product...' : 'Create Product'}
-                </button>
-              </div>
+              {/* Actions Card */}
+              <Card>
+                <CardContent className="pt-6">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center space-x-4">
+                      <div className="text-sm text-gray-600">
+                        <span className="font-medium">Fields completed:</span> {Object.values(formData).filter(v => v !== undefined && v !== '').length} / {schema?.fields?.length || 0}
+                      </div>
+                    </div>
+                    <Button
+                      onClick={() => handleSubmit(formData)}
+                      disabled={isSubmitting}
+                      className="px-8 py-2"
+                    >
+                      {isSubmitting ? (
+                        <>
+                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                          Creating Product...
+                        </>
+                      ) : (
+                        <>
+                          <Package className="h-4 w-4 mr-2" />
+                          Create Product
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+
             </div>
           ) : (
-            <div className="p-4 text-center text-gray-500">
-              No schema available
-            </div>
+            <Card>
+              <CardContent className="p-8 text-center text-gray-500">
+                <Package className="h-12 w-12 mx-auto mb-4 text-gray-300" />
+                <p>No schema available</p>
+              </CardContent>
+            </Card>
           )}
         </div>
 
         {/* Real-time JSON Preview */}
         {showJsonPreview && (
-          <div className="lg:col-span-1">
-            <div className="sticky top-4">
+          <div className="xl:col-span-1">
+            <div className="sticky top-4 space-y-4">
+              
               {/* Generated masterProduct JSON */}
-              <div className="bg-gray-900 rounded-lg overflow-hidden">
-                <div className="bg-gray-800 px-4 py-2 border-b border-gray-700">
-                  <h3 className="text-sm font-medium text-gray-100 flex items-center">
-                    📋 Generated masterProduct
-                    <span className="ml-2 px-2 py-1 text-xs bg-blue-600 text-white rounded">
+              <Card>
+                <CardHeader>
+                  <div className="flex items-center justify-between">
+                    <CardTitle className="text-sm flex items-center">
+                      📋 Generated Product
+                    </CardTitle>
+                    <span className="px-2 py-1 text-xs bg-green-100 text-green-800 rounded-full font-medium">
                       Real-time
                     </span>
-                  </h3>
-                </div>
-                <div className="p-4 overflow-auto max-h-96">
-                  <pre className="text-xs text-green-400 font-mono leading-relaxed">
-                    {JSON.stringify(generateMasterProduct(currentFormData), null, 2)}
-                  </pre>
-                </div>
-              </div>
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  <div className="bg-gray-900 rounded-lg overflow-hidden">
+                    <div className="p-4 overflow-auto max-h-80">
+                      <pre className="text-xs text-green-400 font-mono leading-relaxed">
+                        {JSON.stringify(generateMasterProduct(currentFormData), null, 2)}
+                      </pre>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
 
               {/* Raw Form Data JSON */}
-              <div className="bg-gray-900 rounded-lg overflow-hidden mt-4">
-                <div className="bg-gray-800 px-4 py-2 border-b border-gray-700">
-                  <h3 className="text-sm font-medium text-gray-100 flex items-center">
-                    🔧 Raw Form Data
-                    <span className="ml-2 px-2 py-1 text-xs bg-purple-600 text-white rounded">
+              <Card>
+                <CardHeader>
+                  <div className="flex items-center justify-between">
+                    <CardTitle className="text-sm flex items-center">
+                      🔧 Form Data
+                    </CardTitle>
+                    <span className="px-2 py-1 text-xs bg-purple-100 text-purple-800 rounded-full font-medium">
                       Debug
                     </span>
-                  </h3>
-                </div>
-                <div className="p-4 overflow-auto max-h-64">
-                  <pre className="text-xs text-cyan-400 font-mono leading-relaxed">
-                    {JSON.stringify(currentFormData, null, 2)}
-                  </pre>
-                </div>
-              </div>
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  <div className="bg-gray-900 rounded-lg overflow-hidden">
+                    <div className="p-4 overflow-auto max-h-64">
+                      <pre className="text-xs text-cyan-400 font-mono leading-relaxed">
+                        {JSON.stringify(currentFormData, null, 2)}
+                      </pre>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
 
               {/* Schema Info */}
-              <div className="bg-gray-900 rounded-lg overflow-hidden mt-4">
-                <div className="bg-gray-800 px-4 py-2 border-b border-gray-700">
-                  <h3 className="text-sm font-medium text-gray-100">📊 Schema Info</h3>
-                </div>
-                <div className="p-4">
-                  <div className="space-y-2 text-xs text-gray-300">
-                    <div><span className="text-yellow-400">Fields:</span> {schema?.fields?.length || 0}</div>
-                    <div><span className="text-yellow-400">Form Data Keys:</span> {Object.keys(currentFormData).length}</div>
-                    <div><span className="text-yellow-400">Non-empty Fields:</span> {Object.values(currentFormData).filter(v => v !== undefined && v !== '').length}</div>
-                    <div><span className="text-yellow-400">Custom Attributes:</span> {generateMasterProduct(currentFormData).customAttributes ? Object.keys(generateMasterProduct(currentFormData).customAttributes!).length : 0}</div>
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-sm">📊 Schema Stats</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-3 text-sm">
+                    <div className="flex justify-between">
+                      <span className="text-gray-600">Total Fields:</span>
+                      <span className="font-medium">{schema?.fields?.length || 0}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-600">Completed:</span>
+                      <span className="font-medium text-green-600">
+                        {Object.values(currentFormData).filter(v => v !== undefined && v !== '').length}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-600">Custom Attrs:</span>
+                      <span className="font-medium text-blue-600">
+                        {generateMasterProduct(currentFormData).customAttributes ? Object.keys(generateMasterProduct(currentFormData).customAttributes!).length : 0}
+                      </span>
+                    </div>
+                    <div className="pt-2 border-t">
+                      <div className="flex justify-between items-center">
+                        <span className="text-gray-600">Progress:</span>
+                        <div className="flex items-center space-x-2">
+                          <div className="w-16 bg-gray-200 rounded-full h-2">
+                            <div 
+                              className="bg-blue-600 h-2 rounded-full transition-all duration-300" 
+                              style={{ 
+                                width: `${Math.round((Object.values(currentFormData).filter(v => v !== undefined && v !== '').length / (schema?.fields?.length || 1)) * 100)}%` 
+                              }}
+                            ></div>
+                          </div>
+                          <span className="text-xs font-medium">
+                            {Math.round((Object.values(currentFormData).filter(v => v !== undefined && v !== '').length / (schema?.fields?.length || 1)) * 100)}%
+                          </span>
+                        </div>
+                      </div>
+                    </div>
                   </div>
-                </div>
-              </div>
+                </CardContent>
+              </Card>
+
             </div>
           </div>
         )}
@@ -648,17 +732,25 @@ export default function DynamicProductCreationFormClean({
 
       {/* Debug Info (development only) */}
       {debugMode && (
-        <div className="p-4 bg-gray-50 rounded-lg text-xs">
-          <h4 className="font-medium mb-2">Debug Info</h4>
-          <div className="space-y-1">
-            <div>Target Channels: {targetChannels.join(', ')}</div>
-            <div>Product Category: {productCategory}</div>
-            <div>User Role: {userRole}</div>
-            <div>Form Fields: {schema?.fields?.length || 0}</div>
-            <div>Form Data Keys: {Object.keys(formData).length}</div>
-            <div>Schema Title: {schema?.title}</div>
-          </div>
-        </div>
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-sm">🐛 Debug Information</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-2 gap-4 text-xs">
+              <div className="space-y-2">
+                <div><span className="font-medium">Channels:</span> {targetChannels.join(', ')}</div>
+                <div><span className="font-medium">Category:</span> {productCategory}</div>
+                <div><span className="font-medium">User Role:</span> {userRole}</div>
+              </div>
+              <div className="space-y-2">
+                <div><span className="font-medium">Schema Fields:</span> {schema?.fields?.length || 0}</div>
+                <div><span className="font-medium">Form Keys:</span> {Object.keys(formData).length}</div>
+                <div><span className="font-medium">Schema Title:</span> {schema?.title || 'N/A'}</div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
       )}
 
 

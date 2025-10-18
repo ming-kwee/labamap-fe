@@ -14,11 +14,11 @@ import { useSmartForm } from '@/hooks/useSmartForm';
 import { useProductVariants } from '@/hooks/useProductVariants';
 
 // Form Components
-import EssentialInformation from './form/EssentialInformation';
+import EssentialInformation from '../../../backup/obsolete-product-form-components/EssentialInformation';
 import TagsSection from './form/TagsSection';
-import AdvancedOptions from './form/AdvancedOptions';
-import ProductVariantsSection from './form/ProductVariantsSection';
-import RulesValidationPanel from './form/RulesValidationPanel';
+import AdvancedOptions from '../../../backup/obsolete-product-form-components/AdvancedOptions';
+import ProductVariantsSection from '../../../backup/obsolete-product-form-components/ProductVariantsSection';
+import RulesValidationPanel from '../../../backup/obsolete-product-form-components/RulesValidationPanel';
 
 interface MasterProductCreationFormProps {
   onProductCreated?: (product: MasterProduct, availableChannels: string[]) => void;

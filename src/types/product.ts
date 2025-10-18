@@ -294,3 +294,133 @@ export interface ProductInsight {
   seoScore: number;
   qualityScore: number;
 }
+
+// Legacy ProductData interface from old ProductCreateForm
+export interface ProductData {
+  masterAttributes: {
+    id: string;
+    product_unique_id: string;
+    product_id: string;
+    product_name: string;
+    description: string;
+    category: string;
+    brand: string;
+    sku: string;
+    barcode: string;
+    status: "draft" | "active" | "inactive";
+    tags: string[];
+    basePrice: number;
+    currency: string;
+    costPrice: number;
+    comparePrice: number;
+    taxable: boolean;
+    trackInventory: boolean;
+    stockQuantity: number;
+    lowStockThreshold: number;
+    weight: number;
+    dimensions: {
+      length: number;
+      width: number;
+      height: number;
+    };
+    shippingClass: string;
+    seoTitle: string;
+    seoDescription: string;
+    seoKeywords: string[];
+    metaImage: string;
+    channels: Array<{
+      platform: string;
+      storeId: string;
+      enabled: boolean;
+      customMapping: Record<string, unknown>;
+    }>;
+    publishedAt: Date | null;
+    scheduledPublish: Date | null;
+    autoPublish: boolean;
+    product_images: Array<{
+      src: string;
+    }>;
+    videos: Array<{
+      id: string;
+      url: string;
+      title: string;
+    }>;
+  };
+  variantGroups: Array<{
+    channel_variant_option1_key: string;
+    channel_variant_option1_value: string;
+    channel_variant_option2_key: string;
+    channel_variant_option2_value: string;
+  }>;
+  optionGroups: Array<{
+    channel_option_name: string;
+    channel_option_values: Array<{
+      channel_option_value: string;
+      channel_option_description: string;
+    }>;
+  }>;
+  enhancedVariants?: Array<{
+    id: string;
+    masterData: {
+      sku: string;
+      title?: string;
+      description?: string;
+      price: number;
+      inventory: number;
+      costPrice?: number;
+      comparePrice?: number;
+      weight?: number;
+      barcode?: string;
+      enabled: boolean;
+      taxable?: boolean;
+      trackInventory?: boolean;
+      lowStockThreshold?: number;
+      dimensions?: {
+        length: number;
+        width: number;
+        height: number;
+      };
+      images?: string[];
+    };
+    attributes: Record<string, string>;
+    channelData: Record<string, {
+      sku?: string;
+      title?: string;
+      description?: string;
+      price?: number;
+      inventory?: number;
+      costPrice?: number;
+      comparePrice?: number;
+      weight?: number;
+      barcode?: string;
+      enabled?: boolean;
+      taxable?: boolean;
+      visibility?: boolean;
+      tags?: string[];
+      images?: string[];
+      customFields?: Record<string, unknown>;
+      platformSpecific?: Record<string, unknown>;
+      seo?: {
+        title?: string;
+        description?: string;
+        keywords?: string[];
+        slug?: string;
+      };
+      inventoryManagement?: {
+        trackInventory?: boolean;
+        lowStockThreshold?: number;
+        allowBackorders?: boolean;
+        reservedQuantity?: number;
+      };
+      lastSynced?: Date;
+      syncStatus?: 'pending' | 'synced' | 'error';
+      syncErrors?: string[];
+    }>;
+    globalSettings?: {
+      requiresShipping?: boolean;
+      hsCode?: string;
+      countryOfOrigin?: string;
+      notes?: string;
+    };
+  }>;
+}

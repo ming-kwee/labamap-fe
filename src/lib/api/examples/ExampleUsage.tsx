@@ -16,7 +16,7 @@ import {
   useProductSearch,
   useBulkOperations,
 } from '@/lib/api/hooks/useProducts';
-import { ProductData } from '@/components/products/ProductCreateForm';
+import { ProductData } from '@/types/product';
 
 // Payload builder function to match the required JSON structure
 const createProductPayload = (formData: any) => {

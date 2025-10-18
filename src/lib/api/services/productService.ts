@@ -27,7 +27,7 @@ import {
   BulkVariantUpdateRequest,
   BulkVariantUpdateResponse,
 } from '../types';
-import { ProductData } from '@/components/products/ProductCreateForm';
+import { ProductData } from '@/types/product';
 
 export class ProductService {
   /**

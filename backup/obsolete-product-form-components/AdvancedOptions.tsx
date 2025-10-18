@@ -4,7 +4,7 @@ import Label from '@/components/ui/label/Label';
 import Textarea from '@/components/ui/textarea/Textarea';
 import Button from '@/components/ui/button/Button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select/Select';
-import EnhancedField from './EnhancedField';
+import EnhancedField from '../../src/components/products/form/EnhancedField';
 
 interface AdvancedOptionsProps {
   showAdvanced: boolean;

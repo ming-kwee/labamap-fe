@@ -3,7 +3,7 @@
  * Comprehensive type definitions for API requests and responses
  */
 
-import { ProductData } from '@/components/products/ProductCreateForm';
+import { ProductData } from '@/types/product';
 
 // Base API response structure
 export interface ApiResponse<T = unknown> {

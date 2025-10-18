@@ -7,7 +7,7 @@ import { useCallback } from 'react';
 import { productService } from '../services/productService';
 import { categoryService } from '../services/categoryService';
 import { brandService } from '../services/brandService';
-import { ProductData } from '@/components/products/ProductCreateForm';
+import { ProductData } from '@/types/product';
 import type { ProductListRequest, ChannelSpecificData, VariantChannelSyncResponse } from '../types';
 import { useApi, useMutation, useQuery } from './useApi';
 
