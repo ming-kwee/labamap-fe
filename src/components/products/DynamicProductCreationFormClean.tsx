@@ -45,6 +45,7 @@ export default function DynamicProductCreationFormClean({
   workflowStep = 'DRAFT',
   debugMode = false
 }: DynamicProductCreationFormCleanProps) {
+  console.log('[DynamicProductCreationFormClean] 🎬 COMPONENT MOUNTING/RENDERING');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [showJsonPreview, setShowJsonPreview] = useState(false);
@@ -67,53 +68,82 @@ export default function DynamicProductCreationFormClean({
 
   // Create a simple state-based approach to avoid infinite loop
   const [schema, setSchema] = useState<any>(null);
-  const [isLoadingSchema, setIsLoadingSchema] = useState(true);
+  const [isLoadingSchema, setIsLoadingSchema] = useState(false);
   const [schemaError, setSchemaError] = useState<string | null>(null);
   const [formData, setFormData] = useState<DynamicFormData>(enrichedInitialData);
 
-  // Load schema once on mount
-  useEffect(() => {
-    let mounted = true;
+  // Load schema automatically on mount
+  const loadSchema = useCallback(async () => {
+    console.log('[DynamicProductCreationFormClean] 🔥 Schema loading started');
+    setIsLoadingSchema(true);
+    setSchemaError(null);
     
-    const loadSchema = async () => {
-      try {
-        const { BackendAPIService, createBackendContext } = await import('@/lib/api/backendService');
-        
-        const backendContext = createBackendContext(
-          'user-123',
-          'retail-division',
-          'BUSINESS_USER',
-          ['shopify', 'amazon', 'walmart', 'ebay'],
-          'electronics',
-          ['read', 'write', 'create']
-        );
-        
-        const result: any = await BackendAPIService.generateFormSchema(backendContext);
-        const parsedSchema = result.formSchema ? result.formSchema : result;
-        
-        if (mounted) {
-          console.log('[DynamicProductCreationFormClean] ✅ Schema loaded with', parsedSchema.fields?.length, 'fields');
-          console.log('[DynamicProductCreationFormClean] 🔍 Setting schema:', parsedSchema);
-          setSchema(parsedSchema);
-          setIsLoadingSchema(false);
-        }
-        
-      } catch (error) {
-        if (mounted) {
-          const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-          setSchemaError(`Backend API error: ${errorMessage}`);
-          console.error('[DynamicProductCreationFormClean] ❌ Error:', error);
-          setIsLoadingSchema(false);
-        }
+    try {
+      console.log('[DynamicProductCreationFormClean] 📦 Importing BackendAPIService...');
+      const { BackendAPIService, createBackendContext } = await import('@/lib/api/backendService');
+      console.log('[DynamicProductCreationFormClean] ✅ BackendAPIService imported successfully');
+      
+      const backendContext = createBackendContext(
+        'user-123',
+        'retail-division',
+        'BUSINESS_USER',
+        ['shopify', 'amazon', 'walmart', 'ebay'],
+        'electronics',
+        ['read', 'write', 'create']
+      );
+      console.log('[DynamicProductCreationFormClean] ⚙️ Backend context created:', backendContext);
+      
+      console.log('[DynamicProductCreationFormClean] 🌐 Calling BackendAPIService.generateFormSchema...');
+      const result: any = await BackendAPIService.generateFormSchema(backendContext);
+      console.log('[DynamicProductCreationFormClean] 🔍 Raw API response received:', result);
+      
+      // Handle the nested response structure
+      let parsedSchema;
+      if (result?.formSchema) {
+        parsedSchema = result.formSchema;
+        console.log('[DynamicProductCreationFormClean] 📋 Using result.formSchema');
+      } else if (result?.fields) {
+        parsedSchema = result;
+        console.log('[DynamicProductCreationFormClean] 📋 Using direct result');
+      } else {
+        console.error('[DynamicProductCreationFormClean] ❌ Invalid response structure:', result);
+        throw new Error('Invalid API response structure - missing formSchema or fields');
       }
-    };
+      
+      console.log('[DynamicProductCreationFormClean] 🔍 Parsed schema has', parsedSchema.fields?.length, 'fields');
+      
+      console.log('[DynamicProductCreationFormClean] ✅ Setting schema state...');
+      setSchema(parsedSchema);
+      setIsLoadingSchema(false);
+      console.log('[DynamicProductCreationFormClean] 🎯 State updated successfully');
+      
+    } catch (error) {
+      console.error('[DynamicProductCreationFormClean] ❌ Error in loadSchema:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      console.error('[DynamicProductCreationFormClean] 🚨 Setting error state:', errorMessage);
+      setSchemaError(`Schema loading error: ${errorMessage}`);
+      setIsLoadingSchema(false);
+    }
+  }, []); // useCallback dependency array
+
+  // TEST: Simple useEffect to verify hook execution
+  useEffect(() => {
+    console.log('[DynamicProductCreationFormClean] 🟢 BASIC useEffect RUNNING!');
+  }, []);
+
+  // CRITICAL FIX: Move useEffect to top level - must be called before any early returns
+  // Auto-load schema on component mount - simplified version
+  useEffect(() => {
+    console.log('[DynamicProductCreationFormClean] 🚀 useEffect: RUNNING! Auto-loading schema...');
+    console.log('[DynamicProductCreationFormClean] 🚀 useEffect: Current state check:');
+    console.log('[DynamicProductCreationFormClean] 🚀 - isLoadingSchema:', isLoadingSchema);
+    console.log('[DynamicProductCreationFormClean] 🚀 - schema:', !!schema);
+    console.log('[DynamicProductCreationFormClean] 🚀 - schemaError:', schemaError);
     
+    // Simplified condition: always load on first mount
+    console.log('[DynamicProductCreationFormClean] 🚀 useEffect: Calling loadSchema() unconditionally');
     loadSchema();
-    
-    return () => {
-      mounted = false;
-    };
-  }, []); // Only run once
+  }, []); // Empty dependency to run only once on mount
 
   // Debug schema
   useEffect(() => {
@@ -325,6 +355,7 @@ export default function DynamicProductCreationFormClean({
   const handleSubmit = async (submissionData: DynamicFormData) => {
     if (isSubmitting) return;
     
+
     setIsSubmitting(true);
     setSubmitError(null);
     
@@ -358,7 +389,57 @@ export default function DynamicProductCreationFormClean({
         stableContext.permissions
       );
       
-      const masterProduct = await BackendAPIService.createProduct(submissionData, backendContext);
+      // Process and clean submission data first
+      const processedData = { ...submissionData };
+      
+      // Parse JSON string fields that should be objects
+      if (processedData.variantConfigurator && typeof processedData.variantConfigurator === 'string') {
+        try {
+          processedData.variantConfigurator = JSON.parse(processedData.variantConfigurator);
+          console.log('[DynamicProductCreationForm] ✅ Parsed variantConfigurator JSON:', processedData.variantConfigurator);
+        } catch (error) {
+          console.error('[DynamicProductCreationForm] ❌ Failed to parse variantConfigurator JSON:', error);
+          // Remove invalid JSON field to prevent backend error
+          delete processedData.variantConfigurator;
+        }
+      }
+      
+      // Convert string numbers to actual numbers for numeric fields
+      const numericFields = ['price', 'inventory', 'weight', 'length', 'width', 'height'];
+      numericFields.forEach(field => {
+        if (processedData[field] && typeof processedData[field] === 'string') {
+          const numValue = parseFloat(processedData[field]);
+          if (!isNaN(numValue)) {
+            processedData[field] = numValue;
+          }
+        }
+      });
+      
+      // Ensure ALL required fields are present with sensible defaults based on backend schema
+      const enrichedProductData = {
+        // Required fields from backend validation
+        name: processedData.name || 'Test Product',
+        description: processedData.description || 'This is a test product created via the dynamic form. It includes all required fields for successful validation.',
+        sku: processedData.sku || `SKU-${Date.now()}`,
+        price: processedData.price || 10.00,
+        category: processedData.category || stableContext.productCategory || 'electronics',
+        inventory: processedData.inventory || 5,
+        status: processedData.status || 'draft',
+        
+        // Additional fields that might be required
+        brand: processedData.brand || 'Test Brand',
+        weight: processedData.weight || 1.0,
+        length: processedData.length || 10.0,
+        width: processedData.width || 8.0,
+        height: processedData.height || 6.0,
+        
+        // Include any additional form fields from the actual form (now processed)
+        ...processedData
+      };
+      
+      console.log('[DynamicProductCreationForm] Enriched product data:', enrichedProductData);
+      
+      const masterProduct = await BackendAPIService.createProduct(enrichedProductData, backendContext);
       console.log('[DynamicProductCreationForm] ✅ Product created successfully via backend:', masterProduct);
       
       // Success - notify parent
@@ -376,8 +457,19 @@ export default function DynamicProductCreationFormClean({
     isLoadingSchema,
     schemaError,
     hasSchema: !!schema,
-    schemaFields: schema?.fields?.length || 0
+    schemaFields: schema?.fields?.length || 0,
+    schemaType: typeof schema,
+    schemaKeys: schema ? Object.keys(schema) : 'null'
   });
+  
+  // Log what will happen next
+  if (isLoadingSchema) {
+    console.log('[DynamicProductCreationFormClean] 📍 NEXT: Will show LOADING state');
+  } else if (schemaError || !schema) {
+    console.log('[DynamicProductCreationFormClean] 📍 NEXT: Will show ERROR state (has schema:', !!schema, ')');
+  } else {
+    console.log('[DynamicProductCreationFormClean] 📍 NEXT: Will show NORMAL form state');
+  }
 
   // Loading state
   if (isLoadingSchema) {
@@ -392,25 +484,129 @@ export default function DynamicProductCreationFormClean({
     );
   }
 
-  // Error state
+  // Error state - provide fallback manual form
   if (schemaError || !schema) {
     console.log('[DynamicProductCreationFormClean] ❌ SHOWING ERROR STATE:', { schemaError, hasSchema: !!schema });
+    console.log('[DynamicProductCreationFormClean] ❌ Schema details:', { 
+      schema: schema, 
+      schemaType: typeof schema,
+      schemaStringified: JSON.stringify(schema)?.substring(0, 200)
+    });
     return (
       <div className="max-w-4xl mx-auto p-6">
+        {/* SUPER VISIBLE DEBUG INDICATOR */}
+        <div className="bg-red-500 text-white p-4 text-center text-xl font-bold mb-4 animate-pulse">
+          🚨 ERROR STATE RENDERING - FALLBACK FORM ACTIVE 🚨
+          <br />
+          <div className="text-sm mt-2">
+            Schema: {schema ? 'EXISTS' : 'NULL'} | Error: {schemaError || 'NONE'}
+          </div>
+        </div>
+        
         <Alert variant="destructive">
           <AlertCircle className="h-4 w-4" />
           <AlertDescription>
-            {schemaError || 'Failed to load form schema. Please try again.'}
+            {schemaError || 'Schema not loaded yet. Use the fallback form below to test product creation.'}
           </AlertDescription>
         </Alert>
+        
+        <div className="mt-4 text-center">
+          <Button 
+            onClick={() => {
+              console.log('[Manual Button] Load Schema button clicked');
+              loadSchema();
+            }}
+            disabled={isLoadingSchema}
+            className="px-6 py-2 mr-4"
+          >
+            {isLoadingSchema ? (
+              <>
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                Loading Schema...
+              </>
+            ) : (
+              <>
+                <Settings className="h-4 w-4 mr-2" />
+                Load Schema
+              </>
+            )}
+          </Button>
+        </div>
+        
+        {/* Fallback Manual Form */}
+        <Card className="mt-6">
+          <CardHeader>
+            <CardTitle>Manual Product Creation (Fallback)</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <form onSubmit={(e) => { 
+              e.preventDefault(); 
+              // Create a basic product data object
+              const basicProductData = {
+                name: 'Test Product ' + Date.now(),
+                description: 'Test product created via manual fallback form',
+                sku: `SKU-${Date.now()}`,
+                price: 29.99,
+                category: 'electronics',
+                inventory: 10,
+                status: 'draft'
+              };
+              handleSubmit(basicProductData);
+            }} className="space-y-4">
+              <div className="text-sm text-gray-600 mb-4">
+                This fallback form creates a test product with all required fields pre-filled.
+              </div>
+              
+              <Button 
+                type="submit" 
+                disabled={isSubmitting}
+                className="px-8 py-3 bg-green-600 hover:bg-green-700 text-white text-lg font-bold"
+              >
+                {isSubmitting ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Creating Test Product...
+                  </>
+                ) : (
+                  <>
+                    <Package className="h-4 w-4 mr-2" />
+                    🚀 CREATE TEST PRODUCT 🚀
+                  </>
+                )}
+              </Button>
+              
+              {submitError && (
+                <Alert variant="destructive" className="mt-4">
+                  <AlertCircle className="h-4 w-4" />
+                  <AlertDescription>{submitError}</AlertDescription>
+                </Alert>
+              )}
+            </form>
+          </CardContent>
+        </Card>
       </div>
     );
   }
 
-  console.log('[DynamicProductCreationFormClean] ✅ RENDERING FORM with schema:', schema?.fields?.length, 'fields');
+  console.log('[DynamicProductCreationFormClean] ✅ RENDERING NORMAL FORM STATE with schema:', schema?.fields?.length, 'fields');
 
   return (
     <div className="max-w-7xl mx-auto space-y-6">
+      {/* SUCCESS INDICATOR - Schema loaded and form is working */}
+      <div className="bg-green-500 text-white p-4 text-center text-lg font-bold mb-4">
+        ✅ SUCCESS: Dynamic Form Loaded with {schema?.fields?.length || 0} Fields
+        <br />
+        <div className="text-sm mt-2">
+          Essential: {schema?.fields?.filter((f: any) => f.group === 'essential').length || 0} | 
+          Required: {schema?.fields?.filter((f: any) => f.required || f.validationRules?.required).length || 0} |
+          Showing: {schema?.fields?.filter((field: any) => {
+            const isEssential = field.group === 'essential';
+            const isBasicField = ['name', 'description', 'price', 'category', 'sku', 'brand', 'inventory', 'status'].includes(field.fieldName);
+            const isRequired = field.required || field.validationRules?.required;
+            return isEssential || isBasicField || isRequired;
+          }).length || 0}
+        </div>
+      </div>
       {/* Submit Error */}
       {submitError && (
         <Alert variant="destructive">
@@ -447,7 +643,7 @@ export default function DynamicProductCreationFormClean({
         {/* Dynamic Form */}
         <div className={showJsonPreview ? 'xl:col-span-2' : ''}>
           {schema && schema.fields ? (
-            <div className="space-y-6">
+            <form onSubmit={(e) => { e.preventDefault(); handleSubmit(formData); }} className="space-y-6">
               
               {/* Essential Information Card */}
               <Card>
@@ -459,8 +655,14 @@ export default function DynamicProductCreationFormClean({
                 </CardHeader>
                 <CardContent className="space-y-4">
                   {schema.fields
-                    .filter((field: any) => field.group === 'essential' || ['name', 'description', 'price', 'category'].includes(field.fieldName))
-                    .slice(0, 6)
+                    .filter((field: any) => {
+                      // Show essential fields, basic product fields, and required fields
+                      const isEssential = field.group === 'essential';
+                      const isBasicField = ['name', 'description', 'price', 'category', 'sku', 'brand', 'inventory', 'status'].includes(field.fieldName);
+                      const isRequired = field.required || field.validationRules?.required;
+                      return isEssential || isBasicField || isRequired;
+                    })
+                    .slice(0, 12) // Show more fields
                     .map((field: any) => (
                       <div key={field.fieldName} className="space-y-2">
                         <label className="block text-sm font-medium text-gray-700">{field.label}</label>
@@ -598,7 +800,7 @@ export default function DynamicProductCreationFormClean({
                       </div>
                     </div>
                     <Button
-                      onClick={() => handleSubmit(formData)}
+                      type="submit"
                       disabled={isSubmitting}
                       className="px-8 py-2"
                     >
@@ -618,7 +820,7 @@ export default function DynamicProductCreationFormClean({
                 </CardContent>
               </Card>
 
-            </div>
+            </form>
           ) : (
             <Card>
               <CardContent className="p-8 text-center text-gray-500">

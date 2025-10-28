@@ -187,7 +187,10 @@ export class BackendAPIService {
   
   // POST /api/v1/ecommerce/products/create
   static async createProduct(productData: DynamicFormData, context: BackendContext): Promise<MasterProduct> {
-    const response = await fetch(`${BACKEND_BASE_URL}/products/create`, {
+
+
+
+    const response = await fetch(`${BACKEND_BASE_URL}/dynamic-products/create`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -219,7 +222,7 @@ export class BackendAPIService {
 
   // POST /api/v1/ecommerce/products/validate
   static async validateProduct(productData: DynamicFormData, context: BackendContext): Promise<any> {
-    const response = await fetch(`${BACKEND_BASE_URL}/products/validate`, {
+    const response = await fetch(`${BACKEND_BASE_URL}/dynamic-products/validate`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -239,7 +242,7 @@ export class BackendAPIService {
 
   // GET /api/v1/ecommerce/products/channels
   static async getProductChannels(): Promise<string[]> {
-    const response = await fetch(`${BACKEND_BASE_URL}/products/channels`, {
+    const response = await fetch(`${BACKEND_BASE_URL}/dynamic-products/channels`, {
       method: 'GET',
       headers: {
         'Content-Type': 'application/json',
