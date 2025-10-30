@@ -46,6 +46,12 @@ export default function DynamicProductCreationFormClean({
   debugMode = false
 }: DynamicProductCreationFormCleanProps) {
   console.log('[DynamicProductCreationFormClean] 🎬 COMPONENT MOUNTING/RENDERING');
+  console.log('[DynamicProductCreationFormClean] 🔧 About to define useState hooks...');
+  
+  // EMERGENCY DEBUGGING: Test if hooks work at all
+  const [testState, setTestState] = useState('HOOKS_WORKING');
+  console.log('[DynamicProductCreationFormClean] 🧪 TEST STATE:', testState);
+  
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [showJsonPreview, setShowJsonPreview] = useState(false);
@@ -61,10 +67,8 @@ export default function DynamicProductCreationFormClean({
     permissions: ['read', 'write', 'create']
   }), []); // Empty dependency array for true stability
 
-  // Create truly stable initial data
-  const enrichedInitialData = useMemo(() => ({
-    category: 'electronics' // Ensure category is set for conditional visibility
-  }), []); // Empty dependency array for true stability
+  // Create truly stable initial data - no hardcoded values, rely purely on backend schema
+  const enrichedInitialData = useMemo(() => ({}), []); // Empty object - let backend schema drive everything
 
   // Create a simple state-based approach to avoid infinite loop
   const [schema, setSchema] = useState<any>(null);
@@ -126,6 +130,8 @@ export default function DynamicProductCreationFormClean({
     }
   }, []); // useCallback dependency array
 
+  console.log('[DynamicProductCreationFormClean] 🔧 About to define useEffect hooks - loadSchema function exists:', typeof loadSchema);
+
   // TEST: Simple useEffect to verify hook execution
   useEffect(() => {
     console.log('[DynamicProductCreationFormClean] 🟢 BASIC useEffect RUNNING!');
@@ -145,21 +151,150 @@ export default function DynamicProductCreationFormClean({
     loadSchema();
   }, []); // Empty dependency to run only once on mount
 
-  // Debug schema
+  // Helper function to evaluate conditional visibility rules from backend schema
+  const isFieldVisible = useCallback((field: FormField, currentFormData: DynamicFormData): boolean => {
+    // If no conditional visibility rules, field is always visible
+    if (!field.conditionalVisibility) {
+      return true;
+    }
+
+    const { showWhen, hideWhen } = field.conditionalVisibility;
+
+    // Helper function to evaluate JavaScript expressions safely
+    const evaluateExpression = (expression: string, formData: DynamicFormData): boolean => {
+      try {
+        // Create a safe evaluation context with form data
+        const evalContext = {
+          ...formData,
+          // Add some common helper values
+          category: formData.category,
+          hasVariants: formData.hasVariants,
+        };
+        
+        // Replace variable names in expression with actual values
+        let safeExpression = expression;
+        
+        // Handle specific patterns from backend
+        Object.keys(evalContext).forEach(key => {
+          const value = (evalContext as any)[key];
+          
+          // Replace patterns like "category === 'electronics'"
+          safeExpression = safeExpression.replace(
+            new RegExp(`\\b${key}\\b`, 'g'), 
+            JSON.stringify(value)
+          );
+        });
+        
+        console.log(`[ConditionalVisibility] Evaluating: ${expression} -> ${safeExpression}`);
+        
+        // Use Function constructor for safer evaluation than eval
+        const result = new Function('return ' + safeExpression)();
+        console.log(`[ConditionalVisibility] Result: ${result}`);
+        
+        return Boolean(result);
+      } catch (error) {
+        console.error(`[ConditionalVisibility] Error evaluating expression "${expression}":`, error);
+        return true; // Default to visible on error
+      }
+    };
+
+    // Evaluate showWhen conditions
+    if (showWhen) {
+      if (typeof showWhen === 'string') {
+        // Handle JavaScript expression
+        if (!evaluateExpression(showWhen, currentFormData)) {
+          return false;
+        }
+      } else if (typeof showWhen === 'object') {
+        // Handle object-based conditions (legacy support)
+        const showConditionsMet = Object.entries(showWhen).every(([fieldName, expectedValue]) => {
+          const currentValue = currentFormData[fieldName];
+          
+          if (Array.isArray(expectedValue)) {
+            return expectedValue.includes(currentValue);
+          }
+          
+          return currentValue === expectedValue;
+        });
+        
+        if (!showConditionsMet) {
+          return false;
+        }
+      }
+    }
+
+    // Evaluate hideWhen conditions
+    if (hideWhen) {
+      if (typeof hideWhen === 'string') {
+        // Handle JavaScript expression
+        if (evaluateExpression(hideWhen, currentFormData)) {
+          return false;
+        }
+      } else if (typeof hideWhen === 'object') {
+        // Handle object-based conditions (legacy support)
+        const hideConditionsMet = Object.entries(hideWhen).some(([fieldName, expectedValue]) => {
+          const currentValue = currentFormData[fieldName];
+          
+          if (Array.isArray(expectedValue)) {
+            return expectedValue.includes(currentValue);
+          }
+          
+          return currentValue === expectedValue;
+        });
+        
+        if (hideConditionsMet) {
+          return false;
+        }
+      }
+    }
+
+    return true;
+  }, []);
+
+  // Helper function to get visible fields based on current form data
+  const getVisibleFields = useCallback((fields: FormField[], currentFormData: DynamicFormData): FormField[] => {
+    if (!fields) return [];
+    
+    return fields.filter(field => isFieldVisible(field, currentFormData));
+  }, [isFieldVisible]);
+
+  // Debug schema and conditional visibility
   useEffect(() => {
     if (schema?.fields) {
       console.log('[DynamicProductCreationFormClean] Schema loaded with', schema.fields.length, 'fields');
-      console.log('[DynamicProductCreationFormClean] Conditional fields:', 
-        schema.fields.filter((f: FormField) => f.conditionalVisibility).map((f: FormField) => ({
-          name: f.fieldName,
-          showWhen: f.conditionalVisibility?.showWhen,
-          hideWhen: f.conditionalVisibility?.hideWhen
-        }))
-      );
+      
+      const conditionalFields = schema.fields.filter((f: FormField) => f.conditionalVisibility);
+      console.log('[DynamicProductCreationFormClean] Found', conditionalFields.length, 'fields with conditional visibility rules');
+      
+      conditionalFields.forEach((field: FormField) => {
+        console.log(`[DynamicProductCreationFormClean] Field "${field.fieldName}":`, {
+          showWhen: field.conditionalVisibility?.showWhen,
+          hideWhen: field.conditionalVisibility?.hideWhen
+        });
+      });
     } else {
       console.log('[DynamicProductCreationFormClean] Schema or fields not available yet');
     }
   }, [schema]);
+
+  // Debug visible fields when form data changes
+  useEffect(() => {
+    if (schema?.fields && Object.keys(formData).length > 0) {
+      const visibleFields = getVisibleFields(schema.fields, formData);
+      const totalFields = schema.fields.length;
+      
+      console.log(`[DynamicProductCreationFormClean] Visible fields: ${visibleFields.length}/${totalFields}`);
+      console.log('[DynamicProductCreationFormClean] Current form data:', formData);
+      
+      // Log fields that are hidden due to conditional visibility
+      const hiddenFields = schema.fields.filter(field => !isFieldVisible(field, formData));
+      if (hiddenFields.length > 0) {
+        console.log('[DynamicProductCreationFormClean] Hidden fields due to conditions:', 
+          hiddenFields.map(f => f.fieldName)
+        );
+      }
+    }
+  }, [schema, formData, getVisibleFields, isFieldVisible]);
 
   // Handle form data changes with local state
   const handleFormDataChange = useCallback((newData: DynamicFormData) => {
@@ -597,14 +732,10 @@ export default function DynamicProductCreationFormClean({
         ✅ SUCCESS: Dynamic Form Loaded with {schema?.fields?.length || 0} Fields
         <br />
         <div className="text-sm mt-2">
-          Essential: {schema?.fields?.filter((f: any) => f.group === 'essential').length || 0} | 
-          Required: {schema?.fields?.filter((f: any) => f.required || f.validationRules?.required).length || 0} |
-          Showing: {schema?.fields?.filter((field: any) => {
-            const isEssential = field.group === 'essential';
-            const isBasicField = ['name', 'description', 'price', 'category', 'sku', 'brand', 'inventory', 'status'].includes(field.fieldName);
-            const isRequired = field.required || field.validationRules?.required;
-            return isEssential || isBasicField || isRequired;
-          }).length || 0}
+          Total: {schema?.fields?.length || 0} | 
+          Conditional: {schema?.fields?.filter((f: any) => f.conditionalVisibility).length || 0} | 
+          Visible: {getVisibleFields(schema?.fields || [], formData).length || 0} | 
+          Required: {schema?.fields?.filter((f: any) => f.required || f.validationRules?.required).length || 0}
         </div>
       </div>
       {/* Submit Error */}
@@ -654,15 +785,38 @@ export default function DynamicProductCreationFormClean({
                   </div>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  {schema.fields
-                    .filter((field: any) => {
-                      // Show essential fields, basic product fields, and required fields
+                  {(() => {
+                    const visibleFields = getVisibleFields(schema.fields, formData);
+                    const filteredFields = visibleFields.filter((field: any) => {
+                      // Show essential fields, basic product fields, required fields, AND conditionally visible fields
                       const isEssential = field.group === 'essential';
                       const isBasicField = ['name', 'description', 'price', 'category', 'sku', 'brand', 'inventory', 'status'].includes(field.fieldName);
                       const isRequired = field.required || field.validationRules?.required;
-                      return isEssential || isBasicField || isRequired;
-                    })
-                    .slice(0, 12) // Show more fields
+                      const isConditionalField = field.conditionalVisibility !== null; // Show any field with conditional rules
+                      
+                      const shouldShow = isEssential || isBasicField || isRequired || isConditionalField;
+                      
+                      // Debug specific fields
+                      if (field.fieldName === 'warranty' || field.fieldName === 'size') {
+                        console.log(`[FieldFilter] ${field.fieldName}:`, {
+                          isEssential,
+                          isBasicField, 
+                          isRequired,
+                          isConditionalField,
+                          shouldShow,
+                          group: field.group
+                        });
+                      }
+                      
+                      return shouldShow;
+                    });
+                    
+                    console.log(`[FieldFilter] Showing ${filteredFields.length}/${visibleFields.length} fields`);
+                    console.log(`[FieldFilter] Field names:`, filteredFields.map((f: any) => f.fieldName));
+                    
+                    return filteredFields;
+                  })()
+                    .slice(0, 15) // Show more fields to accommodate conditional ones
                     .map((field: any) => (
                       <div key={field.fieldName} className="space-y-2">
                         <label className="block text-sm font-medium text-gray-700">{field.label}</label>
@@ -713,7 +867,7 @@ export default function DynamicProductCreationFormClean({
                   </div>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  {schema.fields
+                  {getVisibleFields(schema.fields, formData)
                     .filter((field: any) => field.fieldName === 'hasVariants' || field.fieldName === 'variantConfigurator')
                     .map((field: any) => {
                       if (field.fieldName === 'hasVariants') {
