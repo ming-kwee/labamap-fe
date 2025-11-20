@@ -10,7 +10,7 @@
  * - Fast product creation
  */
 
-import React, { useState, useCallback, useMemo, useEffect } from 'react';
+import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { Alert, AlertDescription } from '@/components/ui/alert/AlertComponents';
 import { Loader2, AlertCircle, Package, Settings, Star } from '@/components/ui/icons/Icons';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card/Card';
@@ -19,66 +19,298 @@ import DynamicForm from '@/components/forms/DynamicForm';
 import { DynamicFormData, FormValidationResult, FormField } from '@/types/dynamicForm';
 import { MasterProduct, ProductVariant } from '@/types/product';
 import VariantConfiguratorDynamic from './VariantConfiguratorDynamic';
+import { useAuth } from '@/context/AuthContext';
+import { useOrganization } from '@/context/OrganizationContext';
 
-// Old VariantConfigurator removed - replaced with VariantConfiguratorSimple
+// Map user roles to backend expected format
+const mapUserRole = (role: string): 'BUSINESS_USER' | 'ADMIN' | 'DEVELOPER' => {
+  switch (role) {
+    case 'ADMIN_USER':
+    case 'ORGANIZATION_OWNER':
+    case 'ORGANIZATION_ADMIN':
+      return 'ADMIN';
+    case 'BUSINESS_MANAGER':
+    case 'BUSINESS_USER':
+      return 'BUSINESS_USER';
+    case 'DEVELOPER':
+      return 'DEVELOPER';
+    case 'VIEW_ONLY':
+    default:
+      return 'BUSINESS_USER';
+  }
+};
+
+// Validate and normalize product category
+const validateProductCategory = (
+  category: string, 
+  organizationConfig: any,
+  assignedCategories: string[]
+): { category: string; isValid: boolean; warning?: string } => {
+  if (!category) {
+    return {
+      category: organizationConfig?.configuration?.businessSettings?.defaultProductCategory || 'general',
+      isValid: false,
+      warning: 'Category is required'
+    };
+  }
+
+  // Check if user has access to this category
+  if (assignedCategories.length > 0 && !assignedCategories.includes(category)) {
+    return {
+      category: assignedCategories[0] || 'general',
+      isValid: false,
+      warning: `Access denied to category '${category}'. Using assigned category instead.`
+    };
+  }
+
+  // Validate against known categories (could be expanded with backend validation)
+  const knownCategories = [
+    'electronics', 'clothing', 'books', 'home-garden', 'sports', 
+    'automotive', 'health-beauty', 'toys-games', 'food-beverage', 'general'
+  ];
+  
+  if (!knownCategories.includes(category.toLowerCase())) {
+    console.warn(`[Category Validation] Unknown category '${category}', proceeding but may cause schema issues`);
+    return {
+      category: category.toLowerCase(),
+      isValid: true,
+      warning: `Unknown category '${category}' - may have limited field support`
+    };
+  }
+
+  return {
+    category: category.toLowerCase(),
+    isValid: true
+  };
+};
 
 interface DynamicProductCreationFormCleanProps {
   onProductCreated?: (product: MasterProduct, availableChannels: string[]) => void;
   initialData?: Partial<DynamicFormData>;
-  targetChannels?: string[];
-  productCategory?: string;
-  userRole?: 'BUSINESS_USER' | 'ADMIN_USER' | 'DEVELOPER' | 'VIEW_ONLY';
-  organizationId?: string;
-  complianceMode?: 'STRICT' | 'STANDARD' | 'FLEXIBLE';
-  workflowStep?: 'DRAFT' | 'REVIEW' | 'APPROVAL' | 'PUBLISH';
   debugMode?: boolean;
+  // Removed: All organization, user, and configuration props - now come from context
 }
 
 export default function DynamicProductCreationFormClean({
   onProductCreated,
   initialData = {},
-  targetChannels = ['shopify', 'amazon', 'walmart', 'ebay'],
-  productCategory = 'electronics',
-  userRole = 'BUSINESS_USER',
-  organizationId = 'retail-division',
-  complianceMode = 'STANDARD',
-  workflowStep = 'DRAFT',
   debugMode = false
 }: DynamicProductCreationFormCleanProps) {
-  console.log('[DynamicProductCreationFormClean] 🎬 COMPONENT MOUNTING/RENDERING');
-  console.log('[DynamicProductCreationFormClean] 🔧 About to define useState hooks...');
   
-  // EMERGENCY DEBUGGING: Test if hooks work at all
-  const [testState, setTestState] = useState('HOOKS_WORKING');
-  console.log('[DynamicProductCreationFormClean] 🧪 TEST STATE:', testState);
+  // Track component renders to detect re-mounting
+  const renderCount = useRef(0);
+  renderCount.current += 1;
+  console.log(`🏁🏁🏁 [RENDER #${renderCount.current}] DynamicProductCreationFormClean rendering!`);
+  
+  // DEBUGGING: This should ALWAYS show in console to confirm component loads
+  console.log('🔥🔥🔥 DynamicProductCreationFormClean COMPONENT LOADED 🔥🔥🔥', { debugMode });
+  
+  // ✅ Use authentication and organization context instead of hardcoded values
+  const { user, organization, userOrganizationRole, isAuthenticated, isLoading: authLoading } = useAuth();
+  const { 
+    organizationConfig, 
+    businessRulesConfig,
+    userPermissions, 
+    getAssignedChannels, 
+    getAssignedCategories,
+    getEnabledChannels,
+    hasPermission,
+    isLoading: orgLoading,
+    error: orgError
+  } = useOrganization();
+
+  // Show loading or error states if authentication/organization data not ready
+  if (!isAuthenticated || authLoading || orgLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-96">
+        <div className="text-center">
+          <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4" />
+          <p>Loading organization configuration...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!user || !organization) {
+    return (
+      <div className="flex items-center justify-center min-h-96">
+        <div className="text-center">
+          <AlertCircle className="h-8 w-8 text-red-500 mx-auto mb-4" />
+          <p>Authentication required. Please log in to continue.</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (orgError) {
+    return (
+      <div className="flex items-center justify-center min-h-96">
+        <div className="text-center">
+          <AlertCircle className="h-8 w-8 text-red-500 mx-auto mb-4" />
+          <p>Failed to load organization configuration: {orgError}</p>
+        </div>
+      </div>
+    );
+  }
+  console.log('[DynamicProductCreationFormClean] 🎬 COMPONENT MOUNTING/RENDERING');
+  console.log('[DynamicProductCreationFormClean] 🏢 Organization:', organization.organizationName);
+  console.log('[DynamicProductCreationFormClean] 👤 User:', user.email, 'Role:', user.role);
   
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [showJsonPreview, setShowJsonPreview] = useState(false);
-  const [currentFormData, setCurrentFormData] = useState<DynamicFormData>(initialData || {});
 
-  // Create truly stable context - no dependencies to prevent infinite loops
-  const stableContext = useMemo(() => ({
-    userId: 'user-123',
-    organizationId: 'retail-division',
-    userRole: 'BUSINESS_USER' as const,
-    targetChannels: ['shopify', 'amazon', 'walmart', 'ebay'],
-    productCategory: 'electronics',
-    permissions: ['read', 'write', 'create']
-  }), []); // Empty dependency array for true stability
+  // CRITICAL: Track user's manual category selection to prevent org config overrides
+  const userSelectedCategory = useRef<string>("");
 
-  // Create truly stable initial data - no hardcoded values, rely purely on backend schema
-  const enrichedInitialData = useMemo(() => ({}), []); // Empty object - let backend schema drive everything
+  // ✅ Create dynamic context from authentication and organization data
+  const stableContext = useMemo(() => {
+    const assignedChannels = getAssignedChannels();
+    const enabledChannels = getEnabledChannels();
+    const assignedCategories = getAssignedCategories();
+    
+    // Use assigned channels if available, otherwise fall back to enabled channels
+    const targetChannels = assignedChannels.length > 0 ? assignedChannels : enabledChannels;
+    
+    // TWO-STAGE LOADING: Always start with empty string for stable context
+    // Schema loading will be triggered manually with specific category
+    const defaultCategory = "";
+    console.log('[stableContext] Using empty string category for stable context (two-stage loading)');
+    
+    // Get user permissions
+    const permissions = userPermissions.map(p => p.name);
+    
+    return {
+      userId: user.userId,
+      organizationId: organization.organizationId,
+      userRole: mapUserRole(user.role),
+      targetChannels,
+      productCategory: defaultCategory,
+      permissions
+    };
+  }, [user, organization, organizationConfig, userPermissions, getAssignedChannels, getEnabledChannels, getAssignedCategories]);
+
+  // ✅ Create initial data with organization context - STABILIZED TO PREVENT RESETS
+  const enrichedInitialData = useMemo(() => {
+    console.log('🌟🌟🌟 [ENRICHED INITIAL DATA] useMemo being recalculated!');
+    
+    const orgDefaults: Partial<DynamicFormData> = {};
+    
+    // Add organization-specific defaults if available
+    if (organizationConfig?.configuration?.businessSettings) {
+      const businessSettings = organizationConfig.configuration.businessSettings;
+      
+      console.log('🔧 [enrichedInitialData] businessSettings.defaultProductCategory:', businessSettings.defaultProductCategory);
+      
+      // TWO-STAGE LOADING: Only set category if user has manually selected one
+      // For initial load, leave category empty to trigger essential fields
+      if (userSelectedCategory.current && userSelectedCategory.current !== "" && userSelectedCategory.current !== null) {
+        orgDefaults.category = userSelectedCategory.current;
+        console.log('🔧 [enrichedInitialData] Using user-selected category:', userSelectedCategory.current);
+      } else {
+        // Don't set category for initial load - let backend return essential fields
+        console.log('🔧 [enrichedInitialData] Leaving category empty for essential fields load');
+      }
+      
+      orgDefaults.currency = businessSettings.defaultCurrency;
+      
+      // Add SKU pattern if auto-generation is enabled
+      if (organizationConfig.configuration.productManagement?.autoGenerateSKU) {
+        orgDefaults.autoGenerateSKU = true;
+        orgDefaults.skuPattern = organizationConfig.configuration.productManagement.defaultSKUPattern;
+      }
+    }
+    
+    // Merge with provided initial data
+    const finalData = { ...orgDefaults, ...initialData };
+    console.log('🔧 [enrichedInitialData] Final initial data with category:', finalData.category);
+    console.log('🌟🌟🌟 [ENRICHED INITIAL DATA] Returning:', finalData);
+    return finalData;
+  }, []); // CRITICAL: Remove dependencies to make it stable after first calculation
 
   // Create a simple state-based approach to avoid infinite loop
   const [schema, setSchema] = useState<any>(null);
   const [isLoadingSchema, setIsLoadingSchema] = useState(false);
   const [schemaError, setSchemaError] = useState<string | null>(null);
-  const [formData, setFormData] = useState<DynamicFormData>(enrichedInitialData);
+  const [formStage, setFormStage] = useState<'essential' | 'category-specific'>('essential');
+  
+  // Schema caching to prevent unnecessary reloads and improve UX
+  const schemaCache = useRef<Record<string, any>>({});
+  const [isAddingCategoryFields, setIsAddingCategoryFields] = useState(false);
+  // CRITICAL FIX: Initialize form data only once to prevent resets during re-renders
+  // Wrap setFormData to track all calls
+  const [formDataState, setFormDataState] = useState<DynamicFormData>(() => {
+    const initialData = { ...enrichedInitialData };
+    
+    if (debugMode) {
+      console.log('[COMPONENT INIT] Form data initializing...');
+    }
+    
+    // Restore variant data from sessionStorage if available
+    try {
+      const savedVariantData = sessionStorage.getItem('variant_configurator_data');
+      if (savedVariantData) {
+        initialData.variantConfigurator = savedVariantData;
+        if (debugMode) console.log('[COMPONENT INIT] Restored variant data from sessionStorage');
+      }
+    } catch (error) {
+      if (debugMode) console.log('[COMPONENT INIT] Failed to restore from sessionStorage:', error);
+    }
+    
+    if (debugMode) console.log('[COMPONENT INIT] Initial formData ready:', Object.keys(initialData));
+    return initialData;
+  });
+  
+  // Create wrapper function for setFormData
+  const setFormData = useCallback((newData: any) => {
+    if (typeof newData === 'function') {
+      setFormDataState(newData);
+    } else {
+      setFormDataState(newData);
+    }
+  }, []);
+  
+  // Use the state
+  const formData = formDataState;
+  
+  // Add effect to track formData changes (for development only)
+  useEffect(() => {
+    if (debugMode) {
+      console.log('[FORMDATA CHANGE] formData state updated:', formData);
+    }
+  }, [formData, debugMode]);
+  
+  // CRITICAL: Prevent enrichedInitialData changes from resetting formData after mount
+  const hasInitialized = useRef(false);
+  
+  useEffect(() => {
+    if (!hasInitialized.current) {
+      hasInitialized.current = true;
+      console.log('🔒 [formData] Initial data locked - no more resets from enrichedInitialData');
+    }
+  }, []);
+  
+  // Debug formData changes
+  useEffect(() => {
+    console.log('🔄 [formData] State updated - category is now:', formData.category);
+  }, [formData.category]);
+  
+  // DEBUGGING: Add aggressive category tracking
+  const [categoryChangeLog, setCategoryChangeLog] = useState<Array<{timestamp: string, value: string, source: string}>>([]);
+  
+  // Track category changes for debugging
+  const trackCategoryChange = (value: string, source: string) => {
+    const timestamp = new Date().toISOString();
+    console.log(`🏷️🔥 [CATEGORY TRACKER] ${timestamp} - Category changed to "${value}" from source: ${source}`);
+    setCategoryChangeLog(prev => [...prev.slice(-10), { timestamp, value, source }]); // Keep last 10 changes
+  };
 
-  // Load schema automatically on mount
-  const loadSchema = useCallback(async () => {
-    console.log('[DynamicProductCreationFormClean] 🔥 Schema loading started');
+  // Two-stage form loading: Essential fields first, then category-specific fields
+  const loadSchema = useCallback(async (targetCategory: string = "") => {
+    const isInitialLoad = targetCategory === "";
+    console.log('[DynamicProductCreationFormClean] 🔥 Schema loading started - Stage:', isInitialLoad ? 'ESSENTIAL' : 'CATEGORY-SPECIFIC');
+    console.log('[DynamicProductCreationFormClean] 🎯 Target category:', targetCategory);
+    
     setIsLoadingSchema(true);
     setSchemaError(null);
     
@@ -87,18 +319,21 @@ export default function DynamicProductCreationFormClean({
       const { BackendAPIService, createBackendContext } = await import('@/lib/api/backendService');
       console.log('[DynamicProductCreationFormClean] ✅ BackendAPIService imported successfully');
       
+      // CRITICAL: Use targetCategory for context ("" for essential fields)
       const backendContext = createBackendContext(
-        'user-123',
-        'retail-division',
-        'BUSINESS_USER',
-        ['shopify', 'amazon', 'walmart', 'ebay'],
-        'electronics',
-        ['read', 'write', 'create']
+        stableContext.userId,
+        stableContext.organizationId,
+        stableContext.userRole,
+        stableContext.targetChannels,
+        targetCategory, // "" for essential fields, specific category for category-specific fields
+        stableContext.permissions
       );
+
+      
       console.log('[DynamicProductCreationFormClean] ⚙️ Backend context created:', backendContext);
       
       console.log('[DynamicProductCreationFormClean] 🌐 Calling BackendAPIService.generateFormSchema...');
-      const result: any = await BackendAPIService.generateFormSchema(backendContext);
+      let result: any = await BackendAPIService.generateFormSchema(backendContext);
       console.log('[DynamicProductCreationFormClean] 🔍 Raw API response received:', result);
       
       // Handle the nested response structure
@@ -113,8 +348,61 @@ export default function DynamicProductCreationFormClean({
         console.error('[DynamicProductCreationFormClean] ❌ Invalid response structure:', result);
         throw new Error('Invalid API response structure - missing formSchema or fields');
       }
+
+      // Enhance schema with business rules if enabled
+      if (businessRulesConfig?.businessRulesConfig?.globalSettings?.businessRulesEnabled) {
+        try {
+          console.log('[DynamicProductCreationFormClean] 🔧 Enhancing schema with business rules...');
+          
+          // Get enabled rule IDs from business rules config
+          const enabledRules: string[] = [];
+          Object.values(businessRulesConfig.businessRulesConfig.ruleCategories).forEach((category: any) => {
+            if (category.enabled && category.rules) {
+              category.rules.forEach((rule: any) => {
+                if (rule.enabled) {
+                  enabledRules.push(rule.ruleId);
+                }
+              });
+            }
+          });
+
+          if (enabledRules.length > 0) {
+            const enhancedResult = await BackendAPIService.enhanceSchemaWithBusinessRules(
+              parsedSchema,
+              organization.organizationId,
+              stableContext,
+              enabledRules
+            );
+
+            if (enhancedResult?.enhancedSchema) {
+              parsedSchema = enhancedResult.enhancedSchema;
+              console.log('[DynamicProductCreationFormClean] ✅ Schema enhanced with business rules:', enabledRules.length, 'rules applied');
+            }
+          }
+        } catch (error) {
+          console.error('[DynamicProductCreationFormClean] ⚠️ Business rules schema enhancement failed:', error);
+          // Continue with base schema if enhancement fails
+        }
+      }
       
-      console.log('[DynamicProductCreationFormClean] 🔍 Parsed schema has', parsedSchema.fields?.length, 'fields');
+      console.log('[DynamicProductCreationFormClean] 🔍 Final schema has', parsedSchema.fields?.length, 'fields');
+      
+      
+      // Detect form stage based on metadata or field presence
+      const isBasicForm = parsedSchema.metadata?.isInitialLoad || 
+                         parsedSchema.fields?.some((field: any) => field.fieldName === 'category' || field.name === 'category') &&
+                         parsedSchema.fields?.length <= 6;
+      
+      console.log('[DynamicProductCreationFormClean] 📊 Form analysis:', {
+        isInitialLoad,
+        isBasicForm,
+        fieldCount: parsedSchema.fields?.length,
+        hasMetadata: !!parsedSchema.metadata,
+        metadata: parsedSchema.metadata
+      });
+      
+      // Store form stage information
+      setFormStage(isBasicForm ? 'essential' : 'category-specific');
       
       console.log('[DynamicProductCreationFormClean] ✅ Setting schema state...');
       setSchema(parsedSchema);
@@ -128,7 +416,7 @@ export default function DynamicProductCreationFormClean({
       setSchemaError(`Schema loading error: ${errorMessage}`);
       setIsLoadingSchema(false);
     }
-  }, []); // useCallback dependency array
+  }, [stableContext, businessRulesConfig, organization]); // useCallback dependency array
 
   console.log('[DynamicProductCreationFormClean] 🔧 About to define useEffect hooks - loadSchema function exists:', typeof loadSchema);
 
@@ -146,29 +434,174 @@ export default function DynamicProductCreationFormClean({
     console.log('[DynamicProductCreationFormClean] 🚀 - schema:', !!schema);
     console.log('[DynamicProductCreationFormClean] 🚀 - schemaError:', schemaError);
     
-    // Simplified condition: always load on first mount
-    console.log('[DynamicProductCreationFormClean] 🚀 useEffect: Calling loadSchema() unconditionally');
-    loadSchema();
-  }, []); // Empty dependency to run only once on mount
+    // STAGE 1: Load essential fields on first mount
+    console.log('[DynamicProductCreationFormClean] 🚀 STAGE 1: Loading essential fields on mount');
+    loadSchema(""); // empty string = load essential fields
+  }, [loadSchema]); // Run when loadSchema function changes
+
+  // Modern smooth category field loading - no page refresh effect
+  const loadCategoryFieldsSmooth = useCallback(async (category: string) => {
+    console.log('[DynamicProductCreationFormClean] Loading category fields smoothly for:', category);
+    
+    // Check cache first - instant response for cached categories
+    const cacheKey = category || 'essential';
+    if (schemaCache.current[cacheKey]) {
+      console.log('[DynamicProductCreationFormClean] ⚡ Instant load from cache for:', category);
+      const cachedSchema = schemaCache.current[cacheKey];
+      
+      // Use cached schema directly - it has all the correct fields
+      setSchema(cachedSchema);
+      console.log('[DynamicProductCreationFormClean] Applied cached schema with', cachedSchema.fields?.length, 'fields');
+      
+      setFormStage('category-specific');
+      return;
+    }
+    
+    // Only show subtle loading indicator for new fields, not whole form
+    // DON'T set isLoadingSchema to avoid page refresh effect
+    setIsAddingCategoryFields(true);
+    
+    try {
+      const { BackendAPIService, createBackendContext } = await import('@/lib/api/backendService');
+      
+      const backendContext = createBackendContext(
+        stableContext.userId,
+        stableContext.organizationId,
+        stableContext.userRole,
+        stableContext.targetChannels,
+        category,
+        stableContext.permissions
+      );
+      
+      const newSchema = await BackendAPIService.generateFormSchema(backendContext);
+      
+      // Cache the result
+      schemaCache.current[cacheKey] = newSchema;
+      
+      // Apply the new schema directly to get all category-specific fields
+      setSchema(newSchema);
+      console.log('[DynamicProductCreationFormClean] Applied new schema with', newSchema.fields?.length, 'fields for category:', category);
+      
+      setFormStage('category-specific');
+      
+    } catch (error) {
+      console.error('[DynamicProductCreationFormClean] Failed to load category fields:', error);
+    } finally {
+      setIsAddingCategoryFields(false);
+    }
+  }, [stableContext]);
+
+  // CRITICAL FIX: Initialize form data with schema defaultValues when schema loads
+  // BUT: Don't override values that user has explicitly set
+  useEffect(() => {
+    if (!schema || !schema.fields) return;
+    
+    console.log('🚨🚨🚨 [SCHEMA EFFECT] Schema loaded, checking for defaultValues...');
+    console.log('🚨🚨🚨 [SCHEMA EFFECT] Current formData before applying defaults:', formData);
+    
+    // Find fields with defaultValue and merge with current form data
+    const defaultValues: Partial<DynamicFormData> = {};
+    let hasDefaultValues = false;
+    
+    schema.fields.forEach((field: any) => {
+      const fieldName = field.name || field.fieldName;
+      if (field.defaultValue !== undefined && field.defaultValue !== null) {
+        defaultValues[fieldName] = field.defaultValue;
+        hasDefaultValues = true;
+        console.log(`[DynamicProductCreationFormClean] 📝 Found defaultValue for "${fieldName}":`, field.defaultValue);
+      }
+    });
+    
+    if (hasDefaultValues) {
+      console.log('🚨🚨🚨 [SCHEMA EFFECT] About to call setFormData with defaults:', defaultValues);
+      setFormData(prev => {
+        console.log('🚨🚨🚨 [SCHEMA EFFECT] Inside setFormData callback - prev:', prev);
+        // CRITICAL: Only apply defaultValues for fields that are currently empty or undefined
+        // This prevents overriding user selections (especially category field)
+        const mergedData = { ...prev };
+        let appliedDefaults = false;
+        
+        Object.entries(defaultValues).forEach(([fieldName, defaultValue]) => {
+          const currentValue = prev[fieldName];
+          const isEmpty = currentValue === undefined || currentValue === null || currentValue === '';
+          
+          // CRITICAL: Extra protection for category field - never override user selection
+          if (fieldName === 'category' && currentValue && currentValue !== 'general' && currentValue !== '') {
+            console.log(`[DynamicProductCreationFormClean] 🛡️ CATEGORY PROTECTION: Refusing to apply defaultValue for category field - preserving user selection: "${currentValue}"`);
+            trackCategoryChange(currentValue, 'schema-defaultValues-protected');
+            return; // Skip this field completely
+          }
+          
+          if (isEmpty) {
+            mergedData[fieldName] = defaultValue;
+            appliedDefaults = true;
+            console.log(`[DynamicProductCreationFormClean] ✅ Applied defaultValue for empty field "${fieldName}":`, defaultValue);
+            // Track category changes
+            if (fieldName === 'category') {
+              trackCategoryChange(defaultValue, 'schema-defaultValues-empty');
+            }
+          } else {
+            console.log(`[DynamicProductCreationFormClean] ⏭️ Skipped defaultValue for field "${fieldName}" - user value exists:`, currentValue);
+            // Track category skips too
+            if (fieldName === 'category') {
+              trackCategoryChange(currentValue, 'schema-defaultValues-skipped');
+            }
+          }
+        });
+        
+        if (appliedDefaults) {
+          console.log('[DynamicProductCreationFormClean] 📋 Updated form data with selective defaults:', mergedData);
+        } else {
+          console.log('[DynamicProductCreationFormClean] ⏭️ No default values applied - all fields have user values');
+        }
+        
+        return mergedData;
+      });
+    }
+  }, [schema]); // Run when schema changes
 
   // Helper function to evaluate conditional visibility rules from backend schema
   const isFieldVisible = useCallback((field: FormField, currentFormData: DynamicFormData): boolean => {
+    const fieldName = field.name || field.fieldName;
+    
     // If no conditional visibility rules, field is always visible
     if (!field.conditionalVisibility) {
       return true;
     }
 
     const { showWhen, hideWhen } = field.conditionalVisibility;
+    
+    // Debug logging for specific conditional fields
+    if (fieldName === 'size' || fieldName === 'color' || fieldName === 'warranty' || fieldName === 'brand') {
+      console.log(`[isFieldVisible] 🔍 Evaluating "${fieldName}":`, {
+        showWhen,
+        hideWhen,
+        currentCategory: currentFormData.category,
+        allFormData: currentFormData,
+        field
+      });
+    }
 
     // Helper function to evaluate JavaScript expressions safely
     const evaluateExpression = (expression: string, formData: DynamicFormData): boolean => {
       try {
-        // Create a safe evaluation context with form data
+        // Create a safe evaluation context with form data and enhanced category context
+        const currentCategory = formData.category || stableContext.productCategory || 'general';
         const evalContext = {
           ...formData,
-          // Add some common helper values
-          category: formData.category,
+          // Add enhanced helper values
+          category: currentCategory,
+          productCategory: currentCategory,
           hasVariants: formData.hasVariants,
+          // Add organization context
+          targetChannels: stableContext.targetChannels,
+          userRole: stableContext.userRole,
+          organizationId: stableContext.organizationId,
+          // Add category-specific helpers
+          isElectronics: currentCategory === 'electronics',
+          isClothing: currentCategory === 'clothing',
+          isAutomotive: currentCategory === 'automotive',
+          isGeneral: currentCategory === 'general',
         };
         
         // Replace variable names in expression with actual values
@@ -260,20 +693,29 @@ export default function DynamicProductCreationFormClean({
 
   // Debug schema and conditional visibility
   useEffect(() => {
+    console.log('[DynamicProductCreationFormClean] 🔍 Schema debug - Schema object:', schema);
     if (schema?.fields) {
-      console.log('[DynamicProductCreationFormClean] Schema loaded with', schema.fields.length, 'fields');
+      console.log('[DynamicProductCreationFormClean] 📋 Schema loaded with', schema.fields.length, 'fields');
+      console.log('[DynamicProductCreationFormClean] 📋 All fields:', schema.fields.map((f: any) => ({
+        name: f.name || f.fieldName,
+        id: f.id,
+        type: f.type,
+        hasConditional: !!f.conditionalVisibility
+      })));
       
       const conditionalFields = schema.fields.filter((f: FormField) => f.conditionalVisibility);
-      console.log('[DynamicProductCreationFormClean] Found', conditionalFields.length, 'fields with conditional visibility rules');
+      console.log('[DynamicProductCreationFormClean] 🎯 Found', conditionalFields.length, 'fields with conditional visibility rules');
       
       conditionalFields.forEach((field: FormField) => {
-        console.log(`[DynamicProductCreationFormClean] Field "${field.fieldName}":`, {
+        const fieldName = field.name || field.fieldName;
+        console.log(`[DynamicProductCreationFormClean] 🎯 Conditional Field "${fieldName}":`, {
           showWhen: field.conditionalVisibility?.showWhen,
-          hideWhen: field.conditionalVisibility?.hideWhen
+          hideWhen: field.conditionalVisibility?.hideWhen,
+          fieldObject: field
         });
       });
     } else {
-      console.log('[DynamicProductCreationFormClean] Schema or fields not available yet');
+      console.log('[DynamicProductCreationFormClean] ❌ Schema or fields not available yet, schema:', schema);
     }
   }, [schema]);
 
@@ -287,34 +729,319 @@ export default function DynamicProductCreationFormClean({
       console.log('[DynamicProductCreationFormClean] Current form data:', formData);
       
       // Log fields that are hidden due to conditional visibility
-      const hiddenFields = schema.fields.filter(field => !isFieldVisible(field, formData));
+      const hiddenFields = schema.fields.filter((field: FormField) => !isFieldVisible(field, formData));
       if (hiddenFields.length > 0) {
         console.log('[DynamicProductCreationFormClean] Hidden fields due to conditions:', 
-          hiddenFields.map(f => f.fieldName)
+          hiddenFields.map((f: FormField) => f.name || f.fieldName)
         );
       }
     }
   }, [schema, formData, getVisibleFields, isFieldVisible]);
 
-  // Handle form data changes with local state
-  const handleFormDataChange = useCallback((newData: DynamicFormData) => {
-    console.log('[DynamicProductCreationFormClean] Form data changed:', newData);
-    setCurrentFormData(newData);
-    setFormData(newData);
-  }, []);
 
-  // Create a field-specific update handler for better state management
-  const handleFieldChange = useCallback((fieldName: string, value: any) => {
-    setCurrentFormData(prev => {
-      const newData = { ...prev, [fieldName]: value };
-      console.log('[DynamicProductCreationFormClean] Field changed:', fieldName, value);
-      setFormData(newData); // Keep both states in sync
-      return newData;
-    });
-  }, []);
+  // Enhanced field change handler with business rules integration and category-driven schema updates
+  const handleFieldChange = useCallback(async (fieldName: string, value: any) => {
+    console.log('[DynamicProductCreationFormClean] Field changed:', fieldName, '=', value);
+    console.log('[DynamicProductCreationFormClean] Current formData keys:', Object.keys(formData));
+    
+    // CRITICAL: Special handling for variantConfigurator to preserve category context
+    if (fieldName === 'variantConfigurator') {
+      console.log('🔥 [VARIANT CONFIGURATOR] Variant data updated, preserving category context');
+      console.log('🔥 [VARIANT CONFIGURATOR] User selected category:', userSelectedCategory.current);
+      console.log('🔥 [VARIANT CONFIGURATOR] Variant value being stored:', value);
+      
+      // Use functional setState to avoid stale closure issues
+      setFormData(prev => {
+        console.log('🔥 [VARIANT CONFIGURATOR] Previous state:', prev);
+        const protectedCategory = userSelectedCategory.current || prev.category;
+        
+        const newFormData = {
+          ...prev,
+          [fieldName]: value,
+          category: protectedCategory // Explicitly preserve category
+        };
+        
+        console.log('🔥 [VARIANT CONFIGURATOR] Updated formData with variants:', newFormData);
+        console.log('🔥 [VARIANT CONFIGURATOR] Category protected during variant update:', protectedCategory);
+        
+        return newFormData;
+      });
+      
+      // CRITICAL: Persist variant data in sessionStorage to survive re-mounts
+      try {
+        sessionStorage.setItem('variant_configurator_data', value);
+        console.log('🔥 [VARIANT CONFIGURATOR] ✅ Persisted variant data to sessionStorage');
+      } catch (error) {
+        console.log('🔥 [VARIANT CONFIGURATOR] ❌ Failed to persist to sessionStorage:', error);
+      }
+      
+      // Skip business rules execution for variant configurator to prevent category corruption
+      return;
+    }
+    
+    // Track category changes
+    if (fieldName === 'category') {
+      trackCategoryChange(value, 'user-handleFieldChange');
+      // CRITICAL: Track user's manual category selection to prevent org config overrides
+      if (value && value !== 'general' && value !== '') {
+        userSelectedCategory.current = value;
+        console.log('🎯 [USER CATEGORY TRACKER] User manually selected category:', value);
+        
+        // STAGE 2: Load category-specific fields when category is selected
+        if (formStage === 'essential') {
+          console.log('[DynamicProductCreationFormClean] 🚀 STAGE 2: Loading category-specific fields for:', value);
+          loadSchema(value).catch(error => {
+            console.error('[DynamicProductCreationFormClean] Failed to load category-specific schema:', error);
+          });
+        }
+      }
+    }
+    
+    // Track hasVariants changes that might affect category
+    if (fieldName === 'hasVariants') {
+      console.log(`🔥🔥🔥 [HASVARIANT TRACKER] hasVariants changed to: ${value}, current category: ${formData.category}`);
+      trackCategoryChange(formData.category, `hasVariants-change-to-${value}`);
+      
+      // CRITICAL FIX: When hasVariants changes, preserve the current category using functional setState
+      setFormData(prev => {
+        const categoryToPreserve = userSelectedCategory.current || prev.category;
+        console.log(`🔍 [DEBUG] Previous category: "${prev.category}", categoryToPreserve: "${categoryToPreserve}"`);
+        
+        if (categoryToPreserve && categoryToPreserve !== 'general' && categoryToPreserve !== '') {
+          console.log(`✅ [HASVARIANT TRACKER] Preserving category "${categoryToPreserve}" during hasVariants change`);
+          const preservedData = {
+            ...prev,
+            [fieldName]: value,
+            category: categoryToPreserve // Explicitly preserve category
+          };
+          console.log(`✅ [HASVARIANT TRACKER] Category preserved successfully: ${preservedData.category}`);
+          return preservedData;
+        } else {
+          console.log(`❌ [HASVARIANT TRACKER] No valid category to preserve: "${prev.category}"`);
+          return {
+            ...prev,
+            [fieldName]: value
+          };
+        }
+      });
+      return; // Early return to prevent normal processing that might reset category
+    }
+    
+    // Update form data immediately for responsive UI using functional form to avoid stale closure
+    setFormData(prev => ({
+      ...prev, // Use fresh prev instead of stale closure formData
+      [fieldName]: value
+    }));
+    
+    // Check if category field changed - validate and regenerate schema if needed
+    if (fieldName === 'category' && value !== formData.category) {
+      console.log('[DynamicProductCreationFormClean] Category changed from', formData.category, 'to', value);
+      
+      // Validate the new category
+      const categoryValidation = validateProductCategory(
+        value, 
+        organizationConfig, 
+        getAssignedCategories()
+      );
+      
+      if (categoryValidation.warning) {
+        console.warn('[DynamicProductCreationFormClean] Category validation:', categoryValidation.warning);
+        // Update the newFormData if category was changed by validation
+        if (categoryValidation.category !== value) {
+          newFormData[fieldName] = categoryValidation.category;
+        }
+      }
+      
+      const finalCategory = categoryValidation.category;
+      console.log('[DynamicProductCreationFormClean] Using validated category:', finalCategory, '- regenerating schema...');
+      
+      try {
+        const { BackendAPIService, createBackendContext } = await import('@/lib/api/backendService');
+        
+        // Create new context with updated category
+        const updatedContext = createBackendContext(
+          stableContext.userId,
+          stableContext.organizationId,
+          stableContext.userRole,
+          stableContext.targetChannels,
+          finalCategory, // Use validated category
+          stableContext.permissions
+        );
+        
+        // Generate new schema for the new category
+        const newSchema = await BackendAPIService.generateFormSchema(updatedContext);
+        console.log('[DynamicProductCreationFormClean] New schema generated for category:', finalCategory);
+        
+        // Update schema with new category-specific fields
+        if (newSchema?.fields) {
+          setSchema(newSchema);
+          
+          // IMPORTANT: Preserve form data after schema update, especially the category value
+          const preservedFormData = {
+            ...newFormData, // Use the updated form data, not stale closure data
+            [fieldName]: finalCategory // Ensure category value is preserved
+          };
+          
+          // Update form data to include the validated category and preserve existing data
+          setFormData(preservedFormData);
+          console.log('[DynamicProductCreationFormClean] Form data preserved after schema regeneration:', preservedFormData);
+          // Track category preservation
+          trackCategoryChange(finalCategory, 'schema-regeneration-preserved');
+          
+          // Debug variant fields visibility for the new category
+          const variantFields = newSchema.fields.filter((f: any) => 
+            f.validationRules?.isVariantDimension || 
+            f.businessContext?.variantDimension ||
+            ['size', 'color', 'warranty', 'storage'].includes(f.name || f.fieldName)
+          );
+          console.log('[DynamicProductCreationFormClean] Variant fields in new schema:', variantFields.length);
+          variantFields.forEach((f: any) => {
+            const fieldName = f.name || f.fieldName;
+            console.log(`[DynamicProductCreationFormClean] Variant field "${fieldName}":`, {
+              conditionalVisibility: f.conditionalVisibility,
+              shouldShowFor: finalCategory,
+              isVisible: f.conditionalVisibility ? finalCategory === 'electronics' && f.conditionalVisibility.showWhen.includes('electronics') : true
+            });
+          });
+        }
+        
+        // Apply business rules enhancement for new schema if enabled
+        if (businessRulesConfig?.businessRulesConfig?.globalSettings?.businessRulesEnabled) {
+          try {
+            const enabledRules: string[] = [];
+            Object.values(businessRulesConfig.businessRulesConfig.ruleCategories).forEach((category: any) => {
+              if (category.enabled && category.rules) {
+                category.rules.forEach((rule: any) => {
+                  if (rule.enabled) {
+                    enabledRules.push(rule.ruleId);
+                  }
+                });
+              }
+            });
+
+            if (enabledRules.length > 0) {
+              const enhancedResult = await BackendAPIService.enhanceSchemaWithBusinessRules(
+                newSchema,
+                organization.organizationId,
+                updatedContext,
+                enabledRules
+              );
+
+              if (enhancedResult?.enhancedSchema) {
+                setSchema(enhancedResult.enhancedSchema);
+                
+                // Preserve form data after business rules enhancement too
+                const preservedFormDataWithRules = {
+                  ...newFormData, // Use the updated form data
+                  [fieldName]: finalCategory // Ensure category value is still preserved
+                };
+                setFormData(preservedFormDataWithRules);
+                
+                console.log('[DynamicProductCreationFormClean] Schema enhanced with business rules for new category');
+                console.log('[DynamicProductCreationFormClean] Form data preserved after business rules enhancement:', preservedFormDataWithRules);
+              }
+            }
+          } catch (error) {
+            console.error('[DynamicProductCreationFormClean] Business rules schema enhancement failed for new category:', error);
+          }
+        }
+        
+      } catch (error) {
+        console.error('[DynamicProductCreationFormClean] Failed to regenerate schema for category change:', error);
+      }
+    }
+
+    // Apply business rules if enabled for this organization
+    // TEMPORARILY DISABLED: Backend API not ready - returns 404
+    if (false && businessRulesConfig?.businessRulesConfig?.globalSettings?.businessRulesEnabled) {
+      try {
+        const { BackendAPIService } = await import('@/lib/api/backendService');
+        
+        console.log('🔥 [BUSINESS RULES] About to execute business rules for:', fieldName, 'with current formData keys:', Object.keys(formData));
+        console.log('🔥 [BUSINESS RULES] Current formData values:', formData);
+        
+        // Execute pre-processing rules for auto-enhancement
+        const ruleExecutionRequest = {
+          ruleType: 'PRE_PROCESSING' as const,
+          fieldName,
+          formData: { ...formData, [fieldName]: value },
+          context: stableContext
+        };
+
+        const ruleResult = await BackendAPIService.executeBusinessRules(
+          organization.organizationId,
+          ruleExecutionRequest
+        );
+
+        if (ruleResult?.ruleExecutionResult?.enhancedData) {
+          console.log('[DynamicProductCreationFormClean] Applying business rule enhancements:', ruleResult.ruleExecutionResult.enhancedData);
+          
+          // Track if business rules are changing category
+          if (ruleResult.ruleExecutionResult.enhancedData.category) {
+            trackCategoryChange(ruleResult.ruleExecutionResult.enhancedData.category, `business-rules-${fieldName}`);
+          }
+          
+          // Apply enhanced data from business rules
+          setFormData(prev => {
+            // CRITICAL: Protect user's category selection from being overridden by business rules
+            const enhancedData = { ...ruleResult.ruleExecutionResult.enhancedData };
+            const currentCategory = prev.category;
+            
+            // Use user-selected category as primary source of truth, fallback to current form category
+            const protectedCategory = userSelectedCategory.current || currentCategory;
+            
+            // If user has a valid category selection, don't let business rules override it
+            if (protectedCategory && protectedCategory !== 'general' && protectedCategory !== '' && enhancedData.category && enhancedData.category !== protectedCategory) {
+              console.log(`[DynamicProductCreationFormClean] 🛡️ BUSINESS RULES CATEGORY PROTECTION: Refusing to override user category "${protectedCategory}" with business rules category "${enhancedData.category}"`);
+              console.log(`[DynamicProductCreationFormClean] 🛡️ Protection sources: userSelected="${userSelectedCategory.current}", current="${currentCategory}"`);
+              trackCategoryChange(protectedCategory, 'business-rules-protected');
+              delete enhancedData.category; // Remove category from enhanced data
+            }
+            
+            // CRITICAL: Always preserve user's manual category selection
+            if (userSelectedCategory.current && userSelectedCategory.current !== 'general' && userSelectedCategory.current !== '') {
+              enhancedData.category = userSelectedCategory.current;
+              console.log(`[DynamicProductCreationFormClean] 🎯 FORCING user-selected category in business rules: "${userSelectedCategory.current}"`);
+            }
+            
+            const mergedData = {
+              ...prev,
+              ...enhancedData
+            };
+            console.log('🔥 [BUSINESS RULES] Merging data:', {
+              previousKeys: Object.keys(prev),
+              enhancedKeys: Object.keys(enhancedData),
+              mergedKeys: Object.keys(mergedData),
+              preservedFields: Object.keys(prev).filter(key => !Object.keys(enhancedData).includes(key))
+            });
+            return mergedData;
+          });
+        }
+
+        // Handle business rule violations
+        if (ruleResult?.ruleExecutionResult?.violations?.length > 0) {
+          console.warn('[DynamicProductCreationFormClean] Business rule violations detected:', ruleResult.ruleExecutionResult.violations);
+          // Could set validation errors here for UI feedback
+        }
+
+        // Handle warnings and suggestions
+        if (ruleResult?.ruleExecutionResult?.warnings?.length > 0) {
+          console.log('[DynamicProductCreationFormClean] Business rule warnings:', ruleResult.ruleExecutionResult.warnings);
+        }
+
+        if (ruleResult?.ruleExecutionResult?.suggestions?.length > 0) {
+          console.log('[DynamicProductCreationFormClean] Business rule suggestions:', ruleResult.ruleExecutionResult.suggestions);
+        }
+
+      } catch (error) {
+        console.error('[DynamicProductCreationFormClean] Business rules execution failed:', error);
+        // Continue with basic functionality if business rules fail
+      }
+    }
+  }, [stableContext, businessRulesConfig, organization]);
 
   // Handle validation changes
-  const handleValidationChange = useCallback((result: FormValidationResult) => {
+  const handleValidationChange = useCallback((_result: FormValidationResult) => {
     // Handle validation results if needed
   }, []);
 
@@ -499,26 +1226,43 @@ export default function DynamicProductCreationFormClean({
       
       // Use backend API for product creation
       const { BackendAPIService, createBackendContext } = await import('@/lib/api/backendService');
-      
-      // Map user roles to backend expected format
-      const mapUserRole = (role: 'BUSINESS_USER' | 'ADMIN_USER' | 'DEVELOPER' | 'VIEW_ONLY'): 'BUSINESS_USER' | 'ADMIN' | 'DEVELOPER' => {
-        switch (role) {
-          case 'ADMIN_USER':
-            return 'ADMIN';
-          case 'VIEW_ONLY':
-            return 'BUSINESS_USER';
-          case 'DEVELOPER':
-            return 'DEVELOPER';
-          case 'BUSINESS_USER':
-          default:
-            return 'BUSINESS_USER';
-        }
-      };
 
+      // Validate business rules before submission if enabled
+      if (businessRulesConfig?.businessRulesConfig?.globalSettings?.businessRulesEnabled) {
+        console.log('[DynamicProductCreationForm] 🔍 Validating business rules before submission...');
+        
+        try {
+          const validationResult = await BackendAPIService.validateBusinessRules(
+            organization.organizationId,
+            submissionData,
+            stableContext,
+            stableContext.targetChannels,
+            'SUBMISSION'
+          );
+
+          if (validationResult?.validationResult) {
+            const { isValid, canSubmit, violations } = validationResult.validationResult;
+            
+            if (!isValid || !canSubmit) {
+              console.error('[DynamicProductCreationForm] ❌ Business rules validation failed:', violations);
+              
+              // Show validation errors to user
+              const violationMessages = violations.map((v: any) => v.message || 'Validation error').join(', ');
+              throw new Error(`Business rules validation failed: ${violationMessages}`);
+            }
+
+            console.log('[DynamicProductCreationForm] ✅ Business rules validation passed');
+          }
+        } catch (validationError) {
+          console.error('[DynamicProductCreationForm] Business rules validation error:', validationError);
+          throw validationError; // Re-throw to prevent submission
+        }
+      }
+      
       const backendContext = createBackendContext(
         stableContext.userId,
         stableContext.organizationId,
-        mapUserRole(stableContext.userRole),
+        stableContext.userRole,
         stableContext.targetChannels,
         stableContext.productCategory,
         stableContext.permissions
@@ -578,7 +1322,7 @@ export default function DynamicProductCreationFormClean({
       console.log('[DynamicProductCreationForm] ✅ Product created successfully via backend:', masterProduct);
       
       // Success - notify parent
-      onProductCreated?.(masterProduct, targetChannels);
+      onProductCreated?.(masterProduct, stableContext.targetChannels);
       
     } catch (error) {
       console.error('Failed to create product:', error);
@@ -606,9 +1350,9 @@ export default function DynamicProductCreationFormClean({
     console.log('[DynamicProductCreationFormClean] 📍 NEXT: Will show NORMAL form state');
   }
 
-  // Loading state
-  if (isLoadingSchema) {
-    console.log('[DynamicProductCreationFormClean] 🔄 SHOWING LOADING STATE');
+  // Only show full loading for initial schema load, not for category changes
+  if (isLoadingSchema && !schema) {
+    console.log('[DynamicProductCreationFormClean] 🔄 SHOWING INITIAL LOADING STATE');
     return (
       <div className="max-w-4xl mx-auto p-6 flex items-center justify-center">
         <div className="text-center">
@@ -737,6 +1481,11 @@ export default function DynamicProductCreationFormClean({
           Visible: {getVisibleFields(schema?.fields || [], formData).length || 0} | 
           Required: {schema?.fields?.filter((f: any) => f.required || f.validationRules?.required).length || 0}
         </div>
+        <div className="text-sm mt-2 p-2 bg-blue-100 rounded">
+          <strong>Category Tracking:</strong> Current = "{formData.category || 'undefined'}" | 
+          Changes: {categoryChangeLog.length} | 
+          Last: {categoryChangeLog[categoryChangeLog.length - 1]?.source || 'none'}
+        </div>
       </div>
       {/* Submit Error */}
       {submitError && (
@@ -790,15 +1539,16 @@ export default function DynamicProductCreationFormClean({
                     const filteredFields = visibleFields.filter((field: any) => {
                       // Show essential fields, basic product fields, required fields, AND conditionally visible fields
                       const isEssential = field.group === 'essential';
-                      const isBasicField = ['name', 'description', 'price', 'category', 'sku', 'brand', 'inventory', 'status'].includes(field.fieldName);
+                      const fieldName = field.name || field.fieldName;
+                      const isBasicField = ['name', 'description', 'price', 'category', 'sku', 'brand', 'inventory', 'status'].includes(fieldName);
                       const isRequired = field.required || field.validationRules?.required;
                       const isConditionalField = field.conditionalVisibility !== null; // Show any field with conditional rules
                       
                       const shouldShow = isEssential || isBasicField || isRequired || isConditionalField;
                       
                       // Debug specific fields
-                      if (field.fieldName === 'warranty' || field.fieldName === 'size') {
-                        console.log(`[FieldFilter] ${field.fieldName}:`, {
+                      if (fieldName === 'warranty' || fieldName === 'size') {
+                        console.log(`[FieldFilter] ${fieldName}:`, {
                           isEssential,
                           isBasicField, 
                           isRequired,
@@ -812,26 +1562,33 @@ export default function DynamicProductCreationFormClean({
                     });
                     
                     console.log(`[FieldFilter] Showing ${filteredFields.length}/${visibleFields.length} fields`);
-                    console.log(`[FieldFilter] Field names:`, filteredFields.map((f: any) => f.fieldName));
+                    console.log(`[FieldFilter] Field names:`, filteredFields.map((f: any) => f.name || f.fieldName));
                     
                     return filteredFields;
                   })()
                     .slice(0, 15) // Show more fields to accommodate conditional ones
-                    .map((field: any) => (
-                      <div key={field.fieldName} className="space-y-2">
+                    .map((field: any, index: number) => {
+                      const fieldName = field.name || field.fieldName;
+                      console.log(`[Field Render] Index: ${index}, FieldName: "${fieldName}", Label: "${field.label}"`);
+                      return (
+                      <div key={`${fieldName}-${index}`} className="space-y-2">
                         <label className="block text-sm font-medium text-gray-700">{field.label}</label>
-                        {field.fieldType.toLowerCase() === 'textarea' ? (
+                        {field.type?.toLowerCase() === 'textarea' ? (
                           <textarea
+                            id={`${fieldName}-${index}`}
+                            name={fieldName}
                             placeholder={field.placeholder}
-                            value={formData[field.fieldName] || ''}
-                            onChange={(e) => handleFieldChange(field.fieldName, e.target.value)}
+                            value={formData[fieldName] || ''}
+                            onChange={(e) => handleFieldChange(fieldName, e.target.value)}
                             className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 transition-colors"
                             rows={3}
                           />
-                        ) : field.fieldType.toLowerCase() === 'select' ? (
+                        ) : (field.type?.toLowerCase() === 'select' || field.fieldType?.toLowerCase() === 'select') ? (
                           <select
-                            value={formData[field.fieldName] || ''}
-                            onChange={(e) => handleFieldChange(field.fieldName, e.target.value)}
+                            id={`${fieldName}-${index}`}
+                            name={fieldName}
+                            value={formData[fieldName] || ''}
+                            onChange={(e) => handleFieldChange(fieldName, e.target.value)}
                             className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 transition-colors"
                           >
                             <option value="">{field.placeholder}</option>
@@ -843,10 +1600,12 @@ export default function DynamicProductCreationFormClean({
                           </select>
                         ) : (
                           <input
-                            type={field.fieldType.toLowerCase() === 'text' ? 'text' : field.fieldType}
+                            id={`${fieldName}-${index}`}
+                            name={fieldName}
+                            type={field.type?.toLowerCase() === 'text' ? 'text' : (field.type || 'text')}
                             placeholder={field.placeholder}
-                            value={formData[field.fieldName] || ''}
-                            onChange={(e) => handleFieldChange(field.fieldName, e.target.value)}
+                            value={formData[fieldName] || ''}
+                            onChange={(e) => handleFieldChange(fieldName, e.target.value)}
                             className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 transition-colors"
                           />
                         )}
@@ -854,7 +1613,8 @@ export default function DynamicProductCreationFormClean({
                           <p className="text-xs text-gray-500">{field.helpText}</p>
                         )}
                       </div>
-                    ))}
+                      );
+                    })}
                 </CardContent>
               </Card>
 
@@ -868,18 +1628,22 @@ export default function DynamicProductCreationFormClean({
                 </CardHeader>
                 <CardContent className="space-y-4">
                   {getVisibleFields(schema.fields, formData)
-                    .filter((field: any) => field.fieldName === 'hasVariants' || field.fieldName === 'variantConfigurator')
+                    .filter((field: any) => {
+                      const fieldName = field.name || field.fieldName;
+                      return fieldName === 'hasVariants' || fieldName === 'variantConfigurator';
+                    })
                     .map((field: any) => {
-                      if (field.fieldName === 'hasVariants') {
+                      const fieldName = field.name || field.fieldName;
+                      if (fieldName === 'hasVariants') {
                         return (
-                          <div key={field.fieldName} className="p-4 bg-gradient-to-r from-blue-50 to-purple-50 border border-blue-200 rounded-lg">
+                          <div key={fieldName} className="p-4 bg-gradient-to-r from-blue-50 to-purple-50 border border-blue-200 rounded-lg">
                             <label className="flex items-center cursor-pointer">
                               <input
                                 type="checkbox"
-                                checked={formData[field.fieldName] || false}
+                                checked={formData[fieldName] || false}
                                 onChange={(e) => {
                                   console.log('hasVariants checkbox clicked:', e.target.checked);
-                                  handleFieldChange(field.fieldName, e.target.checked);
+                                  handleFieldChange(fieldName, e.target.checked);
                                 }}
                                 className="mr-3 w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
                               />
@@ -897,11 +1661,11 @@ export default function DynamicProductCreationFormClean({
                         );
                       }
                       
-                      if (field.fieldName === 'variantConfigurator') {
+                      if (fieldName === 'variantConfigurator') {
                         const hasVariantsEnabled = formData['hasVariants'] || false;
                         
                         return (
-                          <div key={field.fieldName} className={`transition-all duration-300 ${
+                          <div key={fieldName} className={`transition-all duration-300 ${
                             hasVariantsEnabled ? 'opacity-100' : 'opacity-60'
                           }`}>
                             <div className={`p-4 border rounded-lg ${
@@ -929,9 +1693,10 @@ export default function DynamicProductCreationFormClean({
                               {hasVariantsEnabled && (
                                 <div className="bg-white rounded-lg border border-gray-200 p-4">
                                   <VariantConfiguratorDynamic 
-                                    value={formData[field.fieldName]}
-                                    onChange={(value) => handleFieldChange(field.fieldName, value)}
+                                    value={formData[fieldName]}
+                                    onChange={(value) => handleFieldChange(fieldName, value)}
                                     schema={schema}
+                                    formData={formData}
                                   />
                                 </div>
                               )}
@@ -1006,7 +1771,7 @@ export default function DynamicProductCreationFormClean({
                   <div className="bg-gray-900 rounded-lg overflow-hidden">
                     <div className="p-4 overflow-auto max-h-80">
                       <pre className="text-xs text-green-400 font-mono leading-relaxed">
-                        {JSON.stringify(generateMasterProduct(currentFormData), null, 2)}
+                        {JSON.stringify(generateMasterProduct(formData), null, 2)}
                       </pre>
                     </div>
                   </div>
@@ -1029,7 +1794,7 @@ export default function DynamicProductCreationFormClean({
                   <div className="bg-gray-900 rounded-lg overflow-hidden">
                     <div className="p-4 overflow-auto max-h-64">
                       <pre className="text-xs text-cyan-400 font-mono leading-relaxed">
-                        {JSON.stringify(currentFormData, null, 2)}
+                        {JSON.stringify(formData, null, 2)}
                       </pre>
                     </div>
                   </div>
@@ -1050,13 +1815,13 @@ export default function DynamicProductCreationFormClean({
                     <div className="flex justify-between">
                       <span className="text-gray-600">Completed:</span>
                       <span className="font-medium text-green-600">
-                        {Object.values(currentFormData).filter(v => v !== undefined && v !== '').length}
+                        {Object.values(formData).filter(v => v !== undefined && v !== '').length}
                       </span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-gray-600">Custom Attrs:</span>
                       <span className="font-medium text-blue-600">
-                        {generateMasterProduct(currentFormData).customAttributes ? Object.keys(generateMasterProduct(currentFormData).customAttributes!).length : 0}
+                        {generateMasterProduct(formData).customAttributes ? Object.keys(generateMasterProduct(formData).customAttributes!).length : 0}
                       </span>
                     </div>
                     <div className="pt-2 border-t">
@@ -1067,12 +1832,12 @@ export default function DynamicProductCreationFormClean({
                             <div 
                               className="bg-blue-600 h-2 rounded-full transition-all duration-300" 
                               style={{ 
-                                width: `${Math.round((Object.values(currentFormData).filter(v => v !== undefined && v !== '').length / (schema?.fields?.length || 1)) * 100)}%` 
+                                width: `${Math.round((Object.values(formData).filter(v => v !== undefined && v !== '').length / (schema?.fields?.length || 1)) * 100)}%` 
                               }}
                             ></div>
                           </div>
                           <span className="text-xs font-medium">
-                            {Math.round((Object.values(currentFormData).filter(v => v !== undefined && v !== '').length / (schema?.fields?.length || 1)) * 100)}%
+                            {Math.round((Object.values(formData).filter(v => v !== undefined && v !== '').length / (schema?.fields?.length || 1)) * 100)}%
                           </span>
                         </div>
                       </div>
@@ -1095,9 +1860,9 @@ export default function DynamicProductCreationFormClean({
           <CardContent>
             <div className="grid grid-cols-2 gap-4 text-xs">
               <div className="space-y-2">
-                <div><span className="font-medium">Channels:</span> {targetChannels.join(', ')}</div>
-                <div><span className="font-medium">Category:</span> {productCategory}</div>
-                <div><span className="font-medium">User Role:</span> {userRole}</div>
+                <div><span className="font-medium">Channels:</span> {stableContext.targetChannels.join(', ')}</div>
+                <div><span className="font-medium">Category:</span> {stableContext.productCategory}</div>
+                <div><span className="font-medium">User Role:</span> {stableContext.userRole}</div>
               </div>
               <div className="space-y-2">
                 <div><span className="font-medium">Schema Fields:</span> {schema?.fields?.length || 0}</div>

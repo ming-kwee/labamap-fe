@@ -1,26 +1,132 @@
 "use client";
+import React, { useState } from "react";
+import { useAuth } from '@/context/AuthContext';
 import Checkbox from "@/components/form/input/Checkbox";
 import Input from "@/components/form/input/InputField";
 import Label from "@/components/form/Label";
 import Button from "@/components/ui/button/Button";
+import { Alert, AlertDescription } from '@/components/ui/alert/AlertComponents';
 import { ChevronLeftIcon, EyeCloseIcon, EyeIcon } from "@/icons";
+import { Loader2, AlertCircle } from '@/components/ui/icons/Icons';
 import Link from "next/link";
-import React, { useState } from "react";
 
-export default function SignInForm() {
+interface SignInFormProps {
+  onSuccess?: () => void;
+  onSwitchToSignUp?: () => void;
+  showBackLink?: boolean;
+  className?: string;
+}
+
+export default function SignInForm({
+  onSuccess,
+  onSwitchToSignUp,
+  showBackLink = true,
+  className = ""
+}: SignInFormProps) {
+  const { login, isLoading } = useAuth();
+  
   const [showPassword, setShowPassword] = useState(false);
   const [isChecked, setIsChecked] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  
+  const [formData, setFormData] = useState({
+    email: '',
+    password: ''
+  });
+  
+  const [errors, setErrors] = useState<{
+    email?: string;
+    password?: string;
+    general?: string;
+  }>({});
+
+  // Form validation
+  const validateForm = (): boolean => {
+    const newErrors: typeof errors = {};
+    
+    if (!formData.email.trim()) {
+      newErrors.email = 'Email is required';
+    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
+      newErrors.email = 'Please enter a valid email address';
+    }
+    
+    if (!formData.password) {
+      newErrors.password = 'Password is required';
+    } else if (formData.password.length < 6) {
+      newErrors.password = 'Password must be at least 6 characters';
+    }
+    
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
+
+  // Handle input changes
+  const handleInputChange = (field: keyof typeof formData) => (
+    e: React.ChangeEvent<HTMLInputElement>
+  ) => {
+    const value = e.target.value;
+    setFormData(prev => ({ ...prev, [field]: value }));
+    
+    // Clear field-specific error when user starts typing
+    if (errors[field]) {
+      setErrors(prev => ({ ...prev, [field]: undefined }));
+    }
+  };
+
+  // Handle form submission
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    if (!validateForm()) {
+      return;
+    }
+    
+    setIsSubmitting(true);
+    setErrors({}); // Clear all errors
+    
+    try {
+      await login(formData.email.trim(), formData.password);
+      
+      // Success callback
+      onSuccess?.();
+      
+    } catch (error) {
+      console.error('Login failed:', error);
+      
+      let errorMessage = 'Login failed. Please try again.';
+      
+      if (error instanceof Error) {
+        // Handle specific error messages from the backend
+        if (error.message.includes('Invalid credentials')) {
+          errorMessage = 'Invalid email or password. Please check your credentials and try again.';
+        } else if (error.message.includes('Account locked')) {
+          errorMessage = 'Your account has been temporarily locked. Please contact support.';
+        } else if (error.message.includes('Network')) {
+          errorMessage = 'Network error. Please check your connection and try again.';
+        } else {
+          errorMessage = error.message;
+        }
+      }
+      
+      setErrors({ general: errorMessage });
+      
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
   return (
-    <div className="flex flex-col flex-1 lg:w-1/2 w-full">
-      <div className="w-full max-w-md sm:pt-10 mx-auto mb-5">
-        <Link
-          href="/"
-          className="inline-flex items-center text-sm text-gray-500 transition-colors hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300"
-        >
-          <ChevronLeftIcon />
-          Back to dashboard
-        </Link>
-      </div>
+    <div className={`flex flex-col flex-1 lg:w-1/2 w-full ${className}`}>
+      {showBackLink && (
+        <div className="w-full max-w-md sm:pt-10 mx-auto mb-5">
+          <Link
+            href="/"
+            className="inline-flex items-center text-sm text-gray-500 transition-colors hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300"
+          >
+            <ChevronLeftIcon />
+            Back to dashboard
+          </Link>
+        </div>
+      )}
       <div className="flex flex-col justify-center flex-1 w-full max-w-md mx-auto">
         <div>
           <div className="mb-5 sm:mb-8">
@@ -31,6 +137,16 @@ export default function SignInForm() {
               Enter your email and password to sign in!
             </p>
           </div>
+          
+          {/* General Error Alert */}
+          {errors.general && (
+            <div className="mb-4">
+              <Alert variant="destructive">
+                <AlertCircle className="h-4 w-4" />
+                <AlertDescription>{errors.general}</AlertDescription>
+              </Alert>
+            </div>
+          )}
           <div>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-5">
               <button className="inline-flex items-center justify-center gap-3 py-3 text-sm font-normal text-gray-700 transition-colors bg-gray-100 rounded-lg px-7 hover:bg-gray-200 hover:text-gray-800 dark:bg-white/5 dark:text-white/90 dark:hover:bg-white/10">
@@ -84,13 +200,23 @@ export default function SignInForm() {
                 </span>
               </div>
             </div>
-            <form>
+            <form onSubmit={handleSubmit}>
               <div className="space-y-6">
                 <div>
                   <Label>
                     Email <span className="text-error-500">*</span>{" "}
                   </Label>
-                  <Input placeholder="info@gmail.com" type="email" />
+                  <Input 
+                    placeholder="info@gmail.com" 
+                    type="email"
+                    value={formData.email}
+                    onChange={handleInputChange('email')}
+                    disabled={isSubmitting || isLoading}
+                    className={errors.email ? 'border-red-500' : ''}
+                  />
+                  {errors.email && (
+                    <p className="text-xs text-red-600 mt-1">{errors.email}</p>
+                  )}
                 </div>
                 <div>
                   <Label>
@@ -100,6 +226,10 @@ export default function SignInForm() {
                     <Input
                       type={showPassword ? "text" : "password"}
                       placeholder="Enter your password"
+                      value={formData.password}
+                      onChange={handleInputChange('password')}
+                      disabled={isSubmitting || isLoading}
+                      className={errors.password ? 'border-red-500' : ''}
                     />
                     <span
                       onClick={() => setShowPassword(!showPassword)}
@@ -112,6 +242,9 @@ export default function SignInForm() {
                       )}
                     </span>
                   </div>
+                  {errors.password && (
+                    <p className="text-xs text-red-600 mt-1">{errors.password}</p>
+                  )}
                 </div>
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
@@ -128,8 +261,20 @@ export default function SignInForm() {
                   </Link>
                 </div>
                 <div>
-                  <Button className="w-full" size="sm">
-                    Sign in
+                  <Button 
+                    className="w-full" 
+                    size="sm"
+                    type="submit"
+                    disabled={isSubmitting || isLoading}
+                  >
+                    {(isSubmitting || isLoading) ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                        Signing in...
+                      </>
+                    ) : (
+                      'Sign in'
+                    )}
                   </Button>
                 </div>
               </div>
@@ -138,14 +283,33 @@ export default function SignInForm() {
             <div className="mt-5">
               <p className="text-sm font-normal text-center text-gray-700 dark:text-gray-400 sm:text-start">
                 Don&apos;t have an account? {""}
-                <Link
-                  href="/signup"
-                  className="text-brand-500 hover:text-brand-600 dark:text-brand-400"
-                >
-                  Sign Up
-                </Link>
+                {onSwitchToSignUp ? (
+                  <button
+                    onClick={onSwitchToSignUp}
+                    disabled={isSubmitting || isLoading}
+                    className="text-brand-500 hover:text-brand-600 dark:text-brand-400 transition-colors"
+                  >
+                    Sign Up
+                  </button>
+                ) : (
+                  <Link
+                    href="/signup"
+                    className="text-brand-500 hover:text-brand-600 dark:text-brand-400"
+                  >
+                    Sign Up
+                  </Link>
+                )}
               </p>
             </div>
+            
+            {/* Development Mode Helper */}
+            {process.env.NODE_ENV === 'development' && (
+              <div className="mt-4 p-3 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg">
+                <p className="text-xs text-yellow-800 dark:text-yellow-200 text-center">
+                  <strong>Development Mode:</strong> Use your backend credentials or contact your administrator for login details.
+                </p>
+              </div>
+            )}
           </div>
         </div>
       </div>

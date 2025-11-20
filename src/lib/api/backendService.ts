@@ -182,6 +182,30 @@ export class BackendAPIService {
   }
 
   /**
+   * Business Rules APIs
+   */
+  
+  // POST /api/v1/ecommerce/business-rules/execute
+  static async executeBusinessRules(organizationId: string, ruleExecutionRequest: any): Promise<any> {
+    const response = await fetch(`${BACKEND_BASE_URL}/business-rules/execute`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        organizationId,
+        ...ruleExecutionRequest
+      }),
+    });
+    
+    if (!response.ok) {
+      throw new Error(`Failed to execute business rules: ${response.statusText}`);
+    }
+    
+    return response.json();
+  }
+
+  /**
    * Product APIs
    */
   

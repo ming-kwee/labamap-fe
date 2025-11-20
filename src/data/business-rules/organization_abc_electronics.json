@@ -1,0 +1,26 @@
+{
+  "organizationId": "company_abc_12345",
+  "businessRulesConfig": {
+    "globalSettings": {
+      "businessRulesEnabled": true,
+      "realTimeValidationEnabled": true,
+      "autoEnhancementEnabled": true
+    },
+    "enabledRules": [
+      "NAME_VALIDATION",
+      "SKU_AUTO_GENERATION", 
+      "PRICE_VALIDATION",
+      "CATEGORY_ENHANCEMENT"
+    ],
+    "ruleCategories": {
+      "electronics": {
+        "requiredFields": ["name", "price", "category"],
+        "autoGenerateFields": ["sku"],
+        "validationRules": {
+          "price": { "min": 0.01, "max": 10000 },
+          "name": { "minLength": 3, "maxLength": 200 }
+        }
+      }
+    }
+  }
+}

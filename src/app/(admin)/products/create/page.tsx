@@ -15,7 +15,7 @@ import {
   Eye
 } from '@/components/ui/icons/Icons';
 import MasterProductCreationForm from '@/components/products/MasterProductCreationForm';
-import DynamicProductCreationFormClean from '@/components/products/DynamicProductCreationFormClean';
+import ProductCreationPageWrapper from '@/components/products/ProductCreationPageWrapper';
 import ChannelSelectionInterface from '@/components/products/ChannelSelectionInterface';
 import ChannelPayloadReview from '@/components/products/ChannelPayloadReview';
 import { MasterProduct } from '@/types/product';
@@ -139,13 +139,8 @@ export default function CreateProductPage() {
             onProductCreated={handleProductCreated}
           />
         ) : (
-          <DynamicProductCreationFormClean 
+          <ProductCreationPageWrapper 
             onProductCreated={handleProductCreated}
-            targetChannels={stableTargetChannels}
-            productCategory={stableProductCategory}
-            userRole={stableUserRole}
-            complianceMode={stableComplianceMode}
-            workflowStep={stableWorkflowStep}
             debugMode={stableDebugMode}
           />
         );

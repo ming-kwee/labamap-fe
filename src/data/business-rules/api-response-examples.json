@@ -1,0 +1,294 @@
+{
+  "businessRulesExecutionRequest": {
+    "executionRequest": {
+      "requestId": "req_abc_1642167890123",
+      "organizationId": "company_abc_12345",
+      "userId": "user_abc_456",
+      "userRole": "BUSINESS_USER",
+      "ruleType": "BUSINESS_LOGIC",
+      "fieldName": "price",
+      "formData": {
+        "name": "iPhone 15 Pro Max 256GB",
+        "category": "electronics",
+        "price": 1199.99,
+        "brand": "Apple",
+        "sku": "",
+        "description": "Latest iPhone with advanced camera system",
+        "targetChannels": ["shopify", "amazon"]
+      },
+      "context": {
+        "platformTenantId": "labamap_tenant_abc",
+        "targetChannels": ["shopify", "amazon"],
+        "productCategory": "electronics",
+        "workflowStep": "DRAFT",
+        "sessionId": "session_abc_789",
+        "timestamp": "2025-01-15T15:45:22Z"
+      },
+      "executionOptions": {
+        "includeEnhancements": true,
+        "includeWarnings": true,
+        "applyAutoCorrections": true,
+        "validateOnly": false
+      }
+    }
+  },
+  "businessRulesExecutionResponse": {
+    "executionResponse": {
+      "requestId": "req_abc_1642167890123",
+      "organizationId": "company_abc_12345",
+      "success": true,
+      "executionTimeMs": 245,
+      "rulesApplied": ["NAME_NORMALIZATION_ABC", "PRICE_VALIDATION_ABC", "SKU_GENERATION_ABC"],
+      "ruleExecutionResult": {
+        "enhancedData": {
+          "name": "iPhone 15 Pro Max 256GB",
+          "sku": "ABC-ELEC-APL-X8Y9Z2",
+          "price": 1199.99,
+          "seoTitle": "iPhone 15 Pro Max 256GB | Apple | ABC Electronics",
+          "metaDescription": "Shop iPhone 15 Pro Max 256GB from Apple at ABC Electronics. Latest iPhone with advanced camera system Free shipping on orders over $50.",
+          "urlSlug": "iphone-15-pro-max-256gb-apple-abc"
+        },
+        "violations": [],
+        "warnings": [
+          {
+            "ruleId": "PRICE_VALIDATION_ABC",
+            "fieldName": "price",
+            "severity": "WARNING",
+            "message": "Price is 15% above market average for this category",
+            "suggestedAction": "Consider competitive pricing analysis",
+            "organizationSpecific": {
+              "profitMargin": 42,
+              "competitorPricing": {
+                "averagePrice": 1049.99,
+                "priceRange": {"min": 999.99, "max": 1299.99}
+              }
+            }
+          }
+        ],
+        "suggestions": [
+          {
+            "ruleId": "SEO_ENHANCEMENT_ABC",
+            "fieldName": "description",
+            "message": "Add product features to improve SEO ranking",
+            "suggestedContent": "Professional-grade camera system, A17 Pro chip, titanium design, Action Button, USB-C connectivity",
+            "estimatedImpact": "18% improvement in search visibility"
+          }
+        ],
+        "fieldRecommendations": {
+          "warranty": {
+            "suggested": true,
+            "reason": "Required for electronics category on Amazon",
+            "defaultValue": "1 year manufacturer warranty",
+            "organizationDefault": "ABC Electronics 2-year extended warranty available"
+          }
+        },
+        "channelCompatibility": {
+          "shopify": {
+            "compatible": true,
+            "score": 98,
+            "optimizations": ["SEO metadata applied", "URL slug generated"]
+          },
+          "amazon": {
+            "compatible": true,
+            "score": 85,
+            "warnings": ["Consider adding warranty information"]
+          }
+        },
+        "organizationMetrics": {
+          "dataQualityScore": 92,
+          "completionPercentage": 87,
+          "estimatedPublishReadiness": "HIGH",
+          "businessRuleCompliance": 100
+        }
+      }
+    }
+  },
+  "formSchemaEnhancementResponse": {
+    "enhancedFormSchema": {
+      "organizationId": "company_abc_12345",
+      "schemaVersion": "2.1.0",
+      "generatedAt": "2025-01-15T15:45:22Z",
+      "context": {
+        "userRole": "BUSINESS_USER",
+        "targetChannels": ["shopify", "amazon", "walmart"],
+        "productCategory": "electronics"
+      },
+      "fields": [
+        {
+          "fieldName": "name",
+          "fieldType": "text",
+          "required": true,
+          "maxLength": 255,
+          "businessRules": {
+            "preProcessing": ["NAME_NORMALIZATION_ABC"],
+            "validation": ["REQUIRED_FIELDS_VALIDATION_ABC"],
+            "enhancement": ["SEO_ENHANCEMENT_ABC"]
+          },
+          "smartDefaults": {
+            "enabled": true,
+            "rules": ["CATEGORY_ENHANCEMENT_ABC"],
+            "organizationDefaults": {
+              "brandPrefix": "ABC-",
+              "qualityIndicators": ["Premium", "Professional", "Enterprise"]
+            }
+          },
+          "realTimeValidation": {
+            "enabled": true,
+            "debounceMs": 500,
+            "rules": ["NAME_NORMALIZATION_ABC"],
+            "validationEndpoint": "/api/v1/ecommerce/organizations/company_abc_12345/business-rules/validate-field"
+          },
+          "suggestions": {
+            "enabled": true,
+            "triggerRules": ["SEO_ENHANCEMENT_ABC"],
+            "organizationSuggestions": {
+              "namePatterns": ["${brand} ${model} ${variant}", "${product} by ${brand}"],
+              "popularKeywords": ["Pro", "Max", "Advanced", "Premium"]
+            }
+          }
+        },
+        {
+          "fieldName": "sku",
+          "fieldType": "text",
+          "required": false,
+          "businessRules": {
+            "preProcessing": ["SKU_GENERATION_ABC"],
+            "validation": ["SKU_UNIQUENESS_VALIDATION_ABC"]
+          },
+          "autoGeneration": {
+            "enabled": true,
+            "rule": "SKU_GENERATION_ABC",
+            "pattern": "ABC-${categoryCode}-${brandCode}-${hash}",
+            "preview": "ABC-ELEC-APL-X8Y9Z2"
+          }
+        }
+      ],
+      "businessRulesMetadata": {
+        "organizationId": "company_abc_12345",
+        "totalRules": 12,
+        "enabledRules": 10,
+        "organizationSpecificRules": 8,
+        "inheritedPlatformRules": 2
+      }
+    }
+  },
+  "fashionOrganizationExample": {
+    "executionRequest": {
+      "requestId": "req_xyz_1642167891234",
+      "organizationId": "company_xyz_67890",
+      "userId": "user_xyz_789",
+      "userRole": "BUSINESS_MANAGER",
+      "ruleType": "PRE_PROCESSING",
+      "fieldName": "name",
+      "formData": {
+        "name": "summer dress casual",
+        "category": "clothing",
+        "price": 89.99,
+        "material": "cotton blend",
+        "size": "M",
+        "targetChannels": ["shopify", "instagram"]
+      },
+      "context": {
+        "platformTenantId": "labamap_tenant_xyz",
+        "targetChannels": ["shopify", "instagram"],
+        "productCategory": "clothing",
+        "workflowStep": "DRAFT"
+      }
+    },
+    "executionResponse": {
+      "requestId": "req_xyz_1642167891234",
+      "organizationId": "company_xyz_67890",
+      "success": true,
+      "executionTimeMs": 180,
+      "rulesApplied": ["NAME_NORMALIZATION_XYZ", "SIZE_STANDARDIZATION_XYZ"],
+      "ruleExecutionResult": {
+        "enhancedData": {
+          "name": "Summer Dress Casual - Size M by XYZ Fashion",
+          "sizeChart": {
+            "M": {"chest": "36-38", "waist": "30-32", "length": "36"}
+          },
+          "careInstructions": "Machine wash cold, tumble dry low, do not bleach",
+          "sustainabilityInfo": "Made with organic cotton blend"
+        },
+        "violations": [],
+        "warnings": [],
+        "suggestions": [
+          {
+            "ruleId": "FASHION_SEO_ENHANCEMENT_XYZ",
+            "fieldName": "description",
+            "message": "Add seasonal and occasion keywords",
+            "suggestedContent": "Perfect for summer outings, beach vacations, and casual weekend wear"
+          }
+        ]
+      }
+    }
+  },
+  "automotiveOrganizationExample": {
+    "executionRequest": {
+      "requestId": "req_demo_1642167892345",
+      "organizationId": "company_demo_54321",
+      "userId": "user_demo_123",
+      "userRole": "BUSINESS_USER",
+      "ruleType": "BUSINESS_LOGIC",
+      "fieldName": "vehicle_compatibility",
+      "formData": {
+        "name": "Brake Pads Set",
+        "category": "brakes",
+        "price": 85.50,
+        "vehicle_compatibility": {
+          "year": 2018,
+          "make": "Toyota",
+          "model": "Camry",
+          "engine": "2.5L"
+        },
+        "targetChannels": ["amazon", "ebay"]
+      },
+      "context": {
+        "platformTenantId": "labamap_tenant_demo",
+        "targetChannels": ["amazon", "ebay"],
+        "productCategory": "brakes",
+        "workflowStep": "DRAFT"
+      }
+    },
+    "executionResponse": {
+      "requestId": "req_demo_1642167892345", 
+      "organizationId": "company_demo_54321",
+      "success": true,
+      "executionTimeMs": 320,
+      "rulesApplied": ["VEHICLE_COMPATIBILITY_DEMO", "PRICE_VALIDATION_DEMO"],
+      "ruleExecutionResult": {
+        "enhancedData": {
+          "partNumber": "DEMO-BRK-2018-TOY-PAD-001",
+          "compatibilityVerified": true,
+          "warrantyPeriod": "1 year",
+          "installationDifficulty": "Moderate"
+        },
+        "violations": [],
+        "warnings": [
+          {
+            "ruleId": "PRICE_VALIDATION_DEMO",
+            "fieldName": "price",
+            "severity": "WARNING",
+            "message": "Price is competitive but consider bulk discount opportunities",
+            "suggestedAction": "Review pricing for quantity breaks"
+          }
+        ],
+        "channelCompatibility": {
+          "amazon": {
+            "compatible": true,
+            "score": 90,
+            "requirements": {
+              "upc": "required",
+              "vehicleCompatibility": "verified"
+            }
+          },
+          "ebay": {
+            "compatible": true,
+            "score": 95,
+            "optimizations": ["Fitment data complete", "Price competitive"]
+          }
+        }
+      }
+    }
+  }
+}

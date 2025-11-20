@@ -24,40 +24,90 @@ interface VariantConfiguratorDynamicProps {
   value?: string;
   onChange: (value: string) => void;
   schema?: any;
+  formData?: any; // Current form data to evaluate conditional visibility
 }
 
 const VariantConfiguratorDynamic: React.FC<VariantConfiguratorDynamicProps> = ({ 
   value, 
   onChange, 
-  schema 
+  schema,
+  formData = {}
 }) => {
+  // Helper function to evaluate conditional visibility
+  const isFieldVisible = (field: any, currentFormData: any): boolean => {
+    if (!field.conditionalVisibility) {
+      return true;
+    }
+
+    const { showWhen } = field.conditionalVisibility;
+    
+    if (showWhen) {
+      try {
+        // Replace variables in the expression with actual values from formData
+        let expression = showWhen;
+        Object.keys(currentFormData).forEach(key => {
+          const value = currentFormData[key];
+          const valueStr = typeof value === 'string' ? `'${value}'` : value;
+          expression = expression.replace(new RegExp(`\\b${key}\\b`, 'g'), valueStr);
+        });
+        
+        // Evaluate the expression
+        return new Function(`return ${expression}`)();
+      } catch (error) {
+        console.warn(`[VariantConfiguratorDynamic] Failed to evaluate conditional visibility for field ${field.fieldName || field.name}:`, error);
+        return true; // Default to visible if evaluation fails
+      }
+    }
+    
+    return true;
+  };
+
   // 🚀 AUTOMATICALLY DETECT ALL VARIANT DIMENSIONS FROM BACKEND SCHEMA
   const { variantDimensions, variantConfig } = useMemo(() => {
-    if (!schema?.fields) return { variantDimensions: [], variantConfig: [] };
+    console.log('🔥🔥🔥 [VariantConfiguratorDynamic] Detecting variant dimensions from schema');
+    console.log('🔥 [VariantConfiguratorDynamic] Schema:', schema);
+    console.log('🔥 [VariantConfiguratorDynamic] Schema fields:', schema?.fields);
+    console.log('🔥 [VariantConfiguratorDynamic] Current formData for visibility check:', formData);
+    
+    if (!schema?.fields) {
+      console.log('🔥 [VariantConfiguratorDynamic] ❌ No schema or fields available');
+      return { variantDimensions: [], variantConfig: [] };
+    }
     
     // Find all fields that could be variant dimensions
     const dimensionFields = schema.fields.filter((field: any) => {
-      // Check if field has selectable options
-      const hasOptions = field.fieldType === 'SELECT' && 
+      const fieldName = field.fieldName || field.name || '';
+      console.log(`🔥 [VariantConfiguratorDynamic] Checking field "${fieldName}":`, {
+        fieldType: field.fieldType,
+        hasOptions: !!field.options,
+        optionsLength: field.options?.length,
+        options: field.options
+      });
+      
+      // Check if field has selectable options (support both uppercase and lowercase)
+      const hasOptions = (field.fieldType === 'SELECT' || field.fieldType === 'select') && 
                         field.options && 
                         Array.isArray(field.options) &&
                         field.options.length > 0;
       
-      if (!hasOptions) return false;
+      if (!hasOptions) {
+        console.log(`🔥 [VariantConfiguratorDynamic] Field "${fieldName}" rejected: no valid options`);
+        return false;
+      }
       
       // Auto-detect common variant dimension patterns
-      const fieldName = field.fieldName.toLowerCase();
+      const fieldNameLower = fieldName.toLowerCase();
       const isCommonVariantField = 
-        fieldName.includes('color') ||
-        fieldName.includes('size') ||
-        fieldName.includes('material') ||
-        fieldName.includes('style') ||
-        fieldName.includes('pattern') ||
-        fieldName.includes('finish') ||
-        fieldName.includes('texture') ||
-        fieldName.includes('fabric') ||
-        fieldName.includes('type') ||
-        fieldName.includes('variant');
+        fieldNameLower.includes('color') ||
+        fieldNameLower.includes('size') ||
+        fieldNameLower.includes('material') ||
+        fieldNameLower.includes('style') ||
+        fieldNameLower.includes('pattern') ||
+        fieldNameLower.includes('finish') ||
+        fieldNameLower.includes('texture') ||
+        fieldNameLower.includes('fabric') ||
+        fieldNameLower.includes('type') ||
+        fieldNameLower.includes('variant');
       
       // Or explicitly marked as variant dimension in backend
       const isExplicitVariantDimension = 
@@ -65,11 +115,25 @@ const VariantConfiguratorDynamic: React.FC<VariantConfiguratorDynamicProps> = ({
         field.businessContext?.variantDimension ||
         field.metadata?.variantDimension;
       
-      return isCommonVariantField || isExplicitVariantDimension;
+      // Must be a variant field AND visible according to conditional logic
+      const isVariantField = isCommonVariantField || isExplicitVariantDimension;
+      const isVisible = isFieldVisible(field, formData);
+      
+      console.log(`🔥 [VariantConfiguratorDynamic] Field "${fieldName}" analysis:`, {
+        isCommonVariantField,
+        isExplicitVariantDimension,
+        isVariantField,
+        isVisible,
+        conditionalVisibility: field.conditionalVisibility,
+        currentCategory: formData.category,
+        finalDecision: isVariantField && isVisible
+      });
+      
+      return isVariantField && isVisible;
     });
     
     const dimensions: VariantDimension[] = dimensionFields.map((field: any) => ({
-      name: field.fieldName,
+      name: field.fieldName || field.name,
       label: field.label,
       options: field.options.map((opt: any) => 
         typeof opt === 'string' ? opt : opt.value || opt.label || opt
@@ -78,7 +142,9 @@ const VariantConfiguratorDynamic: React.FC<VariantConfiguratorDynamicProps> = ({
     
     // Get variant table configuration
     const getVariantFields = () => {
-      const variantField = schema.fields.find((f: any) => f.fieldName === 'variantConfigurator');
+      const variantField = schema.fields.find((f: any) => 
+        (f.fieldName === 'variantConfigurator' || f.name === 'variantConfigurator')
+      );
       
       if (variantField?.validationRules?.variantFields) {
         return variantField.validationRules.variantFields;
@@ -105,7 +171,7 @@ const VariantConfiguratorDynamic: React.FC<VariantConfiguratorDynamicProps> = ({
       variantDimensions: dimensions,
       variantConfig: getVariantFields()
     };
-  }, [schema]);
+  }, [schema, formData]);
 
   // 🚀 DYNAMIC STATE FOR ALL DIMENSIONS - NO HARDCODED FIELDS
   const initialSelections = useMemo(() => {
@@ -132,14 +198,69 @@ const VariantConfiguratorDynamic: React.FC<VariantConfiguratorDynamicProps> = ({
     if (!value) return [];
     try {
       const parsed = JSON.parse(value);
+      console.log('🔥 [VariantConfiguratorDynamic] Loading initial variants from value:', parsed.variants);
       return parsed.variants || [];
     } catch {
+      console.log('🔥 [VariantConfiguratorDynamic] Failed to parse value, using empty variants');
       return [];
     }
   }, [value]);
 
-  const [selectedOptions, setSelectedOptions] = useState<Record<string, string[]>>(initialSelections);
-  const [variants, setVariants] = useState<VariantOption[]>(initialVariants);
+  // CRITICAL: Always initialize with empty selections and track category separately  
+  const [selectedOptions, setSelectedOptions] = useState<Record<string, string[]>>({});
+  const [variants, setVariants] = useState<VariantOption[]>([]);
+  const [lastCategory, setLastCategory] = useState<string | undefined>(formData?.category);
+
+  // FORCE RESET: Reset selections only when category actually changes (not when other fields change)
+  React.useEffect(() => {
+    const currentCategory = formData?.category;
+    const categoryChanged = currentCategory !== lastCategory;
+    
+    console.log('🔄 [VariantConfiguratorDynamic] Checking for reset conditions:');
+    console.log('  - Current category:', currentCategory);
+    console.log('  - Last category:', lastCategory);
+    console.log('  - Category changed:', categoryChanged);
+    console.log('  - Available dimensions:', variantDimensions.length);
+    
+    // CRITICAL FIX: Only reset when category actually changes, not when other fields change
+    if (categoryChanged && variantDimensions.length > 0) {
+      console.log('🔄 [VariantConfiguratorDynamic] 🚮 FORCING RESET of all selections and variants');
+      
+      // Force reset all selections to empty
+      const resetSelections: Record<string, string[]> = {};
+      variantDimensions.forEach(dim => {
+        resetSelections[dim.name] = [];
+      });
+      
+      setSelectedOptions(resetSelections);
+      setVariants([]);
+      setLastCategory(currentCategory);
+      
+      console.log('🔄 [VariantConfiguratorDynamic] ✅ Reset complete - all checkboxes should be unchecked');
+      console.log('🔄 [VariantConfiguratorDynamic] ✅ Reset selections:', resetSelections);
+    }
+  }, [formData?.category, variantDimensions, lastCategory]);
+
+  // CRITICAL FIX: Sync variants state when value prop changes (component re-mount)
+  React.useEffect(() => {
+    if (value) {
+      try {
+        const parsed = JSON.parse(value);
+        if (parsed.variants && Array.isArray(parsed.variants) && parsed.variants.length > 0) {
+          console.log('🔥 [VariantConfiguratorDynamic] ✅ Restoring variants from parent:', parsed.variants.length, 'variants');
+          setVariants(parsed.variants);
+          
+          // Also restore selections
+          if (parsed.options) {
+            console.log('🔥 [VariantConfiguratorDynamic] ✅ Restoring selections from parent:', parsed.options);
+            setSelectedOptions(parsed.options);
+          }
+        }
+      } catch (error) {
+        console.log('🔥 [VariantConfiguratorDynamic] Failed to restore variants from parent value');
+      }
+    }
+  }, [value]);
 
   // 🚀 COMPLETELY DYNAMIC PARENT UPDATE - NO HARDCODED FIELDS
   const updateParent = (newVariants: VariantOption[], selections: Record<string, string[]>) => {
@@ -176,17 +297,31 @@ const VariantConfiguratorDynamic: React.FC<VariantConfiguratorDynamicProps> = ({
 
   // 🚀 COMPLETELY DYNAMIC CARTESIAN PRODUCT GENERATION
   const generateVariants = () => {
-    console.log('[VariantConfiguratorDynamic] Generating variants with selections:', selectedOptions);
+    console.log('🔥🔥🔥 [VariantConfiguratorDynamic] Generate Variants button clicked!');
+    console.log('🔥 [VariantConfiguratorDynamic] Current variantDimensions:', variantDimensions);
+    console.log('🔥 [VariantConfiguratorDynamic] Current selectedOptions:', selectedOptions);
+    console.log('🔥 [VariantConfiguratorDynamic] Current variants state:', variants);
+    console.log('🔥 [VariantConfiguratorDynamic] Current formData received:', formData);
     
     // Get all dimension values that have selections
     const activeDimensions = variantDimensions.filter(dim => 
       selectedOptions[dim.name] && selectedOptions[dim.name].length > 0
     );
     
+    console.log('🔥 [VariantConfiguratorDynamic] Active dimensions after filtering:', activeDimensions);
+    console.log('🔥 [VariantConfiguratorDynamic] Detailed dimension analysis:');
+    variantDimensions.forEach(dim => {
+      console.log(`  - ${dim.name}: has ${selectedOptions[dim.name]?.length || 0} selected options:`, selectedOptions[dim.name]);
+    });
+    
     if (activeDimensions.length === 0) {
-      console.log('[VariantConfiguratorDynamic] No dimensions selected');
+      console.log('🔥 [VariantConfiguratorDynamic] ❌ No dimensions selected - cannot generate variants');
+      console.log('🔥 [VariantConfiguratorDynamic] Available dimensions:', variantDimensions.map(d => d.name));
+      console.log('🔥 [VariantConfiguratorDynamic] Selection state:', selectedOptions);
       return;
     }
+    
+    console.log('🔥 [VariantConfiguratorDynamic] ✅ Proceeding with variant generation for', activeDimensions.length, 'dimensions');
     
     // 🔥 RECURSIVE CARTESIAN PRODUCT - WORKS FOR ANY NUMBER OF DIMENSIONS
     const generateCombinations = (dimensions: VariantDimension[], currentCombination: Record<string, string> = {}): Record<string, string>[] => {
@@ -245,8 +380,17 @@ const VariantConfiguratorDynamic: React.FC<VariantConfiguratorDynamicProps> = ({
     });
     
     console.log('[VariantConfiguratorDynamic] Created variants:', newVariants);
+    
+    // NUCLEAR OPTION: Don't call updateParent at all for manual generation
+    // This completely isolates the component from parent state issues
+    console.log('🔥 [VariantConfiguratorDynamic] 🚫 SKIPPING parent update to prevent component destruction');
+    console.log('🔥 [VariantConfiguratorDynamic] ✅ Setting variants ONLY in local state');
+    
     setVariants(newVariants);
-    updateParent(newVariants, selectedOptions);
+    console.log('🔥 [VariantConfiguratorDynamic] ✅ VARIANTS SET - TABLE SHOULD RENDER NOW');
+    
+    // Don't call updateParent() at all for manual generation
+    // The parent will get the data when the form is submitted
   };
 
   // 🚀 DYNAMIC VARIANT UPDATE
@@ -314,6 +458,7 @@ const VariantConfiguratorDynamic: React.FC<VariantConfiguratorDynamicProps> = ({
           </div>
         )}
       </div>
+
 
       {/* 🚀 DYNAMIC VARIANTS TABLE */}
       {variants.length > 0 && (

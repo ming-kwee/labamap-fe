@@ -60,6 +60,8 @@ export interface FormFieldValidationRules {
   enum?: string[];
   maxItems?: number; // For array fields like images
   customValidators?: string[];
+  isVariantDimension?: boolean; // Marks field as variant dimension
+  variantFields?: string[]; // For variant configurator fields
 }
 
 // Conditional Visibility
@@ -82,11 +84,13 @@ export interface FieldBusinessContext {
   categorySpecific?: boolean;
   channelSpecific?: boolean;
   version: number;
+  variantDimension?: boolean; // Marks field as variant dimension
 }
 
 // Form Field Definition
 export interface FormField {
   fieldName: string;
+  name?: string; // Backend compatibility - fields can have either fieldName or name
   fieldType: FormFieldType;
   label: string;
   description?: string;

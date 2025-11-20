@@ -1,0 +1,172 @@
+{
+  "organizationId": "company_demo_54321",
+  "organizationName": "Demo Auto Parts",
+  "platformTenantId": "labamap_tenant_demo",
+  "businessDomain": "automotive",
+  "subscriptionTier": "BASIC",
+  "businessRulesConfig": {
+    "version": "1.0.0",
+    "lastUpdated": "2025-01-08T16:45:00Z",
+    "updatedBy": "admin_user_111",
+    "globalSettings": {
+      "businessRulesEnabled": true,
+      "autoApplyPreProcessing": false,
+      "blockOnViolations": true,
+      "enableRealTimeValidation": false,
+      "executionTimeout": 2000
+    },
+    "ruleCategories": {
+      "PRE_PROCESSING": {
+        "enabled": true,
+        "autoApply": false,
+        "rules": [
+          {
+            "ruleId": "PART_NUMBER_NORMALIZATION_DEMO",
+            "ruleName": "Demo Auto Part Number Standards",
+            "priority": 95,
+            "enabled": true,
+            "applicableFields": ["sku", "part_number", "oem_number"],
+            "applicableCategories": ["engine", "transmission", "brakes", "electrical"],
+            "supportedChannels": ["*"],
+            "configuration": {
+              "partNumberFormat": "DEMO-${categoryCode}-${year}-${make}-${partType}-${sequence}",
+              "categoryMapping": {
+                "engine": "ENG",
+                "transmission": "TRN",
+                "brakes": "BRK",
+                "electrical": "ELC",
+                "suspension": "SUS",
+                "exhaust": "EXH"
+              },
+              "makeAbbreviations": {
+                "Toyota": "TOY",
+                "Honda": "HON",
+                "Ford": "FOR",
+                "Chevrolet": "CHV",
+                "BMW": "BMW",
+                "Mercedes-Benz": "MBZ"
+              },
+              "organizationSpecific": {
+                "requiresOEMCompatibility": true,
+                "partNumberValidation": true
+              }
+            }
+          }
+        ]
+      },
+      "BUSINESS_LOGIC": {
+        "enabled": true,
+        "blockOnViolation": true,
+        "rules": [
+          {
+            "ruleId": "VEHICLE_COMPATIBILITY_DEMO",
+            "ruleName": "Demo Vehicle Compatibility Validation",
+            "priority": 200,
+            "enabled": true,
+            "applicableFields": ["vehicle_compatibility", "year_range", "make", "model"],
+            "applicableCategories": ["*"],
+            "supportedChannels": ["*"],
+            "configuration": {
+              "yearRange": {
+                "minYear": 1990,
+                "maxYear": 2025,
+                "futureYearBuffer": 2
+              },
+              "requiredCompatibilityFields": ["year", "make", "model", "engine_size"],
+              "compatibilityValidation": {
+                "crossReference": true,
+                "oemVerification": true,
+                "engineTypeMatching": true
+              },
+              "organizationSpecific": {
+                "specialtyBrands": ["Subaru", "Mitsubishi"],
+                "focusCategories": ["performance", "racing"],
+                "certificationRequired": ["ISO 9001", "TS 16949"]
+              }
+            }
+          },
+          {
+            "ruleId": "PRICE_VALIDATION_DEMO",
+            "ruleName": "Demo Auto Parts Price Validation",
+            "priority": 180,
+            "enabled": true,
+            "applicableFields": ["price", "core_charge", "shipping_cost"],
+            "applicableCategories": ["*"],
+            "supportedChannels": ["amazon", "ebay", "rockauto"],
+            "configuration": {
+              "categoryLimits": {
+                "engine": {
+                  "minPrice": 50.0,
+                  "maxPrice": 15000.0,
+                  "currency": "USD"
+                },
+                "brakes": {
+                  "minPrice": 15.0,
+                  "maxPrice": 1500.0,
+                  "currency": "USD"
+                },
+                "electrical": {
+                  "minPrice": 5.0,
+                  "maxPrice": 800.0,
+                  "currency": "USD"
+                }
+              },
+              "channelRules": {
+                "amazon": {
+                  "minPrice": 10.0,
+                  "requiresUPC": true,
+                  "competitiveThreshold": 0.15
+                },
+                "ebay": {
+                  "minPrice": 5.0,
+                  "allowsUsedParts": true,
+                  "requiresConditionGrade": true
+                },
+                "rockauto": {
+                  "minPrice": 8.0,
+                  "requiresOEMNumber": true,
+                  "bulkDiscountEnabled": true
+                }
+              },
+              "organizationSpecific": {
+                "coreChargeRequired": ["engine", "transmission", "alternator"],
+                "warrantyPeriods": {
+                  "new": "2 years",
+                  "remanufactured": "1 year",
+                  "used": "30 days"
+                }
+              }
+            }
+          }
+        ]
+      },
+      "DATA_ENHANCEMENT": {
+        "enabled": false,
+        "autoApply": false,
+        "rules": [
+          {
+            "ruleId": "FITMENT_ENHANCEMENT_DEMO",
+            "ruleName": "Demo Fitment Data Enhancement",
+            "priority": 250,
+            "enabled": false,
+            "applicableFields": ["fitment_data", "installation_notes"],
+            "applicableCategories": ["*"],
+            "supportedChannels": ["*"],
+            "configuration": {
+              "autoGenerateFitment": false,
+              "installationDifficulty": {
+                "scale": ["Easy", "Moderate", "Difficult", "Professional"],
+                "timeEstimates": true,
+                "toolRequirements": true
+              },
+              "organizationSpecific": {
+                "basicTier": true,
+                "limitedEnhancements": true
+              }
+            }
+          }
+        ]
+      }
+    }
+  }
+}
