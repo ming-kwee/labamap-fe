@@ -14,7 +14,6 @@ import {
   Send,
   Eye
 } from '@/components/ui/icons/Icons';
-import MasterProductCreationForm from '@/components/products/MasterProductCreationForm';
 import ProductCreationPageWrapper from '@/components/products/ProductCreationPageWrapper';
 import ChannelSelectionInterface from '@/components/products/ChannelSelectionInterface';
 import ChannelPayloadReview from '@/components/products/ChannelPayloadReview';
@@ -31,12 +30,9 @@ interface WorkflowState {
   publishResults: PublishResult[];
 }
 
-type FormType = 'master' | 'dynamic';
-
 export default function CreateProductPage() {
   const router = useRouter();
   const [currentStep, setCurrentStep] = useState<WorkflowStep>('product');
-  const [formType, setFormType] = useState<FormType>('dynamic'); // Default to dynamic form for testing variants
   const [workflowState, setWorkflowState] = useState<WorkflowState>({
     masterProduct: null,
     availableChannels: [],
@@ -134,12 +130,8 @@ export default function CreateProductPage() {
   const renderStepContent = () => {
     switch (currentStep) {
       case 'product':
-        return formType === 'master' ? (
-          <MasterProductCreationForm 
-            onProductCreated={handleProductCreated}
-          />
-        ) : (
-          <ProductCreationPageWrapper 
+        return (
+          <ProductCreationPageWrapper
             onProductCreated={handleProductCreated}
             debugMode={stableDebugMode}
           />
@@ -203,68 +195,15 @@ export default function CreateProductPage() {
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-3xl font-bold">Create New Product</h1>
-            <p className="text-gray-600">Complete omnichannel product creation workflow</p>
+            <p className="text-gray-600">Complete omnichannel product creation workflow with backend-driven validation</p>
           </div>
-          <div className="flex items-center space-x-4">
-            {/* Form Type Selector */}
-            {currentStep === 'product' && (
-              <div className="flex items-center space-x-2 bg-gray-100 rounded-lg p-1">
-                <button
-                  onClick={() => setFormType('master')}
-                  className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${
-                    formType === 'master'
-                      ? 'bg-white text-gray-900 shadow-sm'
-                      : 'text-gray-600 hover:text-gray-900'
-                  }`}
-                >
-                  Master Form
-                </button>
-                <button
-                  onClick={() => setFormType('dynamic')}
-                  className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${
-                    formType === 'dynamic'
-                      ? 'bg-white text-gray-900 shadow-sm'
-                      : 'text-gray-600 hover:text-gray-900'
-                  }`}
-                >
-                  Dynamic Form
-                </button>
-              </div>
-            )}
-            <Button 
-              variant="outline" 
-              onClick={() => router.push('/products')}
-            >
-              Back to Products
-            </Button>
-          </div>
+          <Button
+            variant="outline"
+            onClick={() => router.push('/products')}
+          >
+            Back to Products
+          </Button>
         </div>
-
-        {/* Form Type Description */}
-        {currentStep === 'product' && (
-          <Card className="bg-blue-50 border-blue-200">
-            <CardContent className="p-4">
-              <div className="flex items-start space-x-3">
-                <div className="w-2 h-2 bg-blue-500 rounded-full mt-2"></div>
-                <div>
-                  <p className="text-sm text-blue-900">
-                    {formType === 'master' ? (
-                      <>
-                        <strong>Master Form:</strong> Traditional form with predefined fields and sections.
-                        Uses static form components with fixed layout and business logic.
-                      </>
-                    ) : (
-                      <>
-                        <strong>Dynamic Form:</strong> Streamlined ecommerce-focused form for multi-channel sync to 
-                        Shopify, Amazon, Walmart, eBay, and other major ecommerce platforms. Optimized for fast product creation.
-                      </>
-                    )}
-                  </p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        )}
 
         {/* Progress Bar */}
         <Card>

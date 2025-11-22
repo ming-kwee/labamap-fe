@@ -1,10 +1,13 @@
 /**
  * Business Rules Hook
- * Provides integration with the business rules engine for product forms
+ * Provides integration with the backend business rules engine for product forms
  */
 
 import { useState, useCallback } from 'react';
 import { RuleResult, RuleViolation, RuleWarning, RuleType, ProductInput, ProductOutput } from '@/types/rules';
+import { BackendAPIService } from '@/lib/api/backendService';
+import { useAuth } from '@/context/AuthContext';
+import { useOrganization } from '@/context/OrganizationContext';
 
 interface UseBusinessRulesReturn {
   isExecuting: boolean;
@@ -19,43 +22,54 @@ interface UseBusinessRulesReturn {
 }
 
 export function useBusinessRules(): UseBusinessRulesReturn {
+  const { user, organization } = useAuth();
+  const { getAssignedChannels } = useOrganization();
+
   const [isExecuting, setIsExecuting] = useState(false);
   const [violations, setViolations] = useState<RuleViolation[]>([]);
   const [warnings, setWarnings] = useState<RuleWarning[]>([]);
 
   const executeRules = useCallback(async (
-    productData: ProductInput, 
+    productData: ProductInput,
     ruleType?: RuleType
   ): Promise<RuleResult<ProductOutput>> => {
     setIsExecuting(true);
-    
+
     try {
-      const response = await fetch('/api/v1/rules/execute', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
+      // Use backend API service instead of local routes
+      const ruleExecutionRequest = {
+        ruleType: ruleType || 'VALIDATION',
+        productData,
+        context: {
+          userId: user?.userId || 'anonymous',
+          organizationId: organization?.organizationId || '',
+          userRole: user?.role || 'BUSINESS_USER',
+          targetChannels: getAssignedChannels() || [productData.channel].filter(Boolean),
+          productCategory: productData.category,
+          permissions: [],
         },
-        body: JSON.stringify({
-          productData,
-          ruleType,
-          context: {
-            userId: 'current-user', // This would come from auth context
-            channel: productData.channel,
-            category: productData.category
-          }
-        }),
-      });
+        fieldName: 'all',
+        formData: productData
+      };
 
-      if (!response.ok) {
-        throw new Error(`Rules execution failed: ${response.statusText}`);
-      }
+      const result = await BackendAPIService.executeBusinessRules(
+        organization?.organizationId || '',
+        ruleExecutionRequest
+      );
 
-      const result: RuleResult<ProductOutput> = await response.json();
-      
-      setViolations(result.violations || []);
-      setWarnings(result.warnings || []);
-      
-      return result;
+      // Map backend response to expected format
+      const ruleResult: RuleResult<ProductOutput> = {
+        success: result.success || result.ruleExecutionResult?.success || false,
+        data: result.ruleExecutionResult?.enhancedData || productData,
+        violations: result.ruleExecutionResult?.violations || result.violations || [],
+        warnings: result.ruleExecutionResult?.warnings || result.warnings || [],
+        metadata: result.ruleExecutionResult?.metadata || {}
+      };
+
+      setViolations(ruleResult.violations);
+      setWarnings(ruleResult.warnings);
+
+      return ruleResult;
       
     } catch (error) {
       console.error('Failed to execute rules:', error);
@@ -76,47 +90,28 @@ export function useBusinessRules(): UseBusinessRulesReturn {
       setWarnings([]);
       
       return errorResult;
-      
+
     } finally {
       setIsExecuting(false);
     }
-  }, []);
+  }, [user, organization, getAssignedChannels]);
 
   const validateRules = useCallback(async (
     productData: ProductInput
   ): Promise<RuleResult<boolean>> => {
     setIsExecuting(true);
-    
+
     try {
-      const response = await fetch('/api/v1/rules/validate', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          productData,
-          context: {
-            userId: 'current-user',
-            channel: productData.channel,
-            category: productData.category
-          }
-        }),
-      });
+      // Use executeRules with VALIDATION type instead of separate endpoint
+      const ruleResult = await executeRules(productData, 'VALIDATION');
 
-      if (!response.ok) {
-        throw new Error(`Rules validation failed: ${response.statusText}`);
-      }
+      const isValid = ruleResult.success && !ruleResult.violations.some(v => v.severity === 'error');
 
-      const result = await response.json();
-      
-      setViolations(result.violations || []);
-      setWarnings(result.warnings || []);
-      
       return {
-        success: result.valid,
-        data: result.valid,
-        violations: result.violations || [],
-        warnings: result.warnings || []
+        success: isValid,
+        data: isValid,
+        violations: ruleResult.violations,
+        warnings: ruleResult.warnings
       };
       
     } catch (error) {
@@ -139,11 +134,11 @@ export function useBusinessRules(): UseBusinessRulesReturn {
       setWarnings([]);
       
       return errorResult;
-      
+
     } finally {
       setIsExecuting(false);
     }
-  }, []);
+  }, [executeRules]);
 
   const clearViolations = useCallback(() => {
     setViolations([]);

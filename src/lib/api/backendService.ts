@@ -173,11 +173,41 @@ export class BackendAPIService {
         'Content-Type': 'application/json',
       },
     });
-    
+
     if (!response.ok) {
       throw new Error(`Failed to generate form schema: ${response.statusText}`);
     }
-    
+
+    return response.json();
+  }
+
+  // POST /api/v1/ecommerce/form-schema/refresh
+  static async refreshFormSchema(context: BackendContext): Promise<DynamicFormSchema> {
+    const response = await fetch(`${BACKEND_BASE_URL}/form-schema/refresh`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        context: {
+          ...context,
+          requestId: context.requestId || `refresh_${Date.now()}`,
+          timestamp: context.timestamp || Date.now(),
+          environment: context.environment || 'development',
+          metadata: {
+            targetChannels: context.targetChannels,
+            apiVersion: 'v1',
+            refreshReason: 'category_change',
+            ...context.metadata
+          }
+        }
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to refresh form schema: ${response.statusText}`);
+    }
+
     return response.json();
   }
 
@@ -261,6 +291,40 @@ export class BackendAPIService {
       throw new Error(`Failed to validate product: ${response.statusText}`);
     }
     
+    return response.json();
+  }
+
+  // POST /api/v1/products/enhanced/validate
+  static async validateProductEnhanced(
+    productData: DynamicFormData,
+    context: BackendContext
+  ): Promise<import('@/types/dynamicForm').EnhancedValidationResult> {
+    const response = await fetch(`${BACKEND_BASE_URL}/products/enhanced/validate`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        productData,
+        context: {
+          ...context,
+          requestId: context.requestId || `validate_${Date.now()}`,
+          timestamp: context.timestamp || Date.now(),
+          environment: context.environment || 'development',
+          metadata: {
+            targetChannels: context.targetChannels,
+            apiVersion: 'v1',
+            validationType: 'enhanced',
+            ...context.metadata
+          }
+        }
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Enhanced validation failed: ${response.statusText}`);
+    }
+
     return response.json();
   }
 

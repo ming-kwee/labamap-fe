@@ -35,10 +35,11 @@ interface UseDynamicFormReturn {
   
   // Actions
   refreshSchema: () => Promise<void>;
+  refreshSchemaForCategory: (newCategory: string) => Promise<void>;
   updateFormData: (data: DynamicFormData) => void;
   resetForm: () => void;
   validateForm: () => Promise<FormValidationResult>;
-  
+
   // Computed properties
   hasUnsavedChanges: boolean;
   isFormValid: boolean;
@@ -209,11 +210,66 @@ export function useDynamicForm(options: UseDynamicFormOptions): UseDynamicFormRe
   }, []); // No dependencies to prevent infinite loops
 
   /**
-   * Refresh schema
+   * Refresh schema (full reload)
    */
   const refreshSchema = useCallback(async () => {
     await fetchSchema();
   }, [fetchSchema]);
+
+  /**
+   * Refresh schema for category change
+   * Uses the backend's refresh endpoint which is optimized for category changes
+   */
+  const refreshSchemaForCategory = useCallback(async (newCategory: string) => {
+    if (loadingRef.current) {
+      console.log('[useDynamicForm] Skipping duplicate refresh call');
+      return;
+    }
+
+    console.log('[useDynamicForm] Refreshing schema for category:', newCategory);
+
+    loadingRef.current = true;
+    setIsLoadingSchema(true);
+    setSchemaError(null);
+
+    try {
+      const { BackendAPIService, createBackendContext } = await import('@/lib/api/backendService');
+
+      const backendContext = createBackendContext(
+        stableContext.userId,
+        stableContext.organizationId,
+        stableContext.userRole as 'BUSINESS_USER' | 'ADMIN' | 'DEVELOPER',
+        stableContext.targetChannels,
+        newCategory, // Updated category
+        stableContext.permissions
+      );
+
+      const result: any = await BackendAPIService.refreshFormSchema(backendContext);
+      const parsedSchema = result.formSchema ? result.formSchema : result;
+
+      console.log('[useDynamicForm] ✅ Schema refreshed for category:', newCategory);
+      console.log('[useDynamicForm] 📊 Refreshed schema has', parsedSchema.fields?.length || 0, 'fields');
+
+      setSchema(parsedSchema);
+
+      // Call onSchemaLoaded if provided
+      if (onSchemaLoaded && typeof onSchemaLoaded === 'function') {
+        try {
+          onSchemaLoaded(result);
+        } catch (error) {
+          console.warn('[useDynamicForm] Error in onSchemaLoaded callback:', error);
+        }
+      }
+
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      setSchemaError(`Schema refresh failed: ${errorMessage}`);
+      console.error('[useDynamicForm] ❌ Schema refresh failed:', error);
+    } finally {
+      setIsLoadingSchema(false);
+      loadingRef.current = false;
+    }
+  }, [stableContext, onSchemaLoaded]);
 
   /**
    * Update form data
@@ -308,10 +364,11 @@ export function useDynamicForm(options: UseDynamicFormOptions): UseDynamicFormRe
     
     // Actions
     refreshSchema,
+    refreshSchemaForCategory,
     updateFormData,
     resetForm,
     validateForm,
-    
+
     // Computed properties
     hasUnsavedChanges,
     isFormValid

@@ -6,12 +6,13 @@
  */
 
 // Core Product Management
-export { 
-  MasterProductService, 
-  masterProductService,
-  type FieldDefinition,
-  type ValidationError 
-} from './MasterProductService';
+// Note: MasterProductService moved to backup/obsolete-services - use BackendAPIService instead
+// export {
+//   MasterProductService,
+//   masterProductService,
+//   type FieldDefinition,
+//   type ValidationError
+// } from './MasterProductService';
 
 // Channel Management and Mapping
 export { 
@@ -104,7 +105,7 @@ export const ServiceConfig = {
 export const HealthCheckService = {
   async checkServiceHealth(): Promise<ServiceHealthStatus> {
     const services = [
-      { name: 'MasterProduct', service: masterProductService },
+      // Note: MasterProduct service removed - use BackendAPIService instead
       { name: 'ChannelMapping', service: channelMappingService },
       { name: 'BulkOperations', service: bulkOperationsService },
       { name: 'AdaptivePatternMatching', service: adaptivePatternMatchingService }

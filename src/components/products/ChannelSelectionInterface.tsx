@@ -45,9 +45,9 @@ export default function ChannelSelectionInterface({
   const loadConnectedChannels = async () => {
     try {
       setIsLoading(true);
-      // Use the same service method we added
-      const { masterProductService } = await import('@/services/MasterProductService');
-      const channels = await masterProductService.getUserConnectedChannels();
+      // TODO: Implement backend API call to get connected channels
+      // For now, use hardcoded available channels
+      const channels = ['shopify', 'amazon', 'walmart', 'ebay', 'etsy', 'facebook'];
       setConnectedChannels(channels);
       setError(null);
     } catch (error) {

@@ -19,6 +19,7 @@ import DynamicForm from '@/components/forms/DynamicForm';
 import { DynamicFormData, FormValidationResult, FormField } from '@/types/dynamicForm';
 import { MasterProduct, ProductVariant } from '@/types/product';
 import VariantConfiguratorDynamic from './VariantConfiguratorDynamic';
+import ValidationResultDisplay from './ValidationResultDisplay';
 import { useAuth } from '@/context/AuthContext';
 import { useOrganization } from '@/context/OrganizationContext';
 
@@ -158,6 +159,8 @@ export default function DynamicProductCreationFormClean({
   
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [validationResult, setValidationResult] = useState<import('@/types/dynamicForm').EnhancedValidationResult | null>(null);
+  const [showValidation, setShowValidation] = useState(false);
   const [showJsonPreview, setShowJsonPreview] = useState(false);
 
   // CRITICAL: Track user's manual category selection to prevent org config overrides
@@ -367,17 +370,19 @@ export default function DynamicProductCreationFormClean({
           });
 
           if (enabledRules.length > 0) {
-            const enhancedResult = await BackendAPIService.enhanceSchemaWithBusinessRules(
-              parsedSchema,
-              organization.organizationId,
-              stableContext,
-              enabledRules
-            );
+            // TODO: Implement backend API for business rules schema enhancement
+            // const enhancedResult = await BackendAPIService.enhanceSchemaWithBusinessRules(
+            //   parsedSchema,
+            //   organization.organizationId,
+            //   stableContext,
+            //   enabledRules
+            // );
 
-            if (enhancedResult?.enhancedSchema) {
-              parsedSchema = enhancedResult.enhancedSchema;
-              console.log('[DynamicProductCreationFormClean] ✅ Schema enhanced with business rules:', enabledRules.length, 'rules applied');
-            }
+            // if (enhancedResult?.enhancedSchema) {
+            //   parsedSchema = enhancedResult.enhancedSchema;
+            //   console.log('[DynamicProductCreationFormClean] ✅ Schema enhanced with business rules:', enabledRules.length, 'rules applied');
+            // }
+            console.log('[DynamicProductCreationFormClean] ℹ️ Business rules schema enhancement not yet implemented');
           }
         } catch (error) {
           console.error('[DynamicProductCreationFormClean] ⚠️ Business rules schema enhancement failed:', error);
@@ -473,14 +478,16 @@ export default function DynamicProductCreationFormClean({
         stableContext.permissions
       );
       
-      const newSchema = await BackendAPIService.generateFormSchema(backendContext);
-      
+      // Use refreshFormSchema for better performance when category changes
+      console.log('[DynamicProductCreationFormClean] 🔄 Refreshing schema for category:', category);
+      const newSchema = await BackendAPIService.refreshFormSchema(backendContext);
+
       // Cache the result
       schemaCache.current[cacheKey] = newSchema;
-      
+
       // Apply the new schema directly to get all category-specific fields
       setSchema(newSchema);
-      console.log('[DynamicProductCreationFormClean] Applied new schema with', newSchema.fields?.length, 'fields for category:', category);
+      console.log('[DynamicProductCreationFormClean] ✅ Applied refreshed schema with', newSchema.fields?.length, 'fields for category:', category);
       
       setFormStage('category-specific');
       
@@ -514,7 +521,7 @@ export default function DynamicProductCreationFormClean({
     
     if (hasDefaultValues) {
       console.log('🚨🚨🚨 [SCHEMA EFFECT] About to call setFormData with defaults:', defaultValues);
-      setFormData(prev => {
+      setFormData((prev: DynamicFormData) => {
         console.log('🚨🚨🚨 [SCHEMA EFFECT] Inside setFormData callback - prev:', prev);
         // CRITICAL: Only apply defaultValues for fields that are currently empty or undefined
         // This prevents overriding user selections (especially category field)
@@ -751,7 +758,7 @@ export default function DynamicProductCreationFormClean({
       console.log('🔥 [VARIANT CONFIGURATOR] Variant value being stored:', value);
       
       // Use functional setState to avoid stale closure issues
-      setFormData(prev => {
+      setFormData((prev: DynamicFormData) => {
         console.log('🔥 [VARIANT CONFIGURATOR] Previous state:', prev);
         const protectedCategory = userSelectedCategory.current || prev.category;
         
@@ -803,7 +810,7 @@ export default function DynamicProductCreationFormClean({
       trackCategoryChange(formData.category, `hasVariants-change-to-${value}`);
       
       // CRITICAL FIX: When hasVariants changes, preserve the current category using functional setState
-      setFormData(prev => {
+      setFormData((prev: DynamicFormData) => {
         const categoryToPreserve = userSelectedCategory.current || prev.category;
         console.log(`🔍 [DEBUG] Previous category: "${prev.category}", categoryToPreserve: "${categoryToPreserve}"`);
         
@@ -827,28 +834,34 @@ export default function DynamicProductCreationFormClean({
       return; // Early return to prevent normal processing that might reset category
     }
     
+    // Create updated form data object for use in category change logic
+    const updatedFormData = {
+      ...formData,
+      [fieldName]: value
+    };
+
     // Update form data immediately for responsive UI using functional form to avoid stale closure
-    setFormData(prev => ({
+    setFormData((prev: DynamicFormData) => ({
       ...prev, // Use fresh prev instead of stale closure formData
       [fieldName]: value
     }));
-    
+
     // Check if category field changed - validate and regenerate schema if needed
     if (fieldName === 'category' && value !== formData.category) {
       console.log('[DynamicProductCreationFormClean] Category changed from', formData.category, 'to', value);
-      
+
       // Validate the new category
       const categoryValidation = validateProductCategory(
-        value, 
-        organizationConfig, 
+        value,
+        organizationConfig,
         getAssignedCategories()
       );
-      
+
       if (categoryValidation.warning) {
         console.warn('[DynamicProductCreationFormClean] Category validation:', categoryValidation.warning);
-        // Update the newFormData if category was changed by validation
+        // Update the updatedFormData if category was changed by validation
         if (categoryValidation.category !== value) {
-          newFormData[fieldName] = categoryValidation.category;
+          updatedFormData[fieldName] = categoryValidation.category;
         }
       }
       
@@ -869,16 +882,18 @@ export default function DynamicProductCreationFormClean({
         );
         
         // Generate new schema for the new category
-        const newSchema = await BackendAPIService.generateFormSchema(updatedContext);
-        console.log('[DynamicProductCreationFormClean] New schema generated for category:', finalCategory);
-        
+        // Use refreshFormSchema for category changes (optimized endpoint)
+        console.log('[DynamicProductCreationFormClean] 🔄 Refreshing schema for category change:', finalCategory);
+        const newSchema = await BackendAPIService.refreshFormSchema(updatedContext);
+        console.log('[DynamicProductCreationFormClean] ✅ Schema refreshed for category:', finalCategory);
+
         // Update schema with new category-specific fields
         if (newSchema?.fields) {
           setSchema(newSchema);
           
           // IMPORTANT: Preserve form data after schema update, especially the category value
           const preservedFormData = {
-            ...newFormData, // Use the updated form data, not stale closure data
+            ...updatedFormData, // Use the updated form data, not stale closure data
             [fieldName]: finalCategory // Ensure category value is preserved
           };
           
@@ -920,26 +935,28 @@ export default function DynamicProductCreationFormClean({
             });
 
             if (enabledRules.length > 0) {
-              const enhancedResult = await BackendAPIService.enhanceSchemaWithBusinessRules(
-                newSchema,
-                organization.organizationId,
-                updatedContext,
-                enabledRules
-              );
+              // TODO: Implement backend API for business rules schema enhancement
+              // const enhancedResult = await BackendAPIService.enhanceSchemaWithBusinessRules(
+              //   newSchema,
+              //   organization?.organizationId,
+              //   updatedContext,
+              //   enabledRules
+              // );
 
-              if (enhancedResult?.enhancedSchema) {
-                setSchema(enhancedResult.enhancedSchema);
-                
-                // Preserve form data after business rules enhancement too
-                const preservedFormDataWithRules = {
-                  ...newFormData, // Use the updated form data
-                  [fieldName]: finalCategory // Ensure category value is still preserved
-                };
-                setFormData(preservedFormDataWithRules);
-                
-                console.log('[DynamicProductCreationFormClean] Schema enhanced with business rules for new category');
-                console.log('[DynamicProductCreationFormClean] Form data preserved after business rules enhancement:', preservedFormDataWithRules);
-              }
+              // if (enhancedResult?.enhancedSchema) {
+              //   setSchema(enhancedResult.enhancedSchema);
+              //
+              //   // Preserve form data after business rules enhancement too
+              //   const preservedFormDataWithRules = {
+              //     ...updatedFormData, // Use the updated form data
+              //     [fieldName]: finalCategory // Ensure category value is still preserved
+              //   };
+              //   setFormData(preservedFormDataWithRules);
+              //
+              //   console.log('[DynamicProductCreationFormClean] Schema enhanced with business rules for new category');
+              //   console.log('[DynamicProductCreationFormClean] Form data preserved after business rules enhancement:', preservedFormDataWithRules);
+              // }
+              console.log('[DynamicProductCreationFormClean] ℹ️ Business rules schema enhancement not yet implemented');
             }
           } catch (error) {
             console.error('[DynamicProductCreationFormClean] Business rules schema enhancement failed for new category:', error);
@@ -969,7 +986,7 @@ export default function DynamicProductCreationFormClean({
         };
 
         const ruleResult = await BackendAPIService.executeBusinessRules(
-          organization.organizationId,
+          organization?.organizationId || '',
           ruleExecutionRequest
         );
 
@@ -982,7 +999,7 @@ export default function DynamicProductCreationFormClean({
           }
           
           // Apply enhanced data from business rules
-          setFormData(prev => {
+          setFormData((prev: DynamicFormData) => {
             // CRITICAL: Protect user's category selection from being overridden by business rules
             const enhancedData = { ...ruleResult.ruleExecutionResult.enhancedData };
             const currentCategory = prev.category;
@@ -1227,38 +1244,6 @@ export default function DynamicProductCreationFormClean({
       // Use backend API for product creation
       const { BackendAPIService, createBackendContext } = await import('@/lib/api/backendService');
 
-      // Validate business rules before submission if enabled
-      if (businessRulesConfig?.businessRulesConfig?.globalSettings?.businessRulesEnabled) {
-        console.log('[DynamicProductCreationForm] 🔍 Validating business rules before submission...');
-        
-        try {
-          const validationResult = await BackendAPIService.validateBusinessRules(
-            organization.organizationId,
-            submissionData,
-            stableContext,
-            stableContext.targetChannels,
-            'SUBMISSION'
-          );
-
-          if (validationResult?.validationResult) {
-            const { isValid, canSubmit, violations } = validationResult.validationResult;
-            
-            if (!isValid || !canSubmit) {
-              console.error('[DynamicProductCreationForm] ❌ Business rules validation failed:', violations);
-              
-              // Show validation errors to user
-              const violationMessages = violations.map((v: any) => v.message || 'Validation error').join(', ');
-              throw new Error(`Business rules validation failed: ${violationMessages}`);
-            }
-
-            console.log('[DynamicProductCreationForm] ✅ Business rules validation passed');
-          }
-        } catch (validationError) {
-          console.error('[DynamicProductCreationForm] Business rules validation error:', validationError);
-          throw validationError; // Re-throw to prevent submission
-        }
-      }
-      
       const backendContext = createBackendContext(
         stableContext.userId,
         stableContext.organizationId,
@@ -1267,58 +1252,84 @@ export default function DynamicProductCreationFormClean({
         stableContext.productCategory,
         stableContext.permissions
       );
-      
-      // Process and clean submission data first
-      const processedData = { ...submissionData };
-      
-      // Parse JSON string fields that should be objects
-      if (processedData.variantConfigurator && typeof processedData.variantConfigurator === 'string') {
-        try {
-          processedData.variantConfigurator = JSON.parse(processedData.variantConfigurator);
-          console.log('[DynamicProductCreationForm] ✅ Parsed variantConfigurator JSON:', processedData.variantConfigurator);
-        } catch (error) {
-          console.error('[DynamicProductCreationForm] ❌ Failed to parse variantConfigurator JSON:', error);
-          // Remove invalid JSON field to prevent backend error
-          delete processedData.variantConfigurator;
-        }
-      }
-      
-      // Convert string numbers to actual numbers for numeric fields
-      const numericFields = ['price', 'inventory', 'weight', 'length', 'width', 'height'];
-      numericFields.forEach(field => {
-        if (processedData[field] && typeof processedData[field] === 'string') {
-          const numValue = parseFloat(processedData[field]);
-          if (!isNaN(numValue)) {
-            processedData[field] = numValue;
+
+      // STEP 1: Pre-Processing - Transform/Normalize Data
+      console.log('[DynamicProductCreationForm] 🔄 Running pre-processing...');
+      let processedData = submissionData;
+
+      try {
+        const preprocessResult = await BackendAPIService.executeBusinessRules(
+          stableContext.organizationId,
+          {
+            ruleType: 'PRE_PROCESSING',
+            productData: submissionData,
+            context: backendContext,
+            fieldName: 'all',
+            formData: submissionData
           }
+        );
+
+        if (preprocessResult.ruleExecutionResult?.enhancedData) {
+          processedData = preprocessResult.ruleExecutionResult.enhancedData;
+          console.log('[DynamicProductCreationForm] ✅ Pre-processing complete:', processedData);
+
+          // Show what was transformed
+          if (preprocessResult.ruleExecutionResult.metadata?.appliedRules) {
+            console.log('[DynamicProductCreationForm] 📋 Applied rules:',
+              preprocessResult.ruleExecutionResult.metadata.appliedRules);
+          }
+        } else {
+          console.log('[DynamicProductCreationForm] ℹ️ No pre-processing transformations applied');
         }
-      });
-      
-      // Ensure ALL required fields are present with sensible defaults based on backend schema
-      const enrichedProductData = {
-        // Required fields from backend validation
-        name: processedData.name || 'Test Product',
-        description: processedData.description || 'This is a test product created via the dynamic form. It includes all required fields for successful validation.',
-        sku: processedData.sku || `SKU-${Date.now()}`,
-        price: processedData.price || 10.00,
-        category: processedData.category || stableContext.productCategory || 'electronics',
-        inventory: processedData.inventory || 5,
-        status: processedData.status || 'draft',
-        
-        // Additional fields that might be required
-        brand: processedData.brand || 'Test Brand',
-        weight: processedData.weight || 1.0,
-        length: processedData.length || 10.0,
-        width: processedData.width || 8.0,
-        height: processedData.height || 6.0,
-        
-        // Include any additional form fields from the actual form (now processed)
-        ...processedData
-      };
-      
-      console.log('[DynamicProductCreationForm] Enriched product data:', enrichedProductData);
-      
-      const masterProduct = await BackendAPIService.createProduct(enrichedProductData, backendContext);
+      } catch (preprocessError) {
+        console.warn('[DynamicProductCreationForm] ⚠️ Pre-processing failed, continuing with original data:', preprocessError);
+        // Continue with original data if pre-processing fails
+      }
+
+      // STEP 2: Enhanced Validation - Run on pre-processed data
+      console.log('[DynamicProductCreationForm] 🔍 Running enhanced validation...');
+
+      try {
+        const enhancedValidation = await BackendAPIService.validateProductEnhanced(
+          processedData,  // Use pre-processed data instead of original submissionData
+          backendContext
+        );
+
+        setValidationResult(enhancedValidation);
+        setShowValidation(true);
+
+        console.log('[DynamicProductCreationForm] Validation result:', enhancedValidation);
+
+        // Check if validation passed and product can be submitted
+        if (!enhancedValidation.canSubmit) {
+          console.error('[DynamicProductCreationForm] ❌ Enhanced validation failed');
+          setIsSubmitting(false);
+
+          // Scroll to validation results
+          setTimeout(() => {
+            document.getElementById('validation-results')?.scrollIntoView({ behavior: 'smooth' });
+          }, 100);
+
+          return; // Stop submission
+        }
+
+        // Show warnings but allow submission
+        if (enhancedValidation.warnings.length > 0) {
+          console.warn('[DynamicProductCreationForm] ⚠️ Validation passed with warnings');
+        }
+
+        console.log('[DynamicProductCreationForm] ✅ Enhanced validation passed');
+
+      } catch (validationError) {
+        console.error('[DynamicProductCreationForm] ❌ Enhanced validation error:', validationError);
+        // Continue with submission even if validation fails (degraded mode)
+        console.warn('[DynamicProductCreationForm] ⚠️ Continuing submission without validation (degraded mode)');
+      }
+
+      // STEP 3: Create Product - Use pre-processed and validated data
+      console.log('[DynamicProductCreationForm] 🚀 Creating product with pre-processed data:', processedData);
+
+      const masterProduct = await BackendAPIService.createProduct(processedData, backendContext);
       console.log('[DynamicProductCreationForm] ✅ Product created successfully via backend:', masterProduct);
       
       // Success - notify parent
@@ -1708,6 +1719,16 @@ export default function DynamicProductCreationFormClean({
                     })}
                 </CardContent>
               </Card>
+
+              {/* Validation Results Display */}
+              {showValidation && validationResult && (
+                <div id="validation-results">
+                  <ValidationResultDisplay
+                    result={validationResult}
+                    onClose={() => setShowValidation(false)}
+                  />
+                </div>
+              )}
 
               {/* Actions Card */}
               <Card>

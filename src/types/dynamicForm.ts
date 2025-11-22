@@ -285,3 +285,31 @@ export interface FormGenerationOptions {
   optimizeForChannel?: string[];
   optimizeForCategory?: string;
 }
+
+// Enhanced Validation Types
+export interface ValidationViolation {
+  ruleId: string;
+  severity: 'ERROR' | 'WARNING' | 'INFO';
+  message: string;
+  affectedFields: string[];
+  violationType: 'BUSINESS_RULE' | 'FIELD_VALIDATION' | 'SCHEMA_VALIDATION';
+  suggestion?: string;
+}
+
+export interface ValidationWarning {
+  ruleId: string;
+  message: string;
+  affectedFields: string[];
+  suggestion?: string;
+}
+
+export interface EnhancedValidationResult {
+  valid: boolean;
+  message: string;
+  violations: ValidationViolation[];
+  warnings: ValidationWarning[];
+  rulesExecuted: number;
+  executionTimeMs: number;
+  validationScore: number;
+  canSubmit: boolean;
+}
