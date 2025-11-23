@@ -87,6 +87,14 @@ export interface FieldBusinessContext {
   variantDimension?: boolean; // Marks field as variant dimension
 }
 
+// Field Display Levels for UI categorization
+export type FieldDisplayLevel =
+  | 'essential'           // Always show on initial load
+  | 'basic'               // Show after category selected
+  | 'advanced'            // Show in advanced section
+  | 'optional'            // Show on demand
+  | 'category-specific';  // Show only for specific category
+
 // Form Field Definition
 export interface FormField {
   fieldName: string;
@@ -97,30 +105,31 @@ export interface FormField {
   placeholder?: string;
   helpText?: string;
   defaultValue?: any;
-  
+
   // Validation
   validationRules: FormFieldValidationRules;
-  
+
   // Conditional Logic
   conditionalVisibility?: ConditionalVisibility;
   conditionalLogic?: {
     triggersFieldChanges?: string[];
     affectedByFields?: string[];
   };
-  
+
   // Options (for select/radio fields)
   options?: FormFieldOption[];
-  
+
   // Permissions and State
   readOnly: boolean;
   hidden: boolean;
   required: boolean;
-  
+
   // Business Context
   businessContext: FieldBusinessContext;
-  
+
   // UI Hints
-  group?: string;
+  group?: string; // Backend's group ('attribute' | 'variant')
+  displayLevel?: FieldDisplayLevel; // UI display categorization
   order?: number;
   width?: 'full' | 'half' | 'third' | 'quarter';
   appearance?: Record<string, any>;

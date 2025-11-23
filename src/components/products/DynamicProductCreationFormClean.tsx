@@ -15,7 +15,6 @@ import { Alert, AlertDescription } from '@/components/ui/alert/AlertComponents';
 import { Loader2, AlertCircle, Package, Settings, Star } from '@/components/ui/icons/Icons';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card/Card';
 import Button from '@/components/ui/button/Button';
-import DynamicForm from '@/components/forms/DynamicForm';
 import { DynamicFormData, FormValidationResult, FormField } from '@/types/dynamicForm';
 import { MasterProduct, ProductVariant } from '@/types/product';
 import VariantConfiguratorDynamic from './VariantConfiguratorDynamic';
@@ -1169,11 +1168,14 @@ export default function DynamicProductCreationFormClean({
       schema.fields.forEach((field: FormField) => {
         const fieldName = field.fieldName;
         const fieldValue = formData[fieldName];
-        
-        // Skip empty/undefined values and already processed core fields
-        if (fieldValue === undefined || fieldValue === null || fieldValue === '' ||
-            ['id', 'sku', 'name', 'price', 'createdAt', 'updatedAt'].includes(fieldName) ||
-            fieldMappingConfig.dimensionFields.includes(fieldName)) {
+
+        // Skip empty/undefined values, already processed base fields, and dimension fields
+        // PURE: Use backend metadata to determine if field should be skipped
+        const isBaseField = Object.prototype.hasOwnProperty.call(masterProduct, fieldName);
+        const isDimensionField = fieldMappingConfig.dimensionFields.includes(fieldName);
+        const isEmpty = fieldValue === undefined || fieldValue === null || fieldValue === '';
+
+        if (isEmpty || isBaseField || isDimensionField) {
           return;
         }
 
@@ -1547,44 +1549,120 @@ export default function DynamicProductCreationFormClean({
                 <CardContent className="space-y-4">
                   {(() => {
                     const visibleFields = getVisibleFields(schema.fields, formData);
-                    const filteredFields = visibleFields.filter((field: any) => {
-                      // Show essential fields, basic product fields, required fields, AND conditionally visible fields
-                      const isEssential = field.group === 'essential';
+
+                    // 🔍 DIAGNOSTIC: Log ALL fields from backend with their properties
+                    console.log('🔍🔍🔍 [DIAGNOSTIC - ALL FIELDS FROM BACKEND]');
+                    console.log(`Total fields from schema: ${schema.fields?.length || 0}`);
+                    console.log(`Visible fields after conditional filter: ${visibleFields.length}`);
+                    visibleFields.forEach((field: any, idx: number) => {
                       const fieldName = field.name || field.fieldName;
-                      const isBasicField = ['name', 'description', 'price', 'category', 'sku', 'brand', 'inventory', 'status'].includes(fieldName);
-                      const isRequired = field.required || field.validationRules?.required;
-                      const isConditionalField = field.conditionalVisibility !== null; // Show any field with conditional rules
-                      
-                      const shouldShow = isEssential || isBasicField || isRequired || isConditionalField;
-                      
-                      // Debug specific fields
-                      if (fieldName === 'warranty' || fieldName === 'size') {
-                        console.log(`[FieldFilter] ${fieldName}:`, {
+                      console.log(`  Field ${idx + 1}: "${fieldName}"`, {
+                        displayLevel: field.displayLevel,
+                        group: field.group,
+                        order: field.order,
+                        required: field.required,
+                        fieldType: field.fieldType,  // Backend always sends fieldType (uppercase)
+                        hasConditionalVisibility: !!field.conditionalVisibility
+                      });
+                    });
+
+                    // ✅ PURE BACKEND-DRIVEN FILTERING (no hardcoded fallbacks)
+                    const filteredFields = visibleFields.filter((field: any) => {
+                      const fieldName = field.name || field.fieldName;
+
+                      // ✅ PURE: Use ONLY displayLevel from backend (no fallbacks)
+                      // CASE-INSENSITIVE: Handle ESSENTIAL, Essential, essential, etc.
+                      const displayLevel = (field.displayLevel || '').toLowerCase();
+                      const isEssential = displayLevel === 'essential';
+                      const isBasic = displayLevel === 'basic';
+                      const isCategorySpecific = displayLevel === 'category-specific';
+                      const isConditionalField = field.conditionalVisibility !== null;
+
+                      // ✅ For initial load (no category selected)
+                      if (formStage === 'essential') {
+                        // PURE: Only show fields with displayLevel 'essential' or 'basic' from backend
+                        const shouldShow = isEssential || isBasic;
+
+                        // 🔍 DIAGNOSTIC: Log EVERY field evaluation
+                        console.log(`[FieldFilter - Essential Stage] "${fieldName}":`, {
+                          displayLevel_ORIGINAL: field.displayLevel,
+                          displayLevel_NORMALIZED: displayLevel,
                           isEssential,
-                          isBasicField, 
-                          isRequired,
-                          isConditionalField,
+                          isBasic,
                           shouldShow,
-                          group: field.group
+                          REASON: shouldShow ? '✅ SHOWING' : `❌ HIDDEN (displayLevel="${field.displayLevel}" normalized to "${displayLevel}" is not "essential" or "basic")`
                         });
+
+                        return shouldShow;
                       }
-                      
+
+                      // ✅ After category selected, show applicable fields
+                      const shouldShow = isEssential || isBasic || isCategorySpecific || isConditionalField;
+
+                      console.log(`[FieldFilter - Category Stage] "${fieldName}":`, {
+                        displayLevel_ORIGINAL: field.displayLevel,
+                        displayLevel_NORMALIZED: displayLevel,
+                        isEssential,
+                        isBasic,
+                        isCategorySpecific,
+                        isConditionalField,
+                        shouldShow,
+                        REASON: shouldShow ? '✅ SHOWING' : `❌ HIDDEN (displayLevel="${field.displayLevel}" normalized to "${displayLevel}" - no match)`
+                      });
+
                       return shouldShow;
                     });
-                    
-                    console.log(`[FieldFilter] Showing ${filteredFields.length}/${visibleFields.length} fields`);
-                    console.log(`[FieldFilter] Field names:`, filteredFields.map((f: any) => f.name || f.fieldName));
-                    
-                    return filteredFields;
-                  })()
-                    .slice(0, 15) // Show more fields to accommodate conditional ones
-                    .map((field: any, index: number) => {
+
+                    // ✅ Sort fields by order metadata from schema
+                    const sortedFields = filteredFields.sort((a: any, b: any) => {
+                      return (a.order ?? 999) - (b.order ?? 999);
+                    });
+
+                    console.log(`\n🔍 [FieldFilter SUMMARY] Stage: ${formStage}, Showing ${sortedFields.length}/${visibleFields.length} fields`);
+                    if (sortedFields.length === 0) {
+                      console.error('❌❌❌ NO FIELDS TO SHOW!');
+                      console.error('REASON: None of the fields have displayLevel="essential" or "basic"');
+                      console.error('ACTION REQUIRED: Backend must set displayLevel property on fields');
+                      console.error('Expected: field.displayLevel should be "essential" or "basic" for initial load');
+                    } else {
+                      console.log(`✅ [FieldFilter] Field names (sorted):`, sortedFields.map((f: any) => `${f.name || f.fieldName} (displayLevel: ${f.displayLevel}, order: ${f.order ?? 'none'})`));
+                    }
+
+                    // 🔍 Show warning if no fields
+                    if (sortedFields.length === 0) {
+                      return (
+                        <Alert className="border-yellow-200 bg-yellow-50">
+                          <AlertCircle className="h-4 w-4 text-yellow-600" />
+                          <AlertDescription className="text-yellow-800">
+                            <div className="font-semibold mb-2">⚠️ No fields to display</div>
+                            <div className="text-sm space-y-1">
+                              <p><strong>Reason:</strong> Backend schema has no fields with displayLevel="essential" or "basic"</p>
+                              <p><strong>Action Required:</strong> Backend must set displayLevel property on fields</p>
+                              <p><strong>Example:</strong> {`{ fieldName: "name", displayLevel: "essential", ... }`}</p>
+                              <p className="mt-2"><strong>Check browser console for detailed diagnostics</strong></p>
+                            </div>
+                          </AlertDescription>
+                        </Alert>
+                      );
+                    }
+
+                    // Render fields (EXCLUDE variant fields - they have their own section)
+                    const nonVariantFields = sortedFields.filter((field: any) => {
                       const fieldName = field.name || field.fieldName;
+                      // ✅ Exclude variant-specific fields (rendered in Product Variants section)
+                      return fieldName !== 'hasVariants' && fieldName !== 'variantConfigurator';
+                    });
+
+                    return nonVariantFields.slice(0, 15).map((field: any, index: number) => {
+                      const fieldName = field.name || field.fieldName;
+                      // ✅ Normalize fieldType (backend sends uppercase)
+                      const fieldType = (field.fieldType || '').toLowerCase();
+
                       console.log(`[Field Render] Index: ${index}, FieldName: "${fieldName}", Label: "${field.label}"`);
                       return (
                       <div key={`${fieldName}-${index}`} className="space-y-2">
                         <label className="block text-sm font-medium text-gray-700">{field.label}</label>
-                        {field.type?.toLowerCase() === 'textarea' ? (
+                        {fieldType === 'textarea' ? (
                           <textarea
                             id={`${fieldName}-${index}`}
                             name={fieldName}
@@ -1594,7 +1672,7 @@ export default function DynamicProductCreationFormClean({
                             className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 transition-colors"
                             rows={3}
                           />
-                        ) : (field.type?.toLowerCase() === 'select' || field.fieldType?.toLowerCase() === 'select') ? (
+                        ) : fieldType === 'select' ? (
                           <select
                             id={`${fieldName}-${index}`}
                             name={fieldName}
@@ -1613,7 +1691,7 @@ export default function DynamicProductCreationFormClean({
                           <input
                             id={`${fieldName}-${index}`}
                             name={fieldName}
-                            type={field.type?.toLowerCase() === 'text' ? 'text' : (field.type || 'text')}
+                            type={fieldType === 'number' ? 'number' : fieldType === 'email' ? 'email' : 'text'}
                             placeholder={field.placeholder}
                             value={formData[fieldName] || ''}
                             onChange={(e) => handleFieldChange(fieldName, e.target.value)}
@@ -1625,7 +1703,8 @@ export default function DynamicProductCreationFormClean({
                         )}
                       </div>
                       );
-                    })}
+                    });
+                  })()}
                 </CardContent>
               </Card>
 
@@ -1638,85 +1717,98 @@ export default function DynamicProductCreationFormClean({
                   </div>
                 </CardHeader>
                 <CardContent className="space-y-4">
+                  {/* Render hasVariants checkbox ONLY if it exists in schema */}
                   {getVisibleFields(schema.fields, formData)
                     .filter((field: any) => {
                       const fieldName = field.name || field.fieldName;
-                      return fieldName === 'hasVariants' || fieldName === 'variantConfigurator';
+                      return fieldName === 'hasVariants';
                     })
                     .map((field: any) => {
                       const fieldName = field.name || field.fieldName;
-                      if (fieldName === 'hasVariants') {
-                        return (
-                          <div key={fieldName} className="p-4 bg-gradient-to-r from-blue-50 to-purple-50 border border-blue-200 rounded-lg">
-                            <label className="flex items-center cursor-pointer">
-                              <input
-                                type="checkbox"
-                                checked={formData[fieldName] || false}
-                                onChange={(e) => {
-                                  console.log('hasVariants checkbox clicked:', e.target.checked);
-                                  handleFieldChange(fieldName, e.target.checked);
-                                }}
-                                className="mr-3 w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
-                              />
-                              <span className="font-medium text-lg text-gray-800">{field.label}</span>
-                            </label>
-                            <p className="text-sm text-gray-600 mt-2 ml-7">{field.helpText}</p>
-                            <div className="mt-3 ml-7">
-                              <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                                formData[field.fieldName] ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
-                              }`}>
-                                {formData[field.fieldName] ? '✅ Enabled' : '❌ Disabled'}
-                              </span>
-                            </div>
-                          </div>
-                        );
-                      }
-                      
-                      if (fieldName === 'variantConfigurator') {
-                        const hasVariantsEnabled = formData['hasVariants'] || false;
-                        
-                        return (
-                          <div key={fieldName} className={`transition-all duration-300 ${
-                            hasVariantsEnabled ? 'opacity-100' : 'opacity-60'
-                          }`}>
-                            <div className={`p-4 border rounded-lg ${
-                              hasVariantsEnabled 
-                                ? 'bg-gradient-to-r from-green-50 to-blue-50 border-green-300' 
-                                : 'bg-gray-50 border-gray-300'
+                      return (
+                        <div key={fieldName} className="p-4 bg-gradient-to-r from-blue-50 to-purple-50 border border-blue-200 rounded-lg">
+                          <label className="flex items-center cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={formData[fieldName] || false}
+                              onChange={(e) => {
+                                console.log('hasVariants checkbox clicked:', e.target.checked);
+                                handleFieldChange(fieldName, e.target.checked);
+                              }}
+                              className="mr-3 w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
+                            />
+                            <span className="font-medium text-lg text-gray-800">{field.label}</span>
+                          </label>
+                          <p className="text-sm text-gray-600 mt-2 ml-7">{field.helpText}</p>
+                          <div className="mt-3 ml-7">
+                            <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                              formData[field.fieldName] ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
                             }`}>
-                              <h4 className="font-medium text-lg mb-2 flex items-center">
-                                <Star className="h-4 w-4 mr-2 text-purple-600" />
-                                {field.label}
-                              </h4>
-                              <p className="text-sm text-gray-600 mb-4">{field.helpText}</p>
-                              
-                              {!hasVariantsEnabled && (
-                                <div className="p-3 bg-yellow-100 border border-yellow-300 rounded-lg mb-4">
-                                  <div className="flex items-center">
-                                    <AlertCircle className="h-4 w-4 text-yellow-600 mr-2" />
-                                    <span className="text-sm font-medium text-yellow-800">
-                                      Enable "Has Product Variants" above to configure variants
-                                    </span>
-                                  </div>
-                                </div>
-                              )}
-                              
-                              {hasVariantsEnabled && (
-                                <div className="bg-white rounded-lg border border-gray-200 p-4">
-                                  <VariantConfiguratorDynamic 
-                                    value={formData[fieldName]}
-                                    onChange={(value) => handleFieldChange(fieldName, value)}
-                                    schema={schema}
-                                    formData={formData}
-                                  />
-                                </div>
-                              )}
-                            </div>
+                              {formData[field.fieldName] ? '✅ Enabled' : '❌ Disabled'}
+                            </span>
                           </div>
-                        );
-                      }
-                      return null;
+                        </div>
+                      );
                     })}
+
+                  {/* ✅ Variant configurator UI - renders when hasVariants=true */}
+                  {(() => {
+                    const hasVariantsEnabled = formData['hasVariants'] || false;
+
+                    // ✅ Get variantConfigurator field from backend schema
+                    const variantConfigField = schema.fields?.find((f: any) =>
+                      (f.name || f.fieldName) === 'variantConfigurator'
+                    );
+
+                    // ✅ Use backend field properties (no fallbacks - backend always provides)
+                    const label = variantConfigField?.label || '';
+                    const helpText = variantConfigField?.helpText || '';
+
+                    // If backend didn't provide variantConfigurator field, don't render
+                    if (!variantConfigField) {
+                      return null;
+                    }
+
+                    return (
+                      <div className={`transition-all duration-300 ${
+                        hasVariantsEnabled ? 'opacity-100' : 'opacity-60'
+                      }`}>
+                        <div className={`p-4 border rounded-lg ${
+                          hasVariantsEnabled
+                            ? 'bg-gradient-to-r from-green-50 to-blue-50 border-green-300'
+                            : 'bg-gray-50 border-gray-300'
+                        }`}>
+                          <h4 className="font-medium text-lg mb-2 flex items-center">
+                            <Star className="h-4 w-4 mr-2 text-purple-600" />
+                            {label}
+                          </h4>
+                          <p className="text-sm text-gray-600 mb-4">{helpText}</p>
+
+                          {!hasVariantsEnabled && (
+                            <div className="p-3 bg-yellow-100 border border-yellow-300 rounded-lg mb-4">
+                              <div className="flex items-center">
+                                <AlertCircle className="h-4 w-4 text-yellow-600 mr-2" />
+                                <span className="text-sm font-medium text-yellow-800">
+                                  Enable "Has Product Variants" above to configure variants
+                                </span>
+                              </div>
+                            </div>
+                          )}
+
+                          {hasVariantsEnabled && (
+                            <div className="bg-white rounded-lg border border-gray-200 p-4">
+                              <VariantConfiguratorDynamic
+                                value={formData['variantConfigurator']}
+                                onChange={(value) => handleFieldChange('variantConfigurator', value)}
+                                schema={schema}
+                                formData={formData}
+                              />
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })()}
                 </CardContent>
               </Card>
 
