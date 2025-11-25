@@ -10,6 +10,11 @@ interface CardHeaderProps {
   children: React.ReactNode;
   className?: string;
   onClick?: () => void;
+  onKeyDown?: (e: React.KeyboardEvent<HTMLDivElement>) => void;
+  tabIndex?: number;
+  role?: string;
+  'aria-expanded'?: boolean;
+  'aria-controls'?: string;
 }
 
 interface CardContentProps {
@@ -33,9 +38,26 @@ export const Card: React.FC<CardProps> = ({ children, className = "", onClick })
   );
 };
 
-export const CardHeader: React.FC<CardHeaderProps> = ({ children, className = "", onClick }) => {
+export const CardHeader: React.FC<CardHeaderProps> = ({
+  children,
+  className = "",
+  onClick,
+  onKeyDown,
+  tabIndex,
+  role,
+  'aria-expanded': ariaExpanded,
+  'aria-controls': ariaControls
+}) => {
   return (
-    <div className={`px-6 py-5 ${className}`} onClick={onClick}>
+    <div
+      className={`px-6 py-5 ${className}`}
+      onClick={onClick}
+      onKeyDown={onKeyDown}
+      tabIndex={tabIndex}
+      role={role}
+      aria-expanded={ariaExpanded}
+      aria-controls={ariaControls}
+    >
       {children}
     </div>
   );

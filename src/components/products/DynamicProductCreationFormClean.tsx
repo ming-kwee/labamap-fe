@@ -12,7 +12,7 @@
 
 import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { Alert, AlertDescription } from '@/components/ui/alert/AlertComponents';
-import { Loader2, AlertCircle, Package, Settings, Star, Image, DollarSign, Truck, Tag, FileText, Info, HelpCircle, Search } from '@/components/ui/icons/Icons';
+import { Loader2, AlertCircle, Package, Settings, Star, Image, DollarSign, Truck, Tag, FileText, Info, HelpCircle, Search, ChevronDown, ChevronRight } from '@/components/ui/icons/Icons';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card/Card';
 import Button from '@/components/ui/button/Button';
 import { DynamicFormData, FormValidationResult, FormField } from '@/types/dynamicForm';
@@ -38,6 +38,19 @@ const mapUserRole = (role: string): 'BUSINESS_USER' | 'ADMIN' | 'DEVELOPER' => {
     default:
       return 'BUSINESS_USER';
   }
+};
+
+// Normalize section names (backend may send snake_case, we use kebab-case)
+const normalizeSectionKey = (sectionKey: string): string => {
+  if (!sectionKey) return 'basic-info';
+
+  // Convert snake_case to kebab-case (basic_info → basic-info)
+  const normalized = sectionKey
+    .toLowerCase()
+    .replace(/_/g, '-')
+    .trim();
+
+  return normalized || 'basic-info';
 };
 
 // Section metadata configuration (backend can override with sectionLabel, sectionIcon, etc.)
@@ -317,6 +330,9 @@ export default function DynamicProductCreationFormClean({
   // Schema caching to prevent unnecessary reloads and improve UX
   const schemaCache = useRef<Record<string, any>>({});
   const [isAddingCategoryFields, setIsAddingCategoryFields] = useState(false);
+
+  // Collapsible sections state - smart defaults (basic-info expanded, others collapsed)
+  const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set(['basic-info']));
   // CRITICAL FIX: Initialize form data only once to prevent resets during re-renders
   // Wrap setFormData to track all calls
   const [formDataState, setFormDataState] = useState<DynamicFormData>(() => {
@@ -1139,6 +1155,19 @@ export default function DynamicProductCreationFormClean({
     // Handle validation results if needed
   }, []);
 
+  // Toggle section expand/collapse
+  const toggleSection = useCallback((sectionKey: string) => {
+    setExpandedSections((prev) => {
+      const newSet = new Set(prev);
+      if (newSet.has(sectionKey)) {
+        newSet.delete(sectionKey);
+      } else {
+        newSet.add(sectionKey);
+      }
+      return newSet;
+    });
+  }, []);
+
   // Truly dynamic masterProduct generation with zero hardcoded field mappings
   const generateMasterProduct = (formData: DynamicFormData): MasterProduct => {
     const now = new Date().toISOString();
@@ -1593,8 +1622,19 @@ export default function DynamicProductCreationFormClean({
             <div className="flex items-center space-x-3">
               <Package className="h-6 w-6 text-blue-600" />
               <div>
-                <CardTitle className="text-2xl">Create New Product</CardTitle>
-                <p className="text-gray-600 mt-1">Build your product for multi-channel distribution</p>
+                <div className="flex items-center space-x-2">
+                  <CardTitle className="text-2xl">
+                    {schema?.title || 'Create New Product'}
+                  </CardTitle>
+                  {schema?.version && (
+                    <span className="text-xs font-normal text-gray-400 bg-gray-100 px-2 py-0.5 rounded">
+                      v{schema.version}
+                    </span>
+                  )}
+                </div>
+                <p className="text-gray-600 mt-1">
+                  {schema?.description || 'Build your product for multi-channel distribution'}
+                </p>
               </div>
             </div>
             {/* JSON Preview Toggle */}
@@ -1723,14 +1763,28 @@ export default function DynamicProductCreationFormClean({
                       return fieldName !== 'hasVariants' && fieldName !== 'variantConfigurator';
                     });
 
-                    // Group fields by section property
+                    // Group fields by section property (normalize to kebab-case)
                     const fieldsBySection: Record<string, any[]> = {};
                     nonVariantFields.forEach((field: any) => {
-                      const section = field.section || 'basic-info';  // Default section if not specified
+                      // ✅ Normalize section key (basic_info → basic-info)
+                      const rawSection = field.section || 'basic-info';
+                      const section = normalizeSectionKey(rawSection);
+
+                      // 🔍 DIAGNOSTIC: Log section normalization
+                      if (rawSection !== section) {
+                        console.log(`[Section Normalization] "${rawSection}" → "${section}" for field "${field.name || field.fieldName}"`);
+                      }
+
                       if (!fieldsBySection[section]) {
                         fieldsBySection[section] = [];
                       }
                       fieldsBySection[section].push(field);
+                    });
+
+                    // 🔍 DIAGNOSTIC: Log final section grouping
+                    console.log('📋 [Section Grouping Summary]');
+                    Object.entries(fieldsBySection).forEach(([sectionKey, fields]) => {
+                      console.log(`  Section "${sectionKey}": ${fields.length} fields`);
                     });
 
                     // Sort sections by order
@@ -1744,21 +1798,48 @@ export default function DynamicProductCreationFormClean({
                     return sortedSections.map(([sectionKey, sectionFields]) => {
                       const sectionMeta = getSectionMetadata(sectionKey);
                       const IconComponent = sectionMeta.icon;
+                      const isExpanded = expandedSections.has(sectionKey);
+                      const ChevronIcon = isExpanded ? ChevronDown : ChevronRight;
 
                       return (
                         <Card key={sectionKey} className="mb-6">
-                          <CardHeader>
+                          <CardHeader
+                            className="cursor-pointer hover:bg-gray-50 transition-colors"
+                            onClick={() => toggleSection(sectionKey)}
+                            onKeyDown={(e: React.KeyboardEvent<HTMLDivElement>) => {
+                              if (e.key === 'Enter' || e.key === ' ') {
+                                e.preventDefault();
+                                toggleSection(sectionKey);
+                              }
+                            }}
+                            tabIndex={0}
+                            role="button"
+                            aria-expanded={isExpanded}
+                            aria-controls={`section-content-${sectionKey}`}
+                          >
                             <div className="flex items-center justify-between">
-                              <div className="flex items-center space-x-2">
+                              <div className="flex items-center space-x-3">
+                                <ChevronIcon className="h-5 w-5 text-gray-500 transition-transform" />
                                 <IconComponent className={`h-5 w-5 ${sectionMeta.iconColor}`} />
                                 <CardTitle className="text-lg">{sectionMeta.label}</CardTitle>
+                                <span className="text-xs text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">
+                                  {sectionFields.length} {sectionFields.length === 1 ? 'field' : 'fields'}
+                                </span>
                               </div>
                               {sectionMeta.description && (
                                 <p className="text-sm text-gray-500">{sectionMeta.description}</p>
                               )}
                             </div>
                           </CardHeader>
-                          <CardContent className="space-y-4">
+
+                          {/* Collapsible content with smooth animation */}
+                          <div
+                            id={`section-content-${sectionKey}`}
+                            className={`transition-all duration-300 ease-in-out overflow-hidden ${
+                              isExpanded ? 'max-h-[10000px] opacity-100' : 'max-h-0 opacity-0'
+                            }`}
+                          >
+                            <CardContent className="space-y-4 pt-4">
                             {sectionFields.map((field: any, index: number) => {
                               const fieldName = field.name || field.fieldName;
                               const fieldType = (field.fieldType || '').toLowerCase();
@@ -1829,21 +1910,64 @@ export default function DynamicProductCreationFormClean({
                                 </div>
                               );
                             })}
-                          </CardContent>
+                            </CardContent>
+                          </div>
                         </Card>
                       );
                     });
                   })()}
 
-              {/* Product Variants Card */}
-              <Card>
-                <CardHeader>
-                  <div className="flex items-center space-x-2">
-                    <Settings className="h-5 w-5 text-purple-600" />
-                    <CardTitle className="text-lg">Product Variants</CardTitle>
-                  </div>
-                </CardHeader>
-                <CardContent className="space-y-4">
+              {/* Product Variants Card - Collapsible */}
+              {(() => {
+                const variantSectionKey = 'variants';
+                const isExpanded = expandedSections.has(variantSectionKey);
+                const ChevronIcon = isExpanded ? ChevronDown : ChevronRight;
+
+                // Count variant fields
+                const variantFieldsCount = getVisibleFields(schema.fields, formData).filter((field: any) => {
+                  const fieldName = field.name || field.fieldName;
+                  return fieldName === 'hasVariants' || fieldName === 'variantConfigurator';
+                }).length;
+
+                return (
+                  <Card>
+                    <CardHeader
+                      className="cursor-pointer hover:bg-gray-50 transition-colors"
+                      onClick={() => toggleSection(variantSectionKey)}
+                      onKeyDown={(e: React.KeyboardEvent<HTMLDivElement>) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          toggleSection(variantSectionKey);
+                        }
+                      }}
+                      tabIndex={0}
+                      role="button"
+                      aria-expanded={isExpanded}
+                      aria-controls={`section-content-${variantSectionKey}`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center space-x-3">
+                          <ChevronIcon className="h-5 w-5 text-gray-500 transition-transform" />
+                          <Settings className="h-5 w-5 text-purple-600" />
+                          <CardTitle className="text-lg">Product Variants</CardTitle>
+                          {variantFieldsCount > 0 && (
+                            <span className="text-xs text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">
+                              {variantFieldsCount} {variantFieldsCount === 1 ? 'field' : 'fields'}
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-sm text-gray-500">Size, color, and other variations</p>
+                      </div>
+                    </CardHeader>
+
+                    {/* Collapsible content */}
+                    <div
+                      id={`section-content-${variantSectionKey}`}
+                      className={`transition-all duration-300 ease-in-out overflow-hidden ${
+                        isExpanded ? 'max-h-[10000px] opacity-100' : 'max-h-0 opacity-0'
+                      }`}
+                    >
+                      <CardContent className="space-y-4 pt-4">
                   {/* Render hasVariants checkbox ONLY if it exists in schema */}
                   {getVisibleFields(schema.fields, formData)
                     .filter((field: any) => {
@@ -1936,8 +2060,11 @@ export default function DynamicProductCreationFormClean({
                       </div>
                     );
                   })()}
-                </CardContent>
-              </Card>
+                      </CardContent>
+                    </div>
+                  </Card>
+                );
+              })()}
 
               {/* Validation Results Display */}
               {showValidation && validationResult && (
