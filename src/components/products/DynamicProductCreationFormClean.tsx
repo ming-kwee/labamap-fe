@@ -12,7 +12,7 @@
 
 import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { Alert, AlertDescription } from '@/components/ui/alert/AlertComponents';
-import { Loader2, AlertCircle, Package, Settings, Star } from '@/components/ui/icons/Icons';
+import { Loader2, AlertCircle, Package, Settings, Star, Image, DollarSign, Truck, Tag, FileText, Info, HelpCircle, Search } from '@/components/ui/icons/Icons';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card/Card';
 import Button from '@/components/ui/button/Button';
 import { DynamicFormData, FormValidationResult, FormField } from '@/types/dynamicForm';
@@ -38,6 +38,84 @@ const mapUserRole = (role: string): 'BUSINESS_USER' | 'ADMIN' | 'DEVELOPER' => {
     default:
       return 'BUSINESS_USER';
   }
+};
+
+// Section metadata configuration (backend can override with sectionLabel, sectionIcon, etc.)
+interface SectionMetadata {
+  label: string;
+  icon: React.ComponentType<any>;
+  iconColor: string;
+  description?: string;
+  order: number;
+}
+
+const getSectionMetadata = (sectionKey: string): SectionMetadata => {
+  const metadata: Record<string, SectionMetadata> = {
+    'basic-info': {
+      label: 'Basic Information',
+      icon: Package,
+      iconColor: 'text-blue-600',
+      description: 'Essential product details',
+      order: 1
+    },
+    'pricing': {
+      label: 'Pricing & Inventory',
+      icon: DollarSign,
+      iconColor: 'text-green-600',
+      description: 'Pricing, costs, and stock levels',
+      order: 2
+    },
+    'media': {
+      label: 'Images & Media',
+      icon: Image,
+      iconColor: 'text-purple-600',
+      description: 'Product images, videos, and galleries',
+      order: 3
+    },
+    'content': {
+      label: 'Product Content',
+      icon: FileText,
+      iconColor: 'text-indigo-600',
+      description: 'Descriptions, features, and specifications',
+      order: 4
+    },
+    'shipping': {
+      label: 'Shipping Details',
+      icon: Truck,
+      iconColor: 'text-orange-600',
+      description: 'Weight, dimensions, and shipping options',
+      order: 5
+    },
+    'seo': {
+      label: 'SEO & Marketing',
+      icon: Search,
+      iconColor: 'text-pink-600',
+      description: 'Meta tags, keywords, and marketing',
+      order: 6
+    },
+    'taxonomy': {
+      label: 'Classification',
+      icon: Tag,
+      iconColor: 'text-yellow-600',
+      description: 'Categories, brands, and tags',
+      order: 7
+    },
+    'variants': {
+      label: 'Product Variants',
+      icon: Settings,
+      iconColor: 'text-purple-600',
+      description: 'Size, color, and other variations',
+      order: 8
+    }
+  };
+
+  // Return section metadata or default
+  return metadata[sectionKey] || {
+    label: sectionKey.split('-').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' '),
+    icon: Package,
+    iconColor: 'text-gray-600',
+    order: 999
+  };
 };
 
 // Validate and normalize product category
@@ -1538,16 +1616,8 @@ export default function DynamicProductCreationFormClean({
           {schema && schema.fields ? (
             <form onSubmit={(e) => { e.preventDefault(); handleSubmit(formData); }} className="space-y-6">
               
-              {/* Essential Information Card */}
-              <Card>
-                <CardHeader>
-                  <div className="flex items-center space-x-2">
-                    <Package className="h-5 w-5 text-blue-600" />
-                    <CardTitle className="text-lg">Essential Information</CardTitle>
-                  </div>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  {(() => {
+              {/* Section-Based Form Fields */}
+              {(() => {
                     const visibleFields = getVisibleFields(schema.fields, formData);
 
                     // 🔍 DIAGNOSTIC: Log ALL fields from backend with their properties
@@ -1646,67 +1716,124 @@ export default function DynamicProductCreationFormClean({
                       );
                     }
 
-                    // Render fields (EXCLUDE variant fields - they have their own section)
+                    // ✅ Group fields by section
                     const nonVariantFields = sortedFields.filter((field: any) => {
                       const fieldName = field.name || field.fieldName;
-                      // ✅ Exclude variant-specific fields (rendered in Product Variants section)
+                      // Exclude variant-specific fields (they have dedicated section below)
                       return fieldName !== 'hasVariants' && fieldName !== 'variantConfigurator';
                     });
 
-                    return nonVariantFields.slice(0, 15).map((field: any, index: number) => {
-                      const fieldName = field.name || field.fieldName;
-                      // ✅ Normalize fieldType (backend sends uppercase)
-                      const fieldType = (field.fieldType || '').toLowerCase();
+                    // Group fields by section property
+                    const fieldsBySection: Record<string, any[]> = {};
+                    nonVariantFields.forEach((field: any) => {
+                      const section = field.section || 'basic-info';  // Default section if not specified
+                      if (!fieldsBySection[section]) {
+                        fieldsBySection[section] = [];
+                      }
+                      fieldsBySection[section].push(field);
+                    });
 
-                      console.log(`[Field Render] Index: ${index}, FieldName: "${fieldName}", Label: "${field.label}"`);
+                    // Sort sections by order
+                    const sortedSections = Object.entries(fieldsBySection).sort(([keyA], [keyB]) => {
+                      const metaA = getSectionMetadata(keyA);
+                      const metaB = getSectionMetadata(keyB);
+                      return metaA.order - metaB.order;
+                    });
+
+                    // Render each section as a Card
+                    return sortedSections.map(([sectionKey, sectionFields]) => {
+                      const sectionMeta = getSectionMetadata(sectionKey);
+                      const IconComponent = sectionMeta.icon;
+
                       return (
-                      <div key={`${fieldName}-${index}`} className="space-y-2">
-                        <label className="block text-sm font-medium text-gray-700">{field.label}</label>
-                        {fieldType === 'textarea' ? (
-                          <textarea
-                            id={`${fieldName}-${index}`}
-                            name={fieldName}
-                            placeholder={field.placeholder}
-                            value={formData[fieldName] || ''}
-                            onChange={(e) => handleFieldChange(fieldName, e.target.value)}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 transition-colors"
-                            rows={3}
-                          />
-                        ) : fieldType === 'select' ? (
-                          <select
-                            id={`${fieldName}-${index}`}
-                            name={fieldName}
-                            value={formData[fieldName] || ''}
-                            onChange={(e) => handleFieldChange(fieldName, e.target.value)}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 transition-colors"
-                          >
-                            <option value="">{field.placeholder}</option>
-                            {field.options?.map((option: any) => (
-                              <option key={option.value} value={option.value}>
-                                {option.label}
-                              </option>
-                            ))}
-                          </select>
-                        ) : (
-                          <input
-                            id={`${fieldName}-${index}`}
-                            name={fieldName}
-                            type={fieldType === 'number' ? 'number' : fieldType === 'email' ? 'email' : 'text'}
-                            placeholder={field.placeholder}
-                            value={formData[fieldName] || ''}
-                            onChange={(e) => handleFieldChange(fieldName, e.target.value)}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 transition-colors"
-                          />
-                        )}
-                        {field.helpText && (
-                          <p className="text-xs text-gray-500">{field.helpText}</p>
-                        )}
-                      </div>
+                        <Card key={sectionKey} className="mb-6">
+                          <CardHeader>
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center space-x-2">
+                                <IconComponent className={`h-5 w-5 ${sectionMeta.iconColor}`} />
+                                <CardTitle className="text-lg">{sectionMeta.label}</CardTitle>
+                              </div>
+                              {sectionMeta.description && (
+                                <p className="text-sm text-gray-500">{sectionMeta.description}</p>
+                              )}
+                            </div>
+                          </CardHeader>
+                          <CardContent className="space-y-4">
+                            {sectionFields.map((field: any, index: number) => {
+                              const fieldName = field.name || field.fieldName;
+                              const fieldType = (field.fieldType || '').toLowerCase();
+
+                              return (
+                                <div key={`${fieldName}-${index}`} className="space-y-2">
+                                  {/* Label with optional info tooltip */}
+                                  <div className="flex items-center justify-between">
+                                    <label className="flex items-center text-sm font-medium text-gray-700">
+                                      {field.label}
+                                      {field.required && <span className="text-red-500 ml-1">*</span>}
+                                    </label>
+                                    {field.description && (
+                                      <div className="group relative">
+                                        <Info className="h-4 w-4 text-gray-400 hover:text-gray-600 cursor-help" />
+                                        <div className="absolute right-0 bottom-full mb-2 hidden group-hover:block w-64 p-2 bg-gray-900 text-white text-xs rounded shadow-lg z-10">
+                                          {field.description}
+                                        </div>
+                                      </div>
+                                    )}
+                                  </div>
+
+                                  {/* Input field based on type */}
+                                  {fieldType === 'textarea' ? (
+                                    <textarea
+                                      id={`${fieldName}-${index}`}
+                                      name={fieldName}
+                                      placeholder={field.placeholder}
+                                      value={formData[fieldName] || ''}
+                                      onChange={(e) => handleFieldChange(fieldName, e.target.value)}
+                                      className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                                      rows={3}
+                                    />
+                                  ) : fieldType === 'select' ? (
+                                    <select
+                                      id={`${fieldName}-${index}`}
+                                      name={fieldName}
+                                      value={formData[fieldName] || ''}
+                                      onChange={(e) => handleFieldChange(fieldName, e.target.value)}
+                                      className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                                    >
+                                      <option value="">{field.placeholder}</option>
+                                      {field.options?.map((option: any) => (
+                                        <option key={option.value} value={option.value}>
+                                          {option.label}
+                                        </option>
+                                      ))}
+                                    </select>
+                                  ) : (
+                                    <input
+                                      id={`${fieldName}-${index}`}
+                                      name={fieldName}
+                                      type={fieldType === 'number' ? 'number' : fieldType === 'email' ? 'email' : 'text'}
+                                      placeholder={field.placeholder}
+                                      value={formData[fieldName] || ''}
+                                      onChange={(e) => handleFieldChange(fieldName, e.target.value)}
+                                      className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                                    />
+                                  )}
+
+                                  {/* Help text with icon */}
+                                  {field.helpText && (
+                                    <p className="text-xs text-gray-500 flex items-start">
+                                      <HelpCircle className="h-3 w-3 mr-1 mt-0.5 flex-shrink-0" />
+                                      {field.helpText}
+                                    </p>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </CardContent>
+                        </Card>
                       );
                     });
                   })()}
-                </CardContent>
-              </Card>
 
               {/* Product Variants Card */}
               <Card>
