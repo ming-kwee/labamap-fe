@@ -16,6 +16,7 @@ import {
   PieChartIcon,
   PlugInIcon,
   TableIcon,
+  TaskIcon,
   UserCircleIcon,
 } from "../icons/index";
 import SidebarWidget from "./SidebarWidget";
@@ -46,6 +47,11 @@ const navItems: NavItem[] = [
       { name: "Channel Product List", path: "/products/channel-list", pro: false },
       { name: "Channel Mapping Templates", path: "/products/channel-templates", pro: false, new: true }
     ],
+  },
+  {
+    icon: <TaskIcon />,
+    name: "Business Rules",
+    path: "/business-rules",
   },
   {
     icon: <CalenderIcon />,

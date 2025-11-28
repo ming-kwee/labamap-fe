@@ -294,12 +294,12 @@ export class BackendAPIService {
     return response.json();
   }
 
-  // POST /api/v1/products/enhanced/validate
+  // POST /api/v1/ecommerce/dynamic-products/validate (enhanced validation)
   static async validateProductEnhanced(
     productData: DynamicFormData,
     context: BackendContext
   ): Promise<import('@/types/dynamicForm').EnhancedValidationResult> {
-    const response = await fetch(`${BACKEND_BASE_URL}/products/enhanced/validate`, {
+    const response = await fetch(`${BACKEND_BASE_URL}/dynamic-products/validate`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -322,7 +322,15 @@ export class BackendAPIService {
     });
 
     if (!response.ok) {
-      throw new Error(`Enhanced validation failed: ${response.statusText}`);
+      // Try to get detailed error message from response body
+      let errorMessage = response.statusText;
+      try {
+        const errorData = await response.json();
+        errorMessage = errorData.message || errorData.error || JSON.stringify(errorData);
+      } catch (e) {
+        // If parsing fails, use statusText
+      }
+      throw new Error(`Enhanced validation failed: ${errorMessage}`);
     }
 
     return response.json();

@@ -253,6 +253,10 @@ export default function DynamicProductCreationFormClean({
   const [showValidation, setShowValidation] = useState(false);
   const [showJsonPreview, setShowJsonPreview] = useState(false);
 
+  // Client-side field validation state (onBlur validation)
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const [touchedFields, setTouchedFields] = useState<Set<string>>(new Set());
+
   // CRITICAL: Track user's manual category selection to prevent org config overrides
   const userSelectedCategory = useRef<string>("");
 
@@ -787,9 +791,109 @@ export default function DynamicProductCreationFormClean({
   // Helper function to get visible fields based on current form data
   const getVisibleFields = useCallback((fields: FormField[], currentFormData: DynamicFormData): FormField[] => {
     if (!fields) return [];
-    
+
     return fields.filter(field => isFieldVisible(field, currentFormData));
   }, [isFieldVisible]);
+
+  // Client-side field validation function (onBlur validation)
+  const validateField = useCallback((field: FormField, value: any): string | null => {
+    const fieldName = field.name || field.fieldName;
+
+    // Check required fields
+    if (field.required && (value === undefined || value === null || value === '')) {
+      return `${field.label || fieldName} is required`;
+    }
+
+    // Skip validation for empty optional fields
+    if (!field.required && (value === undefined || value === null || value === '')) {
+      return null;
+    }
+
+    // Type-specific validation
+    const fieldType = field.type || 'text';
+
+    switch (fieldType) {
+      case 'number':
+        if (typeof value === 'string' && value !== '') {
+          const numValue = parseFloat(value);
+          if (isNaN(numValue)) {
+            return `${field.label || fieldName} must be a valid number`;
+          }
+          value = numValue;
+        }
+
+        if (typeof value === 'number') {
+          if (field.validation?.min !== undefined && value < field.validation.min) {
+            return `${field.label || fieldName} must be at least ${field.validation.min}`;
+          }
+          if (field.validation?.max !== undefined && value > field.validation.max) {
+            return `${field.label || fieldName} must be at most ${field.validation.max}`;
+          }
+        }
+        break;
+
+      case 'text':
+      case 'textarea':
+      case 'email':
+        if (typeof value === 'string') {
+          if (field.validation?.minLength && value.length < field.validation.minLength) {
+            return `${field.label || fieldName} must be at least ${field.validation.minLength} characters`;
+          }
+          if (field.validation?.maxLength && value.length > field.validation.maxLength) {
+            return `${field.label || fieldName} must be at most ${field.validation.maxLength} characters`;
+          }
+          if (field.validation?.pattern) {
+            const regex = new RegExp(field.validation.pattern);
+            if (!regex.test(value)) {
+              return `${field.label || fieldName} format is invalid`;
+            }
+          }
+
+          // Email-specific validation
+          if (fieldType === 'email') {
+            const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+            if (!emailRegex.test(value)) {
+              return `${field.label || fieldName} must be a valid email address`;
+            }
+          }
+        }
+        break;
+
+      case 'select':
+        if (field.options && value) {
+          const validValues = field.options.map((opt: any) => opt.value);
+          if (!validValues.includes(value)) {
+            return `${field.label || fieldName} must be one of the available options`;
+          }
+        }
+        break;
+    }
+
+    return null;
+  }, []);
+
+  // Handle field blur - validate individual field
+  const handleFieldBlur = useCallback((field: FormField) => {
+    const fieldName = field.name || field.fieldName;
+
+    // Mark field as touched
+    setTouchedFields(prev => new Set(prev).add(fieldName));
+
+    // Get current value
+    const value = formData[fieldName];
+
+    // Validate on blur
+    const error = validateField(field, value);
+    if (error) {
+      setFieldErrors(prev => ({ ...prev, [fieldName]: error }));
+    } else {
+      setFieldErrors(prev => {
+        const newErrors = { ...prev };
+        delete newErrors[fieldName];
+        return newErrors;
+      });
+    }
+  }, [formData, validateField]);
 
   // Debug schema and conditional visibility
   useEffect(() => {
@@ -843,7 +947,16 @@ export default function DynamicProductCreationFormClean({
   const handleFieldChange = useCallback(async (fieldName: string, value: any) => {
     console.log('[DynamicProductCreationFormClean] Field changed:', fieldName, '=', value);
     console.log('[DynamicProductCreationFormClean] Current formData keys:', Object.keys(formData));
-    
+
+    // Clear field error when user starts typing
+    if (fieldErrors[fieldName]) {
+      setFieldErrors(prev => {
+        const newErrors = { ...prev };
+        delete newErrors[fieldName];
+        return newErrors;
+      });
+    }
+
     // CRITICAL: Special handling for variantConfigurator to preserve category context
     if (fieldName === 'variantConfigurator') {
       console.log('🔥 [VARIANT CONFIGURATOR] Variant data updated, preserving category context');
@@ -1148,7 +1261,7 @@ export default function DynamicProductCreationFormClean({
         // Continue with basic functionality if business rules fail
       }
     }
-  }, [stableContext, businessRulesConfig, organization]);
+  }, [stableContext, businessRulesConfig, organization, fieldErrors]);
 
   // Handle validation changes
   const handleValidationChange = useCallback((_result: FormValidationResult) => {
@@ -1863,45 +1976,64 @@ export default function DynamicProductCreationFormClean({
                                   </div>
 
                                   {/* Input field based on type */}
-                                  {fieldType === 'textarea' ? (
-                                    <textarea
-                                      id={`${fieldName}-${index}`}
-                                      name={fieldName}
-                                      placeholder={field.placeholder}
-                                      value={formData[fieldName] || ''}
-                                      onChange={(e) => handleFieldChange(fieldName, e.target.value)}
-                                      className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 transition-colors"
-                                      rows={3}
-                                    />
-                                  ) : fieldType === 'select' ? (
-                                    <select
-                                      id={`${fieldName}-${index}`}
-                                      name={fieldName}
-                                      value={formData[fieldName] || ''}
-                                      onChange={(e) => handleFieldChange(fieldName, e.target.value)}
-                                      className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 transition-colors"
-                                    >
-                                      <option value="">{field.placeholder}</option>
-                                      {field.options?.map((option: any) => (
-                                        <option key={option.value} value={option.value}>
-                                          {option.label}
-                                        </option>
-                                      ))}
-                                    </select>
-                                  ) : (
-                                    <input
-                                      id={`${fieldName}-${index}`}
-                                      name={fieldName}
-                                      type={fieldType === 'number' ? 'number' : fieldType === 'email' ? 'email' : 'text'}
-                                      placeholder={field.placeholder}
-                                      value={formData[fieldName] || ''}
-                                      onChange={(e) => handleFieldChange(fieldName, e.target.value)}
-                                      className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 transition-colors"
-                                    />
+                                  {(() => {
+                                    const hasError = !!fieldErrors[fieldName];
+                                    const errorClass = hasError
+                                      ? 'border-red-500 focus:ring-red-500 focus:border-red-500'
+                                      : 'border-gray-300 focus:ring-blue-500 focus:border-blue-500';
+                                    const baseClass = `w-full px-3 py-2 border rounded-md shadow-sm ${errorClass} transition-colors`;
+
+                                    return fieldType === 'textarea' ? (
+                                      <textarea
+                                        id={`${fieldName}-${index}`}
+                                        name={fieldName}
+                                        placeholder={field.placeholder}
+                                        value={formData[fieldName] || ''}
+                                        onChange={(e) => handleFieldChange(fieldName, e.target.value)}
+                                        onBlur={() => handleFieldBlur(field)}
+                                        className={baseClass}
+                                        rows={3}
+                                      />
+                                    ) : fieldType === 'select' ? (
+                                      <select
+                                        id={`${fieldName}-${index}`}
+                                        name={fieldName}
+                                        value={formData[fieldName] || ''}
+                                        onChange={(e) => handleFieldChange(fieldName, e.target.value)}
+                                        onBlur={() => handleFieldBlur(field)}
+                                        className={baseClass}
+                                      >
+                                        <option value="">{field.placeholder}</option>
+                                        {field.options?.map((option: any) => (
+                                          <option key={option.value} value={option.value}>
+                                            {option.label}
+                                          </option>
+                                        ))}
+                                      </select>
+                                    ) : (
+                                      <input
+                                        id={`${fieldName}-${index}`}
+                                        name={fieldName}
+                                        type={fieldType === 'number' ? 'number' : fieldType === 'email' ? 'email' : 'text'}
+                                        placeholder={field.placeholder}
+                                        value={formData[fieldName] || ''}
+                                        onChange={(e) => handleFieldChange(fieldName, e.target.value)}
+                                        onBlur={() => handleFieldBlur(field)}
+                                        className={baseClass}
+                                      />
+                                    );
+                                  })()}
+
+                                  {/* Error message */}
+                                  {fieldErrors[fieldName] && (
+                                    <p className="text-xs text-red-600 flex items-start">
+                                      <AlertCircle className="h-3 w-3 mr-1 mt-0.5 flex-shrink-0" />
+                                      {fieldErrors[fieldName]}
+                                    </p>
                                   )}
 
                                   {/* Help text with icon */}
-                                  {field.helpText && (
+                                  {field.helpText && !fieldErrors[fieldName] && (
                                     <p className="text-xs text-gray-500 flex items-start">
                                       <HelpCircle className="h-3 w-3 mr-1 mt-0.5 flex-shrink-0" />
                                       {field.helpText}
