@@ -1,12 +1,12 @@
 'use client';
 
 import React, { useState } from 'react';
-import { useAuth, SignUpRequest } from '@/context/AuthContext';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card/Card';
-import Button from '@/components/ui/button/Button';
-import Input from '@/components/ui/input/Input';
-import { Alert, AlertDescription } from '@/components/ui/alert/AlertComponents';
-import { Loader2, Mail, Lock, User, Building, Eye, EyeOff, AlertCircle } from '@/components/ui/icons/Icons';
+import { useAuth, SignUpRequest } from '@/shared/contexts/AuthContext';
+import { Card, CardContent, CardHeader, CardTitle } from '@/shared/ui/card/Card';
+import Button from '@/shared/ui/button/Button';
+import Input from '@/shared/ui/input/Input';
+import { Alert, AlertDescription } from '@/shared/ui/alert/AlertComponents';
+import { Loader2, Mail, Lock, User, Building, Eye, EyeOff, AlertCircle } from '@/shared/ui/icons/Icons';
 
 interface SignUpFormProps {
   onSuccess?: () => void;

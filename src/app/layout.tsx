@@ -3,8 +3,8 @@ import './globals.css';
 
 import { SidebarProvider } from '@/context/SidebarContext';
 import { ThemeProvider } from '@/context/ThemeContext';
-import { AuthProvider } from '@/context/AuthContext';
-import { OrganizationProvider } from '@/context/OrganizationContext';
+import { AuthProvider } from '@/shared/contexts/AuthContext';
+import { OrganizationProvider } from '@/shared/contexts/OrganizationContext';
 
 const outfit = Outfit({
   subsets: ["latin"],

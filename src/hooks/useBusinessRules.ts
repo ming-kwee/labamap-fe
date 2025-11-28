@@ -6,8 +6,8 @@
 import { useState, useCallback } from 'react';
 import { RuleResult, RuleViolation, RuleWarning, RuleType, ProductInput, ProductOutput } from '@/types/rules';
 import { BackendAPIService } from '@/lib/api/backendService';
-import { useAuth } from '@/context/AuthContext';
-import { useOrganization } from '@/context/OrganizationContext';
+import { useAuth } from '@/shared/contexts/AuthContext';
+import { useOrganization } from '@/shared/contexts/OrganizationContext';
 
 interface UseBusinessRulesReturn {
   isExecuting: boolean;

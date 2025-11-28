@@ -1,13 +1,13 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { useAuth } from '@/context/AuthContext';
+import { useAuth } from '@/shared/contexts/AuthContext';
 import SignInForm from './SignInForm';
 import SignUpForm from './SignUpForm';
 import { LogoutButton } from './LogoutButton';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card/Card';
-import Button from '@/components/ui/button/Button';
-import { Loader2, Package, User, Building } from '@/components/ui/icons/Icons';
+import { Card, CardContent, CardHeader, CardTitle } from '@/shared/ui/card/Card';
+import Button from '@/shared/ui/button/Button';
+import { Loader2, Package, User, Building } from '@/shared/ui/icons/Icons';
 
 interface AuthLayoutProps {
   children: React.ReactNode;

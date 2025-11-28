@@ -2,24 +2,24 @@
 
 import React, { useState, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card/Card';
-import Button from '@/components/ui/button/Button';
-import Badge from '@/components/ui/badge/Badge';
-import Progress from '@/components/ui/progress/Progress';
-import { 
-  CheckCircle2, 
-  ArrowRight, 
-  Package, 
-  Settings, 
+import { Card, CardContent, CardHeader, CardTitle } from '@/shared/ui/card/Card';
+import Button from '@/shared/ui/button/Button';
+import Badge from '@/shared/ui/badge/Badge';
+import Progress from '@/shared/ui/progress/Progress';
+import {
+  CheckCircle2,
+  ArrowRight,
+  Package,
+  Settings,
   Send,
   Eye
-} from '@/components/ui/icons/Icons';
-import ProductCreationPageWrapper from '@/components/products/ProductCreationPageWrapper';
-import ChannelSelectionInterface from '@/components/products/ChannelSelectionInterface';
-import ChannelPayloadReview from '@/components/products/ChannelPayloadReview';
-import { MasterProduct } from '@/types/product';
-import { ChannelMappingResult } from '@/types/channel';
-import { PublishResult } from '@/services/ChannelMappingService';
+} from '@/shared/ui/icons/Icons';
+import ProductCreationPageWrapper from '@/modules/ecommerce-product/components/ProductCreationPageWrapper';
+import ChannelSelectionInterface from '@/modules/ecommerce-product/components/ChannelSelectionInterface';
+import ChannelPayloadReview from '@/modules/ecommerce-product/components/ChannelPayloadReview';
+import { MasterProduct } from '@/modules/ecommerce-product/types/product';
+import { ChannelMappingResult } from '@/modules/ecommerce-product/types/channel';
+import { PublishResult } from '@/modules/ecommerce-product/services/channelMappingService';
 
 type WorkflowStep = 'product' | 'channels' | 'review' | 'complete';
 
@@ -76,11 +76,6 @@ export default function CreateProductPage() {
   const progressPercentage = ((currentStepIndex + 1) / steps.length) * 100;
 
   // Memoize stable props to prevent re-renders
-  const stableTargetChannels = useMemo(() => ['shopify', 'amazon', 'walmart', 'ebay'], []);
-  const stableProductCategory = useMemo(() => 'electronics', []);
-  const stableUserRole = useMemo(() => 'BUSINESS_USER' as const, []);
-  const stableComplianceMode = useMemo(() => 'STANDARD' as const, []);
-  const stableWorkflowStep = useMemo(() => 'DRAFT' as const, []);
   const stableDebugMode = useMemo(() => process.env.NODE_ENV === 'development', []);
 
   const handleProductCreated = (product: MasterProduct, availableChannels: string[]) => {

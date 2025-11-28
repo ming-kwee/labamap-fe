@@ -19,9 +19,17 @@
       }
     ],
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["./src/*"],
+      "@/modules/*": ["./src/modules/*"],
+      "@/shared/*": ["./src/shared/*"],
+      "@/ecommerce-product": ["./src/modules/ecommerce-product"],
+      "@/ecommerce-product/*": ["./src/modules/ecommerce-product/*"],
+      "@/ecommerce-business-rules": ["./src/modules/ecommerce-business-rules"],
+      "@/ecommerce-business-rules/*": ["./src/modules/ecommerce-business-rules/*"],
+      "@/ecommerce-conditional-logic": ["./src/modules/ecommerce-conditional-logic"],
+      "@/ecommerce-conditional-logic/*": ["./src/modules/ecommerce-conditional-logic/*"]
     }
   },
   "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],
-  "exclude": ["node_modules"]
+  "exclude": ["node_modules", "backup/**/*"]
 }

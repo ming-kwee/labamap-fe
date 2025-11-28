@@ -1,13 +1,13 @@
 "use client";
 import React, { useState } from "react";
-import { useAuth } from '@/context/AuthContext';
+import { useAuth } from '@/shared/contexts/AuthContext';
 import Checkbox from "@/components/form/input/Checkbox";
 import Input from "@/components/form/input/InputField";
 import Label from "@/components/form/Label";
-import Button from "@/components/ui/button/Button";
-import { Alert, AlertDescription } from '@/components/ui/alert/AlertComponents';
+import Button from "@/shared/ui/button/Button";
+import { Alert, AlertDescription } from '@/shared/ui/alert/AlertComponents';
 import { ChevronLeftIcon, EyeCloseIcon, EyeIcon } from "@/icons";
-import { Loader2, AlertCircle } from '@/components/ui/icons/Icons';
+import { Loader2, AlertCircle } from '@/shared/ui/icons/Icons';
 import Link from "next/link";
 
 interface SignInFormProps {

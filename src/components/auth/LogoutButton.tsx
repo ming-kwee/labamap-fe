@@ -1,10 +1,10 @@
 'use client';
 
 import React, { useState } from 'react';
-import { useAuth } from '@/context/AuthContext';
-import Button from '@/components/ui/button/Button';
-import { Loader2, LogOut, AlertCircle, CheckCircle } from '@/components/ui/icons/Icons';
-import { Alert, AlertDescription } from '@/components/ui/alert/AlertComponents';
+import { useAuth } from '@/shared/contexts/AuthContext';
+import Button from '@/shared/ui/button/Button';
+import { Loader2, LogOut, AlertCircle, CheckCircle } from '@/shared/ui/icons/Icons';
+import { Alert, AlertDescription } from '@/shared/ui/alert/AlertComponents';
 
 interface LogoutButtonProps {
   variant?: 'primary' | 'outline';

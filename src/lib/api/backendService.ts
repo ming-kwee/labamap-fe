@@ -1,28 +1,27 @@
 /**
  * Backend API Service - Integration with real backend APIs
- * This replaces the mock Next.js APIs with actual backend endpoints
+ * This file now acts as a compatibility layer, re-exporting from the new modular services
+ *
+ * @deprecated Use the new modular services instead:
+ * - @/modules/ecommerce-product/services/productService for product-related APIs
+ * - @/modules/ecommerce-business-rules/services/businessRulesService for business rules
  */
 
 import { DynamicFormSchema, DynamicFormData } from '@/types/dynamicForm';
 import { MasterProduct } from '@/types/product';
 
-const BACKEND_BASE_URL = 'http://localhost:8888/labamap/api/v1/ecommerce';
+// Re-export from new modular location for backward compatibility
+export {
+  ProductService,
+  createBackendContext,
+  type BackendContext
+} from '@/modules/ecommerce-product/services/productService';
 
-export interface BackendContext {
-  userId: string;
-  organizationId: string;
-  userRole: 'BUSINESS_USER' | 'ADMIN' | 'DEVELOPER';
-  targetChannels: string[];
-  productCategory: string;
-  permissions: string[];
-  requestId?: string;
-  timestamp?: number;
-  environment?: string;
-  metadata?: {
-    targetChannels: string[];
-    apiVersion: string;
-  };
-}
+export {
+  BusinessRulesService
+} from '@/modules/ecommerce-business-rules/services/businessRulesService';
+
+const BACKEND_BASE_URL = 'http://localhost:8888/labamap/api/v1/ecommerce';
 
 export class BackendAPIService {
   /**
@@ -353,22 +352,4 @@ export class BackendAPIService {
   }
 }
 
-// Helper function to create context
-export const createBackendContext = (
-  userId: string,
-  organizationId: string,
-  userRole: 'BUSINESS_USER' | 'ADMIN' | 'DEVELOPER',
-  targetChannels: string[],
-  productCategory: string,
-  permissions: string[] = ['READ_ATTRIBUTES', 'WRITE_ATTRIBUTES']
-): BackendContext => ({
-  userId,
-  organizationId,
-  userRole,
-  targetChannels,
-  productCategory,
-  permissions,
-  requestId: `req_${Date.now()}`,
-  timestamp: Date.now(),
-  environment: 'development'
-});
+// Note: createBackendContext is now re-exported from the new modular location at the top of this file

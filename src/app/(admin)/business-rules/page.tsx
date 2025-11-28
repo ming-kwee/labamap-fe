@@ -1,4 +1,4 @@
-import BusinessRulesManager from '@/components/business-rules/BusinessRulesManager';
+import BusinessRulesManager from '@/modules/ecommerce-business-rules/components/BusinessRulesManager';
 
 export const metadata = {
   title: 'Business Rules Management',
