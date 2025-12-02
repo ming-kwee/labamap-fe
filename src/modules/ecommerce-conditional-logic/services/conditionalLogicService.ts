@@ -41,7 +41,9 @@ export class ConditionalLogicService {
       throw new Error(`Failed to create rule: ${errorMessage}`);
     }
 
-    return response.json();
+    const data = await response.json();
+    // Backend might return { success, rule } or just the rule
+    return data.rule || data;
   }
 
   // Get all rules
@@ -57,11 +59,16 @@ export class ConditionalLogicService {
       throw new Error(`Failed to get rules: ${response.statusText}`);
     }
 
-    return response.json();
+    const data = await response.json();
+    // Backend returns { success, count, rules }, extract the rules array
+    return data.rules || data;
   }
 
   // Get rule by ID
   static async getRuleById(id: string): Promise<ConditionalLogicRule> {
+    console.log('[ConditionalLogicService] Fetching rule by ID:', id);
+    console.log('[ConditionalLogicService] URL:', `${BACKEND_BASE_URL}/conditional-rules/${id}`);
+
     const response = await fetch(`${BACKEND_BASE_URL}/conditional-rules/${id}`, {
       method: 'GET',
       headers: {
@@ -69,11 +76,20 @@ export class ConditionalLogicService {
       },
     });
 
+    console.log('[ConditionalLogicService] Response status:', response.status, response.statusText);
+
     if (!response.ok) {
       throw new Error(`Failed to get rule: ${response.statusText}`);
     }
 
-    return response.json();
+    const data = await response.json();
+    console.log('[ConditionalLogicService] Raw response data:', data);
+
+    // Backend might return { success, rule } or just the rule
+    const rule = data.rule || data;
+    console.log('[ConditionalLogicService] Extracted rule:', rule);
+
+    return rule;
   }
 
   // Update rule
@@ -97,7 +113,9 @@ export class ConditionalLogicService {
       throw new Error(`Failed to update rule: ${errorMessage}`);
     }
 
-    return response.json();
+    const data = await response.json();
+    // Backend might return { success, rule } or just the rule
+    return data.rule || data;
   }
 
   // Delete rule
@@ -131,7 +149,8 @@ export class ConditionalLogicService {
       throw new Error(`Failed to get rules by trigger field: ${response.statusText}`);
     }
 
-    return response.json();
+    const data = await response.json();
+    return data.rules || data;
   }
 
   // Get rules by trigger field and value
@@ -153,7 +172,8 @@ export class ConditionalLogicService {
       throw new Error(`Failed to get rules by trigger field and value: ${response.statusText}`);
     }
 
-    return response.json();
+    const data = await response.json();
+    return data.rules || data;
   }
 
   // Get rules by condition type
@@ -169,7 +189,8 @@ export class ConditionalLogicService {
       throw new Error(`Failed to get rules by condition type: ${response.statusText}`);
     }
 
-    return response.json();
+    const data = await response.json();
+    return data.rules || data;
   }
 
   // Get rules by categories
@@ -189,7 +210,8 @@ export class ConditionalLogicService {
       throw new Error(`Failed to get rules by categories: ${response.statusText}`);
     }
 
-    return response.json();
+    const data = await response.json();
+    return data.rules || data;
   }
 
   /**
@@ -225,7 +247,9 @@ export class ConditionalLogicService {
       throw new Error(`Failed to toggle rule: ${response.statusText}`);
     }
 
-    return response.json();
+    const data = await response.json();
+    // Backend might return { success, rule } or just the rule
+    return data.rule || data;
   }
 
   // Validate rule

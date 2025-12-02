@@ -48,7 +48,6 @@ export {
   getActionsByCategory
 } from './types/operators';
 
-// Components (will be added later)
-// export { ConditionalLogicManager } from './components/ConditionalLogicManager';
-// export { RuleBuilder } from './components/RuleBuilder';
-// export { RulesList } from './components/RulesList';
+// Components
+export { default as ConditionalLogicManager } from './components/ConditionalLogicManager';
+export { default as RuleBuilder } from './components/RuleBuilder';

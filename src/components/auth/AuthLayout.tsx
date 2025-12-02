@@ -61,14 +61,14 @@ export const AuthLayout: React.FC<AuthLayoutProps> = ({
     console.log('[AuthLayout] Rendering login/signup form - requireAuth:', requireAuth, 'isAuthenticated:', isAuthenticated);
     return (
       <div className={`min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900 p-4 ${className}`}>
-        <div className="w-full max-w-md">
+        <div className="w-full max-w-lg">
           {authMode === 'login' && (
             <SignInForm
               onSwitchToSignUp={switchToSignUp}
               showBackLink={false}
             />
           )}
-          
+
           {authMode === 'signup' && (
             <SignUpForm
               onSwitchToLogin={switchToLogin}
