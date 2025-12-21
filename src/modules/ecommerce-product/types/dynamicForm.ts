@@ -194,6 +194,17 @@ export interface FormGovernanceInfo {
   }[];
 }
 
+// Section structure for organizing fields
+export interface FormSection {
+  key: string;
+  label: string;
+  description?: string;
+  fields: FormField[];
+  order?: number;
+  collapsible?: boolean;
+  defaultExpanded?: boolean;
+}
+
 // Dynamic Form Schema
 export interface DynamicFormSchema {
   title: string;
@@ -206,9 +217,10 @@ export interface DynamicFormSchema {
     userRole: string;
     permissions: string[];
   };
-  
-  // Form Structure
-  fields: FormField[];
+
+  // Form Structure (backend may send either fields or sections)
+  fields?: FormField[];
+  sections?: FormSection[];
   groups?: {
     groupName: string;
     label: string;
@@ -217,20 +229,21 @@ export interface DynamicFormSchema {
     collapsible?: boolean;
     defaultExpanded?: boolean;
   }[];
-  
+
   // Form Logic
-  conditionalLogic: FormLogic;
-  
+  conditionalLogic?: FormLogic;
+
   // Business Governance
-  governanceInfo: FormGovernanceInfo;
-  
+  governanceInfo?: FormGovernanceInfo;
+
   // Metadata
-  metadata: {
+  metadata?: {
     estimatedCompletionTime?: number;
     complexity: 'SIMPLE' | 'MODERATE' | 'COMPLEX';
     fieldCount: number;
     requiredFieldCount: number;
     conditionalFieldCount: number;
+    formStage?: 'essential' | 'category-specific';
   };
 }
 

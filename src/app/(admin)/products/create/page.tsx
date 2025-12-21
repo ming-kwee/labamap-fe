@@ -12,22 +12,17 @@ import {
   Package,
   Settings,
   Send,
-  Eye
+  Eye,
+  Info
 } from '@/shared/ui/icons/Icons';
 import ProductCreationPageWrapper from '@/modules/ecommerce-product/components/ProductCreationPageWrapper';
-import ChannelSelectionInterface from '@/modules/ecommerce-product/components/ChannelSelectionInterface';
-import ChannelPayloadReview from '@/modules/ecommerce-product/components/ChannelPayloadReview';
 import { MasterProduct } from '@/modules/ecommerce-product/types/product';
-import { ChannelMappingResult } from '@/modules/ecommerce-product/types/channel';
-import { PublishResult } from '@/modules/ecommerce-product/services/channelMappingService';
 
 type WorkflowStep = 'product' | 'channels' | 'review' | 'complete';
 
 interface WorkflowState {
   masterProduct: MasterProduct | null;
   availableChannels: string[];
-  mappingResults: ChannelMappingResult[];
-  publishResults: PublishResult[];
 }
 
 export default function CreateProductPage() {
@@ -35,9 +30,7 @@ export default function CreateProductPage() {
   const [currentStep, setCurrentStep] = useState<WorkflowStep>('product');
   const [workflowState, setWorkflowState] = useState<WorkflowState>({
     masterProduct: null,
-    availableChannels: [],
-    mappingResults: [],
-    publishResults: []
+    availableChannels: []
   });
 
   const steps = [
@@ -50,25 +43,10 @@ export default function CreateProductPage() {
     },
     {
       id: 'channels' as WorkflowStep,
-      title: 'Select Channels',
-      description: 'Choose publishing destinations',
-      icon: Settings,
-      completed: workflowState.mappingResults.length > 0
-    },
-    {
-      id: 'review' as WorkflowStep,
-      title: 'Review & Publish',
-      description: 'Verify and publish',
-      icon: Eye,
-      completed: workflowState.publishResults.some(r => r.success)
-    },
-    {
-      id: 'complete' as WorkflowStep,
-      title: 'Complete',
-      description: 'Workflow finished',
-      icon: CheckCircle2,
-      completed: workflowState.publishResults.length > 0 && 
-                 workflowState.publishResults.every(r => r.success)
+      title: 'Next Steps',
+      description: 'Publish to channels',
+      icon: Send,
+      completed: !!workflowState.masterProduct
     }
   ];
 
@@ -79,6 +57,27 @@ export default function CreateProductPage() {
   const stableDebugMode = useMemo(() => process.env.NODE_ENV === 'development', []);
 
   const handleProductCreated = (product: MasterProduct, availableChannels: string[]) => {
+    console.log('[CreateProduct] Product created successfully:', product);
+
+    // Ensure product has an ID (generate one if backend didn't provide)
+    if (!product.id) {
+      console.warn('[CreateProduct] Product missing ID, generating one...');
+      product.id = `prod_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      console.log('[CreateProduct] Generated ID:', product.id);
+    }
+
+    // Store product in session storage for channel publish page
+    if (typeof window !== 'undefined') {
+      const storageKey = `product_${product.id}`;
+      sessionStorage.setItem(storageKey, JSON.stringify(product));
+      console.log('[CreateProduct] ✓ Stored product in session storage:', {
+        key: storageKey,
+        productId: product.id,
+        productName: product.name,
+        productSku: product.sku
+      });
+    }
+
     setWorkflowState(prev => ({
       ...prev,
       masterProduct: product,
@@ -87,21 +86,6 @@ export default function CreateProductPage() {
     setCurrentStep('channels');
   };
 
-  const handleMappingComplete = (results: ChannelMappingResult[]) => {
-    setWorkflowState(prev => ({
-      ...prev,
-      mappingResults: results
-    }));
-    setCurrentStep('review');
-  };
-
-  const handlePublishComplete = (results: PublishResult[]) => {
-    setWorkflowState(prev => ({
-      ...prev,
-      publishResults: results
-    }));
-    setCurrentStep('complete');
-  };
 
   const goToStep = (step: WorkflowStep) => {
     const stepIndex = steps.findIndex(s => s.id === step);
@@ -134,52 +118,156 @@ export default function CreateProductPage() {
       
       case 'channels':
         return workflowState.masterProduct ? (
-          <ChannelSelectionInterface
-            masterProduct={workflowState.masterProduct}
-            onMappingComplete={handleMappingComplete}
-          />
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-green-600">
+                <CheckCircle2 className="h-6 w-6" />
+                Product Created Successfully!
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              {/* Product Summary */}
+              <div className="bg-gray-50 p-6 rounded-lg">
+                <h3 className="font-semibold text-lg mb-4">Product Details</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <div className="text-sm text-gray-600">Product ID</div>
+                    <div className="font-medium text-xs text-gray-500 font-mono">
+                      {workflowState.masterProduct.id || 'Not assigned'}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-sm text-gray-600">SKU</div>
+                    <div className="font-medium">{workflowState.masterProduct.sku || 'N/A'}</div>
+                  </div>
+                  <div>
+                    <div className="text-sm text-gray-600">Product Name</div>
+                    <div className="font-medium">{workflowState.masterProduct.name || 'N/A'}</div>
+                  </div>
+                  <div>
+                    <div className="text-sm text-gray-600">Price</div>
+                    <div className="font-medium">
+                      {workflowState.masterProduct.price != null
+                        ? `$${workflowState.masterProduct.price.toFixed(2)}`
+                        : 'N/A'}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-sm text-gray-600">Category</div>
+                    <div className="font-medium">{workflowState.masterProduct.category || 'N/A'}</div>
+                  </div>
+                  <div>
+                    <div className="text-sm text-gray-600">Inventory</div>
+                    <div className="font-medium">
+                      {workflowState.masterProduct.quantity != null
+                        ? workflowState.masterProduct.quantity
+                        : 'N/A'}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Next Steps */}
+              <div className="space-y-4">
+                <h3 className="font-semibold text-lg">What's Next?</h3>
+                <p className="text-gray-600">
+                  Your master product has been created. Now you can publish it to sales channels using our
+                  intelligent adaptive pattern matching system.
+                </p>
+
+                {/* Primary Action - Publish to Channels */}
+                <div className="bg-gradient-to-br from-blue-50 to-blue-100 border-2 border-blue-300 rounded-lg p-8 text-center">
+                  <div className="flex items-center justify-center mb-4">
+                    <div className="bg-blue-600 rounded-full p-4">
+                      <Send className="h-8 w-8 text-white" />
+                    </div>
+                  </div>
+                  <h3 className="text-2xl font-bold text-blue-900 mb-2">
+                    Ready to Publish to Sales Channels?
+                  </h3>
+                  <p className="text-blue-700 mb-6 max-w-2xl mx-auto">
+                    Use our intelligent adaptive pattern matching system to automatically map your product fields
+                    to Shopify, Amazon, Walmart, eBay and more. See real-time confidence scores with our 5-tier
+                    matching strategy.
+                  </p>
+                  <div className="flex flex-col sm:flex-row gap-3 justify-center">
+                    <Button
+                      onClick={() => {
+                        router.push(`/products/publish-to-channel?productId=${workflowState.masterProduct!.id}`);
+                      }}
+                      className="text-lg px-8 py-3"
+                    >
+                      <Send className="h-5 w-5 mr-2" />
+                      Go to Channel Publishing
+                    </Button>
+                    <Button
+                      variant="outline"
+                      onClick={() => {
+                        setCurrentStep('product');
+                        setWorkflowState({
+                          masterProduct: null,
+                          availableChannels: []
+                        });
+                      }}
+                      className="text-lg px-8 py-3"
+                    >
+                      <Package className="h-5 w-5 mr-2" />
+                      Create Another Product
+                    </Button>
+                  </div>
+                </div>
+
+                {/* Product Information Card */}
+                <div className="bg-white border border-gray-200 rounded-lg p-6">
+                  <h4 className="font-semibold text-gray-900 mb-4 flex items-center gap-2">
+                    <Info className="h-5 w-5 text-gray-600" />
+                    What Happens Next?
+                  </h4>
+                  <div className="space-y-3 text-sm text-gray-600">
+                    <div className="flex items-start gap-3">
+                      <div className="bg-blue-100 text-blue-600 font-bold rounded-full w-6 h-6 flex items-center justify-center flex-shrink-0 mt-0.5">
+                        1
+                      </div>
+                      <div>
+                        <strong className="text-gray-900">Select Your Channel</strong>
+                        <p>Choose from Shopify, Amazon, Walmart, eBay, or other supported platforms</p>
+                      </div>
+                    </div>
+                    <div className="flex items-start gap-3">
+                      <div className="bg-blue-100 text-blue-600 font-bold rounded-full w-6 h-6 flex items-center justify-center flex-shrink-0 mt-0.5">
+                        2
+                      </div>
+                      <div>
+                        <strong className="text-gray-900">Analyze Pattern Matching</strong>
+                        <p>Our AI uses 5-tier strategy: Knowledge-Based → Semantic → Similarity → Pattern → Boost</p>
+                      </div>
+                    </div>
+                    <div className="flex items-start gap-3">
+                      <div className="bg-blue-100 text-blue-600 font-bold rounded-full w-6 h-6 flex items-center justify-center flex-shrink-0 mt-0.5">
+                        3
+                      </div>
+                      <div>
+                        <strong className="text-gray-900">Review & Publish</strong>
+                        <p>See confidence scores, field mappings, and preview transformations before publishing</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
         ) : (
           <div className="text-center py-12">
             <p>No product data available. Please go back to create a product first.</p>
           </div>
         );
-      
-      case 'review':
-        return workflowState.mappingResults.length > 0 && workflowState.masterProduct ? (
-          <ChannelPayloadReview
-            mappingResults={workflowState.mappingResults}
-            productId={workflowState.masterProduct.id}
-            onPublishComplete={handlePublishComplete}
-          />
-        ) : (
+
+      default:
+        return (
           <div className="text-center py-12">
-            <p>No mapping results available. Please go back to select channels.</p>
+            <p>Unknown step. Please start over.</p>
           </div>
         );
-      
-      case 'complete':
-        return (
-          <CompletionSummary 
-            workflowState={workflowState}
-            onStartNew={() => {
-              setCurrentStep('product');
-              setWorkflowState({
-                masterProduct: null,
-                availableChannels: [],
-                mappingResults: [],
-                publishResults: []
-              });
-            }}
-            onViewProduct={() => {
-              if (workflowState.masterProduct) {
-                router.push(`/products/${workflowState.masterProduct.id}`);
-              }
-            }}
-          />
-        );
-      
-      default:
-        return null;
     }
   };
 
@@ -275,136 +363,3 @@ export default function CreateProductPage() {
   );
 }
 
-// Completion Summary Component
-interface CompletionSummaryProps {
-  workflowState: WorkflowState;
-  onStartNew: () => void;
-  onViewProduct: () => void;
-}
-
-function CompletionSummary({ workflowState, onStartNew, onViewProduct }: CompletionSummaryProps) {
-  const { masterProduct, mappingResults, publishResults } = workflowState;
-  
-  const successfulPublishes = publishResults.filter(r => r.success);
-  const failedPublishes = publishResults.filter(r => !r.success);
-  
-  return (
-    <div className="max-w-4xl mx-auto space-y-6">
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-green-600">
-            <CheckCircle2 className="h-6 w-6" />
-            Product Creation Complete!
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-6">
-            {/* Product Summary */}
-            {masterProduct && (
-              <div className="space-y-3">
-                <h3 className="font-semibold text-lg">Product Details</h3>
-                <div className="bg-gray-50 p-4 rounded-lg">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                      <div className="font-medium">Product Name</div>
-                      <div className="text-gray-600">{masterProduct.name}</div>
-                    </div>
-                    <div>
-                      <div className="font-medium">SKU</div>
-                      <div className="text-gray-600">{masterProduct.sku}</div>
-                    </div>
-                    <div>
-                      <div className="font-medium">Price</div>
-                      <div className="text-gray-600">${masterProduct.price}</div>
-                    </div>
-                    <div>
-                      <div className="font-medium">Category</div>
-                      <div className="text-gray-600">{masterProduct.category || 'N/A'}</div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Publishing Summary */}
-            <div className="space-y-3">
-              <h3 className="font-semibold text-lg">Publishing Results</h3>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-center">
-                <Card>
-                  <CardContent className="p-4">
-                    <div className="text-2xl font-bold text-blue-600">{mappingResults.length}</div>
-                    <div className="text-sm text-gray-600">Channels Mapped</div>
-                  </CardContent>
-                </Card>
-                <Card>
-                  <CardContent className="p-4">
-                    <div className="text-2xl font-bold text-green-600">{successfulPublishes.length}</div>
-                    <div className="text-sm text-gray-600">Successful Publishes</div>
-                  </CardContent>
-                </Card>
-                <Card>
-                  <CardContent className="p-4">
-                    <div className="text-2xl font-bold text-red-600">{failedPublishes.length}</div>
-                    <div className="text-sm text-gray-600">Failed Publishes</div>
-                  </CardContent>
-                </Card>
-              </div>
-            </div>
-
-            {/* Channel Details */}
-            {publishResults.length > 0 && (
-              <div className="space-y-3">
-                <h3 className="font-semibold text-lg">Channel Status</h3>
-                <div className="space-y-2">
-                  {publishResults.map((result, index) => (
-                    <div key={index} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                      <div className="flex items-center gap-3">
-                        <div className={`w-3 h-3 rounded-full ${result.success ? 'bg-green-500' : 'bg-red-500'}`} />
-                        <span className="font-medium capitalize">
-                          {mappingResults.find(m => m.channelId === Object.keys(result)[0])?.channelId || 'Unknown Channel'}
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        {result.success ? (
-                          <>
-                            <Badge variant="light" color="success">
-                              Published
-                            </Badge>
-                            {result.url && (
-                              <Button 
-                                size="sm" 
-                                variant="outline"
-                                onClick={() => window.open(result.url, '_blank')}
-                              >
-                                View
-                              </Button>
-                            )}
-                          </>
-                        ) : (
-                          <Badge variant="light" color="error">
-                            Failed
-                          </Badge>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Actions */}
-            <div className="flex justify-center gap-4 pt-6">
-              <Button onClick={onStartNew} variant="outline">
-                Create Another Product
-              </Button>
-              <Button onClick={onViewProduct}>
-                <Send className="h-4 w-4 mr-2" />
-                View Product Details
-              </Button>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-    </div>
-  );
-}

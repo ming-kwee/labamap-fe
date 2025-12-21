@@ -1,5 +1,11 @@
 // Barrel export for ecommerce-product components
+
+// ✅ NEW: Refactored version (recommended for new code)
+export { default as DynamicProductCreationFormRefactored } from './DynamicProductCreationFormRefactored';
+
+// 🔴 LEGACY: Old monolithic version (kept for backward compatibility, will be deprecated)
 export { default as DynamicProductCreationFormClean } from './DynamicProductCreationFormClean';
+
 export { default as ProductCreationPageWrapper } from './ProductCreationPageWrapper';
 export { default as VariantConfiguratorDynamic } from './VariantConfiguratorDynamic';
 export { default as ValidationResultDisplay } from './ValidationResultDisplay';

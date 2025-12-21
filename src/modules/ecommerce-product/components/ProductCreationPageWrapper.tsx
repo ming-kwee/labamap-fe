@@ -3,7 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import { useAuth } from '@/shared/contexts/AuthContext';
 import { useOrganization } from '@/shared/contexts/OrganizationContext';
-import DynamicProductCreationFormClean from './DynamicProductCreationFormClean';
+import DynamicProductCreationFormRefactored from './DynamicProductCreationFormRefactored';
 import { MasterProduct } from '../types/product';
 
 interface ProductCreationPageWrapperProps {
@@ -116,8 +116,8 @@ export default function ProductCreationPageWrapper({
         )}
       </div>
 
-      {/* Product Creation Form */}
-      <DynamicProductCreationFormClean 
+      {/* Product Creation Form - REFACTORED VERSION */}
+      <DynamicProductCreationFormRefactored
         key="stable-product-form" // CRITICAL: Stable key to prevent remounting
         onProductCreated={onProductCreated}
         debugMode={debugMode}
