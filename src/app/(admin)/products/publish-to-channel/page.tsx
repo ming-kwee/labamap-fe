@@ -36,7 +36,8 @@ import { channelMappingService } from '@/modules/ecommerce-product/services/chan
 import {
   transformMasterProductToSourceSchema,
   generateMappingRequest,
-  checkChannelReadiness
+  checkChannelReadiness,
+  ChannelReadinessResult
 } from '@/modules/ecommerce-product/services/productGenerationService';
 
 export default function PublishToChannelPage() {
@@ -54,6 +55,7 @@ export default function PublishToChannelPage() {
   const [publishSuccess, setPublishSuccess] = useState(false);
   const [showJoltPreview, setShowJoltPreview] = useState(false);
   const [joltPreviewData, setJoltPreviewData] = useState<any>(null);
+  const [channelReadiness, setChannelReadiness] = useState<ChannelReadinessResult | null>(null);
 
   // Load product data
   useEffect(() => {
@@ -128,6 +130,29 @@ export default function PublishToChannelPage() {
     loadChannels();
   }, []);
 
+  // Check channel readiness when product or selected channel changes
+  useEffect(() => {
+    async function checkReadiness() {
+      if (!product || !selectedChannel) {
+        setChannelReadiness(null);
+        return;
+      }
+
+      try {
+        console.log('[ChannelPublish] 📡 Checking channel readiness (Step 2)...');
+        const readiness = await checkChannelReadiness(product, selectedChannel);
+        console.log('[ChannelPublish] ✅ Channel readiness:', readiness);
+        setChannelReadiness(readiness);
+      } catch (err) {
+        console.error('[ChannelPublish] Failed to check channel readiness:', err);
+        // Don't set error state - readiness check is non-blocking
+        setChannelReadiness(null);
+      }
+    }
+
+    checkReadiness();
+  }, [product, selectedChannel]);
+
   // Analyze pattern matching when channel is selected
   const handleAnalyze = async () => {
     if (!product || !selectedChannel) return;
@@ -139,7 +164,8 @@ export default function PublishToChannelPage() {
     try {
       console.log('[ChannelPublish] Starting pattern matching analysis');
 
-      const request = generateMappingRequest(product, selectedChannel, {
+      // STEP 2: Fetch target schema from MongoDB apiSchema field
+      const request = await generateMappingRequest(product, selectedChannel, {
         confidenceThreshold: 70,
         organizationId: 'org_demo',
         userId: 'user_demo'
@@ -314,7 +340,7 @@ export default function PublishToChannelPage() {
     );
   }
 
-  const readiness = selectedChannel ? checkChannelReadiness(product, selectedChannel) : null;
+  // Channel readiness is now computed in useEffect and stored in state
 
   return (
     <div className="max-w-7xl mx-auto p-6 space-y-6">
@@ -450,7 +476,7 @@ export default function PublishToChannelPage() {
           </Card>
 
           {/* Channel Readiness */}
-          {readiness && (
+          {channelReadiness && (
             <Card>
               <CardHeader>
                 <CardTitle>Channel Readiness</CardTitle>
@@ -459,13 +485,13 @@ export default function PublishToChannelPage() {
                 <div className="flex items-center justify-between">
                   <span className="text-sm font-medium">Confidence Score</span>
                   <span className="text-2xl font-bold text-blue-600">
-                    {readiness.confidence}%
+                    {channelReadiness.confidence}%
                   </span>
                 </div>
-                <Progress value={readiness.confidence} className="w-full" />
+                <Progress value={channelReadiness.confidence} className="w-full" />
 
                 <div className="flex items-center gap-2">
-                  {readiness.ready ? (
+                  {channelReadiness.ready ? (
                     <Badge variant="light" color="success">
                       <CheckCircle2 className="h-3 w-3 mr-1" />
                       Ready to Publish
@@ -478,19 +504,19 @@ export default function PublishToChannelPage() {
                   )}
                 </div>
 
-                {readiness.blockers.length > 0 && (
+                {channelReadiness.blockers.length > 0 && (
                   <div className="text-sm space-y-1">
                     <div className="font-medium text-red-600">Blockers:</div>
-                    {readiness.blockers.map((blocker, idx) => (
+                    {channelReadiness.blockers.map((blocker, idx) => (
                       <div key={idx} className="text-red-600">• {blocker}</div>
                     ))}
                   </div>
                 )}
 
-                {readiness.warnings.length > 0 && (
+                {channelReadiness.warnings.length > 0 && (
                   <div className="text-sm space-y-1">
                     <div className="font-medium text-yellow-600">Warnings:</div>
-                    {readiness.warnings.map((warning, idx) => (
+                    {channelReadiness.warnings.map((warning, idx) => (
                       <div key={idx} className="text-yellow-600">• {warning}</div>
                     ))}
                   </div>
@@ -671,7 +697,7 @@ export default function PublishToChannelPage() {
                     <Button
                       size="lg"
                       onClick={handlePublish}
-                      disabled={isPublishing || !readiness?.ready}
+                      disabled={isPublishing || !channelReadiness?.ready}
                     >
                       {isPublishing ? (
                         <>

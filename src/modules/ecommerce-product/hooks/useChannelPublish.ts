@@ -71,11 +71,7 @@ export function useChannelPublish(
   const [publishResult, setPublishResult] = useState<ChannelPublishResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [joltPreviewData, setJoltPreviewData] = useState<any | null>(null);
-
-  // Derived state - channel readiness
-  const channelReadiness = selectedChannel
-    ? checkChannelReadiness(product, selectedChannel)
-    : null;
+  const [channelReadiness, setChannelReadiness] = useState<ChannelReadinessResult | null>(null);
 
   /**
    * Load available channels on mount
@@ -170,6 +166,30 @@ export function useChannelPublish(
   }, [selectedChannel]);
 
   /**
+   * Check channel readiness when channel changes (Step 2: Backend-driven)
+   */
+  useEffect(() => {
+    async function checkReadiness() {
+      if (!selectedChannel) {
+        setChannelReadiness(null);
+        return;
+      }
+
+      try {
+        console.log('[useChannelPublish] 📡 Checking channel readiness (Step 2)...');
+        const readiness = await checkChannelReadiness(product, selectedChannel);
+        console.log('[useChannelPublish] ✅ Channel readiness:', readiness);
+        setChannelReadiness(readiness);
+      } catch (err) {
+        console.error('[useChannelPublish] Failed to check channel readiness:', err);
+        setChannelReadiness(null);
+      }
+    }
+
+    checkReadiness();
+  }, [product, selectedChannel]);
+
+  /**
    * Analyze pattern matching for selected channel
    */
   const analyzePatternMatching = useCallback(async () => {
@@ -188,7 +208,8 @@ export function useChannelPublish(
       console.log('[useChannelPublish] Product:', product.name);
       console.log('[useChannelPublish] Channel:', selectedChannel);
 
-      const request = generateMappingRequest(product, selectedChannel, {
+      // STEP 2: Fetch target schema from MongoDB apiSchema field
+      const request = await generateMappingRequest(product, selectedChannel, {
         confidenceThreshold: 70,
         organizationId,
         userId

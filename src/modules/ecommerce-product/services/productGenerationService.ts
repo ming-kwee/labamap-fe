@@ -342,80 +342,57 @@ export function transformMasterProductToSourceSchema(
 }
 
 /**
- * Get target channel schema template
- * Returns empty schema structure with expected field names for a channel
+ * STEP 2: Get target channel schema from MongoDB apiSchema field
+ * Fetches complex nested schema structure from backend (MongoDB migration 2025-12-27)
+ *
+ * Endpoint: GET /api/v1/channels/{channelId}/schema/complex?format=nested
+ * MongoDB Field: channel_configurations.apiSchema
+ *
+ * Returns the actual API structure that the channel expects (nested objects, arrays, etc.)
+ *
+ * @param channelId - Channel identifier (shopify, amazon, walmart, ebay)
+ * @returns Promise resolving to channel schema structure from MongoDB
  */
-export function getChannelSchemaTemplate(channelId: string): Record<string, any> {
-  console.log('[ProductGeneration] Getting schema template for channel:', channelId);
+export async function getChannelSchemaTemplate(channelId: string): Promise<Record<string, any>> {
+  console.log('[ProductGeneration] 📡 Fetching channel schema from backend (Step 2)');
+  console.log('[ProductGeneration] Channel:', channelId);
 
-  const templates: Record<string, Record<string, any>> = {
-    shopify: {
-      title: '',
-      body_html: '',
-      vendor: '',
-      product_type: '',
-      tags: '',
-      price: 0,
-      compare_at_price: 0,
-      inventory_quantity: 0,
-      weight: 0,
-      weight_unit: '',
-      barcode: '',
-      sku: '',
-      image: '',
-      images: [],
-    },
-    amazon: {
-      title: '',
-      bullet_point_1: '',
-      bullet_point_2: '',
-      bullet_point_3: '',
-      description: '',
-      brand: '',
-      price: 0,
-      quantity: 0,
-      sku: '',
-      product_id: '',
-      product_id_type: 'UPC',
-      condition_type: 'New',
-      main_image_url: '',
-      other_image_url_1: '',
-      package_weight: 0,
-      package_weight_unit_of_measure: '',
-      item_dimensions_length: 0,
-      item_dimensions_width: 0,
-      item_dimensions_height: 0,
-    },
-    walmart: {
-      productName: '',
-      productDescription: '',
-      brand: '',
-      price: 0,
-      sku: '',
-      upc: '',
-      gtin: '',
-      inventory: 0,
-      weight: 0,
-      weightUnit: '',
-      length: 0,
-      width: 0,
-      height: 0,
-      mainImageUrl: '',
-    },
-    ebay: {
-      Title: '',
-      Description: '',
-      CategoryID: '',
-      StartPrice: 0,
-      Quantity: 0,
-      SKU: '',
-      PictureURL: '',
-      ConditionID: '1000',
-      ShippingType: 'Flat',
-    },
-  };
+  const BACKEND_BASE_URL = 'http://localhost:8888/labamap/api/v1';
 
-  return templates[channelId.toLowerCase()] || {};
+  try {
+    // Step 2: Use complex schema endpoint that reads from MongoDB apiSchema field
+    const response = await fetch(
+      `${BACKEND_BASE_URL}/channels/${channelId}/schema/complex?format=nested`,
+      {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      }
+    );
+
+    if (!response.ok) {
+      console.error('[ProductGeneration] ❌ Failed to fetch channel schema:', response.statusText);
+      throw new Error(`Failed to fetch channel schema: ${response.statusText}`);
+    }
+
+    const result = await response.json();
+
+    // Backend returns: { schema: { product: {...} } } or { schema: {...} }
+    const schema = result.schema || result;
+
+    console.log('[ProductGeneration] ✅ Channel schema loaded from MongoDB (Step 2)');
+    console.log('[ProductGeneration] Schema type:', typeof schema);
+    console.log('[ProductGeneration] Schema keys:', Object.keys(schema));
+
+    return schema;
+  } catch (error) {
+    console.error('[ProductGeneration] ❌ Error fetching channel schema:', error);
+
+    // Re-throw error - no fallback templates!
+    // Frontend should handle this error gracefully
+    throw new Error(`Cannot load schema for channel ${channelId}: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  }
 }
 
 /**
@@ -427,17 +404,35 @@ export interface GenerateMappingRequestOptions {
   userId?: string;
 }
 
-export function generateMappingRequest(
+/**
+ * STEP 2: Generate mapping request using backend schema (fully async)
+ *
+ * Fetches target schema from MongoDB apiSchema field instead of using hardcoded templates
+ *
+ * @param product - Master product to map
+ * @param channelId - Target channel
+ * @param options - Additional options (confidence threshold, org/user IDs)
+ * @returns Promise resolving to mapping request object
+ */
+export async function generateMappingRequest(
   product: MasterProduct,
   channelId: string,
   options: GenerateMappingRequestOptions = {}
 ) {
-  console.log('[ProductGeneration] ===== GENERATING MAPPING REQUEST =====');
+  console.log('[ProductGeneration] ===== GENERATING MAPPING REQUEST (STEP 2) =====');
   console.log('[ProductGeneration] Product:', product.name);
   console.log('[ProductGeneration] Channel:', channelId);
+  console.log('[ProductGeneration] Fetching target schema from backend...');
 
+  // Transform master product to source schema (pure reflection - no hardcoding)
   const sourceSchema = transformMasterProductToSourceSchema(product);
-  const targetSchema = getChannelSchemaTemplate(channelId);
+
+  // Fetch target schema from backend (MongoDB apiSchema field)
+  const targetSchema = await getChannelSchemaTemplate(channelId);
+
+  console.log('[ProductGeneration] ✅ Mapping request generated');
+  console.log('[ProductGeneration] Source fields:', Object.keys(sourceSchema).length);
+  console.log('[ProductGeneration] Target schema keys:', Object.keys(targetSchema).length);
 
   return {
     sourceSchema,
@@ -461,11 +456,24 @@ export interface ChannelReadinessResult {
   blockers: string[];
 }
 
-export function checkChannelReadiness(
+/**
+ * STEP 2: Check channel readiness using backend channel configuration
+ * Fetches required fields from MongoDB channel_configurations.requiredFields
+ *
+ * NO HARDCODED CHANNEL RULES - fully backend-driven!
+ *
+ * @param product - Master product to check
+ * @param channelId - Target channel
+ * @returns Promise resolving to readiness assessment
+ */
+export async function checkChannelReadiness(
   product: MasterProduct,
   channelId: string
-): ChannelReadinessResult {
-  console.log('[ProductGeneration] Checking channel readiness for:', channelId);
+): Promise<ChannelReadinessResult> {
+  console.log('[ProductGeneration] 📡 Checking channel readiness (backend-driven)');
+  console.log('[ProductGeneration] Channel:', channelId);
+
+  const BACKEND_BASE_URL = 'http://localhost:8888/labamap/api/v1';
 
   const result: ChannelReadinessResult = {
     ready: true,
@@ -476,55 +484,128 @@ export function checkChannelReadiness(
     blockers: [],
   };
 
-  // Common required fields across all channels
-  if (!product.name) result.missingRequiredFields.push('name');
-  if (!product.sku) result.missingRequiredFields.push('sku');
-  if (product.price === undefined || product.price <= 0) result.missingRequiredFields.push('price');
-  if (!product.description) result.missingRecommendedFields.push('description');
+  try {
+    // Fetch ALL channels from backend (MongoDB)
+    const response = await fetch(
+      `${BACKEND_BASE_URL}/channels`,
+      {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      }
+    );
 
-  // Channel-specific requirements
-  switch (channelId.toLowerCase()) {
-    case 'amazon':
-      if (!product.brand) result.missingRequiredFields.push('brand');
-      if (!product.barcode) result.missingRecommendedFields.push('barcode');
-      if (!product.mainImage) result.missingRequiredFields.push('mainImage');
-      if (product.quantity === undefined) result.missingRequiredFields.push('quantity');
-      break;
+    if (!response.ok) {
+      console.error('[ProductGeneration] ❌ Failed to fetch channels:', response.statusText);
+      // If we can't get channel config, we can't validate - but don't block
+      result.warnings.push(`Unable to validate against channel requirements: ${response.statusText}`);
+      result.confidence = 50;
+      return result;
+    }
 
-    case 'shopify':
-      if (!product.mainImage) result.missingRecommendedFields.push('mainImage');
-      if (product.quantity === undefined) result.missingRecommendedFields.push('quantity');
-      break;
+    const allChannels = await response.json();
 
-    case 'walmart':
-      if (!product.brand) result.missingRequiredFields.push('brand');
-      if (!product.barcode) result.missingRequiredFields.push('barcode');
-      if (!product.mainImage) result.missingRequiredFields.push('mainImage');
-      if (!product.category) result.missingRequiredFields.push('category');
-      break;
+    // Find the specific channel configuration
+    const channelConfig = allChannels.find((ch: any) => ch.channelId === channelId);
 
-    case 'ebay':
-      if (!product.mainImage) result.missingRequiredFields.push('mainImage');
-      if (product.quantity === undefined) result.missingRequiredFields.push('quantity');
-      if (!product.category) result.missingRequiredFields.push('category');
-      break;
+    if (!channelConfig) {
+      console.error('[ProductGeneration] ❌ Channel not found:', channelId);
+      result.warnings.push(`Channel configuration not found for: ${channelId}`);
+      result.confidence = 50;
+      return result;
+    }
+
+    console.log('[ProductGeneration] ✅ Channel configuration loaded from MongoDB');
+    console.log('[ProductGeneration] Required fields:', channelConfig.requiredFields);
+    console.log('[ProductGeneration] Optional fields:', channelConfig.optionalFields);
+
+    // Check required fields from backend configuration
+    const requiredFields = channelConfig.requiredFields || [];
+
+    for (const requiredField of requiredFields) {
+      // Convert channel field names to product property names
+      // Backend fields like "title" might map to product.name, "price" to product.price, etc.
+      const productValue = getProductFieldValue(product, requiredField);
+
+      if (productValue === null || productValue === undefined || productValue === '') {
+        result.missingRequiredFields.push(requiredField);
+      }
+    }
+
+    // Check optional/recommended fields
+    const optionalFields = channelConfig.optionalFields || [];
+    const recommendedFields = optionalFields.slice(0, 5); // Consider first 5 optional fields as "recommended"
+
+    for (const recommendedField of recommendedFields) {
+      const productValue = getProductFieldValue(product, recommendedField);
+
+      if (productValue === null || productValue === undefined || productValue === '') {
+        result.missingRecommendedFields.push(recommendedField);
+      }
+    }
+
+    // Calculate readiness based on backend requirements
+    if (result.missingRequiredFields.length > 0) {
+      result.ready = false;
+      result.blockers = result.missingRequiredFields.map(
+        field => `Missing required field: ${field}`
+      );
+      result.confidence = Math.max(0, 100 - (result.missingRequiredFields.length * 25));
+    } else if (result.missingRecommendedFields.length > 0) {
+      result.confidence = Math.max(70, 100 - (result.missingRecommendedFields.length * 10));
+      result.warnings = result.missingRecommendedFields.map(
+        field => `Recommended field missing: ${field}`
+      );
+    }
+
+    console.log('[ProductGeneration] Readiness:', result.ready, 'Confidence:', result.confidence);
+    console.log('[ProductGeneration] Missing required:', result.missingRequiredFields);
+    console.log('[ProductGeneration] Missing recommended:', result.missingRecommendedFields);
+
+    return result;
+  } catch (error) {
+    console.error('[ProductGeneration] ❌ Error checking channel readiness:', error);
+
+    // Don't block product creation on validation errors
+    result.warnings.push(`Validation error: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    result.confidence = 50;
+    return result;
+  }
+}
+
+/**
+ * Helper function to get product field value by channel field name
+ * Handles common field name mappings (title → name, etc.)
+ */
+function getProductFieldValue(product: MasterProduct, channelFieldName: string): any {
+  // Common field name mappings
+  const fieldMappings: Record<string, string> = {
+    'title': 'name',
+    'body_html': 'description',
+    'productName': 'name',
+    'productDescription': 'description',
+    'inventory_quantity': 'quantity',
+    'stock_quantity': 'quantity',
+    'base_price': 'price',
+  };
+
+  // Try direct field access
+  const directValue = (product as any)[channelFieldName];
+  if (directValue !== undefined) {
+    return directValue;
   }
 
-  // Calculate readiness
-  if (result.missingRequiredFields.length > 0) {
-    result.ready = false;
-    result.blockers = result.missingRequiredFields.map(
-      field => `Missing required field: ${field}`
-    );
-    result.confidence = Math.max(0, 100 - (result.missingRequiredFields.length * 25));
-  } else if (result.missingRecommendedFields.length > 0) {
-    result.confidence = Math.max(70, 100 - (result.missingRecommendedFields.length * 10));
-    result.warnings = result.missingRecommendedFields.map(
-      field => `Recommended field missing: ${field}`
-    );
+  // Try mapped field access
+  const mappedFieldName = fieldMappings[channelFieldName];
+  if (mappedFieldName) {
+    return (product as any)[mappedFieldName];
   }
 
-  console.log('[ProductGeneration] Readiness:', result.ready, 'Confidence:', result.confidence);
+  // Try custom attributes
+  if (product.customAttributes && product.customAttributes[channelFieldName] !== undefined) {
+    return product.customAttributes[channelFieldName];
+  }
 
-  return result;
+  return undefined;
 }

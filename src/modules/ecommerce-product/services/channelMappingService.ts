@@ -120,12 +120,16 @@ export class ChannelMappingService {
   /**
    * Get channel configuration (required fields, constraints, etc.)
    * MongoDB Collection: channel_configurations
+   *
+   * NOTE: Uses GET /channels endpoint and filters by channelId
+   * (The /channels/{channelId}/configuration endpoint doesn't exist)
    */
   async getChannelConfiguration(channelId: string): Promise<ChannelConfiguration> {
     console.log('[ChannelMapping] Fetching configuration for channel:', channelId);
 
     try {
-      const response = await fetch(`${this.baseUrl}/channels/${channelId}/configuration`, {
+      // Fetch ALL channels and find the specific one
+      const response = await fetch(`${this.baseUrl}/channels`, {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
@@ -133,10 +137,21 @@ export class ChannelMappingService {
       });
 
       if (!response.ok) {
-        throw new Error(`Failed to get channel configuration: ${response.statusText}`);
+        throw new Error(`Failed to get channels: ${response.statusText}`);
       }
 
-      const config = await response.json();
+      const allChannels = await response.json();
+
+      // Find the specific channel
+      const backendConfig = allChannels.find((ch: any) => ch.channelId === channelId);
+
+      if (!backendConfig) {
+        throw new Error(`Channel not found: ${channelId}`);
+      }
+
+      // Transform to frontend format
+      const config = this.transformChannelConfig(backendConfig);
+
       console.log('[ChannelMapping] ✓ Channel configuration loaded');
       console.log('[ChannelMapping] Required fields:', config.requiredFields);
       console.log('[ChannelMapping] Variant support:', config.variantSupport);
