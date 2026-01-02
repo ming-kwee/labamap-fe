@@ -419,103 +419,52 @@ export const OrganizationProvider: React.FC<{ children: ReactNode }> = ({ childr
 
     try {
       console.log('[OrganizationProvider] Loading business rules for organization:', organization.organizationName);
-      
-      if (process.env.NODE_ENV === 'development') {
-        console.log('[OrganizationProvider] Development mode: Loading local business rules data');
-        
-        // Load the JSON data file for this organization
-        try {
-          const response = await fetch('/src/data/business-rules/organization_abc_electronics.json');
-          if (response.ok) {
-            const localBusinessRules = await response.json();
-            setBusinessRulesConfig(localBusinessRules);
-            console.log('[OrganizationProvider] Local business rules loaded successfully');
-          } else {
-            // Fallback to demo business rules if file not found
-            const demoBusinesRules: BusinessRulesConfiguration = {
-              organizationId: organization.organizationId,
-              organizationName: organization.organizationName,
-              platformTenantId: organization.platformTenantId,
-              businessRulesConfig: {
-                version: "1.0.0",
-                lastUpdated: new Date().toISOString(),
-                updatedBy: "demo_user_123",
-                globalSettings: {
-                  businessRulesEnabled: organization.settings.businessRulesEnabled,
-                  autoApplyPreProcessing: true,
-                  blockOnViolations: true,
-                  enableRealTimeValidation: organization.settings.realTimeValidationEnabled,
-                  executionTimeout: 5000
-                },
-                ruleCategories: {
-                  PRE_PROCESSING: {
-                    enabled: true,
-                    autoApply: true,
-                    rules: []
-                  },
-                  BUSINESS_LOGIC: {
-                    enabled: true,
-                    blockOnViolation: true,
-                    rules: []
-                  },
-                  DATA_ENHANCEMENT: {
-                    enabled: true,
-                    autoApply: false,
-                    rules: []
-                  }
-                }
-              }
-            };
-            setBusinessRulesConfig(demoBusinesRules);
-            console.log('[OrganizationProvider] Demo business rules loaded as fallback');
-          }
-        } catch (fetchError) {
-          console.warn('[OrganizationProvider] Could not load local business rules file, using demo data');
-          // Use demo data if file cannot be loaded
-          const demoBusinesRules: BusinessRulesConfiguration = {
-            organizationId: organization.organizationId,
-            organizationName: organization.organizationName,
-            platformTenantId: organization.platformTenantId,
-            businessRulesConfig: {
-              version: "1.0.0",
-              lastUpdated: new Date().toISOString(),
-              updatedBy: "demo_user_123",
-              globalSettings: {
-                businessRulesEnabled: organization.settings.businessRulesEnabled,
-                autoApplyPreProcessing: true,
-                blockOnViolations: true,
-                enableRealTimeValidation: organization.settings.realTimeValidationEnabled,
-                executionTimeout: 5000
-              },
-              ruleCategories: {
-                PRE_PROCESSING: {
-                  enabled: true,
-                  autoApply: true,
-                  rules: []
-                },
-                BUSINESS_LOGIC: {
-                  enabled: true,
-                  blockOnViolation: true,
-                  rules: []
-                },
-                DATA_ENHANCEMENT: {
-                  enabled: true,
-                  autoApply: false,
-                  rules: []
-                }
-              }
-            }
-          };
-          setBusinessRulesConfig(demoBusinesRules);
-        }
-      } else {
-        // Production mode - use real API
-        const businessRules = await OrganizationService.getBusinessRules(organization.organizationId);
-        setBusinessRulesConfig(businessRules);
-        console.log('[OrganizationProvider] Business rules loaded successfully');
-      }
+
+      // ✅ ALWAYS use backend API (removed hardcoded JSON)
+      const businessRules = await OrganizationService.getBusinessRules(organization.organizationId);
+      setBusinessRulesConfig(businessRules);
+      console.log('[OrganizationProvider] Business rules loaded successfully from backend');
+
     } catch (error) {
       console.error('[OrganizationProvider] Business rules load failed:', error);
+
+      // Fallback to empty business rules configuration
+      const fallbackBusinessRules: BusinessRulesConfiguration = {
+        organizationId: organization.organizationId,
+        organizationName: organization.organizationName,
+        platformTenantId: organization.platformTenantId,
+        businessRulesConfig: {
+          version: "1.0.0",
+          lastUpdated: new Date().toISOString(),
+          updatedBy: "system",
+          globalSettings: {
+            businessRulesEnabled: organization.settings.businessRulesEnabled,
+            autoApplyPreProcessing: false,
+            blockOnViolations: false,
+            enableRealTimeValidation: organization.settings.realTimeValidationEnabled,
+            executionTimeout: 5000
+          },
+          ruleCategories: {
+            PRE_PROCESSING: {
+              enabled: false,
+              autoApply: false,
+              rules: []
+            },
+            BUSINESS_LOGIC: {
+              enabled: false,
+              blockOnViolation: false,
+              rules: []
+            },
+            DATA_ENHANCEMENT: {
+              enabled: false,
+              autoApply: false,
+              rules: []
+            }
+          }
+        }
+      };
+      setBusinessRulesConfig(fallbackBusinessRules);
+      console.log('[OrganizationProvider] Using fallback business rules (empty configuration)');
       // Don't set error state for business rules - they're optional
     }
   }, [organization, isAuthenticated]);

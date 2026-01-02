@@ -16,6 +16,7 @@ import { DynamicFormData } from '../types/dynamicForm';
 import { MasterProduct } from '../types/product';
 import VariantConfiguratorDynamic from './VariantConfiguratorDynamic';
 import ValidationResultDisplay from './ValidationResultDisplay';
+import ImageUploadField from './ImageUploadField';
 import { useAuth } from '@/shared/contexts/AuthContext';
 import { useOrganization } from '@/shared/contexts/OrganizationContext';
 
@@ -540,6 +541,22 @@ export default function DynamicProductCreationFormRefactored({
                           onChange={(e) => handleFieldChange(fieldName, e.target.checked)}
                           onBlur={() => handleFieldBlur(field)}
                           className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                        />
+                      ) : fieldType === 'image' || fieldType === 'file' || fieldType === 'media' ? (
+                        // ✅ IMAGE UPLOAD FIELD - Integrates with GCP Storage
+                        <ImageUploadField
+                          fieldName={fieldName}
+                          label={field.label}
+                          value={formData[fieldName] || (fieldType === 'image' ? '' : [])}
+                          onChange={(value) => handleFieldChange(fieldName, value)}
+                          multiple={fieldType === 'media' || fieldType === 'file'} // single for 'image', multiple for 'media'/'file'
+                          maxImages={field.validationRules?.maxItems || 5}
+                          required={field.required}
+                          helpText={field.helpText}
+                          organizationId={organizationId}
+                          productId={formData.id || `temp_${Date.now()}`}
+                          error={fieldErrors[fieldName]}
+                          disabled={field.readOnly}
                         />
                       ) : (
                         <input
