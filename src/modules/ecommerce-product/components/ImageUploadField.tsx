@@ -97,6 +97,8 @@ export default function ImageUploadField({
           }
         );
 
+        console.log('[ImageUpload] Upload response:', response);
+        console.log('[ImageUpload] Public URL:', response.publicUrl);
         onChange(response.publicUrl);
       }
 
@@ -162,12 +164,6 @@ export default function ImageUploadField({
 
   return (
     <div className="space-y-2">
-      {/* Label */}
-      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-        {label}
-        {required && <span className="text-red-500 ml-1">*</span>}
-      </label>
-
       {/* Upload Area */}
       {(!multiple || currentImages.length < maxImages) && (
         <div
@@ -249,53 +245,60 @@ export default function ImageUploadField({
       {/* Image Preview Grid */}
       {currentImages.length > 0 && (
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 mt-3">
-          {currentImages.map((imageUrl, index) => (
-            <div key={index} className="relative group aspect-square">
-              <img
-                src={imageUrl}
-                alt={`Product image ${index + 1}`}
-                className="w-full h-full object-cover rounded-lg border border-gray-200 dark:border-gray-700"
-                onError={(e) => {
-                  // Fallback for broken images
-                  const target = e.target as HTMLImageElement;
-                  target.src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="200" height="200"%3E%3Crect width="200" height="200" fill="%23ddd"/%3E%3Ctext x="50%25" y="50%25" text-anchor="middle" dy=".3em" fill="%23999"%3EImage unavailable%3C/text%3E%3C/svg%3E';
-                }}
-              />
-
-              {/* Remove Button */}
-              {!disabled && (
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleRemoveImage(imageUrl);
+          {currentImages.map((imageUrl, index) => {
+            console.log(`[ImageUpload] Rendering preview ${index}:`, imageUrl);
+            return (
+              <div key={index} className="relative group aspect-square">
+                <img
+                  src={imageUrl}
+                  alt={`Product image ${index + 1}`}
+                  className="w-full h-full object-cover rounded-lg border border-gray-200 dark:border-gray-700"
+                  onLoad={() => {
+                    console.log(`[ImageUpload] Image loaded successfully: ${imageUrl}`);
                   }}
-                  className="
-                    absolute top-1 right-1 p-1 bg-red-500 text-white rounded-full
-                    opacity-0 group-hover:opacity-100 transition-opacity
-                    hover:bg-red-600 focus:outline-none focus:ring-2 focus:ring-red-500
-                  "
-                  title="Remove image"
-                >
-                  <X className="h-4 w-4" />
-                </button>
-              )}
+                  onError={(e) => {
+                    // Fallback for broken images
+                    console.error(`[ImageUpload] Image failed to load: ${imageUrl}`);
+                    const target = e.target as HTMLImageElement;
+                    target.src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="200" height="200"%3E%3Crect width="200" height="200" fill="%23ddd"/%3E%3Ctext x="50%25" y="50%25" text-anchor="middle" dy=".3em" fill="%23999"%3EImage unavailable%3C/text%3E%3C/svg%3E';
+                  }}
+                />
 
-              {/* Main Image Badge */}
-              {!multiple && (
-                <div className="absolute bottom-1 left-1 px-2 py-0.5 bg-blue-500 text-white text-xs rounded">
-                  Main
-                </div>
-              )}
+                {/* Remove Button */}
+                {!disabled && (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleRemoveImage(imageUrl);
+                    }}
+                    className="
+                      absolute top-1 right-1 p-1 bg-red-500 text-white rounded-full
+                      opacity-0 group-hover:opacity-100 transition-opacity
+                      hover:bg-red-600 focus:outline-none focus:ring-2 focus:ring-red-500
+                    "
+                    title="Remove image"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                )}
 
-              {/* Image Index for Gallery */}
-              {multiple && (
-                <div className="absolute bottom-1 left-1 px-2 py-0.5 bg-gray-700 text-white text-xs rounded">
-                  {index + 1}
-                </div>
-              )}
-            </div>
-          ))}
+                {/* Main Image Badge */}
+                {!multiple && (
+                  <div className="absolute bottom-1 left-1 px-2 py-0.5 bg-blue-500 text-white text-xs rounded">
+                    Main
+                  </div>
+                )}
+
+                {/* Image Index for Gallery */}
+                {multiple && (
+                  <div className="absolute bottom-1 left-1 px-2 py-0.5 bg-gray-700 text-white text-xs rounded">
+                    {index + 1}
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
 

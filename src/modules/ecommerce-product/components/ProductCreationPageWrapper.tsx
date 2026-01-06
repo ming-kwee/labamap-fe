@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import { useAuth } from '@/shared/contexts/AuthContext';
 import { useOrganization } from '@/shared/contexts/OrganizationContext';
 import DynamicProductCreationFormRefactored from './DynamicProductCreationFormRefactored';
@@ -11,20 +11,18 @@ interface ProductCreationPageWrapperProps {
   debugMode?: boolean;
 }
 
-export default function ProductCreationPageWrapper({ 
-  onProductCreated, 
-  debugMode = false 
+export default function ProductCreationPageWrapper({
+  onProductCreated,
+  debugMode = false
 }: ProductCreationPageWrapperProps) {
   const { user, organization, isAuthenticated, isLoading: authLoading } = useAuth();
   const { organizationConfig, businessRulesConfig, isLoading: orgLoading } = useOrganization();
-  const [isMounted, setIsMounted] = useState(false);
 
   // 🐛 DEBUG: Component lifecycle tracking
   console.log('🔄🐛 [ProductCreationPageWrapper] Rendering - Component lifecycle', {
     timestamp: new Date().toISOString(),
     authLoading,
     orgLoading,
-    isMounted,
     hasUser: !!user,
     hasOrg: !!organization,
     hasOrgConfig: !!organizationConfig,
@@ -32,13 +30,8 @@ export default function ProductCreationPageWrapper({
     defaultCategory: organization?.settings?.defaultProductCategory || 'none'
   });
 
-  // Ensure this only runs on the client
-  useEffect(() => {
-    setIsMounted(true);
-  }, []);
-
   // Show loading while contexts are initializing
-  if (!isMounted || authLoading || orgLoading) {
+  if (authLoading || orgLoading) {
     return (
       <div className="flex items-center justify-center py-12">
         <div className="text-center">

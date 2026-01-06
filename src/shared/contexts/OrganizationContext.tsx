@@ -198,30 +198,76 @@ class OrganizationService {
   }
 
   static async getBusinessRules(organizationId: string): Promise<BusinessRulesConfiguration> {
-    try {
-      const headers = this.getAuthHeaders();
-      
-      const response = await fetch(`${this.API_BASE_URL}/organizations/${organizationId}/business-rules`, {
-        method: 'GET',
-        headers,
-      });
+    const headers = this.getAuthHeaders();
 
-      if (!response.ok) {
-        throw new Error(`Failed to get business rules: ${response.statusText}`);
-      }
+    // Business rules endpoint: GET /api/v1/ecommerce/business-rules
+    const response = await fetch(`${this.API_BASE_URL}/ecommerce/business-rules`, {
+      method: 'GET',
+      headers,
+    });
 
-      const data = await response.json();
-      
-      // Validate tenant isolation
-      if (data.organizationId !== organizationId) {
-        throw new TenantIsolationError('Business rules data mismatch - security violation');
-      }
-
-      return data;
-    } catch (error) {
-      console.error('[OrganizationService] Failed to get business rules:', error);
-      throw error;
+    if (!response.ok) {
+      throw new Error(`Failed to fetch business rules: ${response.status} ${response.statusText}`);
     }
+
+    const data = await response.json();
+
+    // Validate response structure
+    if (!data.success || !data.rules) {
+      throw new Error('Invalid business rules response format - missing success or rules');
+    }
+
+    // Group rules by type
+    const rulesByType = {
+      PRE_PROCESSING: data.rules.filter((r: any) => r.ruleType === 'PRE_PROCESSING'),
+      BUSINESS_LOGIC: data.rules.filter((r: any) => r.ruleType === 'BUSINESS_LOGIC'),
+      DATA_ENHANCEMENT: data.rules.filter((r: any) => r.ruleType === 'DATA_ENHANCEMENT')
+    };
+
+    // Transform backend response to expected frontend structure
+    const businessRulesConfig: BusinessRulesConfiguration = {
+      organizationId: organizationId,
+      organizationName: '', // Not provided by backend
+      platformTenantId: '', // Not provided by backend
+      businessRulesConfig: {
+        version: '1.0.0',
+        lastUpdated: new Date().toISOString(),
+        updatedBy: 'system',
+        globalSettings: {
+          businessRulesEnabled: data.rules.length > 0,
+          autoApplyPreProcessing: rulesByType.PRE_PROCESSING.some((r: any) => r.enabled),
+          blockOnViolations: rulesByType.BUSINESS_LOGIC.some((r: any) => r.enabled),
+          enableRealTimeValidation: true,
+          executionTimeout: 5000
+        },
+        ruleCategories: {
+          PRE_PROCESSING: {
+            enabled: rulesByType.PRE_PROCESSING.some((r: any) => r.enabled),
+            autoApply: true,
+            rules: rulesByType.PRE_PROCESSING
+          },
+          BUSINESS_LOGIC: {
+            enabled: rulesByType.BUSINESS_LOGIC.some((r: any) => r.enabled),
+            blockOnViolation: true,
+            rules: rulesByType.BUSINESS_LOGIC
+          },
+          DATA_ENHANCEMENT: {
+            enabled: rulesByType.DATA_ENHANCEMENT.some((r: any) => r.enabled),
+            autoApply: false,
+            rules: rulesByType.DATA_ENHANCEMENT
+          }
+        }
+      }
+    };
+
+    console.log('[OrganizationService] ✓ Business rules loaded:', {
+      total: data.rules.length,
+      preProcessing: rulesByType.PRE_PROCESSING.length,
+      businessLogic: rulesByType.BUSINESS_LOGIC.length,
+      dataEnhancement: rulesByType.DATA_ENHANCEMENT.length
+    });
+
+    return businessRulesConfig;
   }
 
   static async getUserProfile(organizationId: string, userId: string): Promise<any> {
@@ -420,52 +466,22 @@ export const OrganizationProvider: React.FC<{ children: ReactNode }> = ({ childr
     try {
       console.log('[OrganizationProvider] Loading business rules for organization:', organization.organizationName);
 
-      // ✅ ALWAYS use backend API (removed hardcoded JSON)
       const businessRules = await OrganizationService.getBusinessRules(organization.organizationId);
+
       setBusinessRulesConfig(businessRules);
-      console.log('[OrganizationProvider] Business rules loaded successfully from backend');
 
+      const totalRules = businessRules.businessRulesConfig.ruleCategories.PRE_PROCESSING.rules.length +
+                         businessRules.businessRulesConfig.ruleCategories.BUSINESS_LOGIC.rules.length +
+                         businessRules.businessRulesConfig.ruleCategories.DATA_ENHANCEMENT.rules.length;
+
+      console.log('[OrganizationProvider] ✓ Business rules loaded successfully:', {
+        totalRules,
+        enabled: businessRules.businessRulesConfig.globalSettings.businessRulesEnabled
+      });
     } catch (error) {
-      console.error('[OrganizationProvider] Business rules load failed:', error);
-
-      // Fallback to empty business rules configuration
-      const fallbackBusinessRules: BusinessRulesConfiguration = {
-        organizationId: organization.organizationId,
-        organizationName: organization.organizationName,
-        platformTenantId: organization.platformTenantId,
-        businessRulesConfig: {
-          version: "1.0.0",
-          lastUpdated: new Date().toISOString(),
-          updatedBy: "system",
-          globalSettings: {
-            businessRulesEnabled: organization.settings.businessRulesEnabled,
-            autoApplyPreProcessing: false,
-            blockOnViolations: false,
-            enableRealTimeValidation: organization.settings.realTimeValidationEnabled,
-            executionTimeout: 5000
-          },
-          ruleCategories: {
-            PRE_PROCESSING: {
-              enabled: false,
-              autoApply: false,
-              rules: []
-            },
-            BUSINESS_LOGIC: {
-              enabled: false,
-              blockOnViolation: false,
-              rules: []
-            },
-            DATA_ENHANCEMENT: {
-              enabled: false,
-              autoApply: false,
-              rules: []
-            }
-          }
-        }
-      };
-      setBusinessRulesConfig(fallbackBusinessRules);
-      console.log('[OrganizationProvider] Using fallback business rules (empty configuration)');
-      // Don't set error state for business rules - they're optional
+      console.error('[OrganizationProvider] Failed to load business rules:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error loading business rules';
+      setError(errorMessage);
     }
   }, [organization, isAuthenticated]);
 

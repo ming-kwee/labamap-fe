@@ -4,6 +4,7 @@
  */
 
 import { useState, useCallback, useRef } from 'react';
+import { ProductService, createBackendContext } from '../services/productService';
 
 export type FormStage = 'essential' | 'category-specific';
 
@@ -46,12 +47,19 @@ export function useProductFormSchema(
   // Cache to prevent redundant API calls
   const schemaCache = useRef<Map<string, any>>(new Map());
 
+  // Inflight request tracking to prevent duplicate simultaneous requests
+  const inflightRequests = useRef<Map<string, Promise<any>>>(new Map());
+
   /**
    * Loads form schema from backend
    * @param category - Optional category for category-specific fields
    */
   const loadSchema = useCallback(async (category?: string) => {
-    console.log('[useProductFormSchema] loadSchema called with category:', category);
+    console.log('[useProductFormSchema] ===================================');
+    console.log('[useProductFormSchema] loadSchema CALLED');
+    console.log('[useProductFormSchema] Category:', category);
+    console.log('[useProductFormSchema] Call stack:', new Error().stack);
+    console.log('[useProductFormSchema] ===================================');
 
     try {
       setIsLoadingSchema(true);
@@ -59,8 +67,12 @@ export function useProductFormSchema(
 
       // Check cache first
       const cacheKey = category || 'essential';
+      console.log('[useProductFormSchema] Cache key:', cacheKey);
+      console.log('[useProductFormSchema] Cache has key?', schemaCache.current.has(cacheKey));
+      console.log('[useProductFormSchema] Cache size:', schemaCache.current.size);
+
       if (schemaCache.current.has(cacheKey)) {
-        console.log('[useProductFormSchema] Using cached schema for:', cacheKey);
+        console.log('[useProductFormSchema] ✓ Using cached schema for:', cacheKey);
         const cachedSchema = schemaCache.current.get(cacheKey);
         setSchema(cachedSchema);
         setFormStage(category ? 'category-specific' : 'essential');
@@ -68,46 +80,71 @@ export function useProductFormSchema(
         return;
       }
 
-      // Dynamic import to avoid circular dependencies
-      const { ProductService, createBackendContext } = await import(
-        '../services/productService'
-      );
-
-      // Create backend context
-      const context = createBackendContext(
-        userId,
-        organizationId,
-        userRole as 'BUSINESS_USER' | 'ADMIN' | 'DEVELOPER',
-        targetChannels,
-        category || '',
-        permissions
-      );
-
-      console.log('[useProductFormSchema] Calling generateFormSchema with context:', context);
-
-      // Call backend API
-      const schemaData: any = await ProductService.generateFormSchema(context);
-
-      console.log('[useProductFormSchema] Received schema:', schemaData);
-      console.log('[useProductFormSchema] Schema type:', typeof schemaData);
-      console.log('[useProductFormSchema] Schema keys:', schemaData ? Object.keys(schemaData) : 'null');
-
-      // Backend might return a wrapper object with { success, formSchema, ... }
-      // Extract the actual schema if wrapped
-      let actualSchema: any = schemaData;
-      if (schemaData && schemaData.formSchema) {
-        console.log('[useProductFormSchema] Unwrapping formSchema from response');
-        actualSchema = schemaData.formSchema;
+      // Check if there's already a request in-flight for this cache key
+      if (inflightRequests.current.has(cacheKey)) {
+        console.log('[useProductFormSchema] ⚠️ Request already in-flight for:', cacheKey);
+        console.log('[useProductFormSchema] Waiting for existing request to complete...');
+        const existingRequest = inflightRequests.current.get(cacheKey)!;
+        const schemaData = await existingRequest;
+        console.log('[useProductFormSchema] ✓ Existing request completed, using result');
+        setSchema(schemaData);
+        setFormStage(category ? 'category-specific' : 'essential');
+        setIsLoadingSchema(false);
+        return;
       }
 
-      // Validate schema format - backend can return either 'sections' or 'fields' structure
-      if (!actualSchema || (!actualSchema.sections && !actualSchema.fields)) {
-        console.error('[useProductFormSchema] Invalid schema structure. Full response:', schemaData);
-        throw new Error('Invalid schema format received from backend - missing both sections and fields');
-      }
+      // Create the request promise
+      const requestPromise = (async () => {
+        console.log('[useProductFormSchema] 🚀 Making NEW API request for:', cacheKey);
 
-      // Cache the unwrapped schema
-      schemaCache.current.set(cacheKey, actualSchema);
+        // Create backend context
+        const context = createBackendContext(
+          userId,
+          organizationId,
+          userRole as 'BUSINESS_USER' | 'ADMIN' | 'DEVELOPER',
+          targetChannels,
+          category || '',
+          permissions
+        );
+
+        console.log('[useProductFormSchema] Calling generateFormSchema with context:', context);
+
+        // Call backend API
+        const schemaData: any = await ProductService.generateFormSchema(context);
+
+        console.log('[useProductFormSchema] Received schema:', schemaData);
+        console.log('[useProductFormSchema] Schema type:', typeof schemaData);
+        console.log('[useProductFormSchema] Schema keys:', schemaData ? Object.keys(schemaData) : 'null');
+
+        // Backend might return a wrapper object with { success, formSchema, ... }
+        // Extract the actual schema if wrapped
+        let actualSchema: any = schemaData;
+        if (schemaData && schemaData.formSchema) {
+          console.log('[useProductFormSchema] Unwrapping formSchema from response');
+          actualSchema = schemaData.formSchema;
+        }
+
+        // Validate schema format - backend can return either 'sections' or 'fields' structure
+        if (!actualSchema || (!actualSchema.sections && !actualSchema.fields)) {
+          console.error('[useProductFormSchema] Invalid schema structure. Full response:', schemaData);
+          throw new Error('Invalid schema format received from backend - missing both sections and fields');
+        }
+
+        // Cache the unwrapped schema
+        schemaCache.current.set(cacheKey, actualSchema);
+
+        console.log('[useProductFormSchema] ✓ Schema cached for:', cacheKey);
+        return actualSchema;
+      })();
+
+      // Store the inflight request
+      inflightRequests.current.set(cacheKey, requestPromise);
+
+      // Await the request
+      const actualSchema = await requestPromise;
+
+      // Clean up inflight request
+      inflightRequests.current.delete(cacheKey);
 
       // Detect form stage from schema metadata
       const stage = actualSchema.metadata?.formStage || (category ? 'category-specific' : 'essential');
@@ -122,6 +159,10 @@ export function useProductFormSchema(
       const errorMessage = error instanceof Error ? error.message : 'Failed to load form schema';
       setSchemaError(errorMessage);
       setSchema(null);
+
+      // Clean up inflight request on error
+      const cacheKey = category || 'essential';
+      inflightRequests.current.delete(cacheKey);
     } finally {
       setIsLoadingSchema(false);
     }
@@ -163,58 +204,86 @@ export function useProductFormSchema(
       return;
     }
 
+    // Check if there's already a request in-flight for this cache key
+    if (inflightRequests.current.has(cacheKey)) {
+      console.log('[useProductFormSchema] ⚠️ Category request already in-flight for:', cacheKey);
+      console.log('[useProductFormSchema] Waiting for existing request to complete...');
+      try {
+        const existingRequest = inflightRequests.current.get(cacheKey)!;
+        const categorySchema = await existingRequest;
+        console.log('[useProductFormSchema] ✓ Existing category request completed, using result');
+        setSchema(categorySchema);
+        setFormStage('category-specific');
+        console.log('[useProductFormSchema] ═══════════════════════════════════════');
+        return;
+      } catch (error) {
+        console.error('[useProductFormSchema] Existing request failed:', error);
+        // Continue to make a new request
+      }
+    }
+
     try {
-      console.log('[useProductFormSchema] ⏳ Making API call to load category-specific fields');
+      console.log('[useProductFormSchema] ⏳ Making NEW API call to load category-specific fields');
       setIsAddingCategoryFields(true);
       setSchemaError(null);
 
-      // Dynamic import
-      const { ProductService, createBackendContext } = await import(
-        '../services/productService'
-      );
+      // Create the request promise
+      const requestPromise = (async () => {
 
-      // Create context with category
-      const context = createBackendContext(
-        userId,
-        organizationId,
-        userRole as 'BUSINESS_USER' | 'ADMIN' | 'DEVELOPER',
-        targetChannels,
-        category,
-        permissions
-      );
+        // Create context with category
+        const context = createBackendContext(
+          userId,
+          organizationId,
+          userRole as 'BUSINESS_USER' | 'ADMIN' | 'DEVELOPER',
+          targetChannels,
+          category,
+          permissions
+        );
 
-      console.log('[useProductFormSchema] Refreshing schema with category context:', context);
+        console.log('[useProductFormSchema] Refreshing schema with category context:', context);
 
-      // Call backend to get category-specific schema
-      const categorySchema: any = await ProductService.refreshFormSchema(context);
+        // Call backend to get category-specific schema
+        const categorySchema: any = await ProductService.refreshFormSchema(context);
 
-      console.log('[useProductFormSchema] ✓ API call completed');
-      console.log('[useProductFormSchema] Response type:', typeof categorySchema);
-      console.log('[useProductFormSchema] Response keys:', categorySchema ? Object.keys(categorySchema) : 'null');
+        console.log('[useProductFormSchema] ✓ API call completed');
+        console.log('[useProductFormSchema] Response type:', typeof categorySchema);
+        console.log('[useProductFormSchema] Response keys:', categorySchema ? Object.keys(categorySchema) : 'null');
 
-      // Backend might return a wrapper object with { success, formSchema, ... }
-      // Extract the actual schema if wrapped
-      let actualCategorySchema: any = categorySchema;
-      if (categorySchema && categorySchema.formSchema) {
-        console.log('[useProductFormSchema] Unwrapping formSchema from response wrapper');
-        actualCategorySchema = categorySchema.formSchema;
-      }
+        // Backend might return a wrapper object with { success, formSchema, ... }
+        // Extract the actual schema if wrapped
+        let actualCategorySchema: any = categorySchema;
+        if (categorySchema && categorySchema.formSchema) {
+          console.log('[useProductFormSchema] Unwrapping formSchema from response wrapper');
+          actualCategorySchema = categorySchema.formSchema;
+        }
 
-      console.log('[useProductFormSchema] Actual schema type:', typeof actualCategorySchema);
-      console.log('[useProductFormSchema] Actual schema keys:', actualCategorySchema ? Object.keys(actualCategorySchema) : 'null');
+        console.log('[useProductFormSchema] Actual schema type:', typeof actualCategorySchema);
+        console.log('[useProductFormSchema] Actual schema keys:', actualCategorySchema ? Object.keys(actualCategorySchema) : 'null');
 
-      // Validate schema format - backend can return either 'sections' or 'fields' structure
-      if (!actualCategorySchema || (!actualCategorySchema.sections && !actualCategorySchema.fields)) {
-        console.error('[useProductFormSchema] ✗ Invalid schema structure. Full response:', categorySchema);
-        throw new Error('Invalid category schema received from backend - missing both sections and fields');
-      }
+        // Validate schema format - backend can return either 'sections' or 'fields' structure
+        if (!actualCategorySchema || (!actualCategorySchema.sections && !actualCategorySchema.fields)) {
+          console.error('[useProductFormSchema] ✗ Invalid schema structure. Full response:', categorySchema);
+          throw new Error('Invalid category schema received from backend - missing both sections and fields');
+        }
 
-      const fieldCount = actualCategorySchema.fields?.length || 0;
-      console.log('[useProductFormSchema] ✓ Schema validated - Fields count:', fieldCount);
+        const fieldCount = actualCategorySchema.fields?.length || 0;
+        console.log('[useProductFormSchema] ✓ Schema validated - Fields count:', fieldCount);
 
-      // Cache the unwrapped category schema
-      schemaCache.current.set(cacheKey, actualCategorySchema);
-      console.log('[useProductFormSchema] ✓ Schema cached with key:', cacheKey);
+        // Cache the unwrapped category schema
+        schemaCache.current.set(cacheKey, actualCategorySchema);
+        console.log('[useProductFormSchema] ✓ Schema cached with key:', cacheKey);
+
+        return actualCategorySchema;
+      })();
+
+      // Store the inflight request
+      inflightRequests.current.set(cacheKey, requestPromise);
+
+      // Await the request
+      const actualCategorySchema = await requestPromise;
+
+      // Clean up inflight request
+      inflightRequests.current.delete(cacheKey);
 
       setSchema(actualCategorySchema);
       setFormStage('category-specific');
@@ -229,6 +298,10 @@ export function useProductFormSchema(
       const errorMessage = error instanceof Error ? error.message : 'Failed to load category fields';
       console.error('[useProductFormSchema] Error message:', errorMessage);
       setSchemaError(errorMessage);
+
+      // Clean up inflight request on error
+      inflightRequests.current.delete(cacheKey);
+
       console.log('[useProductFormSchema] ═══════════════════════════════════════');
     } finally {
       setIsAddingCategoryFields(false);
@@ -240,8 +313,9 @@ export function useProductFormSchema(
    * Useful when organization settings change
    */
   const clearSchemaCache = useCallback(() => {
-    console.log('[useProductFormSchema] Clearing schema cache');
+    console.log('[useProductFormSchema] Clearing schema cache and inflight requests');
     schemaCache.current.clear();
+    inflightRequests.current.clear();
   }, []);
 
   return {

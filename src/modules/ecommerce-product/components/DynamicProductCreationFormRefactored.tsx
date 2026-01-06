@@ -213,8 +213,15 @@ export default function DynamicProductCreationFormRefactored({
 
   // Load initial schema on mount - ONLY ONCE
   useEffect(() => {
-    console.log('[ProductForm] Loading initial schema (essential fields) - MOUNT ONLY');
+    console.log('[ProductForm] ===================================');
+    console.log('[ProductForm] useEffect TRIGGERED - Loading initial schema');
+    console.log('[ProductForm] Stack trace:', new Error().stack);
+    console.log('[ProductForm] ===================================');
     loadSchema();
+
+    return () => {
+      console.log('[ProductForm] useEffect CLEANUP - Component unmounting');
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // Empty deps = run once on mount, never again
 
