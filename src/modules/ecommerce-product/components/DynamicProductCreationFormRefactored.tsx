@@ -736,6 +736,8 @@ export default function DynamicProductCreationFormRefactored({
                       onChange={handleVariantConfiguratorChange}
                       schema={schema}
                       formData={formData}
+                      organizationId={organization.organizationId}
+                      productId={formData.id || `temp_${Date.now()}`}
                     />
                   </div>
                 );

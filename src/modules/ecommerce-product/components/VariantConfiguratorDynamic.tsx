@@ -8,6 +8,7 @@
  */
 
 import React, { useState, useMemo } from 'react';
+import VariantMultiImageUpload from './VariantMultiImageUpload';
 
 interface VariantOption {
   id: string;
@@ -25,13 +26,17 @@ interface VariantConfiguratorDynamicProps {
   onChange: (value: string) => void;
   schema?: any;
   formData?: any; // Current form data to evaluate conditional visibility
+  organizationId?: string;  // For image upload
+  productId?: string;       // For image upload
 }
 
-const VariantConfiguratorDynamic: React.FC<VariantConfiguratorDynamicProps> = ({ 
-  value, 
-  onChange, 
+const VariantConfiguratorDynamic: React.FC<VariantConfiguratorDynamicProps> = ({
+  value,
+  onChange,
   schema,
-  formData = {}
+  formData = {},
+  organizationId = 'org-default',
+  productId = 'temp-product'
 }) => {
   // Helper function to evaluate conditional visibility
   const isFieldVisible = (field: any, currentFormData: any): boolean => {
@@ -153,6 +158,7 @@ const VariantConfiguratorDynamic: React.FC<VariantConfiguratorDynamicProps> = ({
       // Auto-generate config from detected dimensions + standard fields
       const autoConfig = [
         ...dimensions.map(dim => ({ name: dim.name, label: dim.label, type: 'select' })),
+        { name: 'variantImages', label: 'Images', type: 'images' },  // Multiple variant images
         { name: 'price', label: 'Price', type: 'number' },
         { name: 'cost', label: 'Cost', type: 'number' },
         { name: 'comparePrice', label: 'Compare Price', type: 'number' },
@@ -359,6 +365,7 @@ const VariantConfiguratorDynamic: React.FC<VariantConfiguratorDynamicProps> = ({
       const variant: VariantOption = {
         id,
         ...combination, // All dimension values (color, size, material, etc.)
+        variantImages: existing?.variantImages || [],  // Preserve uploaded images (array)
         price: existing?.price || 0,
         cost: existing?.cost || 0,
         comparePrice: existing?.comparePrice || 0,
@@ -481,10 +488,19 @@ const VariantConfiguratorDynamic: React.FC<VariantConfiguratorDynamicProps> = ({
                   <tr key={variant.id} className="hover:bg-gray-50">
                     {variantConfig.map((field: any) => (
                       <td key={field.name} className="border border-gray-300 px-3 py-2">
-                        {/* Special handling for color display */}
-                        {field.name.toLowerCase().includes('color') && typeof variant[field.name] === 'string' ? (
+                        {/* Special handling for multiple image upload */}
+                        {field.type === 'images' ? (
+                          <VariantMultiImageUpload
+                            variantId={variant.id}
+                            currentImages={variant[field.name] || []}
+                            onImagesChange={(imageUrls) => updateVariant(variant.id, field.name, imageUrls)}
+                            organizationId={organizationId}
+                            productId={productId}
+                            maxImages={5}
+                          />
+                        ) : field.name.toLowerCase().includes('color') && typeof variant[field.name] === 'string' ? (
                           <div className="flex items-center">
-                            <div 
+                            <div
                               className="w-6 h-6 rounded border inline-block mr-2"
                               style={{ backgroundColor: variant[field.name] }}
                             />
