@@ -41,6 +41,10 @@ export interface AdaptivePatternMatchingRequest {
   confidenceThreshold: number;          // Minimum confidence (default: 70)
   organizationId?: string;              // For custom mappings
   userId?: string;                      // For audit trail
+  categoryId?: string;                  // Product category for JOLT persistence key
+  persistJolt?: boolean;                // Save JOLT to MongoDB (default: false)
+  persistConfidenceThreshold?: number;  // Min confidence to allow save (default: 80)
+  forceReanalyze?: boolean;             // Force regeneration even if cached
 }
 
 export interface AdaptivePatternMatchingResponse {
@@ -49,6 +53,8 @@ export interface AdaptivePatternMatchingResponse {
   overallConfidence: number;            // Average confidence across all mappings
   unmappedSourceFields: string[];       // Fields that couldn't be mapped
   unmappedTargetFields: string[];       // Required target fields missing
+  status?: string;                      // Response status from backend
+  message?: string;                     // Status message
   matchingMetadata: {
     knowledgeBasedMatches: number;
     semanticMatches: number;
@@ -56,6 +62,7 @@ export interface AdaptivePatternMatchingResponse {
     patternMatches: number;
     totalMatches: number;
     processingTimeMs: number;
+    warnings?: string[];                // e.g., "JOLT spec persisted to category 'clothing'"
   };
 }
 
@@ -134,10 +141,18 @@ export interface ChannelPublishRequest {
   joltSpec?: any[];
   skipValidation?: boolean;
   dryRun?: boolean;              // Preview only, don't actually publish
+  categoryId?: string;           // Category for JOLT lookup (must match analyze)
+  organizationId?: string;       // Multi-tenant support
+  publishOptions?: {             // Extended publish options
+    skipValidation?: boolean;
+    autoPublish?: boolean;
+    syncInventory?: boolean;
+  };
 }
 
 export interface ChannelPublishResponse {
   success: boolean;
+  publishId?: string;
   channelProductId?: string;
   channelUrl?: string;
   publishedData: Record<string, any>;
@@ -145,6 +160,17 @@ export interface ChannelPublishResponse {
   errors?: string[];
   publishedAt?: string;
   syncStatus: 'PENDING' | 'IN_PROGRESS' | 'COMPLETED' | 'FAILED';
+  transformationApplied?: {
+    fieldsTransformed: number;
+    fieldsDropped: number;
+    fieldsAdded: number;
+  };
+  isDryRun?: boolean;
+  performanceMetrics?: {
+    transformationTimeMs: number;
+    channelApiCallTimeMs: number;
+    totalTimeMs: number;
+  };
 }
 
 // ============================================================================

@@ -56,6 +56,7 @@ export default function PublishToChannelPage() {
   const [showJoltPreview, setShowJoltPreview] = useState(false);
   const [joltPreviewData, setJoltPreviewData] = useState<any>(null);
   const [channelReadiness, setChannelReadiness] = useState<ChannelReadinessResult | null>(null);
+  const [persistJolt, setPersistJolt] = useState(true);
 
   // Load product data
   useEffect(() => {
@@ -167,8 +168,11 @@ export default function PublishToChannelPage() {
       // STEP 2: Fetch target schema from MongoDB apiSchema field
       const request = await generateMappingRequest(product, selectedChannel, {
         confidenceThreshold: 70,
-        organizationId: 'org_demo',
-        userId: 'user_demo'
+        organizationId: product.customAttributes?._organizationId as string,
+        userId: product.customAttributes?._createdBy as string,
+        categoryId: product.category || 'default',
+        persistJolt,
+        persistConfidenceThreshold: 80,
       });
 
       console.log('[ChannelPublish] Mapping request:', request);
@@ -208,8 +212,8 @@ export default function PublishToChannelPage() {
           targetSchema: { /* channel-specific schema */ },
           channelId: selectedChannel,
           confidenceThreshold: 70,
-          organizationId: 'org_demo',
-          userId: 'user_demo'
+          organizationId: product.customAttributes?._organizationId,
+          userId: product.customAttributes?._createdBy
         }, null, 2) + '\n\n' +
         '📤 Expected Response:\n' +
         JSON.stringify({
@@ -277,6 +281,8 @@ export default function PublishToChannelPage() {
         channelId: selectedChannel,
         fieldMappings: mappingResult.fieldMappings || [],
         joltSpec: mappingResult.joltSpec || [],
+        categoryId: product.category || 'default',
+        organizationId: product.customAttributes?._organizationId as string,
         dryRun: false
       };
 
@@ -454,23 +460,52 @@ export default function PublishToChannelPage() {
               </div>
 
               {selectedChannel && (
-                <Button
-                  onClick={handleAnalyze}
-                  disabled={isAnalyzing}
-                  className="w-full"
-                >
-                  {isAnalyzing ? (
-                    <>
-                      <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-                      Analyzing...
-                    </>
-                  ) : (
-                    <>
-                      <Brain className="h-4 w-4 mr-2" />
-                      Analyze Pattern Matching
-                    </>
-                  )}
-                </Button>
+                <>
+                  <div className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
+                    <div>
+                      <label htmlFor="persistJolt" className="text-sm font-medium cursor-pointer">
+                        Persist JOLT Spec
+                      </label>
+                      <p className="text-xs text-gray-500 mt-0.5">
+                        Save transformation to MongoDB for reuse
+                      </p>
+                    </div>
+                    <button
+                      id="persistJolt"
+                      type="button"
+                      role="switch"
+                      aria-checked={persistJolt}
+                      onClick={() => setPersistJolt(!persistJolt)}
+                      className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                        persistJolt ? 'bg-blue-600' : 'bg-gray-300'
+                      }`}
+                    >
+                      <span
+                        className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                          persistJolt ? 'translate-x-6' : 'translate-x-1'
+                        }`}
+                      />
+                    </button>
+                  </div>
+
+                  <Button
+                    onClick={handleAnalyze}
+                    disabled={isAnalyzing}
+                    className="w-full"
+                  >
+                    {isAnalyzing ? (
+                      <>
+                        <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                        Analyzing...
+                      </>
+                    ) : (
+                      <>
+                        <Brain className="h-4 w-4 mr-2" />
+                        Analyze Pattern Matching
+                      </>
+                    )}
+                  </Button>
+                </>
               )}
             </CardContent>
           </Card>

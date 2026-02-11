@@ -59,7 +59,11 @@ export interface UseChannelPublishReturn {
 export function useChannelPublish(
   options: UseChannelPublishOptions
 ): UseChannelPublishReturn {
-  const { product, organizationId = 'org_demo', userId = 'user_demo' } = options;
+  const {
+    product,
+    organizationId = product.customAttributes?._organizationId as string,
+    userId = product.customAttributes?._createdBy as string
+  } = options;
 
   // State
   const [availableChannels, setAvailableChannels] = useState<ChannelConfiguration[]>([]);
@@ -212,7 +216,10 @@ export function useChannelPublish(
       const request = await generateMappingRequest(product, selectedChannel, {
         confidenceThreshold: 70,
         organizationId,
-        userId
+        userId,
+        categoryId: product.category || 'default',
+        persistJolt: true,
+        persistConfidenceThreshold: 80,
       });
 
       console.log('[useChannelPublish] Request:', {
@@ -303,6 +310,8 @@ export function useChannelPublish(
         channelId: selectedChannel,
         fieldMappings: mappingResult.fieldMappings,
         joltSpec: mappingResult.joltSpec,
+        categoryId: product.category || 'default',
+        organizationId,
         dryRun
       });
 

@@ -162,7 +162,7 @@ export function generateMasterProduct(options: ProductGenerationOptions): Master
 }
 
 /**
- * Validates that required fields are present in the product
+ * Validates that required fields are present in the product. ???
  *
  * @param product - Product to validate
  * @param schema - Form schema
@@ -191,7 +191,7 @@ export function validateRequiredFields(product: Partial<MasterProduct>, schema: 
 }
 
 /**
- * Extracts product summary for display purposes
+ * Extracts product summary for display purposes. ???
  *
  * @param product - Product object
  * @returns Summary object with key fields
@@ -402,6 +402,10 @@ export interface GenerateMappingRequestOptions {
   confidenceThreshold?: number;
   organizationId?: string;
   userId?: string;
+  categoryId?: string;
+  persistJolt?: boolean;
+  persistConfidenceThreshold?: number;
+  forceReanalyze?: boolean;
 }
 
 /**
@@ -441,6 +445,10 @@ export async function generateMappingRequest(
     confidenceThreshold: options.confidenceThreshold || 70,
     organizationId: options.organizationId,
     userId: options.userId,
+    categoryId: options.categoryId,
+    persistJolt: options.persistJolt,
+    persistConfidenceThreshold: options.persistConfidenceThreshold,
+    forceReanalyze: options.forceReanalyze,
   };
 }
 
