@@ -37,8 +37,9 @@ export function normalizeSectionKey(sectionKey: string): string {
 }
 
 /**
- * Groups fields by their section property from backend
- * This is the correct approach - backend sends field.section, not schema.sections
+ * Groups fields by their section property from backend.
+ * Backend is the source of truth — `field.section` must be set in MongoDB.
+ *
  * @param fields - Array of form fields from backend
  * @param excludeFieldNames - Field names to exclude (like hasVariants, variantConfigurator)
  * @returns Record of section key to fields array
@@ -57,7 +58,7 @@ export function groupFieldsBySection(
       return;
     }
 
-    // Get section from field, normalize it
+    // Get section from backend field, default to 'basic-info' if not set
     const rawSection = field.section || 'basic-info';
     const section = normalizeSectionKey(rawSection);
 

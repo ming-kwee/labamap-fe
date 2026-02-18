@@ -129,6 +129,7 @@ export interface FormField {
 
   // UI Hints
   group?: string; // Backend's group ('attribute' | 'variant')
+  section?: string; // Section grouping key from backend (e.g. 'basic-info', 'pricing', 'media')
   displayLevel?: FieldDisplayLevel; // UI display categorization
   order?: number;
   width?: 'full' | 'half' | 'third' | 'quarter';

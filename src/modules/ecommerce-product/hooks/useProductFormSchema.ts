@@ -130,6 +130,22 @@ export function useProductFormSchema(
           throw new Error('Invalid schema format received from backend - missing both sections and fields');
         }
 
+        // Normalize: if backend sends sections[] but not fields[], flatten into fields[]
+        // Stamp each field with its section key so groupFieldsBySection can use it
+        if (actualSchema.sections && !actualSchema.fields) {
+          console.log('[useProductFormSchema] Flattening sections[] into fields[]');
+          const flatFields: any[] = [];
+          for (const section of actualSchema.sections) {
+            if (section.fields && Array.isArray(section.fields)) {
+              for (const field of section.fields) {
+                flatFields.push({ ...field, section: field.section || section.key });
+              }
+            }
+          }
+          actualSchema = { ...actualSchema, fields: flatFields };
+          console.log('[useProductFormSchema] Flattened', flatFields.length, 'fields from sections');
+        }
+
         // Cache the unwrapped schema
         schemaCache.current.set(cacheKey, actualSchema);
 
@@ -264,6 +280,20 @@ export function useProductFormSchema(
         if (!actualCategorySchema || (!actualCategorySchema.sections && !actualCategorySchema.fields)) {
           console.error('[useProductFormSchema] ✗ Invalid schema structure. Full response:', categorySchema);
           throw new Error('Invalid category schema received from backend - missing both sections and fields');
+        }
+
+        // Normalize: if backend sends sections[] but not fields[], flatten into fields[]
+        if (actualCategorySchema.sections && !actualCategorySchema.fields) {
+          console.log('[useProductFormSchema] Flattening category sections[] into fields[]');
+          const flatFields: any[] = [];
+          for (const section of actualCategorySchema.sections) {
+            if (section.fields && Array.isArray(section.fields)) {
+              for (const field of section.fields) {
+                flatFields.push({ ...field, section: field.section || section.key });
+              }
+            }
+          }
+          actualCategorySchema = { ...actualCategorySchema, fields: flatFields };
         }
 
         const fieldCount = actualCategorySchema.fields?.length || 0;
