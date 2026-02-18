@@ -24,6 +24,14 @@ export function useFieldVisibility(): UseFieldVisibilityReturn {
    * @returns True if field should be visible
    */
   const isFieldVisible = useCallback((field: FormField, formData: Record<string, any>): boolean => {
+    // Variant scope checks — hide fields that belong to variant rows
+    if (field.variantScope === 'variant_only') {
+      return false; // Always hidden from product form — handled by variant configurator
+    }
+    if (field.variantScope === 'dual' && formData['hasVariants']) {
+      return false; // Moved to variant rows when hasVariants is on
+    }
+
     // No conditional logic? Always visible
     if (!field.conditionalVisibility) {
       return true;

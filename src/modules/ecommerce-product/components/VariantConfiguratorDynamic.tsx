@@ -86,23 +86,33 @@ const VariantConfiguratorDynamic: React.FC<VariantConfiguratorDynamicProps> = ({
         fieldType: field.fieldType,
         hasOptions: !!field.options,
         optionsLength: field.options?.length,
-        options: field.options
+        options: field.options,
+        variantScope: field.variantScope
       });
-      
+
+      // Primary: explicit variantScope from backend — variant_only SELECT fields are dimensions
+      const isVariantOnly = field.variantScope === 'variant_only';
+
       // Check if field has selectable options (support both uppercase and lowercase)
-      const hasOptions = (field.fieldType === 'SELECT' || field.fieldType === 'select') && 
-                        field.options && 
+      const hasOptions = (field.fieldType === 'SELECT' || field.fieldType === 'select') &&
+                        field.options &&
                         Array.isArray(field.options) &&
                         field.options.length > 0;
-      
+
       if (!hasOptions) {
         console.log(`🔥 [VariantConfiguratorDynamic] Field "${fieldName}" rejected: no valid options`);
         return false;
       }
-      
-      // Auto-detect common variant dimension patterns
+
+      // If backend explicitly marks as variant_only with options, it's a dimension
+      if (isVariantOnly) {
+        console.log(`🔥 [VariantConfiguratorDynamic] Field "${fieldName}" detected as dimension via variantScope`);
+        return true;
+      }
+
+      // Fallback: Auto-detect common variant dimension patterns
       const fieldNameLower = fieldName.toLowerCase();
-      const isCommonVariantField = 
+      const isCommonVariantField =
         fieldNameLower.includes('color') ||
         fieldNameLower.includes('size') ||
         fieldNameLower.includes('material') ||
@@ -113,17 +123,17 @@ const VariantConfiguratorDynamic: React.FC<VariantConfiguratorDynamicProps> = ({
         fieldNameLower.includes('fabric') ||
         fieldNameLower.includes('type') ||
         fieldNameLower.includes('variant');
-      
+
       // Or explicitly marked as variant dimension in backend
-      const isExplicitVariantDimension = 
+      const isExplicitVariantDimension =
         field.validationRules?.isVariantDimension ||
         field.businessContext?.variantDimension ||
         field.metadata?.variantDimension;
-      
+
       // Must be a variant field AND visible according to conditional logic
       const isVariantField = isCommonVariantField || isExplicitVariantDimension;
       const isVisible = isFieldVisible(field, formData);
-      
+
       console.log(`🔥 [VariantConfiguratorDynamic] Field "${fieldName}" analysis:`, {
         isCommonVariantField,
         isExplicitVariantDimension,
@@ -133,7 +143,7 @@ const VariantConfiguratorDynamic: React.FC<VariantConfiguratorDynamicProps> = ({
         currentCategory: formData.category,
         finalDecision: isVariantField && isVisible
       });
-      
+
       return isVariantField && isVisible;
     });
     
@@ -147,18 +157,32 @@ const VariantConfiguratorDynamic: React.FC<VariantConfiguratorDynamicProps> = ({
     
     // Get variant table configuration
     const getVariantFields = () => {
-      const variantField = schema.fields.find((f: any) => 
+      const variantField = schema.fields.find((f: any) =>
         (f.fieldName === 'variantConfigurator' || f.name === 'variantConfigurator')
       );
-      
+
       if (variantField?.validationRules?.variantFields) {
         return variantField.validationRules.variantFields;
       }
-      
-      // Auto-generate config from detected dimensions + standard fields
+
+      // Use variantScope: 'dual' fields from schema to build columns dynamically
+      const dualFields = schema.fields.filter((f: any) => f.variantScope === 'dual');
+      if (dualFields.length > 0) {
+        return [
+          ...dimensions.map(dim => ({ name: dim.name, label: dim.label, type: 'select' })),
+          { name: 'variantImages', label: 'Images', type: 'images' },
+          ...dualFields.map((f: any) => ({
+            name: f.fieldName || f.name,
+            label: f.label,
+            type: f.fieldType === 'NUMBER' || f.fieldType === 'number' ? 'number' : 'text'
+          })),
+        ];
+      }
+
+      // Fallback: existing hardcoded config for backward compatibility
       const autoConfig = [
         ...dimensions.map(dim => ({ name: dim.name, label: dim.label, type: 'select' })),
-        { name: 'variantImages', label: 'Images', type: 'images' },  // Multiple variant images
+        { name: 'variantImages', label: 'Images', type: 'images' },
         { name: 'price', label: 'Price', type: 'number' },
         { name: 'cost', label: 'Cost', type: 'number' },
         { name: 'comparePrice', label: 'Compare Price', type: 'number' },
@@ -167,7 +191,7 @@ const VariantConfiguratorDynamic: React.FC<VariantConfiguratorDynamicProps> = ({
         { name: 'weight', label: 'Weight', type: 'number' },
         { name: 'barcode', label: 'Barcode', type: 'text' }
       ];
-      
+
       return autoConfig;
     };
     

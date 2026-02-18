@@ -133,6 +133,9 @@ export interface FormField {
   order?: number;
   width?: 'full' | 'half' | 'third' | 'quarter';
   appearance?: Record<string, any>;
+
+  // Variant Scope - determines where the field renders when variants are enabled
+  variantScope?: 'dual' | 'variant_only' | null;
 }
 
 // Field Dependencies
@@ -244,6 +247,8 @@ export interface DynamicFormSchema {
     requiredFieldCount: number;
     conditionalFieldCount: number;
     formStage?: 'essential' | 'category-specific';
+    variantScopedFields?: string[] | null;
+    variantDimensions?: string[] | null;
   };
 }
 

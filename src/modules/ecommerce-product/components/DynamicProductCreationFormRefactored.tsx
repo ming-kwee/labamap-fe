@@ -30,6 +30,7 @@ import { useProductFormState } from '../hooks/useProductFormState';
 
 // Import utilities
 import { mapUserRole, getSectionMetadata, validateProductCategory, normalizeSectionKey, groupFieldsBySection } from '../utils/productFormUtils';
+import { onVariantsEnabled, onVariantsDisabled } from '../utils/variantScope';
 
 // Import services
 import { generateMasterProduct } from '../services/productGenerationService';
@@ -642,8 +643,41 @@ export default function DynamicProductCreationFormRefactored({
                   id="hasVariants"
                   checked={hasVariantsEnabled}
                   onChange={(e) => {
-                    console.log('[ProductForm] hasVariants checkbox clicked:', e.target.checked);
-                    handleFieldChange('hasVariants', e.target.checked);
+                    const enabled = e.target.checked;
+                    console.log('[ProductForm] hasVariants checkbox clicked:', enabled);
+
+                    // Get dual field names from schema metadata or detect from fields
+                    const dualFieldNames = schema?.metadata?.variantScopedFields
+                      || schema?.fields
+                        ?.filter((f: any) => f.variantScope === 'dual')
+                        .map((f: any) => f.fieldName || f.name)
+                      || [];
+
+                    if (enabled && dualFieldNames.length > 0) {
+                      // Copy product-level dual values as defaults for first variant row
+                      const variantDefaults = onVariantsEnabled(formData, dualFieldNames);
+                      console.log('[ProductForm] Variant defaults from product fields:', variantDefaults);
+                      // Store defaults so variant configurator can pick them up
+                      handleFieldChange('_variantDefaults', variantDefaults);
+                    } else if (!enabled && dualFieldNames.length > 0) {
+                      // Restore first variant's dual values back to product level
+                      try {
+                        const variantData = formData.variantConfigurator
+                          ? JSON.parse(formData.variantConfigurator)
+                          : null;
+                        if (variantData?.variants?.length > 0) {
+                          const restored = onVariantsDisabled(variantData.variants, dualFieldNames);
+                          console.log('[ProductForm] Restoring dual fields from variant:', restored);
+                          Object.entries(restored).forEach(([key, val]) => {
+                            handleFieldChange(key, val);
+                          });
+                        }
+                      } catch (err) {
+                        console.warn('[ProductForm] Failed to restore variant values:', err);
+                      }
+                    }
+
+                    handleFieldChange('hasVariants', enabled);
                   }}
                   className="mt-1 mr-3 w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
                 />
