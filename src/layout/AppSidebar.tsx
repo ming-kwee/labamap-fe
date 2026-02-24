@@ -34,7 +34,6 @@ const navItems: NavItem[] = [
     name: "Dashboard",
     subItems: [{ name: "Ecommerce", path: "/", pro: false }],
   },
-
   {
     icon: <ListIcon />,
     name: "Product Management",
@@ -45,12 +44,22 @@ const navItems: NavItem[] = [
     ],
   },
   {
+    icon: <PlugInIcon />,
+    name: "Channel Platform",
+    subItems: [
+      { name: "Channel Hub", path: "/channels", pro: false, new: true },
+      { name: "Channel Products", path: "/channels/products", pro: false },
+      { name: "Sync Queue", path: "/channels/sync-queue", pro: false },
+      { name: "Inventory Sync", path: "/channels/inventory", pro: false },
+    ],
+  },
+  {
     icon: <TaskIcon />,
     name: "Business Rules",
     path: "/business-rules",
   },
   {
-    icon: <PlugInIcon />,
+    icon: <PageIcon />,
     name: "Conditional Logic",
     path: "/conditional-logic",
   },

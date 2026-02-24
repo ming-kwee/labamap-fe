@@ -225,14 +225,6 @@ export interface DynamicFormSchema {
   // Form Structure (backend may send either fields or sections)
   fields?: FormField[];
   sections?: FormSection[];
-  groups?: {
-    groupName: string;
-    label: string;
-    description?: string;
-    fields: string[];
-    collapsible?: boolean;
-    defaultExpanded?: boolean;
-  }[];
 
   // Form Logic
   conditionalLogic?: FormLogic;

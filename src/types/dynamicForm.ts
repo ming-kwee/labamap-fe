@@ -194,6 +194,17 @@ export interface FormGovernanceInfo {
   }[];
 }
 
+// Section structure for organizing fields
+export interface FormSection {
+  key: string;
+  label: string;
+  description?: string;
+  fields: FormField[];
+  order?: number;
+  collapsible?: boolean;
+  defaultExpanded?: boolean;
+}
+
 // Dynamic Form Schema
 export interface DynamicFormSchema {
   title: string;
@@ -206,17 +217,10 @@ export interface DynamicFormSchema {
     userRole: string;
     permissions: string[];
   };
-  
-  // Form Structure
-  fields: FormField[];
-  groups?: {
-    groupName: string;
-    label: string;
-    description?: string;
-    fields: string[];
-    collapsible?: boolean;
-    defaultExpanded?: boolean;
-  }[];
+
+  // Form Structure (backend may send either fields or sections)
+  fields?: FormField[];
+  sections?: FormSection[];
   
   // Form Logic
   conditionalLogic: FormLogic;
