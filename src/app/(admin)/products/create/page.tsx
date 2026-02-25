@@ -193,12 +193,12 @@ export default function CreateProductPage() {
                   <div className="flex flex-col sm:flex-row gap-3 justify-center">
                     <Button
                       onClick={() => {
-                        router.push(`/products/publish-to-channel?productId=${workflowState.masterProduct!.id}`);
+                        router.push(`/products/${workflowState.masterProduct!.id}/channel-fields`);
                       }}
                       className="text-lg px-8 py-3"
                     >
                       <Send className="h-5 w-5 mr-2" />
-                      Go to Channel Publishing
+                      Fill Channel Fields
                     </Button>
                     <Button
                       variant="outline"
