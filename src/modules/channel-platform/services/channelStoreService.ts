@@ -100,6 +100,22 @@ export const ChannelStoreService = {
   },
 
   /**
+   * Update store details (storeName, storeUrl, region, credentials, displayOrder)
+   * PUT /api/v1/channel-stores/{storeId}?organizationId=...
+   * Credentials are optional — omit to keep existing values.
+   */
+  updateStore(storeId: string, organizationId: string, request: Partial<StoreConnectionRequest>): Promise<ChannelStoreConnection> {
+    return fetch(
+      `${BASE}/channel-stores/${encodeURIComponent(storeId)}?organizationId=${encodeURIComponent(organizationId)}`,
+      {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(request),
+      }
+    ).then((r) => handleResponse<unknown>(r)).then(mapStore);
+  },
+
+  /**
    * Deactivate (soft-delete) a store
    * PUT /api/v1/channel-stores/{storeId}/deactivate?organizationId=...
    */
@@ -107,6 +123,28 @@ export const ChannelStoreService = {
     return fetch(
       `${BASE}/channel-stores/${encodeURIComponent(storeId)}/deactivate?organizationId=${encodeURIComponent(organizationId)}`,
       { method: "PUT" }
+    ).then(handleEmptyResponse);
+  },
+
+  /**
+   * Reactivate a previously deactivated store
+   * PUT /api/v1/channel-stores/{storeId}/activate?organizationId=...
+   */
+  reactivateStore(storeId: string, organizationId: string): Promise<ChannelStoreConnection> {
+    return fetch(
+      `${BASE}/channel-stores/${encodeURIComponent(storeId)}/activate?organizationId=${encodeURIComponent(organizationId)}`,
+      { method: "PUT" }
+    ).then((r) => handleResponse<unknown>(r)).then(mapStore);
+  },
+
+  /**
+   * Permanently delete a store and all associated data
+   * DELETE /api/v1/channel-stores/{storeId}?organizationId=...
+   */
+  deleteStore(storeId: string, organizationId: string): Promise<void> {
+    return fetch(
+      `${BASE}/channel-stores/${encodeURIComponent(storeId)}?organizationId=${encodeURIComponent(organizationId)}`,
+      { method: "DELETE" }
     ).then(handleEmptyResponse);
   },
 

@@ -1,6 +1,6 @@
 "use client";
 import React, { useState } from "react";
-import type { ChannelType, StoreConnectionRequest } from "../../types/channelStore";
+import type { ChannelStoreConnection, ChannelType, StoreConnectionRequest } from "../../types/channelStore";
 import { ChannelOAuthService } from "../../services/channelOAuthService";
 
 /**
@@ -81,31 +81,36 @@ interface Props {
   organizationId: string;
   onClose: () => void;
   onConnect: (request: StoreConnectionRequest) => Promise<void>;
+  /** When provided the modal opens in edit mode with fields pre-filled */
+  existingStore?: ChannelStoreConnection;
 }
 
-export default function ConnectStoreModal({ organizationId, onClose, onConnect }: Props) {
-  const [channelType, setChannelType] = useState<ChannelType>("shopify");
-  const [storeName, setStoreName] = useState("");
-  const [storeUrl, setStoreUrl] = useState("");
-  const [region, setRegion] = useState("");
+export default function ConnectStoreModal({ organizationId, onClose, onConnect, existingStore }: Props) {
+  const isEditMode = Boolean(existingStore);
+
+  const [channelType, setChannelType] = useState<ChannelType>(existingStore?.channelType ?? "shopify");
+  const [storeName, setStoreName] = useState(existingStore?.storeName ?? "");
+  const [storeUrl, setStoreUrl] = useState(existingStore?.storeUrl ?? "");
+  const [region, setRegion] = useState(existingStore?.region ?? "");
   const [credentials, setCredentials] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Shopify OAuth state
-  const [shopifyMode, setShopifyMode] = useState<"oauth" | "manual">("oauth");
+  // Shopify OAuth state — disabled in edit mode (can't re-initiate OAuth for existing store)
+  const [shopifyMode, setShopifyMode] = useState<"oauth" | "manual">(isEditMode ? "manual" : "oauth");
   const [shopDomain, setShopDomain] = useState("");
   const [oauthLoading, setOauthLoading] = useState(false);
   const [oauthError, setOauthError] = useState<string | null>(null);
 
   const credFields = CREDENTIAL_FIELDS[channelType] ?? [];
-  const isShopifyOAuth = channelType === "shopify" && shopifyMode === "oauth";
+  const isShopifyOAuth = channelType === "shopify" && shopifyMode === "oauth" && !isEditMode;
 
   function handleCredentialChange(key: string, value: string) {
     setCredentials((prev) => ({ ...prev, [key]: value }));
   }
 
   function handleChannelTypeChange(value: ChannelType) {
+    if (isEditMode) return; // channel type is locked in edit mode
     setChannelType(value);
     setCredentials({});
     setError(null);
@@ -138,16 +143,21 @@ export default function ConnectStoreModal({ organizationId, onClose, onConnect }
     setError(null);
     setSubmitting(true);
     try {
+      // In edit mode: include storeId so the dashboard can route to updateStore.
+      // Credentials are only included if the user has entered new values; empty
+      // fields mean "keep existing" and the backend should preserve them.
+      const hasNewCredentials = Object.values(credentials).some((v) => v.trim() !== "");
       await onConnect({
         channelType,
         storeName: storeName.trim(),
         storeUrl: normalizeStoreUrl(storeUrl),
         region: region.trim() || undefined,
-        credentials,
+        credentials: hasNewCredentials ? credentials : {},
+        ...(existingStore ? { storeId: existingStore.storeId } : {}),
       });
       onClose();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to connect store");
+      setError(err instanceof Error ? err.message : isEditMode ? "Failed to save changes" : "Failed to connect store");
     } finally {
       setSubmitting(false);
     }
@@ -157,7 +167,9 @@ export default function ConnectStoreModal({ organizationId, onClose, onConnect }
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
       <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-gray-800">
-          <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Connect New Store</h2>
+          <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
+            {isEditMode ? "Edit Store" : "Connect New Store"}
+          </h2>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-xl">✕</button>
         </div>
 
@@ -170,7 +182,8 @@ export default function ConnectStoreModal({ organizationId, onClose, onConnect }
             <select
               value={channelType}
               onChange={(e) => handleChannelTypeChange(e.target.value as ChannelType)}
-              className="w-full rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2.5 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-500"
+              disabled={isEditMode}
+              className="w-full rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2.5 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-500 disabled:opacity-60 disabled:cursor-not-allowed"
             >
               {CHANNEL_OPTIONS.map((opt) => (
                 <option key={opt.value} value={opt.value}>{opt.label}</option>
@@ -265,8 +278,8 @@ export default function ConnectStoreModal({ organizationId, onClose, onConnect }
           ) : (
             /* ── Manual mode (Shopify) or any other channel ── */
             <form onSubmit={handleSubmit} className="space-y-4">
-              {/* OAuth switch-back link — only shown for Shopify manual mode */}
-              {channelType === "shopify" && (
+              {/* OAuth switch-back link — only shown for Shopify manual mode (not in edit mode) */}
+              {channelType === "shopify" && !isEditMode && (
                 <p className="text-xs text-gray-500 dark:text-gray-400">
                   <button
                     type="button"
@@ -325,18 +338,26 @@ export default function ConnectStoreModal({ organizationId, onClose, onConnect }
               {/* Credentials */}
               {credFields.length > 0 && (
                 <div className="space-y-3 pt-2 border-t border-gray-100 dark:border-gray-800">
-                  <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Credentials</p>
+                  <div>
+                    <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Credentials</p>
+                    {isEditMode && (
+                      <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
+                        Leave blank to keep existing credentials.
+                      </p>
+                    )}
+                  </div>
                   {credFields.map((field) => (
                     <div key={field.key}>
                       <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
-                        {field.label} <span className="text-error-500">*</span>
+                        {field.label}
+                        {!isEditMode && <span className="text-error-500"> *</span>}
                       </label>
                       <input
-                        required
+                        required={!isEditMode}
                         type={field.sensitive ? "password" : "text"}
                         value={credentials[field.key] ?? ""}
                         onChange={(e) => handleCredentialChange(field.key, e.target.value)}
-                        placeholder={field.sensitive ? "•••••••••" : ""}
+                        placeholder={isEditMode ? "Leave blank to keep existing" : field.sensitive ? "•••••••••" : ""}
                         className="w-full rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-brand-500"
                       />
                     </div>
@@ -363,7 +384,7 @@ export default function ConnectStoreModal({ organizationId, onClose, onConnect }
                   disabled={submitting}
                   className="flex-1 px-4 py-2.5 rounded-xl bg-brand-500 text-white text-sm font-medium hover:bg-brand-600 transition-colors disabled:opacity-60"
                 >
-                  {submitting ? "Connecting…" : "Connect Store"}
+                  {submitting ? (isEditMode ? "Saving…" : "Connecting…") : (isEditMode ? "Save Changes" : "Connect Store")}
                 </button>
               </div>
             </form>
