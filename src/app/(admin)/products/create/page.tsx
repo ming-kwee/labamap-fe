@@ -13,7 +13,8 @@ import {
   Settings,
   Send,
   Eye,
-  Info
+  Info,
+  Brain
 } from '@/shared/ui/icons/Icons';
 import ProductCreationPageWrapper from '@/modules/ecommerce-product/components/ProductCreationPageWrapper';
 import { MasterProduct } from '@/modules/ecommerce-product/types/product';
@@ -175,81 +176,96 @@ export default function CreateProductPage() {
                   intelligent adaptive pattern matching system.
                 </p>
 
-                {/* Primary Action - Publish to Channels */}
-                <div className="bg-gradient-to-br from-blue-50 to-blue-100 border-2 border-blue-300 rounded-lg p-8 text-center">
-                  <div className="flex items-center justify-center mb-4">
-                    <div className="bg-blue-600 rounded-full p-4">
-                      <Send className="h-8 w-8 text-white" />
+                {/* Primary Action - two publish paths */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+
+                  {/* Path A: new channel-fields → publish wizard */}
+                  <div className="bg-gradient-to-br from-blue-50 to-blue-100 border-2 border-blue-300 rounded-lg p-6 flex flex-col items-center text-center">
+                    <div className="bg-blue-600 rounded-full p-3 mb-3">
+                      <Send className="h-6 w-6 text-white" />
                     </div>
-                  </div>
-                  <h3 className="text-2xl font-bold text-blue-900 mb-2">
-                    Ready to Publish to Sales Channels?
-                  </h3>
-                  <p className="text-blue-700 mb-6 max-w-2xl mx-auto">
-                    Use our intelligent adaptive pattern matching system to automatically map your product fields
-                    to Shopify, Amazon, Walmart, eBay and more. See real-time confidence scores with our 5-tier
-                    matching strategy.
-                  </p>
-                  <div className="flex flex-col sm:flex-row gap-3 justify-center">
+                    <h3 className="text-lg font-bold text-blue-900 mb-1">
+                      Fill Channel Fields
+                    </h3>
+                    <p className="text-sm text-blue-700 mb-4">
+                      Fill store-specific fields per connected store, then preview and publish with the new wizard.
+                    </p>
                     <Button
                       onClick={() => {
                         router.push(`/products/${workflowState.masterProduct!.id}/channel-fields`);
                       }}
-                      className="text-lg px-8 py-3"
+                      className="w-full"
                     >
-                      <Send className="h-5 w-5 mr-2" />
+                      <Send className="h-4 w-4 mr-2" />
                       Fill Channel Fields
                     </Button>
+                  </div>
+
+                  {/* Path B: old adaptive pattern-matching publish */}
+                  <div className="bg-gradient-to-br from-purple-50 to-purple-100 border-2 border-purple-300 rounded-lg p-6 flex flex-col items-center text-center">
+                    <div className="bg-purple-600 rounded-full p-3 mb-3">
+                      <Brain className="h-6 w-6 text-white" />
+                    </div>
+                    <h3 className="text-lg font-bold text-purple-900 mb-1">
+                      Adaptive Publish (Classic)
+                    </h3>
+                    <p className="text-sm text-purple-700 mb-4">
+                      AI-driven 5-tier pattern matching with field mapping analysis, confidence scores, and JOLT preview.
+                    </p>
                     <Button
                       variant="outline"
                       onClick={() => {
-                        setCurrentStep('product');
-                        setWorkflowState({
-                          masterProduct: null,
-                          availableChannels: []
-                        });
+                        router.push(`/products/publish-to-channel?productId=${workflowState.masterProduct!.id}`);
                       }}
-                      className="text-lg px-8 py-3"
+                      className="w-full border-purple-400 text-purple-700 hover:bg-purple-50"
                     >
-                      <Package className="h-5 w-5 mr-2" />
-                      Create Another Product
+                      <Brain className="h-4 w-4 mr-2" />
+                      Analyze &amp; Publish
                     </Button>
                   </div>
+
                 </div>
 
-                {/* Product Information Card */}
+                {/* Secondary: create another */}
+                <div className="flex justify-center">
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      setCurrentStep('product');
+                      setWorkflowState({ masterProduct: null, availableChannels: [] });
+                    }}
+                  >
+                    <Package className="h-4 w-4 mr-2" />
+                    Create Another Product
+                  </Button>
+                </div>
+
+                {/* Info card */}
                 <div className="bg-white border border-gray-200 rounded-lg p-6">
                   <h4 className="font-semibold text-gray-900 mb-4 flex items-center gap-2">
                     <Info className="h-5 w-5 text-gray-600" />
-                    What Happens Next?
+                    Which path should I choose?
                   </h4>
-                  <div className="space-y-3 text-sm text-gray-600">
-                    <div className="flex items-start gap-3">
-                      <div className="bg-blue-100 text-blue-600 font-bold rounded-full w-6 h-6 flex items-center justify-center flex-shrink-0 mt-0.5">
-                        1
-                      </div>
-                      <div>
-                        <strong className="text-gray-900">Select Your Channel</strong>
-                        <p>Choose from Shopify, Amazon, Walmart, eBay, or other supported platforms</p>
-                      </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 text-sm text-gray-600">
+                    <div className="space-y-2">
+                      <p className="font-semibold text-blue-700 flex items-center gap-1">
+                        <Send className="h-4 w-4" /> Fill Channel Fields
+                      </p>
+                      <ul className="space-y-1 list-disc list-inside">
+                        <li>Fill per-store required fields in a guided wizard</li>
+                        <li>Autosaves every 30 s across all connected stores</li>
+                        <li>Preview data and pipeline analysis before publishing</li>
+                      </ul>
                     </div>
-                    <div className="flex items-start gap-3">
-                      <div className="bg-blue-100 text-blue-600 font-bold rounded-full w-6 h-6 flex items-center justify-center flex-shrink-0 mt-0.5">
-                        2
-                      </div>
-                      <div>
-                        <strong className="text-gray-900">Analyze Pattern Matching</strong>
-                        <p>Our AI uses 5-tier strategy: Knowledge-Based → Semantic → Similarity → Pattern → Boost</p>
-                      </div>
-                    </div>
-                    <div className="flex items-start gap-3">
-                      <div className="bg-blue-100 text-blue-600 font-bold rounded-full w-6 h-6 flex items-center justify-center flex-shrink-0 mt-0.5">
-                        3
-                      </div>
-                      <div>
-                        <strong className="text-gray-900">Review & Publish</strong>
-                        <p>See confidence scores, field mappings, and preview transformations before publishing</p>
-                      </div>
+                    <div className="space-y-2">
+                      <p className="font-semibold text-purple-700 flex items-center gap-1">
+                        <Brain className="h-4 w-4" /> Adaptive Publish (Classic)
+                      </p>
+                      <ul className="space-y-1 list-disc list-inside">
+                        <li>AI 5-tier pattern matching maps fields automatically</li>
+                        <li>Inspect confidence scores and unmapped fields</li>
+                        <li>JOLT spec preview before committing to publish</li>
+                      </ul>
                     </div>
                   </div>
                 </div>
