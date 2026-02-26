@@ -172,6 +172,16 @@ export interface PublishSingleRequest {
   masterProductId: string;
   storeId: string;
   organizationId: string;
+  /** Full flattened master product fields — required by backend to merge Step 2 channel data into */
+  masterProductData?: Record<string, unknown>;
+  /** Channel type, e.g. "shopify" — used by backend for routing and JOLT lookup */
+  channelId?: string;
+  /** Field mappings from pattern matching analysis (optional — backend uses stored JOLT if omitted) */
+  fieldMappings?: unknown[];
+  /** JOLT spec (optional — backend uses stored JOLT if omitted) */
+  joltSpec?: unknown[];
+  categoryId?: string;
+  dryRun?: boolean;
 }
 
 export interface StorePublishResult {
@@ -192,4 +202,82 @@ export interface BatchPublishResponse {
   batchId: string;
   masterProductId: string;
   results: StorePublishResult[];
+}
+
+// ─── Publish Analysis Types ────────────────────────────────────────────────────
+// POST /api/v1/channels/publish/analyze
+
+export interface PublishAnalysisRequest {
+  masterProductId: string;
+  storeId: string;
+  organizationId: string;
+}
+
+export interface MasterProductStageAnalysis {
+  found: boolean;
+  source: string;
+  fieldCount: number;
+  variantCount: number;
+}
+
+export interface ChannelDataStageAnalysis {
+  completionPercentage: number;
+  totalChannelFields: number;
+  filledRequired: number;
+  missingRequired: number;
+  missingRequiredFields: string[];
+}
+
+export interface MergedInputStageAnalysis {
+  fieldCount: number;
+  fields: Record<string, unknown>;
+}
+
+export interface JoltSpecStageAnalysis {
+  found: boolean;
+  source: string;
+  version?: string;
+  operationCount: number;
+}
+
+export interface TransformationStageAnalysis {
+  success: boolean;
+  error?: string;
+  topLevelKeys: string[];
+  unmappedInputFields: string[];
+  transformedData?: Record<string, unknown>;
+}
+
+export interface PostProcessingRuleDetail {
+  priority: number;
+  enabled: boolean;
+  sourcePath: string;
+  targetPath: string;
+  description?: string;
+}
+
+export interface PostProcessingStageAnalysis {
+  ruleCount: number;
+  rules: PostProcessingRuleDetail[];
+}
+
+export interface AnalysisIssue {
+  severity: "ERROR" | "WARNING" | "INFO";
+  stage: string;
+  message: string;
+  field?: string;
+}
+
+export interface PublishAnalysisResponse {
+  masterProductId: string;
+  storeId: string;
+  organizationId: string;
+  readinessScore: number;
+  issues: AnalysisIssue[];
+  masterProduct: MasterProductStageAnalysis;
+  channelData: ChannelDataStageAnalysis;
+  mergedInput: MergedInputStageAnalysis;
+  joltSpec: JoltSpecStageAnalysis;
+  transformation: TransformationStageAnalysis;
+  postProcessing: PostProcessingStageAnalysis;
 }

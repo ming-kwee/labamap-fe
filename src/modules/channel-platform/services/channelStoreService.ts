@@ -15,6 +15,8 @@ import type {
   PublishSingleRequest,
   BatchPublishRequest,
   BatchPublishResponse,
+  PublishAnalysisRequest,
+  PublishAnalysisResponse,
 } from "../types/channelStore";
 
 const BASE = "http://localhost:8888/labamap/api/v1";
@@ -257,5 +259,17 @@ export const PublishService = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(request),
     }).then((r) => handleResponse<BatchPublishResponse>(r));
+  },
+
+  /**
+   * Run a full JOLT pipeline analysis for a product × store pair
+   * POST /api/v1/channels/publish/analyze
+   */
+  analyzePublish(request: PublishAnalysisRequest): Promise<PublishAnalysisResponse> {
+    return fetch(`${BASE}/channels/publish/analyze`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(request),
+    }).then((r) => handleResponse<PublishAnalysisResponse>(r));
   },
 };

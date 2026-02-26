@@ -49,6 +49,21 @@ function extractInitialValues(schema: ChannelSchemaPerStore): StoreFormValues {
   return { channelData, variantOverrides };
 }
 
+// ─── Local completion check ────────────────────────────────────────────────────
+// Returns true if every required field in the store's schema has a non-empty value
+// in the current (possibly unsaved) form values.
+function isLocallyComplete(channel: ChannelSchemaPerStore, vals: StoreFormValues): boolean {
+  for (const section of channel.sections) {
+    if (section.sectionName === "variant_overrides") continue;
+    for (const field of section.fields ?? []) {
+      if (!field.required) continue;
+      const v = vals.channelData[field.fieldName];
+      if (v === undefined || v === null || v === "") return false;
+    }
+  }
+  return true;
+}
+
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 interface Props {
@@ -193,7 +208,12 @@ export default function ChannelFieldsWizard({ masterProductId }: Props) {
 
   async function handleContinueToPreview() {
     await flushDirtyStores();
-    const anyReady = Object.values(storeCompletion).some((c) => c.status === "READY" || c.pct === 100);
+    const anyReady =
+      Object.values(storeCompletion).some((c) => c.status === "READY" || c.pct === 100) ||
+      (schemaResponse?.channels ?? []).some((ch) => {
+        const vals = storeValues[ch.storeId];
+        return vals ? isLocallyComplete(ch, vals) : false;
+      });
     if (!anyReady) {
       setContinueWarning("At least one store must have all required fields filled to continue.");
       return;
@@ -258,7 +278,14 @@ export default function ChannelFieldsWizard({ masterProductId }: Props) {
   const activeChannel = channels[activeStoreIndex];
   const activeStoreId = activeChannel.storeId;
   const activeValues = storeValues[activeStoreId] ?? { channelData: {}, variantOverrides: {} };
-  const anyReady = Object.values(storeCompletion).some((c) => c.status === "READY" || c.pct === 100);
+  // A store is "ready" if the backend confirmed it (after save), OR if all required
+  // fields are already filled locally (before the next autosave fires).
+  const anyReady =
+    Object.values(storeCompletion).some((c) => c.status === "READY" || c.pct === 100) ||
+    channels.some((ch) => {
+      const vals = storeValues[ch.storeId];
+      return vals ? isLocallyComplete(ch, vals) : false;
+    });
   const isLastTab = activeStoreIndex === channels.length - 1;
 
   return (
