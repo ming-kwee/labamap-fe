@@ -315,9 +315,23 @@ export function transformMasterProductToSourceSchema(
     });
   }
 
-  // Variants: Add count
+  // Variants: emit count, first-variant field sample, and full array for backend JOLT
   if (product.variants && product.variants.length > 0) {
     sourceSchema['variant_count'] = product.variants.length;
+
+    // Flatten the first variant's fields with a variant_ prefix so the pattern matcher
+    // can discover mappings for barcode, inventory_policy, etc.
+    const firstVariant = product.variants[0];
+    if (firstVariant) {
+      Object.entries(firstVariant).forEach(([vKey, vVal]) => {
+        if (vVal !== null && vVal !== undefined && vVal !== '') {
+          sourceSchema[`variant_${vKey}`] = vVal;
+        }
+      });
+    }
+
+    // Emit the full variants array so backend JOLT specs that reference variants[] work correctly
+    sourceSchema['variants'] = product.variants;
   }
 
   // ✅ Handle custom attributes (truly dynamic)

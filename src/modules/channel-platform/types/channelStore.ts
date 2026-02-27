@@ -154,8 +154,8 @@ export interface MasterProductSnapshot {
   variants?: Array<{
     sku: string;
     variantLabel: string;
-    price?: number;
-    quantity?: number;
+    /** All master variant attributes — open map so any fieldName resolves correctly in the variant table */
+    [fieldName: string]: unknown;
   }>;
 }
 
@@ -218,6 +218,10 @@ export interface PublishSingleRequest {
   joltSpec?: unknown[];
   categoryId?: string;
   dryRun?: boolean;
+  /** Per-SKU variant field overrides from Step 2 variant table — forwarded to backend post-JOLT merge */
+  variantOverrides?: Record<string, Record<string, unknown>>;
+  /** Per-channel master field overrides from Step 2 master override section */
+  masterOverrides?: Record<string, unknown>;
 }
 
 export interface StorePublishResult {

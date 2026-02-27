@@ -447,6 +447,29 @@ export default function PublishDashboard({ masterProductId }: Props) {
         request.sourceSchema = { ...request.sourceSchema, ...channelFields };
       }
 
+      // Merge master-level overrides so the pattern matcher sees overridden values
+      // (e.g. a Shopify-specific title) rather than the original master value.
+      const masterOverrides = store.masterOverrides ?? {};
+      if (Object.keys(masterOverrides).length > 0) {
+        request.sourceSchema = { ...request.sourceSchema, ...masterOverrides };
+      }
+
+      // Flatten variant overrides into sourceSchema with a variant_ prefix so the
+      // pattern matcher can discover mappings for barcode, inventory_policy, etc.
+      // First non-null value wins per field across all SKUs.
+      const variantOverrides = store.variantOverrides ?? {};
+      const flatVariantFields: Record<string, unknown> = {};
+      for (const skuOverrides of Object.values(variantOverrides)) {
+        for (const [fieldName, value] of Object.entries(skuOverrides)) {
+          if (value != null && !(fieldName in flatVariantFields)) {
+            flatVariantFields[`variant_${fieldName}`] = value;
+          }
+        }
+      }
+      if (Object.keys(flatVariantFields).length > 0) {
+        request.sourceSchema = { ...request.sourceSchema, ...flatVariantFields };
+      }
+
       const result = await channelMappingService.analyzePatternMatching(request);
 
       if (result.status === "ERROR") {
@@ -468,7 +491,23 @@ export default function PublishDashboard({ masterProductId }: Props) {
     const analysis = analysisByChannel[channelType];
     if (!analysis) return;
     try {
-      const sourceData = transformMasterProductToSourceSchema(product);
+      const store = storeData.find((d) => d.channelType === channelType);
+      // Build the same merged source picture used for publish so the JOLT preview
+      // reflects the actual payload: master + masterOverrides + channelData.
+      const sourceData: Record<string, unknown> = {
+        ...transformMasterProductToSourceSchema(product),
+        ...(store?.masterOverrides ?? {}),
+        ...(store?.channelData ?? {}),
+      };
+      // Flatten variant overrides so variant-level fields appear in the preview.
+      const variantOverrides = store?.variantOverrides ?? {};
+      for (const skuOverrides of Object.values(variantOverrides)) {
+        for (const [fieldName, value] of Object.entries(skuOverrides)) {
+          if (value != null && !(`variant_${fieldName}` in sourceData)) {
+            sourceData[`variant_${fieldName}`] = value;
+          }
+        }
+      }
       const transformed = await channelMappingService.previewJoltTransformation(
         sourceData,
         analysis.joltSpec ?? []
@@ -476,7 +515,7 @@ export default function PublishDashboard({ masterProductId }: Props) {
       setJoltPreviewData(transformed);
       setShowJoltPreview(true);
     } catch { /* ignore preview errors */ }
-  }, [product, analysisByChannel]);
+  }, [product, analysisByChannel, storeData]);
 
   // ─── Publish single store ─────────────────────────────────────────────────────
 
@@ -493,6 +532,8 @@ export default function PublishDashboard({ masterProductId }: Props) {
       // look them up separately.
       const masterProductData: Record<string, unknown> = {
         ...(product ? transformMasterProductToSourceSchema(product) : {}),
+        // Step-2 master-level overrides applied before channel fields so channel wins
+        ...(store?.masterOverrides ?? {}),
         // Step-2 per-store channel fields override master fields where they conflict
         ...(store?.channelData ?? {}),
       };
@@ -511,6 +552,8 @@ export default function PublishDashboard({ masterProductId }: Props) {
         joltSpec: priorAnalysis?.joltSpec ?? [],
         categoryId: product?.category ?? "default",
         dryRun: false,
+        variantOverrides: store?.variantOverrides ?? {},
+        masterOverrides: store?.masterOverrides ?? {},
       });
       setPublishResults((prev) => ({
         ...prev,

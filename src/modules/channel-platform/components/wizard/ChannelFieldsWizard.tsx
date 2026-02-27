@@ -73,6 +73,35 @@ function isLocallyComplete(channel: ChannelSchemaPerStore, vals: StoreFormValues
   return true;
 }
 
+// ─── Read master product variants from sessionStorage ─────────────────────────
+// The create page stores the full product as JSON under `product_${id}`.
+// We extract variant SKUs and labels here so they can be forwarded to the
+// schema generation call — the backend needs them to build the variant rows.
+
+function getMasterVariantsFromSession(
+  masterProductId: string
+): Array<{ sku: string; label: string }> {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = sessionStorage.getItem(`product_${masterProductId}`);
+    if (!raw) return [];
+    const product = JSON.parse(raw) as {
+      variants?: Array<{
+        sku: string;
+        options?: Record<string, string>;
+      }>;
+    };
+    return (product.variants ?? []).map((v) => ({
+      sku: v.sku,
+      label: v.options && Object.keys(v.options).length > 0
+        ? Object.values(v.options).join(" / ")
+        : v.sku,
+    }));
+  } catch {
+    return [];
+  }
+}
+
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 interface Props {
@@ -113,9 +142,11 @@ export default function ChannelFieldsWizard({ masterProductId }: Props) {
     setLoading(true);
     setLoadError(null);
     try {
+      const masterVariants = getMasterVariantsFromSession(masterProductId);
       const resp = await ChannelSchemaService.generateChannelStepSchema({
         masterProductId,
         organizationId: ORGANIZATION_ID,
+        ...(masterVariants.length > 0 && { masterVariants }),
       });
       setSchemaResponse(resp);
 

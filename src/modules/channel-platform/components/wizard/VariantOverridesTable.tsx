@@ -69,9 +69,10 @@ export default function VariantOverridesTable({
                   const currentOverride = variantOverride[field.fieldName];
                   const hasOverride = currentOverride !== undefined && currentOverride !== null;
 
-                  // For master fields: show master value when no override is set
+                  // For master fields: show master value when no override is set.
+                  // Cast to Record so any fieldName resolves — not just "price" | "quantity".
                   const masterCellValue = isMasterField
-                    ? masterVariant?.[field.fieldName as "price" | "quantity"]
+                    ? (masterVariant as Record<string, unknown> | undefined)?.[field.fieldName]
                     : undefined;
 
                   if (isMasterField && !hasOverride) {
