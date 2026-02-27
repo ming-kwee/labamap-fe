@@ -51,6 +51,8 @@ export interface ChannelProductData {
   channelType: ChannelType;
   organizationId: string;
   status: ChannelProductStatus;
+  /** Per-field overrides of master product data for this channel (keys with null = reset to master) */
+  masterOverrides: Record<string, unknown>;
   channelData: Record<string, unknown>;
   variantOverrides: Record<string, Record<string, unknown>>;
   completionPercentage: number;
@@ -64,6 +66,8 @@ export interface ChannelStepSaveRequest {
   masterProductId: string;
   storeId: string;
   channelType: ChannelType;
+  /** Per-field overrides of master product data for this channel; keys absent = inheriting master */
+  masterOverrides: Record<string, unknown>;
   channelData: Record<string, unknown>;
   variantOverrides: Record<string, Record<string, unknown>>;
 }
@@ -115,6 +119,10 @@ export interface ChannelFormField {
     max?: number;
   };
   currentValue?: unknown;
+  /** true = this field is driven from EcommerceMasterAttributeDocument.isChannelOverridable */
+  isMasterField?: boolean;
+  /** master product's current value for this field, resolved by backend at schema-gen time */
+  masterValue?: unknown;
 }
 
 export interface VariantOverrideRow {
@@ -123,7 +131,33 @@ export interface VariantOverrideRow {
   currentOverrides: Record<string, unknown>;
 }
 
-export type SectionName = "required" | "recommended" | "variant_overrides" | "optional";
+export type SectionName =
+  | "required"
+  | "recommended"
+  | "variant_overrides"
+  | "optional"
+  | "master_overrides";
+
+// ─── Master Product Snapshot ─────────────────────────────────────────────────
+// Lightweight view of master product sent in ChannelStepSchemaResponse (Step 2)
+
+export interface MasterProductSnapshot {
+  name: string;
+  description?: string;
+  price: number;
+  compareAtPrice?: number;
+  quantity?: number;
+  sku?: string;
+  weight?: number;
+  dimensions?: { length: number; width: number; height: number; unit: string };
+  mainImage?: string;
+  variants?: Array<{
+    sku: string;
+    variantLabel: string;
+    price?: number;
+    quantity?: number;
+  }>;
+}
 
 export interface ChannelFormSection {
   sectionName: SectionName;
@@ -157,6 +191,8 @@ export interface ChannelSchemaPerStore {
 export interface ChannelStepSchemaResponse {
   step: 2;
   masterProductId: string;
+  /** Snapshot of master product fields sent by backend for display & override UX */
+  masterProduct?: MasterProductSnapshot;
   channels: ChannelSchemaPerStore[];
 }
 

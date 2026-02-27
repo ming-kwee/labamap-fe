@@ -25,11 +25,13 @@ function statusDot(status: ChannelProductStatus | undefined, pct: number) {
 // ─── Tab store form values ────────────────────────────────────────────────────
 
 interface StoreFormValues {
+  masterOverrides: Record<string, unknown>;
   channelData: Record<string, unknown>;
   variantOverrides: Record<string, Record<string, unknown>>;
 }
 
 function extractInitialValues(schema: ChannelSchemaPerStore): StoreFormValues {
+  const masterOverrides: Record<string, unknown> = {};
   const channelData: Record<string, unknown> = {};
   const variantOverrides: Record<string, Record<string, unknown>> = {};
 
@@ -37,6 +39,12 @@ function extractInitialValues(schema: ChannelSchemaPerStore): StoreFormValues {
     if (section.sectionName === "variant_overrides") {
       for (const variant of section.variants ?? []) {
         variantOverrides[variant.sku] = { ...variant.currentOverrides };
+      }
+    } else if (section.sectionName === "master_overrides") {
+      for (const field of section.fields ?? []) {
+        if (field.currentValue !== undefined && field.currentValue !== null) {
+          masterOverrides[field.fieldName] = field.currentValue;
+        }
       }
     } else {
       for (const field of section.fields ?? []) {
@@ -46,7 +54,7 @@ function extractInitialValues(schema: ChannelSchemaPerStore): StoreFormValues {
       }
     }
   }
-  return { channelData, variantOverrides };
+  return { masterOverrides, channelData, variantOverrides };
 }
 
 // ─── Local completion check ────────────────────────────────────────────────────
@@ -55,6 +63,7 @@ function extractInitialValues(schema: ChannelSchemaPerStore): StoreFormValues {
 function isLocallyComplete(channel: ChannelSchemaPerStore, vals: StoreFormValues): boolean {
   for (const section of channel.sections) {
     if (section.sectionName === "variant_overrides") continue;
+    if (section.sectionName === "master_overrides") continue; // overrides are never required
     for (const field of section.fields ?? []) {
       if (!field.required) continue;
       const v = vals.channelData[field.fieldName];
@@ -83,6 +92,7 @@ export default function ChannelFieldsWizard({ masterProductId }: Props) {
 
   // Per-store form values map: storeId → values
   const [storeValues, setStoreValues] = useState<Record<string, StoreFormValues>>({});
+
 
   // Per-store completion (from backend after save)
   const [storeCompletion, setStoreCompletion] = useState<
@@ -148,6 +158,7 @@ export default function ChannelFieldsWizard({ masterProductId }: Props) {
         masterProductId,
         storeId,
         channelType: channel.channelType,
+        masterOverrides: values.masterOverrides,
         channelData: values.channelData,
         variantOverrides: values.variantOverrides,
       });
@@ -277,7 +288,7 @@ export default function ChannelFieldsWizard({ masterProductId }: Props) {
   const channels = schemaResponse.channels;
   const activeChannel = channels[activeStoreIndex];
   const activeStoreId = activeChannel.storeId;
-  const activeValues = storeValues[activeStoreId] ?? { channelData: {}, variantOverrides: {} };
+  const activeValues = storeValues[activeStoreId] ?? { masterOverrides: {}, channelData: {}, variantOverrides: {} };
   // A store is "ready" if the backend confirmed it (after save), OR if all required
   // fields are already filled locally (before the next autosave fires).
   const anyReady =
@@ -372,6 +383,7 @@ export default function ChannelFieldsWizard({ masterProductId }: Props) {
           onChange={(vals) => handleValuesChange(activeStoreId, activeChannel, vals)}
           isSaving={savingStoreId === activeStoreId}
           lastSaved={lastSaved[activeStoreId]}
+          masterProduct={schemaResponse?.masterProduct}
         />
       </div>
 

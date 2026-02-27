@@ -3,11 +3,14 @@ import React, { useState } from "react";
 import type {
   ChannelSchemaPerStore,
   ChannelFormSection,
+  MasterProductSnapshot,
 } from "../../types/channelStore";
 import ChannelFieldInput from "./ChannelFieldInput";
 import VariantOverridesTable from "./VariantOverridesTable";
+import MasterOverrideSection from "./MasterOverrideSection";
 
 interface StoreFormValues {
+  masterOverrides: Record<string, unknown>;
   channelData: Record<string, unknown>;
   variantOverrides: Record<string, Record<string, unknown>>;
 }
@@ -18,6 +21,7 @@ interface Props {
   onChange: (values: StoreFormValues) => void;
   isSaving: boolean;
   lastSaved?: Date;
+  masterProduct?: MasterProductSnapshot;
 }
 
 function SectionHeader({ label, count, expanded, onToggle }: {
@@ -88,7 +92,7 @@ function FieldRow({
   );
 }
 
-export default function ChannelStoreTab({ schema, values, onChange, isSaving, lastSaved }: Props) {
+export default function ChannelStoreTab({ schema, values, onChange, isSaving, lastSaved, masterProduct }: Props) {
   const [optionalExpanded, setOptionalExpanded] = useState(false);
 
   function handleFieldChange(fieldName: string, value: unknown) {
@@ -100,18 +104,49 @@ export default function ChannelStoreTab({ schema, values, onChange, isSaving, la
 
   function handleVariantChange(sku: string, fieldName: string, value: unknown) {
     const existing = values.variantOverrides[sku] ?? {};
-    onChange({
-      ...values,
-      variantOverrides: {
-        ...values.variantOverrides,
-        [sku]: { ...existing, [fieldName]: value },
-      },
-    });
+    // undefined = remove key from override (reset to master variant value)
+    if (value === undefined) {
+      const { [fieldName]: _removed, ...rest } = existing;
+      onChange({
+        ...values,
+        variantOverrides: { ...values.variantOverrides, [sku]: rest },
+      });
+    } else {
+      onChange({
+        ...values,
+        variantOverrides: {
+          ...values.variantOverrides,
+          [sku]: { ...existing, [fieldName]: value },
+        },
+      });
+    }
+  }
+
+  function handleMasterOverrideChange(fieldName: string, value: unknown | null) {
+    const next = { ...values.masterOverrides };
+    if (value === null) {
+      delete next[fieldName]; // null = reset → remove key entirely
+    } else {
+      next[fieldName] = value;
+    }
+    onChange({ ...values, masterOverrides: next });
   }
 
   const sections = [...schema.sections].sort((a, b) => a.priority - b.priority);
 
   function renderSection(section: ChannelFormSection) {
+    if (section.sectionName === "master_overrides") {
+      return (
+        <MasterOverrideSection
+          key="master_overrides"
+          fields={section.fields ?? []}
+          values={values.masterOverrides}
+          channelName={schema.storeName}
+          onChange={handleMasterOverrideChange}
+        />
+      );
+    }
+
     if (section.sectionName === "variant_overrides") {
       if (!section.variantFields?.length || !section.variants?.length) return null;
       return (
@@ -122,6 +157,7 @@ export default function ChannelStoreTab({ schema, values, onChange, isSaving, la
             variants={section.variants}
             overrides={values.variantOverrides}
             onChange={handleVariantChange}
+            masterVariants={masterProduct?.variants}
           />
         </div>
       );

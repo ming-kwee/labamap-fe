@@ -201,7 +201,14 @@ export const ChannelProductDataService = {
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(request),
+        body: JSON.stringify({
+          masterProductId:  request.masterProductId,
+          storeId:          request.storeId,
+          channelType:      request.channelType,
+          masterOverrides:  request.masterOverrides,
+          channelData:      request.channelData,
+          variantOverrides: request.variantOverrides,
+        }),
       }
     ).then((r) => handleResponse<ChannelProductData>(r));
   },

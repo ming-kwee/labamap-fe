@@ -28,6 +28,60 @@ import type {
   ChannelProductStatus,
   StorePublishResult,
 } from "../../types/channelStore";
+
+// ─── Effective value helpers ──────────────────────────────────────────────────
+
+function getEffectiveValue(
+  fieldName: string,
+  storeData: ChannelProductData,
+  master: MasterProduct | null
+): { value: unknown; source: "overridden" | "master" } {
+  const override = storeData.masterOverrides?.[fieldName];
+  if (override !== undefined && override !== null) {
+    return { value: override, source: "overridden" };
+  }
+  return {
+    value: master ? (master as unknown as Record<string, unknown>)[fieldName] : undefined,
+    source: "master",
+  };
+}
+
+function EffectiveValueRow({
+  label,
+  fieldName,
+  storeData,
+  master,
+}: {
+  label: string;
+  fieldName: string;
+  storeData: ChannelProductData;
+  master: MasterProduct | null;
+}) {
+  const { value, source } = getEffectiveValue(fieldName, storeData, master);
+  if (value === undefined || value === null) return null;
+  const displayVal = typeof value === "number" && fieldName === "price"
+    ? `$${Number(value).toFixed(2)}`
+    : String(value);
+  return (
+    <div className="flex items-center justify-between gap-2 py-1 border-b border-gray-100 dark:border-gray-800 last:border-0">
+      <span className="text-xs text-gray-500 dark:text-gray-400">{label}</span>
+      <div className="flex items-center gap-1.5">
+        <span className="text-xs font-medium text-gray-800 dark:text-gray-200 truncate max-w-[160px]" title={displayVal}>
+          {displayVal}
+        </span>
+        {source === "overridden" ? (
+          <span className="inline-flex items-center text-xs font-medium px-1.5 py-0.5 rounded bg-brand-50 dark:bg-brand-500/10 text-brand-700 dark:text-brand-400">
+            ✏ Overridden
+          </span>
+        ) : (
+          <span className="inline-flex items-center text-xs px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400">
+            master
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
 import {
   ChannelProductDataService,
   PublishService,
@@ -954,6 +1008,18 @@ export default function PublishDashboard({ masterProductId }: Props) {
                 {/* Publish Card */}
                 <Card>
                   <CardContent className="p-6">
+                    {/* Effective values summary — shows master vs overridden fields */}
+                    {(product || currentStoreData.masterOverrides) && (
+                      <div className="mb-5 p-3 rounded-lg bg-gray-50 dark:bg-gray-800/40 border border-gray-200 dark:border-gray-700">
+                        <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-2">
+                          Effective Values for {currentStoreData.channelType}
+                        </p>
+                        <EffectiveValueRow label="Title"    fieldName="name"         storeData={currentStoreData} master={product} />
+                        <EffectiveValueRow label="Price"    fieldName="price"        storeData={currentStoreData} master={product} />
+                        <EffectiveValueRow label="Stock"    fieldName="quantity"     storeData={currentStoreData} master={product} />
+                        <EffectiveValueRow label="Compare"  fieldName="compareAtPrice" storeData={currentStoreData} master={product} />
+                      </div>
+                    )}
                     <div className="flex flex-wrap items-center justify-between gap-4">
                       <div>
                         <h3 className="font-semibold text-lg mb-1">Ready to Publish?</h3>
