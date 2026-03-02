@@ -1,0 +1,165 @@
+/**
+ * Product API Service
+ * Handles product creation and validation API calls
+ */
+
+import { DynamicFormData, EnhancedValidationResult } from '../types/form-schema';
+import { MasterProduct } from '../types/product';
+import type { BackendContext } from './schema-api.service';
+
+export type { BackendContext };
+
+const BACKEND_BASE_URL = 'http://localhost:8888/labamap/api/v1/ecommerce';
+
+export class ProductApiService {
+  // GET /api/v1/ecommerce/master-attributes/all
+  static async getAllMasterAttributes(): Promise<any> {
+    const response = await fetch(`${BACKEND_BASE_URL}/master-attributes/all`, {
+      method: 'GET',
+      headers: { 'Content-Type': 'application/json' },
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to get master attributes: ${response.statusText}`);
+    }
+
+    return response.json();
+  }
+
+  // POST /api/v1/ecommerce/dynamic-products/create
+  static async createProduct(productData: DynamicFormData, context: BackendContext): Promise<MasterProduct> {
+    const response = await fetch(`${BACKEND_BASE_URL}/dynamic-products/create`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ productData, context }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to create product: ${response.statusText}`);
+    }
+
+    const backendResponse = await response.json();
+
+    const transformedProduct: MasterProduct = {
+      id: backendResponse.productId || backendResponse.masterProduct?.id,
+      sku: backendResponse.productData?.sku || '',
+      name: backendResponse.productData?.name || '',
+      description: backendResponse.productData?.description,
+      price: typeof backendResponse.productData?.price === 'number'
+        ? backendResponse.productData.price
+        : parseFloat(backendResponse.productData?.price) || 0,
+      category: backendResponse.productData?.category,
+      quantity: backendResponse.productData?.inventory
+        ? (typeof backendResponse.productData.inventory === 'number'
+            ? backendResponse.productData.inventory
+            : parseFloat(backendResponse.productData.inventory))
+        : undefined,
+      ...backendResponse.productData
+    };
+
+    return transformedProduct;
+  }
+
+  // POST /api/v1/ecommerce/dynamic-products/validate (enhanced)
+  static async validateProductEnhanced(
+    productData: DynamicFormData,
+    context: BackendContext
+  ): Promise<EnhancedValidationResult> {
+    const response = await fetch(`${BACKEND_BASE_URL}/dynamic-products/validate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        productData,
+        context: {
+          ...context,
+          requestId: context.requestId || `validate_${Date.now()}`,
+          timestamp: context.timestamp || Date.now(),
+          environment: context.environment || 'development',
+          metadata: {
+            targetChannels: context.targetChannels,
+            apiVersion: 'v1',
+            validationType: 'enhanced',
+            ...context.metadata
+          }
+        }
+      }),
+    });
+
+    const responseText = await response.text();
+
+    if (!response.ok) {
+      let errorMessage = response.statusText;
+      try {
+        const errorData = JSON.parse(responseText);
+        errorMessage = errorData.message || errorData.error || JSON.stringify(errorData);
+      } catch {
+        errorMessage = responseText || response.statusText;
+      }
+      throw new Error(`Enhanced validation failed: ${errorMessage}`);
+    }
+
+    if (!responseText || responseText.trim() === '') {
+      return {
+        valid: true,
+        message: 'Validation passed (empty response)',
+        violations: [],
+        warnings: [],
+        rulesExecuted: 0,
+        executionTimeMs: 0,
+        validationScore: 100,
+        canSubmit: true
+      };
+    }
+
+    const result = JSON.parse(responseText);
+
+    if (result && typeof result === 'object' && Object.keys(result).length === 0) {
+      return {
+        valid: true,
+        message: 'Validation passed',
+        violations: [],
+        warnings: [],
+        rulesExecuted: 0,
+        executionTimeMs: 0,
+        validationScore: 100,
+        canSubmit: true
+      };
+    }
+
+    if (result.validation) {
+      const backendValidation = result.validation;
+      const errors = backendValidation.errors || [];
+      const warnings = backendValidation.warnings || [];
+
+      const violations = errors.map((error: string, index: number) => ({
+        ruleId: `VALIDATION_ERROR_${index + 1}`,
+        severity: 'ERROR' as const,
+        message: error,
+        affectedFields: [],
+        violationType: 'SCHEMA_VALIDATION' as const
+      }));
+
+      const transformedWarnings = warnings.map((warning: string, index: number) => ({
+        ruleId: `VALIDATION_WARNING_${index + 1}`,
+        message: warning,
+        affectedFields: [],
+        suggestion: undefined
+      }));
+
+      return {
+        valid: backendValidation.valid,
+        message: backendValidation.valid
+          ? 'Validation passed'
+          : errors.length > 0 ? errors[0] : 'Validation failed',
+        violations,
+        warnings: transformedWarnings,
+        rulesExecuted: backendValidation.metadata?.fieldsValidated || 0,
+        executionTimeMs: 0,
+        validationScore: backendValidation.valid ? 100 : 0,
+        canSubmit: backendValidation.valid && violations.length === 0
+      };
+    }
+
+    return result;
+  }
+}

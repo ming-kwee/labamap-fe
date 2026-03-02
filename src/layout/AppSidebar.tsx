@@ -44,6 +44,13 @@ const navItems: NavItem[] = [
     ],
   },
   {
+    icon: <BoxCubeIcon />,
+    name: "Ecommerce Product v2",
+    subItems: [
+      { name: "Create Product", path: "/products/v2/create", pro: false, new: true },
+    ],
+  },
+  {
     icon: <PlugInIcon />,
     name: "Channel Platform",
     subItems: [

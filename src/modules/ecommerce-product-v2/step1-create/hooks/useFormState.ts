@@ -1,0 +1,85 @@
+/**
+ * Form State Hook
+ * Manages form data and UI state (sections, preview, etc.)
+ */
+
+import { useState, useCallback } from 'react';
+import { DynamicFormData } from '../../types/form-schema';
+
+export interface UseFormStateOptions {
+  initialData?: Partial<DynamicFormData>;
+  organizationDefaultCategory?: string;
+}
+
+export interface UseFormStateReturn {
+  formData: DynamicFormData;
+  setFormData: React.Dispatch<React.SetStateAction<DynamicFormData>>;
+  expandedSections: Set<string>;
+  toggleSection: (sectionKey: string) => void;
+  expandAllSections: () => void;
+  collapseAllSections: () => void;
+  showJsonPreview: boolean;
+  setShowJsonPreview: (show: boolean) => void;
+  resetForm: () => void;
+  updateFormField: (fieldName: string, value: any) => void;
+}
+
+export function useFormState(options: UseFormStateOptions = {}): UseFormStateReturn {
+  const { initialData = {}, organizationDefaultCategory = 'general' } = options;
+
+  const [formData, setFormData] = useState<DynamicFormData>(() => ({
+    category: initialData.category || organizationDefaultCategory,
+    ...initialData
+  }));
+
+  const [expandedSections, setExpandedSections] = useState<Set<string>>(
+    new Set(['basic-info', 'pricing'])
+  );
+  const [showJsonPreview, setShowJsonPreview] = useState(false);
+
+  const toggleSection = useCallback((sectionKey: string) => {
+    setExpandedSections(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(sectionKey)) {
+        newSet.delete(sectionKey);
+      } else {
+        newSet.add(sectionKey);
+      }
+      return newSet;
+    });
+  }, []);
+
+  const expandAllSections = useCallback(() => {
+    setExpandedSections(new Set([
+      'basic-info', 'pricing', 'media', 'content',
+      'shipping', 'seo', 'taxonomy', 'variants'
+    ]));
+  }, []);
+
+  const collapseAllSections = useCallback(() => {
+    setExpandedSections(new Set());
+  }, []);
+
+  const resetForm = useCallback(() => {
+    setFormData({ category: organizationDefaultCategory, ...initialData });
+    setExpandedSections(new Set(['basic-info', 'pricing']));
+    setShowJsonPreview(false);
+  }, [initialData, organizationDefaultCategory]);
+
+  const updateFormField = useCallback((fieldName: string, value: any) => {
+    setFormData(prev => ({ ...prev, [fieldName]: value }));
+  }, []);
+
+  return {
+    formData,
+    setFormData,
+    expandedSections,
+    toggleSection,
+    expandAllSections,
+    collapseAllSections,
+    showJsonPreview,
+    setShowJsonPreview,
+    resetForm,
+    updateFormField
+  };
+}

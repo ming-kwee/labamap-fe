@@ -1,0 +1,141 @@
+'use client';
+
+/**
+ * ProductCreatePage
+ * Auth/org context gate for Step 1 product creation.
+ * Reads auth + org context, derives runtime values, renders the org info bar,
+ * and passes everything down to ProductCreateForm.
+ */
+
+import React from 'react';
+import { Loader2, AlertCircle } from '@/shared/ui/icons/Icons';
+import { Alert, AlertDescription } from '@/shared/ui/alert/AlertComponents';
+import { useAuth } from '@/shared/contexts/AuthContext';
+import { useOrganization } from '@/shared/contexts/OrganizationContext';
+import type { MasterProduct } from '../../types/product';
+import { mapUserRole } from '../../utils/form-utils';
+import ProductCreateForm from './ProductCreateForm';
+
+interface ProductCreatePageProps {
+  onProductCreated: (product: MasterProduct, availableChannels: string[]) => void;
+}
+
+export default function ProductCreatePage({ onProductCreated }: ProductCreatePageProps) {
+  const { user, organization, isAuthenticated, isLoading: authLoading } = useAuth();
+  const {
+    organizationConfig,
+    businessRulesConfig,
+    getAssignedChannels,
+    getAssignedCategories,
+    isLoading: orgLoading,
+    error: orgError,
+  } = useOrganization();
+
+  // ── Loading ─────────────────────────────────────────────────────────────────
+
+  if (authLoading || orgLoading) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <div className="text-center">
+          <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4" />
+          <p className="text-gray-600">Loading organization configuration...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Auth guard ──────────────────────────────────────────────────────────────
+
+  if (!isAuthenticated || !user || !organization) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <Alert variant="destructive">
+          <AlertCircle className="h-4 w-4" />
+          <AlertDescription>
+            Authentication required. Please log in to continue.
+          </AlertDescription>
+        </Alert>
+      </div>
+    );
+  }
+
+  // ── Org error ───────────────────────────────────────────────────────────────
+
+  if (orgError) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <Alert variant="destructive">
+          <AlertCircle className="h-4 w-4" />
+          <AlertDescription>
+            Failed to load organization configuration: {orgError}
+          </AlertDescription>
+        </Alert>
+      </div>
+    );
+  }
+
+  // ── Derived values ──────────────────────────────────────────────────────────
+
+  const organizationDefaultCategory =
+    organizationConfig?.configuration?.businessSettings?.defaultProductCategory || 'general';
+
+  // ── Render ──────────────────────────────────────────────────────────────────
+
+  return (
+    <div className="space-y-4">
+      {/* Organization Info Bar */}
+      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <h4 className="font-semibold text-blue-900">{organization.organizationName}</h4>
+            <p className="text-sm text-blue-700">
+              {organization.businessDomain} • {organization.subscriptionTier}
+            </p>
+          </div>
+          <div className="text-right">
+            <div className="text-sm text-blue-700">
+              <strong>User:</strong> {user.firstName} {user.lastName}
+            </div>
+            <div className="text-sm text-blue-600">{user.role}</div>
+          </div>
+        </div>
+
+        {businessRulesConfig && (
+          <div className="mt-3 pt-3 border-t border-blue-200">
+            <div className="flex items-center space-x-4 text-sm">
+              <div className="flex items-center space-x-1">
+                <span
+                  className={`w-2 h-2 rounded-full ${
+                    businessRulesConfig.businessRulesConfig.globalSettings.businessRulesEnabled
+                      ? 'bg-green-500'
+                      : 'bg-red-500'
+                  }`}
+                />
+                <span className="text-blue-700">
+                  Business Rules:{' '}
+                  {businessRulesConfig.businessRulesConfig.globalSettings.businessRulesEnabled
+                    ? 'Enabled'
+                    : 'Disabled'}
+                </span>
+              </div>
+              <div className="text-blue-600">
+                Version: {businessRulesConfig.businessRulesConfig.version}
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Form */}
+      <ProductCreateForm
+        userId={user.userId}
+        organizationId={organization.organizationId}
+        userRole={mapUserRole(user.role)}
+        targetChannels={getAssignedChannels()}
+        assignedCategories={getAssignedCategories()}
+        organizationDefaultCategory={organizationDefaultCategory}
+        onProductCreated={onProductCreated}
+      />
+    </div>
+  );
+}
