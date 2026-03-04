@@ -5,8 +5,9 @@ import type {
   ChannelStepSchemaResponse,
   ChannelSchemaPerStore,
   ChannelProductStatus,
+  MasterProductSnapshot,
 } from "../../types/channelStore";
-import { ChannelSchemaService, ChannelProductDataService } from "../../services/channelStoreService";
+import { ChannelSchemaService, ChannelProductDataService } from "../../services/channelStore.service";
 import ChannelTypeBadge from "../stores/ChannelTypeBadge";
 import ChannelStoreTab from "./ChannelStoreTab";
 
@@ -73,10 +74,37 @@ function isLocallyComplete(channel: ChannelSchemaPerStore, vals: StoreFormValues
   return true;
 }
 
-// ─── Read master product variants from sessionStorage ─────────────────────────
+// ─── Read master product data from sessionStorage ─────────────────────────────
 // The create page stores the full product as JSON under `product_${id}`.
-// We extract variant SKUs and labels here so they can be forwarded to the
-// schema generation call — the backend needs them to build the variant rows.
+// Two helpers:
+//   getMasterVariantsFromSession — extracts {sku, label} for the schema API call
+//   getMasterSnapshotFromSession — builds a full MasterProductSnapshot so the
+//     variant table can show inherited values (price, barcode, quantity, etc.)
+//     without relying on the backend to echo them back in the schema response.
+
+type StoredVariant = {
+  sku: string;
+  options?: Record<string, string>;
+  price?: number;
+  compareAtPrice?: number;
+  quantity?: number;
+  barcode?: string;
+  weight?: number;
+  [key: string]: unknown;
+};
+
+type StoredProduct = {
+  name?: string;
+  description?: string;
+  price?: number;
+  compareAtPrice?: number;
+  quantity?: number;
+  sku?: string;
+  weight?: number;
+  dimensions?: { length: number; width: number; height: number; unit: string };
+  mainImage?: string;
+  variants?: StoredVariant[];
+};
 
 function getMasterVariantsFromSession(
   masterProductId: string
@@ -85,12 +113,7 @@ function getMasterVariantsFromSession(
   try {
     const raw = sessionStorage.getItem(`product_${masterProductId}`);
     if (!raw) return [];
-    const product = JSON.parse(raw) as {
-      variants?: Array<{
-        sku: string;
-        options?: Record<string, string>;
-      }>;
-    };
+    const product = JSON.parse(raw) as StoredProduct;
     return (product.variants ?? []).map((v) => ({
       sku: v.sku,
       label: v.options && Object.keys(v.options).length > 0
@@ -99,6 +122,51 @@ function getMasterVariantsFromSession(
     }));
   } catch {
     return [];
+  }
+}
+
+/**
+ * Builds a MasterProductSnapshot from the product stored in sessionStorage.
+ * The backend schema response may not include variant field values (price,
+ * barcode, quantity, etc.) because the schema call only forwards {sku, label}.
+ * Reading directly from session guarantees the full data is available for the
+ * variant table's inherited-value display.
+ *
+ * If the backend also returns a masterProduct snapshot, callers should merge:
+ *   { ...sessionSnapshot, ...backendSnapshot, variants: sessionSnapshot.variants }
+ * so backend wins for top-level fields but session supplies the variant values.
+ */
+function getMasterSnapshotFromSession(
+  masterProductId: string
+): MasterProductSnapshot | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = sessionStorage.getItem(`product_${masterProductId}`);
+    if (!raw) return null;
+    const p = JSON.parse(raw) as StoredProduct;
+    return {
+      name: p.name ?? "",
+      description: p.description,
+      price: p.price ?? 0,
+      compareAtPrice: p.compareAtPrice,
+      quantity: p.quantity,
+      sku: p.sku,
+      weight: p.weight,
+      dimensions: p.dimensions,
+      mainImage: p.mainImage,
+      variants: (p.variants ?? []).map((v) => {
+        // Spread every field on the stored variant so any fieldName lookup works.
+        const { options, ...rest } = v;
+        return {
+          ...rest,
+          variantLabel: options && Object.keys(options).length > 0
+            ? Object.values(options).join(" / ")
+            : v.sku,
+        };
+      }),
+    };
+  } catch {
+    return null;
   }
 }
 
@@ -115,6 +183,12 @@ export default function ChannelFieldsWizard({ masterProductId }: Props) {
   const [schemaResponse, setSchemaResponse] = useState<ChannelStepSchemaResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
+
+  // Master product snapshot — session data merged with backend snapshot.
+  // Session supplies variant field values (price, barcode, quantity, etc.) that the
+  // backend schema call doesn't echo back; backend wins for top-level fields.
+  const [masterProductSnapshot, setMasterProductSnapshot] =
+    useState<MasterProductSnapshot | null>(null);
 
   // Active tab
   const [activeStoreIndex, setActiveStoreIndex] = useState(0);
@@ -149,6 +223,22 @@ export default function ChannelFieldsWizard({ masterProductId }: Props) {
         ...(masterVariants.length > 0 && { masterVariants }),
       });
       setSchemaResponse(resp);
+
+      // Build the master product snapshot for the variant table.
+      // Session storage has full variant field data (price, barcode, quantity, etc.)
+      // that we can't guarantee the backend echoes back in the schema response.
+      // Merge strategy: session supplies the base (variant values), backend wins
+      // for top-level product fields, session variants always win.
+      const sessionSnap = getMasterSnapshotFromSession(masterProductId);
+      const backendSnap = resp.masterProduct ?? null;
+      if (sessionSnap || backendSnap) {
+        setMasterProductSnapshot({
+          ...(sessionSnap ?? {}),
+          ...(backendSnap ?? {}),
+          // Session variants carry the actual field values — always prefer them
+          variants: sessionSnap?.variants ?? backendSnap?.variants,
+        } as MasterProductSnapshot);
+      }
 
       // Initialize values from schema's currentValue
       const initValues: Record<string, StoreFormValues> = {};
@@ -414,7 +504,7 @@ export default function ChannelFieldsWizard({ masterProductId }: Props) {
           onChange={(vals) => handleValuesChange(activeStoreId, activeChannel, vals)}
           isSaving={savingStoreId === activeStoreId}
           lastSaved={lastSaved[activeStoreId]}
-          masterProduct={schemaResponse?.masterProduct}
+          masterProduct={masterProductSnapshot ?? undefined}
         />
       </div>
 

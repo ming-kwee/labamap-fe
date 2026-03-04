@@ -27,7 +27,7 @@ import type {
   ChannelProductData,
   ChannelProductStatus,
   StorePublishResult,
-} from "../../types/channelStore";
+} from "../../step2-channel-fields/types/channelStore";
 
 // ─── Effective value helpers ──────────────────────────────────────────────────
 
@@ -85,20 +85,21 @@ function EffectiveValueRow({
 import {
   ChannelProductDataService,
   PublishService,
-} from "../../services/channelStoreService";
-import ChannelTypeBadge from "../stores/ChannelTypeBadge";
-import type { MasterProduct } from "@/modules/ecommerce-product/types/product";
+} from "../../step2-channel-fields/services/channelStore.service";
+import ChannelTypeBadge from "../../step2-channel-fields/components/stores/ChannelTypeBadge";
+import type { MasterProduct } from "@/modules/ecommerce-product-v2/types/product";
 import type {
   AdaptivePatternMatchingResponse,
   FieldMapping,
-} from "@/modules/ecommerce-product/types/channelMapping";
+} from "@/modules/ecommerce-product-v2/types/channel-mapping";
 import {
-  channelMappingService,
-} from "@/modules/ecommerce-product/services/channelMappingService";
+  analyzePatternMatching,
+  previewJoltTransformation,
+} from "@/modules/ecommerce-product-v2/services/pattern-matching.service";
 import {
   generateMappingRequest,
   transformMasterProductToSourceSchema,
-} from "@/modules/ecommerce-product/services/productGenerationService";
+} from "@/modules/ecommerce-product-v2/utils/product-mapper";
 
 const ORGANIZATION_ID = "org_123";
 
@@ -418,7 +419,7 @@ export default function PublishDashboard({ masterProductId }: Props) {
 
   useEffect(() => { loadData(); }, [loadData]);
 
-  // ─── Analyze (old adaptive pattern matching, proven working) ─────────────────
+  // ─── Analyze ─────────────────────────────────────────────────────────────────
 
   const handleAnalyze = useCallback(async (storeId: string) => {
     if (!product) return;
@@ -470,7 +471,7 @@ export default function PublishDashboard({ masterProductId }: Props) {
         request.sourceSchema = { ...request.sourceSchema, ...flatVariantFields };
       }
 
-      const result = await channelMappingService.analyzePatternMatching(request);
+      const result = await analyzePatternMatching(request);
 
       if (result.status === "ERROR") {
         throw new Error(result.message ?? "Pattern matching failed");
@@ -508,7 +509,7 @@ export default function PublishDashboard({ masterProductId }: Props) {
           }
         }
       }
-      const transformed = await channelMappingService.previewJoltTransformation(
+      const transformed = await previewJoltTransformation(
         sourceData,
         analysis.joltSpec ?? []
       );
@@ -524,22 +525,12 @@ export default function PublishDashboard({ masterProductId }: Props) {
     setPublishingStores((prev) => new Set(prev).add(storeId));
     setBatchError(null);
     try {
-      // Build the same request shape the old publish page sends.
-      // The backend merges Step-2 channel-specific fields INTO masterProductData,
-      // so a non-null map is required — NPE otherwise.
-      // Also merge Step-2 channel-specific fields (vendor, product_type, tags, etc.)
-      // so the backend receives a single complete merged picture without needing to
-      // look them up separately.
       const masterProductData: Record<string, unknown> = {
         ...(product ? transformMasterProductToSourceSchema(product) : {}),
-        // Step-2 master-level overrides applied before channel fields so channel wins
         ...(store?.masterOverrides ?? {}),
-        // Step-2 per-store channel fields override master fields where they conflict
         ...(store?.channelData ?? {}),
       };
 
-      // If we already ran pattern matching for this channel, include the JOLT spec
-      // so the backend can use it directly; otherwise it falls back to its stored spec.
       const priorAnalysis = store ? analysisByChannel[store.channelType] : null;
 
       const result = await PublishService.publishToStore({
@@ -1057,9 +1048,9 @@ export default function PublishDashboard({ masterProductId }: Props) {
                         <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-2">
                           Effective Values for {currentStoreData.channelType}
                         </p>
-                        <EffectiveValueRow label="Title"    fieldName="name"         storeData={currentStoreData} master={product} />
-                        <EffectiveValueRow label="Price"    fieldName="price"        storeData={currentStoreData} master={product} />
-                        <EffectiveValueRow label="Stock"    fieldName="quantity"     storeData={currentStoreData} master={product} />
+                        <EffectiveValueRow label="Title"    fieldName="name"           storeData={currentStoreData} master={product} />
+                        <EffectiveValueRow label="Price"    fieldName="price"          storeData={currentStoreData} master={product} />
+                        <EffectiveValueRow label="Stock"    fieldName="quantity"       storeData={currentStoreData} master={product} />
                         <EffectiveValueRow label="Compare"  fieldName="compareAtPrice" storeData={currentStoreData} master={product} />
                       </div>
                     )}
@@ -1093,7 +1084,7 @@ export default function PublishDashboard({ masterProductId }: Props) {
                         </Button>
                       )}
                     </div>
-                    {publishResults[selectedStoreId]?.status === "FAILED" && (
+                    {selectedStoreId && publishResults[selectedStoreId]?.status === "FAILED" && (
                       <div className="mt-3 p-3 bg-error-50 dark:bg-error-500/10 rounded-lg">
                         <p className="text-sm text-error-600 dark:text-error-400">
                           {publishResults[selectedStoreId].error ?? "Publish failed"}

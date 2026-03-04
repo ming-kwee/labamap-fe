@@ -12,7 +12,7 @@
  */
 
 import type { ChannelStoreConnection, ChannelType } from "../types/channelStore";
-import { mapStore } from "./channelStoreService";
+import { mapStore } from "./channelStore.service";
 
 const BASE = "http://localhost:8888/labamap/api/v1";
 

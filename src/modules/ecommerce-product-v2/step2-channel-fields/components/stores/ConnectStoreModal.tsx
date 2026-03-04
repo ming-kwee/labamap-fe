@@ -1,15 +1,29 @@
 "use client";
-import React, { useState } from "react";
-import type { ChannelStoreConnection, ChannelType, StoreConnectionRequest } from "../../types/channelStore";
-import { ChannelOAuthService } from "../../services/channelOAuthService";
+import React, { useState, useEffect } from "react";
+import type {
+  ChannelStoreConnection,
+  ChannelType,
+  StoreConnectionRequest,
+  CredentialFieldSchema,
+  CredentialEntry,
+} from "../../types/channelStore";
+import { ChannelOAuthService } from "../../services/channelOAuth.service";
+import { ChannelCredentialSchemaService } from "../../services/channelStore.service";
 
 /**
  * Normalise a store URL before sending to backend.
- * Strips protocol, lowercases, and removes trailing slashes so that
+ * Ensures the URL always has an https:// protocol (adds it if missing),
+ * lowercases the host, and removes trailing slashes so that
  * "https://MyStore.myshopify.com/" and "mystore.myshopify.com" are treated as identical.
+ *
+ * Preserving the protocol is required because backend URL validators
+ * (e.g. @URL, @Pattern) reject strings without a scheme.
  */
 function normalizeStoreUrl(url: string): string {
-  return url.trim().toLowerCase().replace(/^https?:\/\//, "").replace(/\/+$/, "");
+  const trimmed = url.trim();
+  // Strip any existing protocol then re-add https:// so the result is always a valid URL
+  const withoutProtocol = trimmed.replace(/^https?:\/\//i, "").replace(/\/+$/, "");
+  return `https://${withoutProtocol.toLowerCase()}`;
 }
 
 const CHANNEL_OPTIONS: Array<{ value: ChannelType; label: string }> = [
@@ -24,58 +38,6 @@ const CHANNEL_OPTIONS: Array<{ value: ChannelType; label: string }> = [
   { value: "shopee",    label: "Shopee" },
   { value: "walmart",   label: "Walmart" },
 ];
-
-const CREDENTIAL_FIELDS: Record<ChannelType, Array<{ key: string; label: string; sensitive?: boolean }>> = {
-  shopify:   [
-    { key: "accessToken", label: "Access Token", sensitive: true },
-    { key: "apiKey",      label: "API Key",       sensitive: true },
-    { key: "apiSecret",   label: "API Secret",    sensitive: true },
-  ],
-  wix:       [
-    { key: "accessToken", label: "Access Token", sensitive: true },
-    { key: "wixSiteId",   label: "WIX Site ID" },
-  ],
-  amazon:    [
-    { key: "sellerId",      label: "Seller ID" },
-    { key: "marketplaceId", label: "Marketplace ID" },
-    { key: "accessKey",     label: "Access Key",    sensitive: true },
-    { key: "secretKey",     label: "Secret Key",    sensitive: true },
-  ],
-  ebay:      [
-    { key: "accessToken",  label: "Access Token",  sensitive: true },
-    { key: "refreshToken", label: "Refresh Token", sensitive: true },
-    { key: "siteId",       label: "Site ID" },
-  ],
-  tiktok:    [
-    { key: "appKey",     label: "App Key",     sensitive: true },
-    { key: "appSecret",  label: "App Secret",  sensitive: true },
-    { key: "accessToken",label: "Access Token",sensitive: true },
-    { key: "shopCipher", label: "Shop Cipher" },
-  ],
-  lazada:    [
-    { key: "accessToken", label: "Access Token", sensitive: true },
-    { key: "appKey",      label: "App Key",      sensitive: true },
-    { key: "appSecret",   label: "App Secret",   sensitive: true },
-  ],
-  tokopedia: [
-    { key: "accessToken", label: "Access Token", sensitive: true },
-    { key: "shopId",      label: "Shop ID" },
-  ],
-  facebook:  [
-    { key: "accessToken",  label: "Access Token",  sensitive: true },
-    { key: "catalogId",    label: "Catalog ID" },
-  ],
-  shopee:    [
-    { key: "accessToken",  label: "Access Token",  sensitive: true },
-    { key: "shopId",       label: "Shop ID" },
-    { key: "partnerId",    label: "Partner ID" },
-    { key: "partnerKey",   label: "Partner Key",   sensitive: true },
-  ],
-  walmart:   [
-    { key: "clientId",     label: "Client ID",     sensitive: true },
-    { key: "clientSecret", label: "Client Secret", sensitive: true },
-  ],
-};
 
 interface Props {
   organizationId: string;
@@ -96,17 +58,32 @@ export default function ConnectStoreModal({ organizationId, onClose, onConnect, 
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Credential schema — fetched from backend per channel type
+  const [credentialSchema, setCredentialSchema] = useState<CredentialFieldSchema[]>([]);
+  const [schemaLoading, setSchemaLoading] = useState(false);
+  const [schemaError, setSchemaError] = useState<string | null>(null);
+
   // Shopify OAuth state — disabled in edit mode (can't re-initiate OAuth for existing store)
   const [shopifyMode, setShopifyMode] = useState<"oauth" | "manual">(isEditMode ? "manual" : "oauth");
   const [shopDomain, setShopDomain] = useState("");
   const [oauthLoading, setOauthLoading] = useState(false);
   const [oauthError, setOauthError] = useState<string | null>(null);
 
-  const credFields = CREDENTIAL_FIELDS[channelType] ?? [];
   const isShopifyOAuth = channelType === "shopify" && shopifyMode === "oauth" && !isEditMode;
 
-  function handleCredentialChange(key: string, value: string) {
-    setCredentials((prev) => ({ ...prev, [key]: value }));
+  // Fetch credential schema whenever channelType changes
+  useEffect(() => {
+    setCredentialSchema([]);
+    setSchemaError(null);
+    setSchemaLoading(true);
+    ChannelCredentialSchemaService.getCredentialSchema(channelType)
+      .then(setCredentialSchema)
+      .catch((err) => setSchemaError(err instanceof Error ? err.message : "Failed to load credential fields"))
+      .finally(() => setSchemaLoading(false));
+  }, [channelType]);
+
+  function handleCredentialChange(chnlCredName: string, value: string) {
+    setCredentials((prev) => ({ ...prev, [chnlCredName]: value }));
   }
 
   function handleChannelTypeChange(value: ChannelType) {
@@ -143,16 +120,25 @@ export default function ConnectStoreModal({ organizationId, onClose, onConnect, 
     setError(null);
     setSubmitting(true);
     try {
-      // In edit mode: include storeId so the dashboard can route to updateStore.
-      // Credentials are only included if the user has entered new values; empty
-      // fields mean "keep existing" and the backend should preserve them.
-      const hasNewCredentials = Object.values(credentials).some((v) => v.trim() !== "");
+      // Build CredentialEntry[] from the fetched schema + user-entered values.
+      // credentialSchema provides the credId needed by the backend; we key the
+      // internal state by chnlCredName for easy input binding.
+      // In edit mode: only include fields the user actually filled in — omitting
+      // a field means "keep existing" (backend treats empty credentials list as no-change).
+      const credentialEntries: CredentialEntry[] = credentialSchema
+        .filter((f) => (credentials[f.chnlCredName] ?? "").trim() !== "")
+        .map((f) => ({
+          credId: f.credId,
+          chnlCredName: f.chnlCredName,
+          chnlCredValue: credentials[f.chnlCredName].trim(),
+        }));
+
       await onConnect({
         channelType,
         storeName: storeName.trim(),
         storeUrl: normalizeStoreUrl(storeUrl),
         region: region.trim() || undefined,
-        credentials: hasNewCredentials ? credentials : {},
+        credentials: credentialEntries,
         ...(existingStore ? { storeId: existingStore.storeId } : {}),
       });
       onClose();
@@ -301,7 +287,7 @@ export default function ConnectStoreModal({ organizationId, onClose, onConnect, 
                   type="text"
                   value={storeName}
                   onChange={(e) => setStoreName(e.target.value)}
-                  placeholder="e.g. My Shopify US Store"
+                  placeholder="e.g. My Wix Store"
                   className="w-full rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2.5 text-sm text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-brand-500"
                 />
               </div>
@@ -316,7 +302,7 @@ export default function ConnectStoreModal({ organizationId, onClose, onConnect, 
                   type="text"
                   value={storeUrl}
                   onChange={(e) => setStoreUrl(e.target.value)}
-                  placeholder="e.g. mystore.myshopify.com"
+                  placeholder="e.g. mysite.wixsite.com/store"
                   className="w-full rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2.5 text-sm text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-brand-500"
                 />
               </div>
@@ -335,35 +321,50 @@ export default function ConnectStoreModal({ organizationId, onClose, onConnect, 
                 />
               </div>
 
-              {/* Credentials */}
-              {credFields.length > 0 && (
-                <div className="space-y-3 pt-2 border-t border-gray-100 dark:border-gray-800">
-                  <div>
-                    <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Credentials</p>
-                    {isEditMode && (
-                      <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
-                        Leave blank to keep existing credentials.
-                      </p>
+              {/* Credentials — schema-driven */}
+              <div className="space-y-3 pt-2 border-t border-gray-100 dark:border-gray-800">
+                <div>
+                  <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Credentials</p>
+                  {isEditMode && (
+                    <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
+                      Leave blank to keep existing credentials.
+                    </p>
+                  )}
+                </div>
+
+                {schemaLoading && (
+                  <div className="flex items-center gap-2 py-2">
+                    <div className="h-4 w-4 rounded-full border-2 border-brand-500 border-t-transparent animate-spin" />
+                    <span className="text-xs text-gray-400 dark:text-gray-500">Loading credential fields…</span>
+                  </div>
+                )}
+
+                {schemaError && (
+                  <div className="rounded-xl bg-error-50 dark:bg-error-500/10 border border-error-200 dark:border-error-500/30 px-4 py-3">
+                    <p className="text-sm text-error-700 dark:text-error-400">{schemaError}</p>
+                  </div>
+                )}
+
+                {!schemaLoading && !schemaError && credentialSchema.map((field) => (
+                  <div key={field.credId}>
+                    <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+                      {field.label}
+                      {!isEditMode && field.required && <span className="text-error-500"> *</span>}
+                    </label>
+                    <input
+                      required={!isEditMode && field.required}
+                      type={field.inputType}
+                      value={credentials[field.chnlCredName] ?? ""}
+                      onChange={(e) => handleCredentialChange(field.chnlCredName, e.target.value)}
+                      placeholder={isEditMode ? "Leave blank to keep existing" : field.inputType === "password" ? "•••••••••" : ""}
+                      className="w-full rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-brand-500"
+                    />
+                    {field.helpText && (
+                      <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">{field.helpText}</p>
                     )}
                   </div>
-                  {credFields.map((field) => (
-                    <div key={field.key}>
-                      <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
-                        {field.label}
-                        {!isEditMode && <span className="text-error-500"> *</span>}
-                      </label>
-                      <input
-                        required={!isEditMode}
-                        type={field.sensitive ? "password" : "text"}
-                        value={credentials[field.key] ?? ""}
-                        onChange={(e) => handleCredentialChange(field.key, e.target.value)}
-                        placeholder={isEditMode ? "Leave blank to keep existing" : field.sensitive ? "•••••••••" : ""}
-                        className="w-full rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-brand-500"
-                      />
-                    </div>
-                  ))}
-                </div>
-              )}
+                ))}
+              </div>
 
               {error && (
                 <div className="rounded-xl bg-error-50 dark:bg-error-500/10 border border-error-200 dark:border-error-500/30 px-4 py-3">
@@ -381,7 +382,7 @@ export default function ConnectStoreModal({ organizationId, onClose, onConnect, 
                 </button>
                 <button
                   type="submit"
-                  disabled={submitting}
+                  disabled={submitting || schemaLoading}
                   className="flex-1 px-4 py-2.5 rounded-xl bg-brand-500 text-white text-sm font-medium hover:bg-brand-600 transition-colors disabled:opacity-60"
                 >
                   {submitting ? (isEditMode ? "Saving…" : "Connecting…") : (isEditMode ? "Save Changes" : "Connect Store")}

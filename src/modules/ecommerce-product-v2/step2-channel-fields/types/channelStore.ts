@@ -30,6 +30,20 @@ export interface ChannelStoreConnection {
   lastSyncedAt?: string | number;
 }
 
+/**
+ * One credential field in a connect-store or update-credentials request.
+ * Mirrors the backend CredentialEntry DTO.
+ *
+ * credId       — matches CredentialFieldSchema.credId (backend schema identifier)
+ * chnlCredName — becomes the key in the stored credentials map (e.g. "accessToken")
+ * chnlCredValue — the actual secret value
+ */
+export interface CredentialEntry {
+  credId: string;
+  chnlCredName: string;
+  chnlCredValue: string;
+}
+
 export interface StoreConnectionRequest {
   channelType: ChannelType;
   storeName: string;
@@ -37,7 +51,23 @@ export interface StoreConnectionRequest {
   storeId?: string;
   region?: string;
   displayOrder?: number;
-  credentials: Record<string, string>;
+  /** Structured credential list — each entry maps credId → chnlCredName → value */
+  credentials: CredentialEntry[];
+}
+
+// ─── Credential Schema Types ──────────────────────────────────────────────────
+// Returned by GET /api/v1/channel-stores/credential-schema/{channelType}
+
+export interface CredentialFieldSchema {
+  /** Backend internal identifier — used as the key in the structured credentials payload */
+  credId: string;
+  /** Canonical credential name — used as the key in Record<string,string> credentials map */
+  chnlCredName: string;
+  label: string;
+  inputType: "text" | "password" | "email" | "url" | "number";
+  sensitive: boolean;
+  required: boolean;
+  helpText?: string;
 }
 
 // ─── Channel Product Data Types ───────────────────────────────────────────────

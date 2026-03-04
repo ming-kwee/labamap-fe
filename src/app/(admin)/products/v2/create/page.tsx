@@ -9,6 +9,7 @@ export default function CreateProductV2Page() {
   const router = useRouter();
 
   const handleProductCreated = (product: MasterProduct, _availableChannels: string[]) => {
+    sessionStorage.setItem(`product_${product.id}`, JSON.stringify(product));
     router.push(`/products/${product.id}/channel-fields`);
   };
 

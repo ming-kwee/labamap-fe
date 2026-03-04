@@ -17,6 +17,7 @@ import type {
   BatchPublishResponse,
   PublishAnalysisRequest,
   PublishAnalysisResponse,
+  CredentialFieldSchema,
 } from "../types/channelStore";
 
 const BASE = "http://localhost:8888/labamap/api/v1";
@@ -25,7 +26,17 @@ const BASE = "http://localhost:8888/labamap/api/v1";
 async function parseErrorMessage(res: Response): Promise<string> {
   try {
     const body = await res.json();
-    return body.message ?? body.error ?? res.statusText;
+    // Log full body so backend validation detail is visible in the browser console
+    console.error(`[ChannelStoreService] ${res.status} ${res.url}`, body);
+    // Spring Boot bean-validation errors come in body.errors[] or body.fieldErrors[]
+    const fieldErrors: string | undefined =
+      (body.errors as Array<{ defaultMessage?: string; field?: string }> | undefined)
+        ?.map((e) => `${e.field ?? "?"}: ${e.defaultMessage ?? e}`)
+        .join("; ") ??
+      (body.fieldErrors as Array<{ field?: string; defaultMessage?: string }> | undefined)
+        ?.map((e) => `${e.field ?? "?"}: ${e.defaultMessage ?? e}`)
+        .join("; ");
+    return fieldErrors ?? body.message ?? body.error ?? res.statusText;
   } catch {
     return res.text().catch(() => res.statusText);
   }
@@ -42,7 +53,7 @@ async function handleEmptyResponse(res: Response): Promise<void> {
 
 /**
  * Normalise a raw API response object into a typed ChannelStoreConnection.
- * Exported so other services (e.g. channelOAuthService) can reuse the same mapping.
+ * Exported so other services (e.g. channelOAuth.service) can reuse the same mapping.
  *
  * Handles the historical Jackson `isActive`→`active` serialisation bug defensively:
  * reads whichever key is present so the frontend stays correct regardless of
@@ -94,10 +105,12 @@ export const ChannelStoreService = {
    * POST /api/v1/channel-stores?organizationId=...
    */
   connectStore(organizationId: string, request: StoreConnectionRequest): Promise<ChannelStoreConnection> {
+    const body = JSON.stringify(request);
+    console.log("[ChannelStoreService] connectStore →", body);
     return fetch(`${BASE}/channel-stores?organizationId=${encodeURIComponent(organizationId)}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(request),
+      body,
     }).then((r) => handleResponse<unknown>(r)).then(mapStore);
   },
 
@@ -163,6 +176,20 @@ export const ChannelStoreService = {
         body: JSON.stringify({ displayOrder }),
       }
     ).then((r) => handleResponse<unknown>(r)).then(mapStore);
+  },
+};
+
+// ─── Credential Schema ────────────────────────────────────────────────────────
+
+export const ChannelCredentialSchemaService = {
+  /**
+   * Fetch the credential field schema for a channel type.
+   * GET /api/v1/channel-stores/credential-schema/{channelType}
+   */
+  getCredentialSchema(channelType: string): Promise<CredentialFieldSchema[]> {
+    return fetch(`${BASE}/channel-stores/credential-schema/${encodeURIComponent(channelType)}`, {
+      method: "GET",
+    }).then((r) => handleResponse<CredentialFieldSchema[]>(r));
   },
 };
 

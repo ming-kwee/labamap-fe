@@ -99,3 +99,37 @@ export {
 } from './utils/form-utils';
 
 export { onVariantsEnabled, onVariantsDisabled } from './utils/variant-scope';
+
+// ── Step 2: Channel Fields ──────────────────────────────────────────────────
+
+export { default as ChannelFieldsWizard } from './step2-channel-fields/components/wizard/ChannelFieldsWizard';
+export { default as ChannelStoresDashboard } from './step2-channel-fields/components/stores/ChannelStoresDashboard';
+export { default as ChannelTypeBadge, getChannelMeta } from './step2-channel-fields/components/stores/ChannelTypeBadge';
+export { default as ConnectStoreModal } from './step2-channel-fields/components/stores/ConnectStoreModal';
+
+export type {
+  ChannelType,
+  ChannelStoreConnection,
+  StoreConnectionRequest,
+  CredentialEntry,
+  CredentialFieldSchema,
+  ChannelProductData,
+  ChannelProductStatus,
+  ChannelStepSaveRequest,
+  StorePublishResult,
+  BatchPublishRequest,
+  BatchPublishResponse,
+  StoreCompletionEntry,
+  CompletionSummaryResponse,
+  ChannelFormField,
+  ChannelFormSection,
+  ChannelSchemaPerStore,
+  ChannelStepSchemaResponse,
+  PublishAnalysisResponse,
+} from './step2-channel-fields/types/channelStore';
+
+export { ChannelStoreService, ChannelCredentialSchemaService, ChannelProductDataService, ChannelSchemaService, PublishService } from './step2-channel-fields/services/channelStore.service';
+
+// ── Step 3: Publish ─────────────────────────────────────────────────────────
+
+export { default as PublishDashboard } from './step3-publish/components/PublishDashboard';

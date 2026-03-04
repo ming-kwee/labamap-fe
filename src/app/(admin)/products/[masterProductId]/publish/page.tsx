@@ -1,4 +1,4 @@
-import PublishDashboard from "@/modules/channel-platform/components/wizard/PublishDashboard";
+import PublishDashboard from "@/modules/ecommerce-product-v2/step3-publish/components/PublishDashboard";
 
 export const metadata = { title: "Step 3: Preview & Publish | Product Wizard" };
 

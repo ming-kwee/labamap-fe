@@ -1,7 +1,7 @@
 "use client";
 import React, { useEffect, useState, useCallback } from "react";
 import type { ChannelStoreConnection, StoreConnectionRequest } from "../../types/channelStore";
-import { ChannelStoreService } from "../../services/channelStoreService";
+import { ChannelStoreService } from "../../services/channelStore.service";
 import ChannelTypeBadge from "./ChannelTypeBadge";
 import ConnectStoreModal from "./ConnectStoreModal";
 

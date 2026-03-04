@@ -2,29 +2,37 @@
 
 ## What This Module Does
 
-`ecommerce-product-v2` is the **Step 1 implementation** of the omnichannel product creation
-wizard. It handles everything required to create a master product: loading a backend-generated
-dynamic form, rendering it to the user, validating input, and submitting the product to the API.
+`ecommerce-product-v2` is the **complete 3-step omnichannel product creation wizard**.
+It handles everything from creating a master product through to publishing it on connected
+e-commerce channels (Shopify, Amazon, TikTok, Lazada, etc.).
 
 A **master product** is the canonical product record — channel-agnostic data that serves as the
 source of truth for all downstream channel publishing. It is created once in Step 1; subsequent
-steps (channel-specific fields, publish) derive from it.
+steps add channel-specific overrides and publish to each store.
 
 ```
-Step 1 — ecommerce-product-v2          Step 2 — channel-platform             Step 3 — channel-platform
-─────────────────────────────          ──────────────────────────            ─────────────────────────
-Dynamic form (schema from backend)     One tab per connected store           Preview cards + publish
-Category-aware field loading           channel_store_connections             channel_product_data status
-Variant dimension detection            + channel_configurations              + credentials
-Enhanced validation pipeline           + EcommerceMasterAttribute
-                                         (isChannelField = true)
+Step 1 — step1-create/                Step 2 — step2-channel-fields/        Step 3 — step3-publish/
+─────────────────────────────         ──────────────────────────────        ───────────────────────
+Dynamic form (schema from backend)    One tab per connected store           Preview cards + publish
+Category-aware field loading          channel_store_connections             channel_product_data status
+Variant dimension detection           + EcommerceMasterAttribute            + credentials
+Enhanced validation pipeline            (isChannelField = true)
+                                      Master & variant overrides per store  Adaptive pattern matching
              │                                      │                                    │
              ▼                                      ▼                                    ▼
     MasterProductDocument               ChannelProductData × N              sync_channel_product_impl
     (one per product)                   (one per product × store)           (per store, in parallel)
 ```
 
-This module only covers **Step 1**. It does not know about stores, channels, or publishing.
+**Routes:**
+
+| Step | URL | Component |
+|------|-----|-----------|
+| Step 1 | `/products/v2/create` | `ProductCreatePage` |
+| Step 2 | `/products/{id}/channel-fields` | `ChannelFieldsWizard` |
+| Step 3 | `/products/{id}/publish` | `PublishDashboard` |
+| Stores | `/channels/stores` | `ChannelStoresDashboard` |
+| OAuth | `/channels/oauth/callback` | `ChannelOAuthCallbackPage` |
 
 ---
 
@@ -69,6 +77,7 @@ It is the **only component you need to import** to add Step 1 to a page.
 
 ## Documents in This Module
 
+### Step 1 — Create Master Product
 | File | What It Covers |
 |------|----------------|
 | [ARCHITECTURE.md](ARCHITECTURE.md) | Module structure, layer separation, component hierarchy, design decisions |
@@ -78,6 +87,17 @@ It is the **only component you need to import** to add Step 1 to a page.
 | [VARIANT-SYSTEM.md](VARIANT-SYSTEM.md) | Variant dimension detection, cartesian product generation, dual-scope fields, enable/disable logic |
 | [PRODUCT-SUBMISSION-PIPELINE.md](PRODUCT-SUBMISSION-PIPELINE.md) | generateMasterProduct, BackendContext, enhanced validation, product creation, error handling |
 | [SERVICES-AND-TYPES-REFERENCE.md](SERVICES-AND-TYPES-REFERENCE.md) | All 4 services and all TypeScript types/interfaces with field-level explanations |
+
+### Step 2 — Channel Fields
+| File | What It Covers |
+|------|----------------|
+| [STEP2-CHANNEL-FIELDS.md](STEP2-CHANNEL-FIELDS.md) | ChannelFieldsWizard, autosave system, section types, form buckets, services |
+| [CHANNEL-STORES.md](CHANNEL-STORES.md) | Store CRUD, ConnectStoreModal, OAuth flow, ChannelTypeBadge |
+
+### Step 3 — Publish
+| File | What It Covers |
+|------|----------------|
+| [STEP3-PUBLISH.md](STEP3-PUBLISH.md) | PublishDashboard, readiness scoring, single/batch publish, JOLT preview, effective value display |
 
 ---
 
@@ -95,26 +115,43 @@ The root `index.ts` exports everything external consumers need. The exports deli
 the old `ecommerce-product` module names so migration is a one-line import path change.
 
 ```ts
-// Components
+// ── Step 1 Components ──────────────────────────────────────────────────────
 export { ProductCreatePage }             // Use this in pages
 export { ProductCreationPageWrapper }    // Backward-compat alias for ProductCreatePage
 
-// Core types
+// ── Step 2 Components ──────────────────────────────────────────────────────
+export { ChannelFieldsWizard }           // Step 2 wizard
+export { ChannelStoresDashboard }        // Store management UI
+export { ChannelTypeBadge, getChannelMeta }
+export { ConnectStoreModal }
+
+// ── Step 3 Components ──────────────────────────────────────────────────────
+export { PublishDashboard }              // Step 3 publish UI
+
+// ── Core types (Step 1) ────────────────────────────────────────────────────
 export type { MasterProduct, ProductVariant }
 export type { FormField, DynamicFormSchema, EnhancedValidationResult }
 export type { FieldMapping, AdaptivePatternMatchingResponse }
 
-// Services
+// ── Channel store types (Step 2 / 3) ──────────────────────────────────────
+export type { ChannelType, ChannelStoreConnection, StoreConnectionRequest }
+export type { ChannelProductData, ChannelProductStatus, ChannelStepSaveRequest }
+export type { StorePublishResult, BatchPublishRequest, BatchPublishResponse }
+export type { ChannelFormField, ChannelSchemaPerStore, ChannelStepSchemaResponse }
+export type { PublishAnalysisResponse }
+
+// ── Services ───────────────────────────────────────────────────────────────
 export { ProductApiService }
 export { MediaUploadService }
 export { generateFormSchema, refreshFormSchema, createBackendContext }
 export { analyzePatternMatching, publishToChannel, getAvailableChannels }
+export { ChannelStoreService, ChannelProductDataService, ChannelSchemaService, PublishService }
 
-// Compat objects (same interface as old module)
+// ── Compat objects (same interface as old module) ──────────────────────────
 export const channelMappingService   // { analyzePatternMatching, publishToChannel, ... }
 export const productGenerationService // { generateMasterProduct, transformMasterProductToSourceSchema, ... }
 
-// Utils
+// ── Utils ──────────────────────────────────────────────────────────────────
 export { generateMasterProduct, transformMasterProductToSourceSchema, generateMappingRequest }
 export { getSectionMetadata, mapUserRole, validateProductCategory }
 ```

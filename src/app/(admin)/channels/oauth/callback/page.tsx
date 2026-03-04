@@ -2,8 +2,8 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { ChannelOAuthService } from "@/modules/channel-platform/services/channelOAuthService";
-import type { ChannelStoreConnection, ChannelType } from "@/modules/channel-platform/types/channelStore";
+import { ChannelOAuthService } from "@/modules/ecommerce-product-v2/step2-channel-fields/services/channelOAuth.service";
+import type { ChannelStoreConnection, ChannelType } from "@/modules/ecommerce-product-v2/step2-channel-fields/types/channelStore";
 
 type State =
   | { phase: "loading" }
