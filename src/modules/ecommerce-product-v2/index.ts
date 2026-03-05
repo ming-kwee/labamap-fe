@@ -109,10 +109,13 @@ export { default as ConnectStoreModal } from './step2-channel-fields/components/
 
 export type {
   ChannelType,
+  ConnectionStatus,
   ChannelStoreConnection,
   StoreConnectionRequest,
   CredentialEntry,
   CredentialFieldSchema,
+  OAuthInitiateRequest,
+  OAuthInitiateResponse,
   ChannelProductData,
   ChannelProductStatus,
   ChannelStepSaveRequest,

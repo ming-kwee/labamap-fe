@@ -54,9 +54,7 @@ const navItems: NavItem[] = [
     icon: <PlugInIcon />,
     name: "Channel Platform",
     subItems: [
-      { name: "Channel Hub", path: "/channels", pro: false, new: true },
       { name: "Channel Stores", path: "/channels/stores", pro: false, new: true },
-      { name: "OAuth Callback", path: "/channels/oauth/callback", pro: false },
       { name: "Channel Products", path: "/channels/products", pro: false },
       { name: "Sync Queue", path: "/channels/sync-queue", pro: false },
       { name: "Inventory Sync", path: "/channels/inventory", pro: false },

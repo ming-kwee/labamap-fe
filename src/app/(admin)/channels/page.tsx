@@ -1,7 +1,5 @@
-import { ChannelHubDashboard } from "@/modules/channel-platform/components/ChannelHubDashboard";
-
-export const metadata = { title: "Channel Platform | Hub" };
+import { redirect } from "next/navigation";
 
 export default function ChannelHubPage() {
-  return <ChannelHubDashboard />;
+  redirect("/channels/stores");
 }

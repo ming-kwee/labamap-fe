@@ -7,21 +7,23 @@ import type {
   CredentialFieldSchema,
   CredentialEntry,
 } from "../../types/channelStore";
-import { ChannelOAuthService } from "../../services/channelOAuth.service";
+import { ChannelStoreService } from "../../services/channelStore.service";
 import { ChannelCredentialSchemaService } from "../../services/channelStore.service";
+import { getChannelMeta } from "./ChannelTypeBadge";
 
 /**
- * Normalise a store URL before sending to backend.
- * Ensures the URL always has an https:// protocol (adds it if missing),
- * lowercases the host, and removes trailing slashes so that
- * "https://MyStore.myshopify.com/" and "mystore.myshopify.com" are treated as identical.
- *
- * Preserving the protocol is required because backend URL validators
- * (e.g. @URL, @Pattern) reject strings without a scheme.
+ * OAuth-capable channels (Phase B).
+ * These channels use the OAuth redirect flow — no manual credentials needed.
+ * Manual channels (lazada, tokopedia, shopee, facebook, walmart) use credential entry.
+ */
+const OAUTH_CHANNELS = new Set<ChannelType>(["shopify", "wix", "tiktok", "amazon", "ebay"]);
+
+/**
+ * Normalise a store URL — ensures https:// protocol, lowercases host, strips trailing slashes.
+ * Backend URL validators reject strings without a scheme.
  */
 function normalizeStoreUrl(url: string): string {
   const trimmed = url.trim();
-  // Strip any existing protocol then re-add https:// so the result is always a valid URL
   const withoutProtocol = trimmed.replace(/^https?:\/\//i, "").replace(/\/+$/, "");
   return `https://${withoutProtocol.toLowerCase()}`;
 }
@@ -42,102 +44,131 @@ const CHANNEL_OPTIONS: Array<{ value: ChannelType; label: string }> = [
 interface Props {
   organizationId: string;
   onClose: () => void;
+  /** Called only for manual-credential channels — OAuth channels redirect the browser. */
   onConnect: (request: StoreConnectionRequest) => Promise<void>;
-  /** When provided the modal opens in edit mode with fields pre-filled */
+  /**
+   * Pass the existing store to open in edit or reconnect mode.
+   * The modal determines the appropriate flow based on connectionStatus:
+   *   - ACTIVE + OAuth channel → show OAuth "Re-authorize" option
+   *   - ACTIVE + manual channel → show manual credential update form
+   *   - RECONNECT_REQUIRED / DISCONNECTED + OAuth channel → OAuth reconnect (passes storeId)
+   *   - RECONNECT_REQUIRED / DISCONNECTED + manual channel → manual credential form
+   */
   existingStore?: ChannelStoreConnection;
 }
 
 export default function ConnectStoreModal({ organizationId, onClose, onConnect, existingStore }: Props) {
-  const isEditMode = Boolean(existingStore);
+  // ── Mode detection ─────────────────────────────────────────────────────────
+  const isReconnectMode =
+    existingStore?.connectionStatus === "RECONNECT_REQUIRED" ||
+    existingStore?.connectionStatus === "DISCONNECTED";
+  const isEditMode = Boolean(existingStore) && !isReconnectMode;
 
   const [channelType, setChannelType] = useState<ChannelType>(existingStore?.channelType ?? "shopify");
-  const [storeName, setStoreName] = useState(existingStore?.storeName ?? "");
-  const [storeUrl, setStoreUrl] = useState(existingStore?.storeUrl ?? "");
-  const [region, setRegion] = useState(existingStore?.region ?? "");
-  const [credentials, setCredentials] = useState<Record<string, string>>({});
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [storeName,   setStoreName]   = useState(existingStore?.storeName ?? "");
+  const [storeUrl,    setStoreUrl]    = useState(existingStore?.storeUrl ?? "");
+  const [region,      setRegion]      = useState(existingStore?.region ?? "");
 
-  // Credential schema — fetched from backend per channel type
-  const [credentialSchema, setCredentialSchema] = useState<CredentialFieldSchema[]>([]);
-  const [schemaLoading, setSchemaLoading] = useState(false);
-  const [schemaError, setSchemaError] = useState<string | null>(null);
-
-  // Shopify OAuth state — disabled in edit mode (can't re-initiate OAuth for existing store)
-  const [shopifyMode, setShopifyMode] = useState<"oauth" | "manual">(isEditMode ? "manual" : "oauth");
+  // Shopify-specific: mystore.myshopify.com domain (OAuth initiation requires this)
   const [shopDomain, setShopDomain] = useState("");
-  const [oauthLoading, setOauthLoading] = useState(false);
-  const [oauthError, setOauthError] = useState<string | null>(null);
 
-  const isShopifyOAuth = channelType === "shopify" && shopifyMode === "oauth" && !isEditMode;
+  const [credentials,    setCredentials]    = useState<Record<string, string>>({});
+  const [credentialSchema, setCredentialSchema] = useState<CredentialFieldSchema[]>([]);
+  const [schemaLoading,  setSchemaLoading]  = useState(false);
+  const [schemaError,    setSchemaError]    = useState<string | null>(null);
 
-  // Fetch credential schema whenever channelType changes
+  const [submitting, setSubmitting] = useState(false);
+  const [error,      setError]      = useState<string | null>(null);
+
+  // ── Derived flags ──────────────────────────────────────────────────────────
+  const isOAuthChannel = OAUTH_CHANNELS.has(channelType);
+  // Show OAuth flow when: new connection for OAuth channel, OR reconnecting an OAuth channel
+  const showOAuthFlow = isOAuthChannel && (!existingStore || isReconnectMode);
+  // Show manual form when: manual channel, OR editing an ACTIVE OAuth channel
+  const showManualForm = !showOAuthFlow;
+
+  // ── Credential schema (manual channels only) ────────────────────────────
   useEffect(() => {
+    if (!showManualForm) return;
     setCredentialSchema([]);
     setSchemaError(null);
     setSchemaLoading(true);
     ChannelCredentialSchemaService.getCredentialSchema(channelType)
       .then(setCredentialSchema)
-      .catch((err) => setSchemaError(err instanceof Error ? err.message : "Failed to load credential fields"))
+      .catch(() => {
+        // 404 = channel has no credential schema seeded yet — show guidance instead of hard error
+        setSchemaError(null);
+        setCredentialSchema([]);
+      })
       .finally(() => setSchemaLoading(false));
-  }, [channelType]);
+  }, [channelType, showManualForm]);
+
+  function handleChannelTypeChange(value: ChannelType) {
+    if (isEditMode || isReconnectMode) return; // locked in edit/reconnect mode
+    setChannelType(value);
+    setCredentials({});
+    setShopDomain("");
+    setError(null);
+  }
 
   function handleCredentialChange(chnlCredName: string, value: string) {
     setCredentials((prev) => ({ ...prev, [chnlCredName]: value }));
   }
 
-  function handleChannelTypeChange(value: ChannelType) {
-    if (isEditMode) return; // channel type is locked in edit mode
-    setChannelType(value);
-    setCredentials({});
+  // ── OAuth flow ─────────────────────────────────────────────────────────────
+  async function handleOAuthConnect() {
+    if (channelType === "shopify" && !shopDomain.trim()) {
+      setError("Shopify store domain is required.");
+      return;
+    }
     setError(null);
-    setOauthError(null);
-    setShopifyMode("oauth");
-  }
-
-  async function handleShopifyOAuth() {
-    if (!shopDomain.trim()) return;
-    setOauthError(null);
-    setOauthLoading(true);
+    setSubmitting(true);
     try {
-      const returnUrl = `${window.location.origin}/channels/oauth/callback?channelType=${channelType}`;
-      const authUrl = await ChannelOAuthService.initiateOAuth(channelType, {
+      // Shopify: backend builds authorizationUrl as https://{shop}.myshopify.com/...
+      // so we must pass only the subdomain — strip protocol + .myshopify.com suffix.
+      const shopSubdomain = shopDomain.trim()
+        .replace(/^https?:\/\//i, "")
+        .replace(/\.myshopify\.com\/?$/i, "")
+        .replace(/\/+$/, "");
+
+      const resp = await ChannelStoreService.initiateOAuth({
+        channelType,
         organizationId,
-        returnUrl,
-        storeName: storeName.trim() || undefined,
-        region: region.trim() || undefined,
-        extras: { shopDomain: normalizeStoreUrl(shopDomain) },
+        storeName: storeName.trim() || `${channelType}-store`,
+        region:    region.trim() || undefined,
+        shop:      channelType === "shopify" ? shopSubdomain : undefined,
+        storeId:   isReconnectMode ? existingStore?.storeId : undefined,
       });
-      window.location.href = authUrl;
+      // Full-page redirect — backend will redirect back to /channels/stores?connected={channelType}
+      window.location.href = resp.authorizationUrl;
+      // Do NOT set submitting=false — page is navigating away
     } catch (err) {
-      setOauthError(err instanceof Error ? err.message : "Failed to initiate connection");
-      setOauthLoading(false);
+      setError(err instanceof Error ? err.message : "Failed to start authorization");
+      setSubmitting(false);
     }
   }
 
-  async function handleSubmit(e: React.FormEvent) {
+  // ── Manual flow ────────────────────────────────────────────────────────────
+  async function handleManualSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
     setSubmitting(true);
     try {
-      // Build CredentialEntry[] from the fetched schema + user-entered values.
-      // credentialSchema provides the credId needed by the backend; we key the
-      // internal state by chnlCredName for easy input binding.
-      // In edit mode: only include fields the user actually filled in — omitting
-      // a field means "keep existing" (backend treats empty credentials list as no-change).
+      // Build CredentialEntry[] — only fields with values are included.
+      // Edit mode: omitting a field means "keep existing credential" (backend ignores empty list).
       const credentialEntries: CredentialEntry[] = credentialSchema
         .filter((f) => (credentials[f.chnlCredName] ?? "").trim() !== "")
         .map((f) => ({
-          credId: f.credId,
-          chnlCredName: f.chnlCredName,
+          credId:        f.credId,
+          chnlCredName:  f.chnlCredName,
           chnlCredValue: credentials[f.chnlCredName].trim(),
         }));
 
       await onConnect({
         channelType,
         storeName: storeName.trim(),
-        storeUrl: normalizeStoreUrl(storeUrl),
-        region: region.trim() || undefined,
+        storeUrl:  normalizeStoreUrl(storeUrl),
+        region:    region.trim() || undefined,
         credentials: credentialEntries,
         ...(existingStore ? { storeId: existingStore.storeId } : {}),
       });
@@ -149,18 +180,38 @@ export default function ConnectStoreModal({ organizationId, onClose, onConnect, 
     }
   }
 
+  const channelMeta   = getChannelMeta(channelType);
+  const channelLabel  = CHANNEL_OPTIONS.find((o) => o.value === channelType)?.label ?? channelType;
+
+  const titleText = isReconnectMode
+    ? `Reconnect ${existingStore?.storeName ?? channelLabel}`
+    : isEditMode
+    ? `Edit ${existingStore?.storeName ?? "Store"}`
+    : "Connect New Store";
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
       <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
+        {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-gray-800">
-          <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
-            {isEditMode ? "Edit Store" : "Connect New Store"}
-          </h2>
+          <h2 className="text-lg font-semibold text-gray-900 dark:text-white">{titleText}</h2>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-xl">✕</button>
         </div>
 
         <div className="px-6 py-5 space-y-4">
-          {/* Channel type */}
+          {/* Reconnect notice */}
+          {isReconnectMode && (
+            <div className="rounded-xl bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/30 px-4 py-3">
+              <p className="text-sm text-amber-700 dark:text-amber-400">
+                <strong>Re-authorization required.</strong>{" "}
+                {existingStore?.disconnectReason === "app_uninstalled"
+                  ? "The app was uninstalled from the marketplace. Re-authorize to reconnect."
+                  : "Your access token has expired. Click below to re-authorize access."}
+              </p>
+            </div>
+          )}
+
+          {/* Channel type selector (locked in edit/reconnect mode) */}
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
               Channel Type <span className="text-error-500">*</span>
@@ -168,7 +219,7 @@ export default function ConnectStoreModal({ organizationId, onClose, onConnect, 
             <select
               value={channelType}
               onChange={(e) => handleChannelTypeChange(e.target.value as ChannelType)}
-              disabled={isEditMode}
+              disabled={isEditMode || isReconnectMode}
               className="w-full rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2.5 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-500 disabled:opacity-60 disabled:cursor-not-allowed"
             >
               {CHANNEL_OPTIONS.map((opt) => (
@@ -177,34 +228,24 @@ export default function ConnectStoreModal({ organizationId, onClose, onConnect, 
             </select>
           </div>
 
-          {/* ── Shopify OAuth mode ── */}
-          {isShopifyOAuth ? (
-            <>
-              {/* Shop domain */}
+          {/* ── OAuth flow ─────────────────────────────────────────────────── */}
+          {showOAuthFlow && (
+            <div className="space-y-4">
+              {/* Store name */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                  Shop Domain <span className="text-error-500">*</span>
-                </label>
-                <input
-                  type="text"
-                  value={shopDomain}
-                  onChange={(e) => setShopDomain(e.target.value)}
-                  placeholder="mystore.myshopify.com"
-                  className="w-full rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2.5 text-sm text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-brand-500"
-                />
-              </div>
-
-              {/* Store name (optional) */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                  Store Name{" "}
-                  <span className="text-gray-400 font-normal">(optional — auto-filled from Shopify if blank)</span>
+                  Store Name
+                  {channelType !== "shopify" && <span className="text-error-500"> *</span>}
+                  {channelType === "shopify" && (
+                    <span className="text-gray-400 font-normal"> (optional — auto-filled from Shopify if blank)</span>
+                  )}
                 </label>
                 <input
                   type="text"
                   value={storeName}
                   onChange={(e) => setStoreName(e.target.value)}
-                  placeholder="e.g. My Shopify US Store"
+                  required={channelType !== "shopify"}
+                  placeholder={`e.g. My ${channelLabel} Store`}
                   className="w-full rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2.5 text-sm text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-brand-500"
                 />
               </div>
@@ -223,13 +264,47 @@ export default function ConnectStoreModal({ organizationId, onClose, onConnect, 
                 />
               </div>
 
-              {oauthError && (
-                <div className="rounded-xl bg-error-50 dark:bg-error-500/10 border border-error-200 dark:border-error-500/30 px-4 py-3">
-                  <p className="text-sm text-error-700 dark:text-error-400">{oauthError}</p>
+              {/* Shopify: shop domain required */}
+              {channelType === "shopify" && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    Shopify Domain <span className="text-error-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={shopDomain}
+                    onChange={(e) => setShopDomain(e.target.value)}
+                    placeholder="your-brand.myshopify.com"
+                    className="w-full rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2.5 text-sm text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-brand-500"
+                  />
+                  <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
+                    Your Shopify store domain, e.g. <span className="font-mono">my-brand.myshopify.com</span>
+                  </p>
                 </div>
               )}
 
-              {/* Action buttons */}
+              {/* OAuth explanation */}
+              <div className="rounded-xl bg-gray-50 dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700 px-4 py-3">
+                <div className="flex items-center gap-2 mb-1">
+                  <span className={`h-6 w-6 rounded-md flex items-center justify-center text-xs font-bold ${channelMeta.bg} ${channelMeta.text}`}>
+                    {channelMeta.code}
+                  </span>
+                  <p className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                    Authorize via {channelLabel}
+                  </p>
+                </div>
+                <p className="text-xs text-gray-500 dark:text-gray-400">
+                  You will be redirected to {channelLabel} to grant access.
+                  No credentials to enter — the backend securely handles token exchange.
+                </p>
+              </div>
+
+              {error && (
+                <div className="rounded-xl bg-error-50 dark:bg-error-500/10 border border-error-200 dark:border-error-500/30 px-4 py-3">
+                  <p className="text-sm text-error-700 dark:text-error-400">{error}</p>
+                </div>
+              )}
+
               <div className="flex gap-3 pt-2">
                 <button
                   type="button"
@@ -240,43 +315,23 @@ export default function ConnectStoreModal({ organizationId, onClose, onConnect, 
                 </button>
                 <button
                   type="button"
-                  disabled={oauthLoading || !shopDomain.trim()}
-                  onClick={handleShopifyOAuth}
-                  className="flex-1 px-4 py-2.5 rounded-xl text-white text-sm font-medium transition-opacity disabled:opacity-50"
-                  style={{ backgroundColor: "#96BF48" }}
+                  disabled={submitting || (channelType === "shopify" && !shopDomain.trim())}
+                  onClick={handleOAuthConnect}
+                  className="flex-1 px-4 py-2.5 rounded-xl bg-brand-500 text-white text-sm font-medium hover:bg-brand-600 transition-colors disabled:opacity-60"
                 >
-                  {oauthLoading ? "Connecting…" : "Connect with Shopify"}
+                  {submitting
+                    ? "Redirecting…"
+                    : isReconnectMode
+                    ? `Reconnect with ${channelLabel}`
+                    : `Connect with ${channelLabel}`}
                 </button>
               </div>
+            </div>
+          )}
 
-              {/* Switch to manual */}
-              <p className="text-center text-xs text-gray-500 dark:text-gray-400">
-                Have API credentials?{" "}
-                <button
-                  type="button"
-                  onClick={() => setShopifyMode("manual")}
-                  className="text-brand-600 dark:text-brand-400 hover:underline font-medium"
-                >
-                  Use API key instead →
-                </button>
-              </p>
-            </>
-          ) : (
-            /* ── Manual mode (Shopify) or any other channel ── */
-            <form onSubmit={handleSubmit} className="space-y-4">
-              {/* OAuth switch-back link — only shown for Shopify manual mode (not in edit mode) */}
-              {channelType === "shopify" && !isEditMode && (
-                <p className="text-xs text-gray-500 dark:text-gray-400">
-                  <button
-                    type="button"
-                    onClick={() => setShopifyMode("oauth")}
-                    className="text-brand-600 dark:text-brand-400 hover:underline font-medium"
-                  >
-                    ← Use Shopify OAuth instead
-                  </button>
-                </p>
-              )}
-
+          {/* ── Manual credential form ─────────────────────────────────── */}
+          {showManualForm && (
+            <form onSubmit={handleManualSubmit} className="space-y-4">
               {/* Store name */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
@@ -287,7 +342,7 @@ export default function ConnectStoreModal({ organizationId, onClose, onConnect, 
                   type="text"
                   value={storeName}
                   onChange={(e) => setStoreName(e.target.value)}
-                  placeholder="e.g. My Wix Store"
+                  placeholder={`e.g. My ${channelLabel} Store`}
                   className="w-full rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2.5 text-sm text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-brand-500"
                 />
               </div>
@@ -302,7 +357,7 @@ export default function ConnectStoreModal({ organizationId, onClose, onConnect, 
                   type="text"
                   value={storeUrl}
                   onChange={(e) => setStoreUrl(e.target.value)}
-                  placeholder="e.g. mysite.wixsite.com/store"
+                  placeholder="e.g. https://mysite.example.com/store"
                   className="w-full rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2.5 text-sm text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-brand-500"
                 />
               </div>
@@ -385,7 +440,9 @@ export default function ConnectStoreModal({ organizationId, onClose, onConnect, 
                   disabled={submitting || schemaLoading}
                   className="flex-1 px-4 py-2.5 rounded-xl bg-brand-500 text-white text-sm font-medium hover:bg-brand-600 transition-colors disabled:opacity-60"
                 >
-                  {submitting ? (isEditMode ? "Saving…" : "Connecting…") : (isEditMode ? "Save Changes" : "Connect Store")}
+                  {submitting
+                    ? (isEditMode ? "Saving…" : "Connecting…")
+                    : (isEditMode ? "Save Changes" : "Connect Store")}
                 </button>
               </div>
             </form>

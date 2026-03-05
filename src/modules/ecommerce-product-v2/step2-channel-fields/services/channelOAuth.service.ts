@@ -1,17 +1,21 @@
 /**
  * Channel OAuth Service
- * Generic OAuth 2.0 flow for any channel type.
+ * Generic OAuth 2.0 flow for any channel type — Phase B implementation.
  * No mock/fallback data — all calls go to the real backend.
  *
- * Backend path pattern:
- *   GET  /api/v1/oauth/{channelType}/initiate
- *   POST /api/v1/oauth/{channelType}/callback
+ * Phase B backend endpoint (new unified path):
+ *   GET /api/v1/oauth/initiate?channelType=...&organizationId=...&storeName=...
+ *   → { authorizationUrl, nonce, channelType }
+ *   → Frontend redirects browser to authorizationUrl
+ *   → Marketplace redirects to BACKEND callback (not frontend)
+ *   → Backend exchanges code → saves store → redirects to /channels/stores?connected={channelType}
  *
- * Channel-specific params (e.g. shopDomain for Shopify, siteId for WIX)
- * are passed via the `extras` bag and forwarded as-is to the backend.
+ * The legacy per-channel path GET /api/v1/oauth/{channelType}/initiate is no longer used.
+ * The legacy POST /api/v1/oauth/{channelType}/callback (completeOAuth) is kept for
+ * backwards compatibility but is not called in the new OAuth flow.
  */
 
-import type { ChannelStoreConnection, ChannelType } from "../types/channelStore";
+import type { ChannelStoreConnection, ChannelType, OAuthInitiateResponse } from "../types/channelStore";
 import { mapStore } from "./channelStore.service";
 
 const BASE = "http://localhost:8888/labamap/api/v1";
@@ -32,10 +36,15 @@ async function handleResponse<T>(res: Response): Promise<T> {
 
 export interface InitiateOAuthParams {
   organizationId: string;
-  returnUrl: string;
   storeName?: string;
   region?: string;
-  /** Channel-specific query params (e.g. { shopDomain } for Shopify) */
+  /** Required for Shopify — the {yourstore}.myshopify.com domain */
+  shop?: string;
+  /** For reconnect flow — backend uses this to reconnect existing store instead of creating new */
+  storeId?: string;
+  /** @deprecated Legacy: returnUrl is no longer used; backend generates its own callback URL */
+  returnUrl?: string;
+  /** @deprecated Legacy extras bag — use named shop / storeId params instead */
   extras?: Record<string, string>;
 }
 
@@ -48,32 +57,32 @@ export interface CompleteOAuthParams {
 
 export const ChannelOAuthService = {
   /**
-   * Initiate OAuth for a channel.
-   * GET /api/v1/oauth/{channelType}/initiate
-   * Returns the provider authorization URL to redirect the user to.
+   * Initiate OAuth for a channel (Phase B).
+   * GET /api/v1/oauth/initiate?channelType=...&organizationId=...&storeName=...
+   * Returns the provider authorization URL — redirect the browser to it.
+   * The backend callback handles code exchange and redirects to /channels/stores?connected={channelType}.
    */
   async initiateOAuth(channelType: ChannelType, params: InitiateOAuthParams): Promise<string> {
     const query = new URLSearchParams({
+      channelType,
       organizationId: params.organizationId,
-      returnUrl: params.returnUrl,
       ...(params.storeName ? { storeName: params.storeName } : {}),
-      ...(params.region ? { region: params.region } : {}),
-      ...params.extras,
+      ...(params.region    ? { region:    params.region }    : {}),
+      ...(params.shop      ? { shop:      params.shop }      : {}),
+      ...(params.storeId   ? { storeId:   params.storeId }   : {}),
+      // Legacy extras passthrough (shopDomain → shop mapping for old call sites)
+      ...(params.extras?.shopDomain ? { shop: params.extras.shopDomain } : {}),
     });
 
-    const res = await fetch(`${BASE}/oauth/${channelType}/initiate?${query.toString()}`, {
-      method: "GET",
-    });
-
-    const data = await handleResponse<{ authUrl: string }>(res);
-    return data.authUrl;
+    const res = await fetch(`${BASE}/oauth/initiate?${query.toString()}`, { method: "GET" });
+    const data = await handleResponse<OAuthInitiateResponse>(res);
+    return data.authorizationUrl;
   },
 
   /**
-   * Complete OAuth by exchanging the provider code for an access token.
-   * POST /api/v1/oauth/{channelType}/callback
-   * Backend validates provider-specific params (e.g. HMAC for Shopify),
-   * exchanges the code, saves the store, and returns the ChannelStoreConnection.
+   * @deprecated Legacy POST callback — not used in Phase B+ flow.
+   * The backend now handles the GET callback directly and redirects to /channels/stores.
+   * Kept for backwards compatibility with existing /channels/oauth/callback page.
    */
   completeOAuth(channelType: ChannelType, params: CompleteOAuthParams): Promise<ChannelStoreConnection> {
     return fetch(`${BASE}/oauth/${channelType}/callback`, {

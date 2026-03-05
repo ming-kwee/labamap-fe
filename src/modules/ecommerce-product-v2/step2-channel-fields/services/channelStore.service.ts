@@ -18,6 +18,8 @@ import type {
   PublishAnalysisRequest,
   PublishAnalysisResponse,
   CredentialFieldSchema,
+  OAuthInitiateRequest,
+  OAuthInitiateResponse,
 } from "../types/channelStore";
 
 const BASE = "http://localhost:8888/labamap/api/v1";
@@ -62,17 +64,22 @@ async function handleEmptyResponse(res: Response): Promise<void> {
 export function mapStore(raw: unknown): ChannelStoreConnection {
   const r = raw as Record<string, unknown>;
   return {
-    storeId:        r.storeId        as string,
-    channelType:    r.channelType    as ChannelStoreConnection["channelType"],
-    storeName:      r.storeName      as string,
-    storeUrl:       r.storeUrl       as string,
-    region:         r.region         as string | undefined,
-    organizationId: r.organizationId as string,
-    credentials:    r.credentials    as Record<string, string>,
-    isActive:       Boolean(r.isActive ?? r.active),
-    displayOrder:   r.displayOrder   as number,
-    connectedAt:    r.connectedAt    as string,
-    lastSyncedAt:   r.lastSyncedAt   as string | undefined,
+    storeId:           r.storeId           as string,
+    channelType:       r.channelType       as ChannelStoreConnection["channelType"],
+    storeName:         r.storeName         as string,
+    storeUrl:          r.storeUrl          as string,
+    region:            r.region            as string | undefined,
+    organizationId:    r.organizationId    as string,
+    credentials:       r.credentials       as Record<string, string>,
+    isActive:          Boolean(r.isActive ?? r.active),
+    displayOrder:      r.displayOrder      as number,
+    connectedAt:       r.connectedAt       as string,
+    lastSyncedAt:      r.lastSyncedAt      as string | undefined,
+    // Phase D + E
+    reconnectRequired: r.reconnectRequired as boolean | undefined,
+    connectionStatus:  r.connectionStatus  as ChannelStoreConnection["connectionStatus"],
+    disconnectedAt:    r.disconnectedAt    as string | undefined,
+    disconnectReason:  r.disconnectReason  as string | undefined,
   };
 }
 
@@ -176,6 +183,37 @@ export const ChannelStoreService = {
         body: JSON.stringify({ displayOrder }),
       }
     ).then((r) => handleResponse<unknown>(r)).then(mapStore);
+  },
+
+  /**
+   * List ALL stores for an organization — active, inactive, disconnected.
+   * GET /api/v1/channel-stores?organizationId=...&includeInactive=true
+   * Use this for dashboards that need to show RECONNECT_REQUIRED / DISCONNECTED stores.
+   */
+  listAllStores(organizationId: string): Promise<ChannelStoreConnection[]> {
+    return fetch(
+      `${BASE}/channel-stores?organizationId=${encodeURIComponent(organizationId)}&includeInactive=true`,
+      { method: "GET" }
+    ).then((r) => handleResponse<unknown[]>(r)).then((arr) => arr.map(mapStore));
+  },
+
+  /**
+   * Initiate OAuth authorization for a channel (Phase B).
+   * GET /api/v1/oauth/initiate?channelType=...&organizationId=...&storeName=...
+   * Returns { authorizationUrl, nonce, channelType } — redirect the user to authorizationUrl.
+   * Backend handles the callback and redirects to /channels/stores?connected={channelType}.
+   */
+  initiateOAuth(request: OAuthInitiateRequest): Promise<OAuthInitiateResponse> {
+    const params = new URLSearchParams({
+      channelType:    request.channelType,
+      organizationId: request.organizationId,
+      storeName:      request.storeName,
+      ...(request.region   ? { region:   request.region }   : {}),
+      ...(request.shop     ? { shop:     request.shop }     : {}),
+      ...(request.storeId  ? { storeId:  request.storeId }  : {}),
+    });
+    return fetch(`${BASE}/oauth/initiate?${params.toString()}`, { method: "GET" })
+      .then((r) => handleResponse<OAuthInitiateResponse>(r));
   },
 };
 

@@ -29,7 +29,10 @@ export default function ChannelOAuthCallbackPage() {
     const stateParam = searchParams.get("state");
 
     if (!code || !stateParam) {
-      setState({ phase: "error", message: "Missing required OAuth parameters in callback URL." });
+      // No OAuth params — user navigated here directly (not via marketplace redirect).
+      // In Phase B+ the backend handles the callback itself and redirects to /channels/stores.
+      // Just send the user there.
+      router.replace("/channels/stores");
       return;
     }
 

@@ -13,6 +13,9 @@ export type ChannelType =
   | "shopee"
   | "walmart";
 
+/** Phase E: connection lifecycle status derived by backend from isActive + reconnectRequired + disconnectReason */
+export type ConnectionStatus = 'ACTIVE' | 'RECONNECT_REQUIRED' | 'DISCONNECTED' | 'INACTIVE';
+
 export interface ChannelStoreConnection {
   storeId: string;
   channelType: ChannelType;
@@ -28,6 +31,16 @@ export interface ChannelStoreConnection {
   connectedAt: string | number;
   /** ISO 8601 string or epoch-seconds number depending on backend Jackson config */
   lastSyncedAt?: string | number;
+
+  // ── Phase D + E new fields ──────────────────────────────────────────────
+  /** Phase E: true when the OAuth token has expired/been revoked — merchant must re-authorize */
+  reconnectRequired?: boolean;
+  /** Phase E: derived status — drives badge color and action buttons in the UI */
+  connectionStatus?: ConnectionStatus;
+  /** Phase D: ISO datetime when the store was deactivated by a marketplace webhook */
+  disconnectedAt?: string;
+  /** Phase D: machine-readable reason ("app_uninstalled" | "deauthorize" | "app_removed" | "manual" | …) */
+  disconnectReason?: string;
 }
 
 /**
@@ -230,6 +243,26 @@ export interface ChannelStepRequest {
   masterProductId: string;
   organizationId: string;
   masterVariants?: Array<{ sku: string; label: string }>;
+}
+
+// ─── OAuth Initiation Types (Phase B) ────────────────────────────────────────
+// Frontend calls GET /api/v1/oauth/initiate → gets authorizationUrl → redirects browser
+
+export interface OAuthInitiateRequest {
+  channelType: ChannelType;
+  organizationId: string;
+  storeName: string;
+  region?: string;
+  /** Required for Shopify — the {yourstore}.myshopify.com domain */
+  shop?: string;
+  /** For reconnect flow — backend uses this to update existing store record instead of creating new */
+  storeId?: string;
+}
+
+export interface OAuthInitiateResponse {
+  authorizationUrl: string;
+  nonce: string;
+  channelType: ChannelType;
 }
 
 // ─── Publish Types ────────────────────────────────────────────────────────────
