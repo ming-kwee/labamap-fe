@@ -119,6 +119,7 @@ export interface FormField {
   readOnly: boolean;
   hidden: boolean;
   required: boolean;
+  multiple?: boolean;
 
   businessContext: FieldBusinessContext;
 

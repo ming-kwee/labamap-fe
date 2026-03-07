@@ -68,8 +68,20 @@ export function generateMasterProduct(options: ProductGenerationOptions): Master
       continue;
     }
 
-    if (actualFieldName === 'images') {
-      (product as any).images = Array.isArray(value) ? value : [];
+    if (actualFieldName === 'images' || actualFieldName === 'galleryImages') {
+      (product as any)[actualFieldName] = Array.isArray(value) ? value : value ? [value] : [];
+      mappedFields.add(actualFieldName);
+      continue;
+    }
+
+    if (actualFieldName === 'mainImage') {
+      // mainImage may become an array if backend sends multiple:true or maxItems>1
+      if (Array.isArray(value)) {
+        (product as any).mainImage = value[0] || '';
+        (product as any).galleryImages = value;
+      } else {
+        (product as any).mainImage = value;
+      }
       mappedFields.add(actualFieldName);
       continue;
     }

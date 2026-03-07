@@ -15,6 +15,7 @@ export interface UseFormStateReturn {
   formData: DynamicFormData;
   setFormData: React.Dispatch<React.SetStateAction<DynamicFormData>>;
   expandedSections: Set<string>;
+  setExpandedSections: React.Dispatch<React.SetStateAction<Set<string>>>;
   toggleSection: (sectionKey: string) => void;
   expandAllSections: () => void;
   collapseAllSections: () => void;
@@ -74,6 +75,7 @@ export function useFormState(options: UseFormStateOptions = {}): UseFormStateRet
     formData,
     setFormData,
     expandedSections,
+    setExpandedSections,
     toggleSection,
     expandAllSections,
     collapseAllSections,

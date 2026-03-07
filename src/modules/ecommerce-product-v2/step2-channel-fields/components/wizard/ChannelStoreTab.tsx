@@ -22,6 +22,7 @@ interface Props {
   isSaving: boolean;
   lastSaved?: Date;
   masterProduct?: MasterProductSnapshot;
+  fieldErrors?: Set<string>;
 }
 
 function SectionHeader({ label, count, expanded, onToggle }: {
@@ -63,10 +64,12 @@ function FieldRow({
   field,
   value,
   onChange,
+  hasError,
 }: {
   field: import("../../types/channelStore").ChannelFormField;
   value: unknown;
   onChange: (name: string, val: unknown) => void;
+  hasError?: boolean;
 }) {
   if (field.fieldType === "CHECKBOX") {
     return (
@@ -80,19 +83,24 @@ function FieldRow({
   }
   return (
     <div>
-      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+      <label className={`block text-sm font-medium mb-1 ${hasError ? 'text-red-500' : 'text-gray-700 dark:text-gray-300'}`}>
         {field.label}
-        {field.required && <span className="text-error-500 ml-0.5">*</span>}
+        {field.required && <span className="text-red-500 ml-0.5">*</span>}
       </label>
-      <ChannelFieldInput field={field} value={value} onChange={onChange} />
-      {field.helpText && (
+      <div className={hasError ? 'ring-1 ring-red-500 rounded-xl' : undefined}>
+        <ChannelFieldInput field={field} value={value} onChange={onChange} />
+      </div>
+      {hasError && (
+        <p className="text-xs text-red-500 mt-1">This field is required</p>
+      )}
+      {field.helpText && !hasError && (
         <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">{field.helpText}</p>
       )}
     </div>
   );
 }
 
-export default function ChannelStoreTab({ schema, values, onChange, isSaving, lastSaved, masterProduct }: Props) {
+export default function ChannelStoreTab({ schema, values, onChange, isSaving, lastSaved, masterProduct, fieldErrors }: Props) {
   const [optionalExpanded, setOptionalExpanded] = useState(false);
 
   function handleFieldChange(fieldName: string, value: unknown) {
@@ -163,6 +171,36 @@ export default function ChannelStoreTab({ schema, values, onChange, isSaving, la
       );
     }
 
+    if (section.sectionName === "merchant_data") {
+      const fields = section.fields ?? [];
+      if (fields.length === 0) return null;
+      return (
+        <div key="merchant_data" className="space-y-3">
+          <div className="px-4 py-3 bg-blue-50 dark:bg-blue-500/10 rounded-xl border border-blue-200 dark:border-blue-500/30">
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-semibold text-blue-800 dark:text-blue-200">{section.label}</span>
+                <span className="text-xs text-blue-500 dark:text-blue-400">{fields.length} field{fields.length !== 1 ? "s" : ""}</span>
+              </div>
+              <span className="text-xs text-blue-500 dark:text-blue-400 italic">Sourced from your {schema.channelType} account</span>
+            </div>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pl-1">
+            {fields.map((field) => (
+              <div key={field.fieldName} className={field.fieldType === "TEXTAREA" ? "md:col-span-2" : ""}>
+                <FieldRow
+                  field={field}
+                  value={values.channelData[field.fieldName]}
+                  onChange={handleFieldChange}
+                  hasError={fieldErrors?.has(field.fieldName)}
+                />
+              </div>
+            ))}
+          </div>
+        </div>
+      );
+    }
+
     const fields = section.fields ?? [];
     if (fields.length === 0) return null;
 
@@ -184,6 +222,7 @@ export default function ChannelStoreTab({ schema, values, onChange, isSaving, la
                   field={field}
                   value={values.channelData[field.fieldName]}
                   onChange={handleFieldChange}
+                  hasError={fieldErrors?.has(field.fieldName)}
                 />
               </div>
             ))}

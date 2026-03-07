@@ -58,22 +58,6 @@ function extractInitialValues(schema: ChannelSchemaPerStore): StoreFormValues {
   return { masterOverrides, channelData, variantOverrides };
 }
 
-// ─── Local completion check ────────────────────────────────────────────────────
-// Returns true if every required field in the store's schema has a non-empty value
-// in the current (possibly unsaved) form values.
-function isLocallyComplete(channel: ChannelSchemaPerStore, vals: StoreFormValues): boolean {
-  for (const section of channel.sections) {
-    if (section.sectionName === "variant_overrides") continue;
-    if (section.sectionName === "master_overrides") continue; // overrides are never required
-    for (const field of section.fields ?? []) {
-      if (!field.required) continue;
-      const v = vals.channelData[field.fieldName];
-      if (v === undefined || v === null || v === "") return false;
-    }
-  }
-  return true;
-}
-
 // ─── Read master product data from sessionStorage ─────────────────────────────
 // The create page stores the full product as JSON under `product_${id}`.
 // Two helpers:
@@ -208,8 +192,9 @@ export default function ChannelFieldsWizard({ masterProductId }: Props) {
   const saveTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
   const dirtyStores = useRef<Set<string>>(new Set());
 
-  // Navigation warning
+  // Navigation warning + field-level errors for the active tab
   const [continueWarning, setContinueWarning] = useState<string | null>(null);
+  const [activeTabFieldErrors, setActiveTabFieldErrors] = useState<Set<string>>(new Set());
 
   // Load schema
   const loadSchema = useCallback(async () => {
@@ -306,6 +291,11 @@ export default function ChannelFieldsWizard({ masterProductId }: Props) {
   function handleValuesChange(storeId: string, channel: ChannelSchemaPerStore, values: StoreFormValues) {
     setStoreValues((prev) => ({ ...prev, [storeId]: values }));
     scheduleAutosave(storeId, channel);
+    // Clear field errors when user edits the active tab
+    if (storeId === activeStoreId) {
+      setActiveTabFieldErrors(new Set());
+      setContinueWarning(null);
+    }
   }
 
   // ── Tab switch: save current tab immediately ──────────────────────────────
@@ -320,6 +310,7 @@ export default function ChannelFieldsWizard({ masterProductId }: Props) {
     }
     setActiveStoreIndex(newIndex);
     setContinueWarning(null);
+    setActiveTabFieldErrors(new Set());
   }
 
   // ── Navigation ────────────────────────────────────────────────────────────
@@ -339,17 +330,70 @@ export default function ChannelFieldsWizard({ masterProductId }: Props) {
   }
 
   async function handleContinueToPreview() {
+    if (!schemaResponse) return;
     await flushDirtyStores();
-    const anyReady =
-      Object.values(storeCompletion).some((c) => c.status === "READY" || c.pct === 100) ||
-      (schemaResponse?.channels ?? []).some((ch) => {
-        const vals = storeValues[ch.storeId];
-        return vals ? isLocallyComplete(ch, vals) : false;
-      });
-    if (!anyReady) {
-      setContinueWarning("At least one store must have all required fields filled to continue.");
+
+    // Compute missing required fields per store (local validation only)
+    const missingByStore: Record<string, string[]> = {};
+    const missingFieldNamesByStore: Record<string, string[]> = {};
+    for (const ch of schemaResponse.channels) {
+      const vals = storeValues[ch.storeId];
+      const missingLabels: string[] = [];
+      const missingNames: string[] = [];
+      for (const section of ch.sections) {
+        if (section.sectionName === "variant_overrides") continue;
+        if (section.sectionName === "master_overrides") continue;
+        for (const field of section.fields ?? []) {
+          if (!field.required) continue;
+          const v = vals?.channelData[field.fieldName];
+          if (v === undefined || v === null || v === "") {
+            missingLabels.push(field.label);
+            missingNames.push(field.fieldName);
+          }
+        }
+      }
+      if (missingLabels.length > 0) {
+        missingByStore[ch.storeId] = missingLabels;
+        missingFieldNamesByStore[ch.storeId] = missingNames;
+      }
+    }
+
+    // At least one store that actually has required fields must be fully complete.
+    // Stores with zero required fields are excluded from this check — they are always
+    // "trivially complete" and must not mask stores that have unfilled required fields.
+    const storesWithRequired = schemaResponse.channels.filter((ch) =>
+      ch.sections.some(
+        (s) =>
+          s.sectionName !== "variant_overrides" &&
+          s.sectionName !== "master_overrides" &&
+          (s.fields ?? []).some((f) => f.required)
+      )
+    );
+    // If no store defines any required fields, always allow continuation.
+    const hasCompleteStore =
+      storesWithRequired.length === 0 ||
+      storesWithRequired.some((ch) => !missingByStore[ch.storeId]);
+    if (!hasCompleteStore) {
+      // Highlight missing fields in the active tab
+      const activeErrors = missingFieldNamesByStore[activeChannel.storeId];
+      setActiveTabFieldErrors(new Set(activeErrors ?? []));
+
+      // Build warning listing each store's missing fields
+      const lines = schemaResponse.channels
+        .map((ch) => {
+          const missing = missingByStore[ch.storeId];
+          if (!missing?.length) return null;
+          return `${ch.storeName}: ${missing.join(", ")}`;
+        })
+        .filter(Boolean);
+      setContinueWarning(
+        "Please fill all required fields in at least one store before continuing.\n" + lines.join("\n")
+      );
       return;
     }
+
+    setActiveTabFieldErrors(new Set());
+    setContinueWarning(null);
     router.push(`/products/${masterProductId}/publish`);
   }
 
@@ -410,14 +454,6 @@ export default function ChannelFieldsWizard({ masterProductId }: Props) {
   const activeChannel = channels[activeStoreIndex];
   const activeStoreId = activeChannel.storeId;
   const activeValues = storeValues[activeStoreId] ?? { masterOverrides: {}, channelData: {}, variantOverrides: {} };
-  // A store is "ready" if the backend confirmed it (after save), OR if all required
-  // fields are already filled locally (before the next autosave fires).
-  const anyReady =
-    Object.values(storeCompletion).some((c) => c.status === "READY" || c.pct === 100) ||
-    channels.some((ch) => {
-      const vals = storeValues[ch.storeId];
-      return vals ? isLocallyComplete(ch, vals) : false;
-    });
   const isLastTab = activeStoreIndex === channels.length - 1;
 
   return (
@@ -505,13 +541,18 @@ export default function ChannelFieldsWizard({ masterProductId }: Props) {
           isSaving={savingStoreId === activeStoreId}
           lastSaved={lastSaved[activeStoreId]}
           masterProduct={masterProductSnapshot ?? undefined}
+          fieldErrors={activeTabFieldErrors}
         />
       </div>
 
       {/* Navigation */}
       {continueWarning && (
-        <div className="rounded-xl bg-warning-50 dark:bg-warning-500/10 border border-warning-200 dark:border-warning-500/30 px-4 py-3">
-          <p className="text-sm text-warning-700 dark:text-warning-400">{continueWarning}</p>
+        <div className="rounded-xl bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/30 px-4 py-3 space-y-1">
+          {continueWarning.split("\n").map((line, i) => (
+            <p key={i} className={`text-sm ${i === 0 ? "font-medium text-red-700 dark:text-red-400" : "text-red-600 dark:text-red-300"}`}>
+              {line}
+            </p>
+          ))}
         </div>
       )}
       <div className="flex items-center justify-between gap-4">
@@ -532,8 +573,7 @@ export default function ChannelFieldsWizard({ masterProductId }: Props) {
           )}
           <button
             onClick={handleContinueToPreview}
-            disabled={!anyReady}
-            className="px-6 py-2.5 rounded-xl bg-brand-500 text-white text-sm font-medium hover:bg-brand-600 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            className="px-6 py-2.5 rounded-xl bg-brand-500 text-white text-sm font-medium hover:bg-brand-600 transition-colors"
           >
             Continue to Preview →
           </button>

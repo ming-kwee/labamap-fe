@@ -32,18 +32,18 @@ merchant's connected account via the channel's API.
 
 ### Real examples by channel
 
-| Channel | Field | Merchant data source |
-|---------|-------|---------------------|
-| Shopify | `location_id` (fulfillment location) | `GET /admin/api/locations.json` |
-| Shopify | `collection_id` | `GET /admin/api/custom_collections.json` |
-| Shopify | `shipping_zone` | `GET /admin/api/shipping_zones.json` |
-| Amazon | `fulfillment_channel` | SP-API `GetServiceStatus` |
-| Amazon | `merchant_shipping_group` | SP-API `listInputFieldValues` |
-| TikTok Shop | `warehouse_id` | TikTok Partner API `GetWarehouses` |
-| TikTok Shop | `shipping_template_id` | TikTok Partner API `GetShippingTemplates` |
-| Lazada | `warehouse_code` | Lazada Open Platform `GetWarehouseDetail` |
-| eBay | `fulfillment_policy_id` | eBay Fulfillment Policy API |
-| Shopee | `logistics_channel_id` | Shopee `getLogistics` |
+| Channel     | Field                                | Merchant data source.                     |
+|-------------|--------------------------------------|-------------------------------------------|
+| Shopify     | `location_id` (fulfillment location) | `GET /admin/api/locations.json`           |
+| Shopify.    | `collection_id`                      | `GET /admin/api/custom_collections.json`  |
+| Shopify.    | `shipping_zone`                      | `GET /admin/api/shipping_zones.json`      |
+| Amazon.     | `fulfillment_channel`                | SP-API `GetServiceStatus`                 |
+| Amazon      | `merchant_shipping_group`            | SP-API `listInputFieldValues`             |
+| TikTok Shop | `warehouse_id`                       | TikTok Partner API `GetWarehouses`        |
+| TikTok Shop | `shipping_template_id`               | TikTok Partner API `GetShippingTemplates` |
+| Lazada      | `warehouse_code`                     | Lazada Open Platform `GetWarehouseDetail` |
+| eBay        | `fulfillment_policy_id`              | eBay Fulfillment Policy API               |
+| Shopee      | `logistics_channel_id`               | Shopee `getLogistics`                     |
 
 ### Why the current approach fails
 
@@ -112,15 +112,15 @@ channel-specific code based on the master value.
 
 ### Real examples
 
-| Master field | Master value | Channel | Channel field | Expected channel value |
-|---|---|---|---|---|
-| `material` | `"cotton"` | Lazada | `bahan` | `"LZ_MAT_001"` (Cotton) |
-| `material` | `"polyester blend"` | Lazada | `bahan` | `"LZ_MAT_003"` (Polyester Blend) |
-| `material` | `"cotton"` | Amazon | `fabric_type` | `"100% Cotton"` |
-| `color` | `"navy blue"` | TikTok | `colour_id` | `"COLOUR_0036"` |
-| `color` | `"navy blue"` | Shopee | `colour` | `"17"` (Shopee color ID) |
-| `gender` | `"unisex"` | Amazon | `department` | `["mens", "womens"]` (multi) |
-| `category` | `"T-Shirt"` | Lazada | `primary_category_id` | `"10001234"` |
+| Master field | Master value        | Channel | Channel field         | Expected channel value           |
+|--------------|---------------------|---------|-----------------------|----------------------------------|
+| `material`   | `"cotton"`          | Lazada  | `bahan`               | `"LZ_MAT_001"` (Cotton)          |
+| `material`   | `"polyester blend"` | Lazada  | `bahan`               | `"LZ_MAT_003"` (Polyester Blend) |
+| `material`   | `"cotton"`          | Amazon  | `fabric_type`         | `"100% Cotton"`                  |
+| `color`      | `"navy blue"`       | TikTok  | `colour_id`           | `"COLOUR_0036"`                  |
+| `color`      | `"navy blue"`       | Shopee  | `colour`              | `"17"` (Shopee color ID)         |
+| `gender`     | `"unisex"`          | Amazon  | `department`          | `["mens", "womens"]` (multi)     |
+| `category`   | `"T-Shirt"`         | Lazada  | `primary_category_id` | `"10001234"`                     |
 
 ### Why this is different from `master_overrides`
 
@@ -1097,12 +1097,20 @@ private DerivationRule derivationRule; // serialized multi-source derivation rul
 
 ## Priority and Phasing
 
-### Phase 1 — Merchant-sourced options (Scenario A, eager embed)
-Scope: warehouse IDs, shipping templates (TikTok, Lazada).
+### Phase 1 — Merchant-sourced options (Scenario A) ✅ IMPLEMENTED (2026-03-07)
+Scope: warehouse IDs, shipping templates (TikTok, Lazada) — both eager and lazy paths.
+
+**Frontend completed:**
+- `channelStore.ts` — `optionsSource?: "STATIC" | "MERCHANT_API"` and `optionsEndpoint?: string` added to `ChannelFormField`; `"merchant_data"` added to `SectionName`
+- `channelStore.service.ts` — `MerchantDataService.fetchFieldOptions()` for imperative/refresh calls
+- `ChannelFieldInput.tsx` — `useMerchantOptions` hook: eager-embed (options[] already filled) requires no UI change; lazy-load (options[] empty + optionsEndpoint set) fetches on mount with spinner skeleton and error state
+- `ChannelStoreTab.tsx` — `merchant_data` section rendered with blue accent header and "Sourced from your {channelType} account" label
+
+**Backend still needed:**
 1. Add `optionsSource` + `merchantApiOperation` to `EcommerceMasterAttributeDocument`
-2. Implement `TikTokMerchantDataService`, `LazadaMerchantDataService`
-3. Update schema generation to embed live options
-4. No frontend changes needed
+2. Implement `TikTokMerchantDataService`, `LazadaMerchantDataService` (and others)
+3. Update `ChannelStepSchemaService` to embed live options (eager) or set `optionsEndpoint` (lazy)
+4. `GET /api/v1/merchant-data/{channelType}/{storeId}/field-options` endpoint
 
 ### Phase 2 — Master-to-channel value mapping (Scenario B)
 Scope: material/color/gender for Lazada and TikTok.

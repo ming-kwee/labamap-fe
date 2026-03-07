@@ -93,6 +93,8 @@ export default function ProductCreateForm({
 }: ProductCreateFormProps) {
   // Stable temp product ID for image uploads before product is saved
   const tempProductIdRef = useRef(`temp_${Date.now()}`);
+  // Track whether we've already auto-expanded sections (runs once after first schema load)
+  const hasAutoExpandedRef = useRef(false);
 
   // ── Hooks ──────────────────────────────────────────────────────────────────
 
@@ -100,6 +102,7 @@ export default function ProductCreateForm({
     formData,
     setFormData,
     expandedSections,
+    setExpandedSections,
     toggleSection,
     showJsonPreview,
     setShowJsonPreview,
@@ -241,12 +244,23 @@ export default function ProductCreateForm({
     const filteredFields = visibleFields.filter((field: any) => {
       const displayLevel = (field.displayLevel || '').toLowerCase();
       if (formStage === 'essential') {
-        return displayLevel === 'essential' || displayLevel === 'basic';
+        return (
+          displayLevel === 'essential' ||
+          displayLevel === 'basic' ||
+          displayLevel === 'enhanced' ||
+          displayLevel === 'advanced' ||
+          displayLevel === 'optional' ||
+          displayLevel === ''
+        );
       }
       return (
         displayLevel === 'essential' ||
         displayLevel === 'basic' ||
+        displayLevel === 'enhanced' ||
+        displayLevel === 'advanced' ||
+        displayLevel === 'optional' ||
         displayLevel === 'category-specific' ||
+        displayLevel === '' ||
         field.conditionalVisibility !== null
       );
     });
@@ -261,6 +275,23 @@ export default function ProductCreateForm({
       ([keyA], [keyB]) => getSectionMetadata(keyA).order - getSectionMetadata(keyB).order
     );
   }, [schema, formData, formStage, getVisibleFields]);
+
+  // Auto-expand sections that contain at least one required field (runs once after schema loads)
+  useEffect(() => {
+    if (sortedSections.length === 0 || hasAutoExpandedRef.current) return;
+    hasAutoExpandedRef.current = true;
+    const required = new Set<string>();
+    for (const [sectionKey, fields] of sortedSections) {
+      if ((fields as any[]).some((f: any) => f.required)) required.add(sectionKey);
+    }
+    if (required.size > 0) {
+      setExpandedSections((prev) => {
+        const next = new Set(prev);
+        required.forEach((k) => next.add(k));
+        return next;
+      });
+    }
+  }, [sortedSections, setExpandedSections]);
 
   const productId = formData.id || tempProductIdRef.current;
 

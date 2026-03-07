@@ -166,6 +166,22 @@ export interface ChannelFormField {
   isMasterField?: boolean;
   /** master product's current value for this field, resolved by backend at schema-gen time */
   masterValue?: unknown;
+  // ── Scenario A: Merchant-sourced options ──────────────────────────────────
+  /**
+   * STATIC   = options[] is complete and static — no fetch needed (default).
+   * MERCHANT_API = options are live from the merchant's account.
+   *   - Eager embed: backend called the channel API during schema generation and
+   *     embedded results in options[]. Frontend requires no changes.
+   *   - Lazy load: options[] is empty; backend sets optionsEndpoint so the
+   *     frontend fetches when the field is rendered.
+   */
+  optionsSource?: "STATIC" | "MERCHANT_API";
+  /**
+   * Relative URL pre-built by the backend for lazy-load fields.
+   * Example: /merchant-data/shopify/store-abc/field-options?fieldName=location_id&organizationId=org_123
+   * Only present when optionsSource === "MERCHANT_API" and options[] is empty (lazy path).
+   */
+  optionsEndpoint?: string;
 }
 
 export interface VariantOverrideRow {
@@ -179,7 +195,9 @@ export type SectionName =
   | "recommended"
   | "variant_overrides"
   | "optional"
-  | "master_overrides";
+  | "master_overrides"
+  /** Scenario A: fields whose options come from the merchant's live account (warehouses, shipping templates, etc.) */
+  | "merchant_data";
 
 // ─── Master Product Snapshot ─────────────────────────────────────────────────
 // Lightweight view of master product sent in ChannelStepSchemaResponse (Step 2)

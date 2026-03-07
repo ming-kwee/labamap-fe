@@ -308,6 +308,35 @@ export const ChannelSchemaService = {
 
 // ─── Publish ──────────────────────────────────────────────────────────────────
 
+// ─── Merchant Data (Scenario A — lazy-load options) ──────────────────────────
+
+export const MerchantDataService = {
+  /**
+   * Fetch live options for a MERCHANT_API field from the merchant's connected account.
+   * Used for the lazy-load path when the backend did not eager-embed options in the schema.
+   *
+   * GET /api/v1/merchant-data/{channelType}/{storeId}/field-options
+   *   ?fieldName=...&organizationId=...
+   *
+   * The backend pre-builds optionsEndpoint on the ChannelFormField for lazy fields, so
+   * callers can also simply fetch BASE + field.optionsEndpoint directly in the component.
+   * This method is provided for imperative calls (e.g. refresh buttons) outside the component.
+   */
+  fetchFieldOptions(
+    channelType: string,
+    storeId: string,
+    fieldName: string,
+    organizationId: string,
+  ): Promise<Array<{ value: string; label: string }>> {
+    const url =
+      `${BASE}/merchant-data/${encodeURIComponent(channelType)}/${encodeURIComponent(storeId)}/field-options` +
+      `?fieldName=${encodeURIComponent(fieldName)}&organizationId=${encodeURIComponent(organizationId)}`;
+    return fetch(url)
+      .then((r) => handleResponse<{ fieldName: string; options: Array<{ value: string; label: string }> }>(r))
+      .then((d) => d.options);
+  },
+};
+
 export const PublishService = {
   /**
    * Publish a product to a single store

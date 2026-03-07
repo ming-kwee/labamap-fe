@@ -5,6 +5,7 @@
 Successfully implemented **Frontend Image Upload Integration** for the data-driven product form, connecting to the existing GCP Cloud Storage backend module.
 
 **Date**: 2025-12-31
+**Last Updated**: 2026-03-07 (ecommerce-product-v2 module, multi-image gallery support)
 **Status**: ✅ Complete
 **Integration**: Frontend (Next.js/React/TypeScript) → Backend (Spring Boot) → GCP Cloud Storage
 
@@ -43,7 +44,8 @@ Successfully implemented **Frontend Image Upload Integration** for the data-driv
 
 ### 1. mediaUploadService.ts (278 lines)
 
-**Location**: `/src/modules/ecommerce-product/services/mediaUploadService.ts`
+**Location**: `/src/modules/ecommerce-product-v2/services/media-upload.service.ts`
+*(Previously: `/src/modules/ecommerce-product/services/mediaUploadService.ts`)*
 
 **Purpose**: TypeScript service for communicating with backend media upload API
 
@@ -118,7 +120,8 @@ export interface UploadProgress {
 
 ### 2. ImageUploadField.tsx (317 lines)
 
-**Location**: `/src/modules/ecommerce-product/components/ImageUploadField.tsx`
+**Location**: `/src/modules/ecommerce-product-v2/step1-create/components/ImageUploadField.tsx`
+*(Previously: `/src/modules/ecommerce-product/components/ImageUploadField.tsx`)*
 
 **Purpose**: React component for drag & drop image upload with preview
 
@@ -169,43 +172,48 @@ interface ImageUploadFieldProps {
 
 ---
 
-### 3. DynamicProductCreationFormRefactored.tsx (Integration)
+### 3. FieldRenderer.tsx (Integration)
 
-**Location**: `/src/modules/ecommerce-product/components/DynamicProductCreationFormRefactored.tsx`
+**Location**: `/src/modules/ecommerce-product-v2/step1-create/components/FieldRenderer.tsx`
+*(Previously integrated directly in `DynamicProductCreationFormRefactored.tsx`; now a standalone dispatcher component in the v2 module.)*
 
-**Changes Made**:
-
-1. **Added Import** (line 19):
+**Conditional Rendering** (image/file/media branch):
 ```typescript
-import ImageUploadField from './ImageUploadField';
+} else if (fieldType === 'image' || fieldType === 'file' || fieldType === 'media') {
+  input = (
+    <ImageUploadField
+      fieldName={fieldName}
+      label={field.label}
+      value={value || (fieldType === 'image' ? '' : [])}
+      onChange={(val) => onChange(fieldName, val)}
+      multiple={
+        field.multiple ??
+        (fieldType === 'media' || fieldType === 'file' ||
+         (fieldType === 'image' && (field.validationRules?.maxItems ?? 1) > 1))
+      }
+      maxImages={field.validationRules?.maxItems || 5}
+      required={field.required}
+      helpText={field.helpText}
+      organizationId={organizationId}
+      productId={productId}
+      error={error}
+      disabled={field.readOnly}
+    />
+  );
+}
 ```
 
-2. **Added Conditional Rendering** (lines 545-560):
-```typescript
-{fieldType === 'image' || fieldType === 'file' || fieldType === 'media' ? (
-  // ✅ IMAGE UPLOAD FIELD - Integrates with GCP Storage
-  <ImageUploadField
-    fieldName={fieldName}
-    label={field.label}
-    value={formData[fieldName] || (fieldType === 'image' ? '' : [])}
-    onChange={(value) => handleFieldChange(fieldName, value)}
-    multiple={fieldType === 'media' || fieldType === 'file'}
-    maxImages={field.validationRules?.maxItems || 5}
-    required={field.required}
-    helpText={field.helpText}
-    organizationId={organizationId}
-    productId={formData.id || `temp_${Date.now()}`}
-    error={fieldErrors[fieldName]}
-    disabled={field.readOnly}
-  />
-) : (
-  // ... other field types
-)}
-```
+**Field Type Mapping** (updated 2026-03-07):
 
-**Field Type Mapping**:
-- `fieldType === 'image'` → **Single image upload** (mainImage)
-- `fieldType === 'media'` or `'file'` → **Multiple image upload** (galleryImages)
+| `fieldType` | `field.multiple` | `maxItems` | Result |
+|-------------|-----------------|------------|--------|
+| `"image"` | `false` / not set | 1 | Single image upload (mainImage) |
+| `"image"` | `true` | 10 | Multi-image upload (galleryImages) |
+| `"image"` | not set | > 1 | Multi-image upload (fallback via maxItems) |
+| `"media"` | any | any | Multi-image upload |
+| `"file"` | any | any | Multi-file upload |
+
+**Key change from original**: `multiple` is no longer hardcoded per field type. It is resolved in priority order: `field.multiple` (explicit schema value) → type-based fallback → `maxItems > 1` check. This allows the backend schema to control single vs. multi-image behaviour per field without frontend code changes.
 
 **Integration Logic**:
 - Uses existing `organizationId` from form context
@@ -403,27 +411,37 @@ Response:
 
 ---
 
-### Example 2: Multiple Images (Gallery)
+### Example 2: Multiple Images (Gallery) — Recommended v2 Approach
 
-**MongoDB Schema**:
+**MongoDB Schema** (recommended — explicit `multiple` flag):
 ```javascript
 {
   fieldName: "galleryImages",
-  fieldType: "media",           // ← Triggers multiple upload
+  fieldType: "IMAGE",           // ← Same type as mainImage
   label: "Product Gallery",
   required: false,
   section: "media",
-  displayLevel: "enhanced",
+  displayLevel: "basic",
   helpText: "Additional product images",
+  multiple: true,               // ← Explicit multi-image flag (v2 approach)
   validationRules: {
-    maxItems: 8                 // ← Enforced by component
+    maxItems: 10                // ← Enforced by component
   }
 }
 ```
 
+**Alternative (legacy fallback — still supported)**:
+```javascript
+{
+  fieldName: "galleryImages",
+  fieldType: "media",           // ← Type-based fallback also works
+  validationRules: { maxItems: 8 }
+}
+```
+
 **Form Rendering**:
-1. Finds `fieldType === 'media'`
-2. Renders `<ImageUploadField multiple={true} maxImages={8} />`
+1. Finds `fieldType === 'image'` + `field.multiple === true`
+2. Renders `<ImageUploadField multiple={true} maxImages={10} />`
 3. User uploads 3 images
 4. `formData.galleryImages = ["url1", "url2", "url3"]`
 
@@ -716,9 +734,17 @@ curl "https://storage.googleapis.com/product-images-production/organizations/org
 - [x] Delete functionality
 - [x] Health check endpoint
 
+### Updated (2026-03-07)
+
+- [x] `FormField` interface — added `multiple?: boolean` property (`types/form-schema.ts`)
+- [x] `FieldRenderer.tsx` — `multiple` resolution reads `field.multiple` before type-based fallback
+- [x] `product-mapper.ts` — explicit handling for `galleryImages` and `mainImage` array values
+- [x] `ImageUploadField.tsx` — fixed unclickable upload zone using `<label htmlFor>` pattern instead of programmatic `.click()`
+- [x] Module relocated from `ecommerce-product/` to `ecommerce-product-v2/`
+
 ### Not Yet Implemented
 
-- [ ] MongoDB MasterProduct schema updates (manual step)
+- [ ] Backend `galleryImages` field in master-attributes-ecommerce.json (see `BACKEND-RECOMMENDATION-MASTER-PRODUCT-GALLERY.md`)
 - [ ] End-to-end testing with real GCP bucket
 - [ ] Advanced features (image cropping, filters, etc.)
 
@@ -743,6 +769,11 @@ curl "https://storage.googleapis.com/product-images-production/organizations/org
 4. **No Signed URLs**:
    - All images publicly accessible
    - **Future**: Add signed URLs for private products
+
+5. **`galleryImages` field not yet in backend schema** (as of 2026-03-07):
+   - Backend has not yet added `galleryImages` to master-attributes-ecommerce.json
+   - Media section currently shows only 1 field (`mainImage`)
+   - **Action**: See `BACKEND-RECOMMENDATION-MASTER-PRODUCT-GALLERY.md` for required backend changes
 
 ---
 

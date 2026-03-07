@@ -86,7 +86,7 @@ export default function FieldRenderer({
         label={field.label}
         value={value || (fieldType === 'image' ? '' : [])}
         onChange={(val) => onChange(fieldName, val)}
-        multiple={fieldType === 'media' || fieldType === 'file'}
+        multiple={field.multiple ?? (fieldType === 'media' || fieldType === 'file' || (fieldType === 'image' && (field.validationRules?.maxItems ?? 1) > 1))}
         maxImages={field.validationRules?.maxItems || 5}
         required={field.required}
         helpText={field.helpText}

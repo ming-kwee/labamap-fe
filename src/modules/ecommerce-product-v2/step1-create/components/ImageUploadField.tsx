@@ -117,24 +117,15 @@ export default function ImageUploadField({
     MediaUploadService.deleteImage(imageUrl).catch(() => {});
   }, [currentImages, multiple, onChange, disabled]);
 
+  const inputId = `file-upload-${fieldName}`;
+
   return (
     <div className="space-y-2">
       {(!multiple || currentImages.length < maxImages) && (
-        <div
-          className={`
-            border-2 border-dashed rounded-lg p-6 text-center transition-colors
-            ${disabled ? 'cursor-not-allowed bg-gray-100 dark:bg-gray-800' : 'cursor-pointer'}
-            ${isDragging && !disabled ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20' : 'border-gray-300 dark:border-gray-600'}
-            ${!disabled && !isDragging ? 'hover:border-gray-400 dark:hover:border-gray-500' : ''}
-            ${error ? 'border-red-300 bg-red-50 dark:border-red-500 dark:bg-red-900/20' : ''}
-          `}
-          onDragOver={handleDragOver}
-          onDragLeave={handleDragLeave}
-          onDrop={handleDrop}
-          onClick={() => !disabled && fileInputRef.current?.click()}
-        >
+        <>
           <input
             ref={fileInputRef}
+            id={inputId}
             type="file"
             accept="image/jpeg,image/jpg,image/png,image/webp,image/gif"
             multiple={multiple}
@@ -142,6 +133,19 @@ export default function ImageUploadField({
             className="hidden"
             disabled={disabled}
           />
+          <label
+            htmlFor={disabled ? undefined : inputId}
+            className={`
+              block border-2 border-dashed rounded-lg p-6 text-center transition-colors
+              ${disabled ? 'cursor-not-allowed bg-gray-100 dark:bg-gray-800' : 'cursor-pointer'}
+              ${isDragging && !disabled ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20' : 'border-gray-300 dark:border-gray-600'}
+              ${!disabled && !isDragging ? 'hover:border-gray-400 dark:hover:border-gray-500' : ''}
+              ${error ? 'border-red-300 bg-red-50 dark:border-red-500 dark:bg-red-900/20' : ''}
+            `}
+            onDragOver={handleDragOver}
+            onDragLeave={handleDragLeave}
+            onDrop={handleDrop}
+          >
           <Upload className={`h-12 w-12 mx-auto mb-3 ${disabled ? 'text-gray-300 dark:text-gray-600' : 'text-gray-400 dark:text-gray-500'}`} />
           <p className="text-sm text-gray-600 dark:text-gray-400 mb-1">
             {disabled ? 'Upload disabled' : `Drag & drop ${multiple ? 'images' : 'an image'} here, or click to browse`}
@@ -155,7 +159,8 @@ export default function ImageUploadField({
               {currentImages.length} / {maxImages} images uploaded
             </p>
           )}
-        </div>
+          </label>
+        </>
       )}
 
       {isUploading && uploadProgress.length > 0 && (
