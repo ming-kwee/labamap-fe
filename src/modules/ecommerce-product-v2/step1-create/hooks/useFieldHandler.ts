@@ -22,6 +22,10 @@ export function useFieldHandler(options: UseFieldHandlerOptions): UseFieldHandle
   const { formData, setFormData, onCategoryChange, onVariantConfigChange } = options;
 
   const userSelectedCategory = useRef<string | null>(null);
+  // Tracks the previous value of hasVariants so the effect below can detect the
+  // specific false → true transition. Initialized to undefined (not false) so the
+  // mount run is always skipped — undefined === false is never true.
+  const prevHasVariantsRef = useRef<boolean | undefined>(undefined);
 
   const handleFieldChange = useCallback((fieldName: string, value: any) => {
     if (fieldName === 'category') {
@@ -46,7 +50,7 @@ export function useFieldHandler(options: UseFieldHandlerOptions): UseFieldHandle
     }
 
     setFormData(prev => ({ ...prev, [fieldName]: value }));
-  }, [formData.category, setFormData, onCategoryChange]);
+  }, [setFormData, onCategoryChange]);
 
   const handleVariantConfiguratorChange = useCallback((config: any) => {
     setFormData(prev => ({
@@ -60,9 +64,25 @@ export function useFieldHandler(options: UseFieldHandlerOptions): UseFieldHandle
     }
   }, [setFormData, onVariantConfigChange]);
 
+  // Reload the category schema when the user enables variants while a category is already
+  // selected — variant-aware category fields may differ from the non-variant schema.
+  // Guards:
+  //   - Mount is always skipped (prevHasVariantsRef starts as undefined, not false)
+  //   - Only fires on the explicit false → true transition of hasVariants
+  //   - onCategoryChange recreation does not trigger a spurious call because
+  //     prevHasVariantsRef tracks hasVariants, not onCategoryChange
+  //   - Category changes do not trigger a call (hasVariants was already true → no transition)
   React.useEffect(() => {
+    const hasVariants = !!formData.hasVariants;
     const category = formData.category;
-    if (formData.hasVariants && category && onCategoryChange) {
+
+    const didEnableVariants =
+      prevHasVariantsRef.current === false && hasVariants === true;
+
+    // Always update the ref before any early return so the next run has the correct baseline
+    prevHasVariantsRef.current = hasVariants;
+
+    if (didEnableVariants && category && onCategoryChange) {
       onCategoryChange(category);
     }
   }, [formData.hasVariants, formData.category, onCategoryChange]);

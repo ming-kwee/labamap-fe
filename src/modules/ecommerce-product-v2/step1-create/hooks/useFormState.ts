@@ -6,6 +6,8 @@
 import { useState, useCallback } from 'react';
 import { DynamicFormData } from '../../types/form-schema';
 
+export type ViewLevel = 'essential' | 'standard' | 'full';
+
 export interface UseFormStateOptions {
   initialData?: Partial<DynamicFormData>;
   organizationDefaultCategory?: string;
@@ -23,6 +25,9 @@ export interface UseFormStateReturn {
   setShowJsonPreview: (show: boolean) => void;
   resetForm: () => void;
   updateFormField: (fieldName: string, value: any) => void;
+  viewLevel: ViewLevel;
+  setViewLevel: React.Dispatch<React.SetStateAction<ViewLevel>>;
+  promoteToStandard: () => void;
 }
 
 export function useFormState(options: UseFormStateOptions = {}): UseFormStateReturn {
@@ -34,9 +39,10 @@ export function useFormState(options: UseFormStateOptions = {}): UseFormStateRet
   }));
 
   const [expandedSections, setExpandedSections] = useState<Set<string>>(
-    new Set(['basic-info', 'pricing'])
+    new Set(['product-info'])
   );
   const [showJsonPreview, setShowJsonPreview] = useState(false);
+  const [viewLevel, setViewLevel] = useState<ViewLevel>('essential');
 
   const toggleSection = useCallback((sectionKey: string) => {
     setExpandedSections(prev => {
@@ -61,10 +67,15 @@ export function useFormState(options: UseFormStateOptions = {}): UseFormStateRet
     setExpandedSections(new Set());
   }, []);
 
+  const promoteToStandard = useCallback(() => {
+    setViewLevel((prev) => (prev === 'essential' ? 'standard' : prev));
+  }, []);
+
   const resetForm = useCallback(() => {
     setFormData({ category: organizationDefaultCategory, ...initialData });
-    setExpandedSections(new Set(['basic-info', 'pricing']));
+    setExpandedSections(new Set(['product-info']));
     setShowJsonPreview(false);
+    setViewLevel('essential');
   }, [initialData, organizationDefaultCategory]);
 
   const updateFormField = useCallback((fieldName: string, value: any) => {
@@ -82,6 +93,9 @@ export function useFormState(options: UseFormStateOptions = {}): UseFormStateRet
     showJsonPreview,
     setShowJsonPreview,
     resetForm,
-    updateFormField
+    updateFormField,
+    viewLevel,
+    setViewLevel,
+    promoteToStandard,
   };
 }

@@ -6,6 +6,15 @@
 import { useCallback } from 'react';
 import { FormField } from '../../types/form-schema';
 
+// Expose every formData key as a bare variable so backend expressions like
+// "category === 'electronics'" work alongside "formData.category === 'electronics'"
+function buildVarDecls(formData: Record<string, any>): string {
+  return Object.keys(formData)
+    .filter(k => /^[a-zA-Z_$][a-zA-Z0-9_$]*$/.test(k))
+    .map(k => `var ${k} = formData[${JSON.stringify(k)}];`)
+    .join(' ');
+}
+
 export interface UseFieldVisibilityReturn {
   isFieldVisible: (field: FormField, formData: Record<string, any>) => boolean;
   getVisibleFields: (fields: FormField[], formData: Record<string, any>) => FormField[];
@@ -13,6 +22,9 @@ export interface UseFieldVisibilityReturn {
 
 export function useFieldVisibility(): UseFieldVisibilityReturn {
   const isFieldVisible = useCallback((field: FormField, formData: Record<string, any>): boolean => {
+    // Fix 2: Respect backend hidden flag — internal/computed/legacy fields
+    if (field.hidden === true) return false;
+
     if (field.variantScope === 'variant_only') return false;
     if (field.variantScope === 'dual' && formData['hasVariants']) return false;
 
@@ -24,13 +36,34 @@ export function useFieldVisibility(): UseFieldVisibilityReturn {
       if (typeof condition === 'object' && condition !== null) {
         const bc = condition as any;
         if ('showWhen' in bc || 'hideWhen' in bc || 'requiredWhen' in bc) {
+          // All three absent — no visibility constraint
           if (!bc.showWhen && !bc.hideWhen && !bc.requiredWhen) return true;
-          return true; // TODO: full backend conditional logic
+
+          // Fix 3: Evaluate showWhen — field visible only when condition is true
+          if (bc.showWhen) {
+            const fn = new Function(
+              'formData',
+              `${buildVarDecls(formData)} try { return !!(${bc.showWhen}); } catch(e) { return false; }`
+            );
+            return Boolean(fn(formData));
+          }
+
+          // Fix 3: Evaluate hideWhen — field visible only when condition is false
+          if (bc.hideWhen) {
+            const fn = new Function(
+              'formData',
+              `${buildVarDecls(formData)} try { return !(${bc.hideWhen}); } catch(e) { return true; }`
+            );
+            return Boolean(fn(formData));
+          }
+
+          // requiredWhen only affects validation, not visibility
+          return true;
         }
       }
 
       if (typeof condition === 'string') {
-        const evalFunc = new Function('formData', `try { return ${condition}; } catch(e) { return true; }`);
+        const evalFunc = new Function('formData', `${buildVarDecls(formData)} try { return ${condition}; } catch(e) { return true; }`);
         return Boolean(evalFunc(formData));
       }
 

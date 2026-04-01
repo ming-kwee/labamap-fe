@@ -51,7 +51,14 @@ export async function refreshFormSchema(context: BackendContext): Promise<Dynami
   });
 
   if (!response.ok) {
-    throw new Error(`Failed to refresh form schema: ${response.statusText}`);
+    let errorMessage = response.statusText;
+    try {
+      const errorData = await response.json();
+      errorMessage = errorData.message || errorData.error || JSON.stringify(errorData);
+    } catch {
+      // response body is not JSON — fall back to statusText
+    }
+    throw new Error(`Failed to refresh form schema: ${errorMessage}`);
   }
 
   return response.json();

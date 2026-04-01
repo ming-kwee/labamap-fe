@@ -1,13 +1,17 @@
 "use client";
-import React, { useState } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import type {
   ChannelSchemaPerStore,
   ChannelFormSection,
   MasterProductSnapshot,
+  CategoryAttributeSection,
+  ChannelFormField,
 } from "../../types/channelStore";
 import ChannelFieldInput from "./ChannelFieldInput";
 import VariantOverridesTable from "./VariantOverridesTable";
 import MasterOverrideSection from "./MasterOverrideSection";
+
+const BASE = "http://localhost:8888/labamap/api/v1";
 
 interface StoreFormValues {
   masterOverrides: Record<string, unknown>;
@@ -103,7 +107,80 @@ function FieldRow({
 export default function ChannelStoreTab({ schema, values, onChange, isSaving, lastSaved, masterProduct, fieldErrors }: Props) {
   const [optionalExpanded, setOptionalExpanded] = useState(false);
 
+  // ── Scenario D: Category-Dependent Dynamic Field Injection ─────────────────
+
+  // Find the first CATEGORY_TREE field across all sections (typically one per store)
+  const mainCategoryField: ChannelFormField | null = (() => {
+    for (const section of schema.sections) {
+      const f = (section.fields ?? []).find(f => f.fieldType === "CATEGORY_TREE");
+      if (f) return f;
+    }
+    return null;
+  })();
+
+  // Current category leaf ID — sourced from live channelData state
+  const categoryId = mainCategoryField
+    ? ((values.channelData[mainCategoryField.fieldName] as string | undefined) ?? null)
+    : null;
+
+  // Category attribute state — initialised from schema pre-fetch (if any)
+  const [categoryAttrs, setCategoryAttrs] = useState<CategoryAttributeSection | null>(
+    schema.categoryAttributeSection ?? null
+  );
+  const [catAttrsLoading, setCatAttrsLoading] = useState(false);
+  const [catAttrsError, setCatAttrsError] = useState<string | null>(null);
+  const [catOptionalExpanded, setCatOptionalExpanded] = useState(false);
+
+  // Track the last categoryId we fetched/have data for — avoids re-fetching on unrelated re-renders
+  const lastFetchedCategoryId = useRef<string | null>(
+    schema.categoryAttributeSection?.categoryId ?? null
+  );
+
+  useEffect(() => {
+    // Skip if the categoryId hasn't changed from what we already have
+    if (categoryId === lastFetchedCategoryId.current) return;
+    lastFetchedCategoryId.current = categoryId;
+
+    if (!categoryId) {
+      setCategoryAttrs(null);
+      return;
+    }
+
+    setCatAttrsLoading(true);
+    setCatAttrsError(null);
+    const url = `${BASE}/merchant-data/${schema.channelType}/${encodeURIComponent(schema.storeId)}/category-attributes?categoryId=${encodeURIComponent(categoryId)}&organizationId=org_123`;
+
+    fetch(url)
+      .then((res) => {
+        if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+        return res.json() as Promise<CategoryAttributeSection>;
+      })
+      .then(setCategoryAttrs)
+      .catch((err: unknown) =>
+        setCatAttrsError(err instanceof Error ? err.message : "Failed to load category fields")
+      )
+      .finally(() => setCatAttrsLoading(false));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [categoryId]);
+
   function handleFieldChange(fieldName: string, value: unknown) {
+    // Scenario D: when the category field changes, clear stale category-specific values
+    if (
+      mainCategoryField &&
+      fieldName === mainCategoryField.fieldName &&
+      value !== values.channelData[fieldName] &&
+      categoryAttrs
+    ) {
+      const staleKeys = new Set([
+        ...(categoryAttrs.requiredFields ?? []).map((f) => f.fieldName),
+        ...(categoryAttrs.optionalFields ?? []).map((f) => f.fieldName),
+      ]);
+      const clearedData = Object.fromEntries(
+        Object.entries(values.channelData).filter(([k]) => !staleKeys.has(k))
+      );
+      onChange({ ...values, channelData: { ...clearedData, [fieldName]: value } });
+      return;
+    }
     onChange({
       ...values,
       channelData: { ...values.channelData, [fieldName]: value },
@@ -232,6 +309,124 @@ export default function ChannelStoreTab({ schema, values, onChange, isSaving, la
     );
   }
 
+  // ── Scenario D: Render injected category-specific fields ────────────────────
+
+  function renderCategoryAttributeSection() {
+    if (!mainCategoryField) return null;
+
+    if (catAttrsLoading) {
+      return (
+        <div className="space-y-3">
+          <div className="px-4 py-3 bg-violet-50 dark:bg-violet-500/10 rounded-xl border border-violet-200 dark:border-violet-500/30 flex items-center gap-2">
+            <span className="h-4 w-4 rounded-full border-2 border-violet-500 border-t-transparent animate-spin flex-shrink-0" />
+            <span className="text-sm text-violet-700 dark:text-violet-300 animate-pulse">
+              Loading category-specific fields…
+            </span>
+          </div>
+        </div>
+      );
+    }
+
+    if (catAttrsError) {
+      return (
+        <div className="px-4 py-3 rounded-xl border border-red-200 dark:border-red-500/30 bg-red-50 dark:bg-red-500/10">
+          <span className="text-sm text-red-600 dark:text-red-400">
+            Failed to load category fields: {catAttrsError}
+          </span>
+        </div>
+      );
+    }
+
+    if (!categoryAttrs) return null;
+
+    const { categoryName, categoryPath, requiredFields, optionalFields } = categoryAttrs;
+    const breadcrumb = [...categoryPath, categoryName].join(" › ");
+    const hasOptional = optionalFields.length > 0;
+
+    return (
+      <div className="space-y-3">
+        {/* Section header */}
+        <div className="px-4 py-3 bg-violet-50 dark:bg-violet-500/10 rounded-xl border border-violet-200 dark:border-violet-500/30">
+          <div className="flex items-start justify-between gap-2">
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-semibold text-violet-800 dark:text-violet-200">
+                  Category-specific fields
+                </span>
+                <span className="text-xs text-violet-500 dark:text-violet-400">
+                  {requiredFields.length + optionalFields.length} field
+                  {requiredFields.length + optionalFields.length !== 1 ? "s" : ""}
+                </span>
+              </div>
+              <p className="text-xs text-violet-600 dark:text-violet-400 mt-0.5 truncate">
+                {breadcrumb}
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* Required category fields */}
+        {requiredFields.length > 0 && (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pl-1">
+            {requiredFields.map((field) => (
+              <div
+                key={field.fieldName}
+                className={field.fieldType === "TEXTAREA" || field.fieldType === "CATEGORY_TREE" ? "md:col-span-2" : ""}
+              >
+                <FieldRow
+                  field={field}
+                  value={values.channelData[field.fieldName]}
+                  onChange={handleFieldChange}
+                  hasError={fieldErrors?.has(field.fieldName)}
+                />
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Optional category fields — collapsible */}
+        {hasOptional && (
+          <div className="space-y-3">
+            <button
+              type="button"
+              onClick={() => setCatOptionalExpanded((v) => !v)}
+              className="w-full text-left px-4 py-3 bg-gray-50 dark:bg-gray-800/40 rounded-xl border border-gray-200 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-800/70 transition-colors"
+            >
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-semibold text-gray-800 dark:text-gray-200">
+                    Optional — {categoryName}
+                  </span>
+                  <span className="text-xs text-gray-400 dark:text-gray-500">
+                    {optionalFields.length} field{optionalFields.length !== 1 ? "s" : ""}
+                  </span>
+                </div>
+                <span className="text-gray-400 text-sm">{catOptionalExpanded ? "▲" : "▼"}</span>
+              </div>
+            </button>
+            {catOptionalExpanded && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pl-1">
+                {optionalFields.map((field) => (
+                  <div
+                    key={field.fieldName}
+                    className={field.fieldType === "TEXTAREA" || field.fieldType === "CATEGORY_TREE" ? "md:col-span-2" : ""}
+                  >
+                    <FieldRow
+                      field={field}
+                      value={values.channelData[field.fieldName]}
+                      onChange={handleFieldChange}
+                      hasError={fieldErrors?.has(field.fieldName)}
+                    />
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       {/* Completion bar */}
@@ -267,6 +462,9 @@ export default function ChannelStoreTab({ schema, values, onChange, isSaving, la
 
       {/* Field sections */}
       {sections.map(renderSection)}
+
+      {/* Scenario D: category-specific injected fields */}
+      {renderCategoryAttributeSection()}
     </div>
   );
 }

@@ -1,6 +1,7 @@
 "use client";
 import React, { useState, useEffect } from "react";
-import type { ChannelFormField } from "../../types/channelStore";
+import type { ChannelFormField, MasterMappedSuggestion } from "../../types/channelStore";
+import CategoryTreePicker from "./CategoryTreePicker";
 
 const BASE = "http://localhost:8888/labamap/api/v1";
 
@@ -72,21 +73,144 @@ function OptionsError({ label, error }: { label: string; error: string }) {
   );
 }
 
+// ── Scenario B: master-to-channel value mapping suggestion banner ─────────────
+
+interface MappingSuggestionBannerProps {
+  suggestion: MasterMappedSuggestion;
+  onAccept: () => void;
+  onDismiss: () => void;
+}
+
+function MappingSuggestionBanner({ suggestion, onAccept, onDismiss }: MappingSuggestionBannerProps) {
+  const { confidence, masterField, masterValue, suggestedLabel } = suggestion;
+
+  if (confidence === "NONE") {
+    return (
+      <div className="mb-2 flex items-start gap-2 rounded-lg border border-amber-200 dark:border-amber-500/30 bg-amber-50 dark:bg-amber-500/10 px-3 py-2">
+        <span className="mt-0.5 text-amber-500 flex-shrink-0">⚠</span>
+        <p className="text-xs text-amber-700 dark:text-amber-400">
+          No mapping found for master {masterField} value{" "}
+          <strong>&ldquo;{String(masterValue)}&rdquo;</strong>. Please select the closest option manually.
+        </p>
+      </div>
+    );
+  }
+
+  const isExact = confidence === "EXACT";
+
+  return (
+    <div
+      className={`mb-2 rounded-lg border px-3 py-2 ${
+        isExact
+          ? "border-brand-200 dark:border-brand-500/30 bg-brand-50 dark:bg-brand-500/10"
+          : "border-amber-200 dark:border-amber-500/30 bg-amber-50 dark:bg-amber-500/10"
+      }`}
+    >
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <span
+            className={`inline-block text-[10px] font-semibold uppercase tracking-wider rounded px-1.5 py-0.5 mb-1 ${
+              isExact
+                ? "bg-brand-100 dark:bg-brand-500/20 text-brand-700 dark:text-brand-400"
+                : "bg-amber-100 dark:bg-amber-500/20 text-amber-700 dark:text-amber-400"
+            }`}
+          >
+            {isExact ? "Exact match" : "Fuzzy match"}
+          </span>
+          <p className="text-xs text-gray-700 dark:text-gray-300">
+            Based on master <span className="font-medium">{masterField}</span>{" "}
+            <span className="italic">&ldquo;{String(masterValue)}&rdquo;</span>
+            {!isExact && (
+              <span className="text-amber-600 dark:text-amber-400"> — verify before accepting</span>
+            )}
+          </p>
+          <p className="mt-0.5 text-xs font-medium text-gray-900 dark:text-white">
+            → {suggestedLabel}
+          </p>
+        </div>
+        <div className="flex items-center gap-1.5 flex-shrink-0">
+          <button
+            type="button"
+            onClick={onAccept}
+            className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-colors ${
+              isExact
+                ? "bg-brand-500 hover:bg-brand-600 text-white"
+                : "bg-amber-500 hover:bg-amber-600 text-white"
+            }`}
+          >
+            Accept
+          </button>
+          <button
+            type="button"
+            onClick={onDismiss}
+            className="px-2.5 py-1 rounded-lg text-xs font-medium text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors"
+          >
+            Pick different
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 
 export default function ChannelFieldInput({ field, value, onChange, disabled }: Props) {
   // Always call hook at top level — React rules
   const { options, loading, error } = useMerchantOptions(field);
 
+  // Scenario B: show suggestion banner until accepted or dismissed
+  const hasSuggestion =
+    Boolean(field.masterMappedSuggestion) &&
+    field.masterMappedSuggestion!.confidence !== "NONE";
+  const hasNoMatchWarning =
+    field.masterMappedSuggestion?.confidence === "NONE";
+  const [suggestionDismissed, setSuggestionDismissed] = useState(false);
+
+  function handleAcceptSuggestion() {
+    onChange(field.fieldName, field.masterMappedSuggestion!.suggestedValue);
+    setSuggestionDismissed(true);
+  }
+
   const baseClass =
     "w-full rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2.5 text-sm text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-brand-500 disabled:opacity-50 disabled:cursor-not-allowed";
+
+  // Scenario C: CATEGORY_TREE is fully self-contained — renders its own suggestion
+  // banner, browsing panel, and breadcrumb. No generic banner wrapper needed.
+  if (field.fieldType === "CATEGORY_TREE") {
+    return <CategoryTreePicker field={field} value={value} onChange={onChange} disabled={disabled} />;
+  }
 
   // Show loading / error skeletons for option-based fields before the switch
   const isOptionField = field.fieldType === "SELECT" || field.fieldType === "MULTISELECT";
   if (isOptionField && loading) return <OptionsSkeleton label={field.label} />;
   if (isOptionField && error)   return <OptionsError label={field.label} error={error} />;
 
-  switch (field.fieldType) {
+  // Scenario B: render suggestion banner (EXACT/FUZZY) or no-match warning (NONE)
+  const showSuggestionBanner = !suggestionDismissed && hasSuggestion;
+  const showNoMatchWarning = hasNoMatchWarning;
+
+  return (
+    <div>
+      {showNoMatchWarning && field.masterMappedSuggestion && (
+        <MappingSuggestionBanner
+          suggestion={field.masterMappedSuggestion}
+          onAccept={handleAcceptSuggestion}
+          onDismiss={() => setSuggestionDismissed(true)}
+        />
+      )}
+      {showSuggestionBanner && field.masterMappedSuggestion && (
+        <MappingSuggestionBanner
+          suggestion={field.masterMappedSuggestion}
+          onAccept={handleAcceptSuggestion}
+          onDismiss={() => setSuggestionDismissed(true)}
+        />
+      )}
+      {renderInput()}
+    </div>
+  );
+
+  function renderInput() { switch (field.fieldType) {
     case "TEXTAREA":
       return (
         <textarea
@@ -219,5 +343,5 @@ export default function ChannelFieldInput({ field, value, onChange, disabled }: 
           className={baseClass}
         />
       );
-  }
+  } } // closes switch + renderInput
 }

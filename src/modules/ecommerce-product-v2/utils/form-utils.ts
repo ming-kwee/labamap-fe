@@ -25,12 +25,19 @@ export interface SectionMetadata {
  * Normalizes section keys to kebab-case
  */
 export function normalizeSectionKey(sectionKey: string): string {
-  if (!sectionKey) return 'basic-info';
+  if (!sectionKey) return 'product-info';
 
-  return sectionKey
+  const normalized = sectionKey
     .replace(/_/g, '-')
     .replace(/([a-z])([A-Z])/g, '$1-$2')
     .toLowerCase();
+
+  // Alias old/variant keys to canonical keys
+  if (normalized === 'basic-info' || normalized === 'basic-information') {
+    return 'product-info';
+  }
+
+  return normalized;
 }
 
 /**
@@ -47,7 +54,7 @@ export function groupFieldsBySection(
 
     if (excludeFieldNames.includes(fieldName)) return;
 
-    const rawSection = field.section || 'basic-info';
+    const rawSection = field.section || 'product-info';
     const section = normalizeSectionKey(rawSection);
 
     if (!fieldsBySection[section]) {
@@ -92,8 +99,8 @@ export const mapUserRole = (role: string): BackendUserRole => {
 // ============================================================================
 
 const SECTION_METADATA: Record<string, SectionMetadata> = {
-  'basic-info': {
-    label: 'Basic Information',
+  'product-info': {
+    label: 'Product Information',
     icon: Package,
     iconColor: 'text-blue-600',
     description: 'Essential product details',

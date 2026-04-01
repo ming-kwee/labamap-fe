@@ -113,6 +113,36 @@ export interface ChannelStepSaveRequest {
   masterOverrides: Record<string, unknown>;
   channelData: Record<string, unknown>;
   variantOverrides: Record<string, Record<string, unknown>>;
+  /**
+   * Scenario D: the selected category leaf node ID.
+   * Backend uses this to validate category-specific required fields when computing
+   * completionPercentage. Omit if the store's schema has no CATEGORY_TREE field.
+   */
+  categoryId?: string;
+}
+
+// ─── Scenario D: Category-Dependent Dynamic Field Injection ───────────────────
+
+/**
+ * Category-specific fields fetched from the channel after the seller picks a leaf
+ * category in the CATEGORY_TREE picker. Returned by:
+ *   GET /api/v1/merchant-data/{channelType}/{storeId}/category-attributes
+ *       ?categoryId={leafId}&organizationId=...
+ *
+ * The backend also pre-fetches this when building the schema if a category is already
+ * saved, and embeds it in ChannelSchemaPerStore.categoryAttributeSection so the form
+ * is pre-populated without an extra round-trip on load.
+ */
+export interface CategoryAttributeSection {
+  categoryId: string;
+  categoryName: string;
+  /** Human-readable breadcrumb labels from root to the selected leaf,
+   *  e.g. ["Electronics", "Mobile Phones", "Smartphones"] */
+  categoryPath: string[];
+  /** Fields that are required for this category — seller must fill all before publish */
+  requiredFields: ChannelFormField[];
+  /** Optional category-specific fields */
+  optionalFields: ChannelFormField[];
 }
 
 // ─── Completion Summary ───────────────────────────────────────────────────────
@@ -144,7 +174,47 @@ export type ChannelFieldType =
   | "DATE"
   | "URL"
   | "EMAIL"
-  | "COLOR";
+  | "COLOR"
+  /** Scenario C: multi-level hierarchical category tree picker */
+  | "CATEGORY_TREE";
+
+// ─── Scenario C: Category Tree Types ─────────────────────────────────────────
+
+/** One node returned by GET /merchant-data/{channelType}/{storeId}/categories */
+export interface CategoryTreeNode {
+  id: string;
+  name: string;
+  /** true = this node has children; false = leaf node that can be selected */
+  hasChildren: boolean;
+}
+
+/**
+ * Configuration attached to CATEGORY_TREE fields in the schema response.
+ * Tells the frontend how to navigate the category hierarchy.
+ */
+export interface CategoryTreeConfig {
+  /**
+   * Root-level endpoint (no parentId).
+   * e.g. "/merchant-data/lazada/{storeId}/categories?organizationId=org_123"
+   */
+  rootEndpoint: string;
+  /**
+   * Endpoint template for loading child nodes. Use {parentId} as placeholder.
+   * e.g. "/merchant-data/lazada/{storeId}/categories?parentId={parentId}&organizationId=org_123"
+   */
+  childEndpoint: string;
+  /** Maximum tree depth — used for UI hints and validation */
+  maxDepth: number;
+  /** If true, the seller must navigate to a leaf node; non-leaf selection is blocked */
+  requireLeafNode: boolean;
+  /**
+   * Optional: backend pre-populates the breadcrumb path for the currently saved value.
+   * Allows the picker to show "Electronics › Mobile Phones › Smartphones" on load
+   * without the frontend needing to reconstruct the path by re-fetching.
+   * The last entry is the committed leaf node.
+   */
+  selectedPath?: CategoryTreeNode[];
+}
 
 export interface ChannelFormField {
   fieldName: string;
@@ -168,20 +238,54 @@ export interface ChannelFormField {
   masterValue?: unknown;
   // ── Scenario A: Merchant-sourced options ──────────────────────────────────
   /**
-   * STATIC   = options[] is complete and static — no fetch needed (default).
+   * STATIC       = options[] is complete and static — no fetch needed (default).
    * MERCHANT_API = options are live from the merchant's account.
    *   - Eager embed: backend called the channel API during schema generation and
    *     embedded results in options[]. Frontend requires no changes.
    *   - Lazy load: options[] is empty; backend sets optionsEndpoint so the
    *     frontend fetches when the field is rendered.
+   * MASTER_MAPPED = options come from the channel's taxonomy; a masterMappedSuggestion
+   *   is provided so the frontend can offer a one-click accept banner.
    */
-  optionsSource?: "STATIC" | "MERCHANT_API";
+  optionsSource?: "STATIC" | "MERCHANT_API" | "MASTER_MAPPED";
   /**
    * Relative URL pre-built by the backend for lazy-load fields.
    * Example: /merchant-data/shopify/store-abc/field-options?fieldName=location_id&organizationId=org_123
    * Only present when optionsSource === "MERCHANT_API" and options[] is empty (lazy path).
    */
   optionsEndpoint?: string;
+  // ── Scenario C: Hierarchical category tree ────────────────────────────────
+  /**
+   * Only present when fieldType === "CATEGORY_TREE".
+   * Contains the endpoints and config the frontend needs to navigate the tree.
+   */
+  categoryTreeConfig?: CategoryTreeConfig;
+  // ── Scenario B: Master-to-channel value mapping ───────────────────────────
+  /**
+   * When the backend finds a mapping from the master product's field value to a
+   * channel-specific taxonomy code, it includes this suggestion so the frontend
+   * can offer a one-click "Accept" banner above the field.
+   *
+   * confidence levels:
+   *   EXACT — a confirmed mapping exists; accept automatically or prompt once.
+   *   FUZZY — a close but unconfirmed match; seller must verify before accepting.
+   *   NONE  — no mapping found; seller must manually pick from options[].
+   */
+  masterMappedSuggestion?: MasterMappedSuggestion;
+}
+
+/** Scenario B: suggestion produced by ChannelValueMappingService on the backend */
+export interface MasterMappedSuggestion {
+  /** The master product field name that was the source of the suggestion */
+  masterField: string;
+  /** The raw master product value (e.g. "cotton", "navy blue") */
+  masterValue: unknown;
+  /** The channel-specific value to use (e.g. "LZ_MAT_001", "COLOUR_0036") */
+  suggestedValue: unknown;
+  /** Human-readable label for suggestedValue (e.g. "Cotton", "Navy Blue") */
+  suggestedLabel: string;
+  /** How confident the mapping is */
+  confidence: "EXACT" | "FUZZY" | "NONE";
 }
 
 export interface VariantOverrideRow {
@@ -247,6 +351,13 @@ export interface ChannelSchemaPerStore {
   completionPercentage: number;
   sections: ChannelFormSection[];
   completionStats: CompletionStats;
+  /**
+   * Scenario D: pre-fetched by backend when a category is already saved.
+   * Frontend renders these as a "Category-specific fields" section and also
+   * re-fetches when the seller changes the category during the session.
+   * Absent when no CATEGORY_TREE field exists or no category is saved yet.
+   */
+  categoryAttributeSection?: CategoryAttributeSection;
 }
 
 export interface ChannelStepSchemaResponse {

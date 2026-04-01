@@ -28,6 +28,7 @@ import { useProductSubmit } from '../hooks/useProductSubmit';
 import {
   getSectionMetadata,
   groupFieldsBySection,
+  normalizeSectionKey,
   validateProductCategory,
 } from '../../utils/form-utils';
 import { generateMasterProduct } from '../../utils/product-mapper';
@@ -95,6 +96,8 @@ export default function ProductCreateForm({
   const tempProductIdRef = useRef(`temp_${Date.now()}`);
   // Track whether we've already auto-expanded sections (runs once after first schema load)
   const hasAutoExpandedRef = useRef(false);
+  // Track field names from the previous schema so stale values can be removed on category change
+  const prevSchemaFieldNamesRef = useRef<Set<string>>(new Set());
 
   // ── Hooks ──────────────────────────────────────────────────────────────────
 
@@ -106,6 +109,9 @@ export default function ProductCreateForm({
     toggleSection,
     showJsonPreview,
     setShowJsonPreview,
+    viewLevel,
+    setViewLevel,
+    promoteToStandard,
   } = useFormState({ initialData, organizationDefaultCategory });
 
   const {
@@ -140,8 +146,9 @@ export default function ProductCreateForm({
   const handleCategoryChange = useCallback(
     (category: string) => {
       loadCategoryFieldsSmooth(category);
+      promoteToStandard();
     },
-    [loadCategoryFieldsSmooth]
+    [loadCategoryFieldsSmooth, promoteToStandard]
   );
 
   const { handleFieldChange: handleFieldChangeInternal, handleVariantConfiguratorChange } =
@@ -155,7 +162,41 @@ export default function ProductCreateForm({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Apply schema default values when schema first loads
+  // Remove stale formData values for fields that no longer exist in the new schema.
+  // Runs on every schema replacement (including category change) to prevent old category-specific
+  // values from silently persisting in formData and being submitted with the product.
+  useEffect(() => {
+    if (!schema?.fields) return;
+
+    const newFieldNames = new Set<string>(
+      schema.fields.map((f: any) => f.name || f.fieldName)
+    );
+
+    // These keys are managed outside the schema and must never be cleared automatically
+    const systemFields = new Set(['category', 'hasVariants', 'variantConfigurator', 'id']);
+
+    const staleFieldNames: string[] = [];
+    for (const fieldName of prevSchemaFieldNamesRef.current) {
+      if (!newFieldNames.has(fieldName) && !systemFields.has(fieldName)) {
+        staleFieldNames.push(fieldName);
+      }
+    }
+
+    if (staleFieldNames.length > 0) {
+      setFormData((prev) => {
+        const updated = { ...prev };
+        for (const fieldName of staleFieldNames) {
+          delete updated[fieldName];
+        }
+        return updated;
+      });
+    }
+
+    // Always update the ref so the next schema change can diff against the current one
+    prevSchemaFieldNamesRef.current = newFieldNames;
+  }, [schema, setFormData]);
+
+  // Apply schema default values when schema first loads or changes
   useEffect(() => {
     if (!schema?.fields) return;
 
@@ -241,28 +282,22 @@ export default function ProductCreateForm({
 
     const visibleFields = getVisibleFields(schema.fields, formData);
 
+    // Fix 1: Strict tier-based filter — missing displayLevel treated as 'basic'
     const filteredFields = visibleFields.filter((field: any) => {
-      const displayLevel = (field.displayLevel || '').toLowerCase();
-      if (formStage === 'essential') {
-        return (
-          displayLevel === 'essential' ||
-          displayLevel === 'basic' ||
-          displayLevel === 'enhanced' ||
-          displayLevel === 'advanced' ||
-          displayLevel === 'optional' ||
-          displayLevel === ''
-        );
+      const level = (field.displayLevel || 'basic').toLowerCase().replace(/_/g, '-');
+      switch (viewLevel) {
+        case 'essential':
+          return level === 'essential';
+        case 'standard':
+          return (
+            level === 'essential' ||
+            level === 'basic' ||
+            (formStage === 'category-specific' && level === 'category-specific')
+          );
+        case 'full':
+        default:
+          return true;
       }
-      return (
-        displayLevel === 'essential' ||
-        displayLevel === 'basic' ||
-        displayLevel === 'enhanced' ||
-        displayLevel === 'advanced' ||
-        displayLevel === 'optional' ||
-        displayLevel === 'category-specific' ||
-        displayLevel === '' ||
-        field.conditionalVisibility !== null
-      );
     });
 
     const sortedFields = filteredFields.sort(
@@ -274,24 +309,38 @@ export default function ProductCreateForm({
     return Object.entries(fieldsBySection).sort(
       ([keyA], [keyB]) => getSectionMetadata(keyA).order - getSectionMetadata(keyB).order
     );
-  }, [schema, formData, formStage, getVisibleFields]);
+  }, [schema, formData, formStage, viewLevel, getVisibleFields]);
 
-  // Auto-expand sections that contain at least one required field (runs once after schema loads)
+  // Fix 4: Only expand the first section on initial load, not all sections with required fields
   useEffect(() => {
     if (sortedSections.length === 0 || hasAutoExpandedRef.current) return;
     hasAutoExpandedRef.current = true;
-    const required = new Set<string>();
-    for (const [sectionKey, fields] of sortedSections) {
-      if ((fields as any[]).some((f: any) => f.required)) required.add(sectionKey);
+    setExpandedSections(new Set(['product-info']));
+  }, [sortedSections, setExpandedSections]);
+
+  // Fix 5: Auto-expand sections that received category-specific fields when category schema loads.
+  // Runs every time the schema changes while in category-specific stage so switching categories
+  // also reveals the sections for the new category's fields.
+  useEffect(() => {
+    if (formStage !== 'category-specific' || !schema?.fields) return;
+
+    const sectionsWithCategoryFields = new Set<string>();
+    for (const field of schema.fields) {
+      const level = (field.displayLevel || 'basic').toLowerCase().replace(/_/g, '-');
+      if (level === 'category-specific') {
+        const sectionKey = normalizeSectionKey(field.section || 'product-info');
+        sectionsWithCategoryFields.add(sectionKey);
+      }
     }
-    if (required.size > 0) {
+
+    if (sectionsWithCategoryFields.size > 0) {
       setExpandedSections((prev) => {
         const next = new Set(prev);
-        required.forEach((k) => next.add(k));
+        sectionsWithCategoryFields.forEach((k) => next.add(k));
         return next;
       });
     }
-  }, [sortedSections, setExpandedSections]);
+  }, [schema, formStage, setExpandedSections]);
 
   const productId = formData.id || tempProductIdRef.current;
 
@@ -351,6 +400,33 @@ export default function ProductCreateForm({
         >
           {showJsonPreview ? 'Hide' : 'Show'} JSON Preview
         </Button>
+      </div>
+
+      {/* Fix 5: Progressive disclosure controls */}
+      <div className="flex items-center gap-3 text-sm text-gray-500 dark:text-gray-400">
+        <span>
+          {viewLevel === 'essential' && 'Showing essential fields only'}
+          {viewLevel === 'standard' && 'Showing recommended fields'}
+          {viewLevel === 'full' && 'Showing all fields'}
+        </span>
+        {viewLevel !== 'full' && (
+          <button
+            type="button"
+            className="text-blue-600 dark:text-blue-400 hover:underline focus:outline-none"
+            onClick={() => setViewLevel(viewLevel === 'essential' ? 'standard' : 'full')}
+          >
+            {viewLevel === 'essential' ? '+ Show recommended fields' : '+ Show all fields'}
+          </button>
+        )}
+        {viewLevel === 'full' && (
+          <button
+            type="button"
+            className="text-gray-400 hover:underline focus:outline-none"
+            onClick={() => setViewLevel('essential')}
+          >
+            Show less
+          </button>
+        )}
       </div>
 
       {/* Category fields loading indicator */}
@@ -423,11 +499,16 @@ export default function ProductCreateForm({
         <Button type="button" variant="outline" onClick={() => window.history.back()}>
           Cancel
         </Button>
-        <Button type="submit" variant="primary" disabled={isSubmitting}>
+        <Button type="submit" variant="primary" disabled={isSubmitting || isAddingCategoryFields}>
           {isSubmitting ? (
             <>
               <Loader2 className="h-4 w-4 mr-2 animate-spin" />
               Creating Product...
+            </>
+          ) : isAddingCategoryFields ? (
+            <>
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              Loading category fields...
             </>
           ) : (
             'Create Product'

@@ -40,7 +40,9 @@ export function useFormSchema(options: UseFormSchemaOptions): UseFormSchemaRetur
   const inflightRequests = useRef<Map<string, Promise<any>>>(new Map());
 
   function flattenSections(schemaData: any): any {
-    if (schemaData.sections && !schemaData.fields) {
+    // Only extract from sections when the top-level fields array is absent or empty.
+    // If the backend already populated fields, trust it and leave it untouched.
+    if (schemaData.sections && (!schemaData.fields || schemaData.fields.length === 0)) {
       const flatFields: any[] = [];
       for (const section of schemaData.sections) {
         if (section.fields && Array.isArray(section.fields)) {
@@ -63,7 +65,7 @@ export function useFormSchema(options: UseFormSchemaOptions): UseFormSchemaRetur
   }
 
   const loadSchema = useCallback(async (category?: string) => {
-    const cacheKey = category || 'essential';
+    const cacheKey = category ? category.toLowerCase().trim() : 'essential';
 
     try {
       setIsLoadingSchema(true);
@@ -135,10 +137,11 @@ export function useFormSchema(options: UseFormSchemaOptions): UseFormSchemaRetur
         const result = await inflightRequests.current.get(cacheKey)!;
         setSchema(result);
         setFormStage('category-specific');
+        return;  // success — no need to make a new request
       } catch {
-        // fall through to new request
+        // in-flight request failed — clean up and fall through to make a fresh request
+        inflightRequests.current.delete(cacheKey);
       }
-      return;
     }
 
     try {
