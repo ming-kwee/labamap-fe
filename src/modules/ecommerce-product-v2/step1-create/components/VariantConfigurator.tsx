@@ -244,12 +244,12 @@ const VariantConfigurator: React.FC<VariantConfiguratorProps> = ({
 
   return (
     <div className="space-y-6">
-      {/* Dimension selectors */}
+      {/* Option selectors */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {variantDimensions.map(dimension => (
           <div key={dimension.name}>
             <h4 className="font-medium mb-3">
-              {dimension.label} ({dimension.options.length} available)
+              {dimension.label}
             </h4>
             <div className="flex flex-wrap gap-2">
               {dimension.options.map(option => (
@@ -263,8 +263,8 @@ const VariantConfigurator: React.FC<VariantConfiguratorProps> = ({
                 </label>
               ))}
             </div>
-            <div className="mt-2 text-xs text-gray-600">
-              Selected: {selectedOptions[dimension.name]?.length || 0} of {dimension.options.length}
+            <div className="mt-2 text-xs text-gray-500">
+              {selectedOptions[dimension.name]?.length || 0} of {dimension.options.length} selected
             </div>
           </div>
         ))}
@@ -278,16 +278,16 @@ const VariantConfigurator: React.FC<VariantConfiguratorProps> = ({
           disabled={totalCombinations === 1}
           className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50"
         >
-          Generate Variants
+          Preview Variants
           {variantDimensions.length > 0 && (
             <span className="ml-2">
-              ({variantDimensions.map(dim => selectedOptions[dim.name]?.length || 0).join(' × ')} = {totalCombinations})
+              ({variantDimensions.map(dim => selectedOptions[dim.name]?.length || 0).join(' × ')} = {totalCombinations} SKUs)
             </span>
           )}
         </button>
         {variantDimensions.length > 0 && (
           <div className="text-sm text-gray-600">
-            {variantDimensions.length} dimension{variantDimensions.length !== 1 ? 's' : ''} detected
+            {variantDimensions.length} option{variantDimensions.length !== 1 ? 's' : ''} available
           </div>
         )}
       </div>
@@ -295,7 +295,7 @@ const VariantConfigurator: React.FC<VariantConfiguratorProps> = ({
       {/* Variants table */}
       {variants.length > 0 && (
         <div className="space-y-3">
-          <h4 className="font-medium">Generated Variants ({variants.length})</h4>
+          <h4 className="font-medium">Generated SKUs ({variants.length})</h4>
           <div className="overflow-x-auto">
             <table className="w-full border-collapse border border-gray-300">
               <thead className="bg-gray-50">
@@ -366,19 +366,17 @@ const VariantConfigurator: React.FC<VariantConfiguratorProps> = ({
           </div>
 
           <div className="p-3 bg-blue-50 rounded border">
-            <div className="text-sm space-y-1">
-              <div><strong>Total Variants:</strong> {variants.length}</div>
-              <div><strong>Dimensions:</strong> {variantDimensions.map(d => d.label).join(', ')}</div>
-              <div><strong>Schema Fields:</strong> {variantConfig.length} configured</div>
+            <div className="text-sm text-blue-800">
+              {variants.length} SKU{variants.length !== 1 ? 's' : ''} · {variantDimensions.length} option{variantDimensions.length !== 1 ? 's' : ''} ({variantDimensions.map(d => d.label).join(', ')})
             </div>
           </div>
         </div>
       )}
 
       {variantDimensions.length === 0 && (
-        <div className="p-3 bg-yellow-50 border border-yellow-200 rounded">
-          <div className="text-sm text-yellow-800">
-            <strong>No variant dimensions detected.</strong> Make sure your backend schema includes SELECT fields for variant options.
+        <div className="p-3 bg-gray-50 border border-gray-200 rounded dark:bg-gray-800 dark:border-gray-700">
+          <div className="text-sm text-gray-600 dark:text-gray-400">
+            No options available for this product category. Select a category first to see available options like size or color.
           </div>
         </div>
       )}

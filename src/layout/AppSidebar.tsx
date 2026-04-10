@@ -61,6 +61,16 @@ const navItems: NavItem[] = [
     ],
   },
   {
+    icon: <TableIcon />,
+    name: "Catalog Setup",
+    subItems: [
+      { name: "Product Types", path: "/omni-admin/product-types", pro: false, new: true },
+      { name: "Master Attributes", path: "/omni-admin/master-attributes", pro: false, new: true },
+      { name: "Product Categories", path: "/omni-admin/product-categories", pro: false, new: true },
+      { name: "Channel Category Mapping", path: "/omni-admin/channel-category-mapping", pro: false, new: true },
+    ],
+  },
+  {
     icon: <TaskIcon />,
     name: "Business Rules",
     path: "/business-rules",
