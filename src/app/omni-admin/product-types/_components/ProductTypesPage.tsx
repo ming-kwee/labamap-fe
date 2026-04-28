@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { ProductType, VariantDimension } from "../_types/product-type";
 import { ProductTypeService } from "../_services/product-type.service";
+import SkuMatrixPreview from "../../../../modules/ecommerce-product-v2/step1-create/components/SkuMatrixPreview";
 
 // ─── Icons ──────────────────────────────────────────────────────────────────────
 
@@ -452,6 +453,26 @@ function AddEditModal({ type, allTypes, onSave, onClose }: AddEditModalProps) {
               </div>
             )}
           </div>
+
+          {/* SKU Matrix Preview — static demo using placeholder options */}
+          {dimensions.length > 0 && dimensions.some(d => d.attributeCode || d.attributeName) && (() => {
+            const SAMPLE_OPTIONS = ["Option A", "Option B", "Option C"];
+            const validDims = dimensions.filter(d => d.attributeCode || d.attributeName);
+            const previewDims = validDims.map(d => ({
+              name: d.attributeCode || "dim",
+              label: d.attributeName || d.attributeCode || "Dimension",
+              selectedOptions: SAMPLE_OPTIONS.slice(0, 2),
+            }));
+            const totalSkus = previewDims.reduce((acc, _) => acc * 2, 1);
+            return (
+              <div>
+                <p className="text-[11px] font-medium text-gray-400 dark:text-gray-500 mb-1.5">
+                  Matrix preview <span className="font-normal">(using 2 sample options per dimension)</span>
+                </p>
+                <SkuMatrixPreview dimensions={previewDims} totalSkus={totalSkus} />
+              </div>
+            );
+          })()}
 
           {/* Active toggle */}
           <div className="flex items-center justify-between px-3 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/40">

@@ -1213,43 +1213,91 @@ GOLDEN RULES:
 
 ---
 
-## 11. Implementation Priority for This Platform
+## 11. Implementation Status
 
 ```
-Phase 1 (Current — pragmatic)
+Phase 1 ✅ DONE — Direct category ID assignment
 ──────────────────────────────────────────────────────────────────
-  attribute.categoryIds → ProductCategory.id  (MongoDB ObjectId)
+  attribute.applicableProductCategories → ProductCategory._id
   Sidebar filter works via exact ID match
-  ✓ Functional, good enough for initial build
 
-Phase 2 (Next — path inheritance on sidebar filter)
+Phase 2 ✅ DONE — Path-inheritance sidebar filter
 ──────────────────────────────────────────────────────────────────
-  Clicking "Electronics" shows attributes scoped to Electronics
-  AND all child categories via path prefix matching
-  ✓ Solves deep-tree without full ProductType
+  GET /admin/master-attributes?categoryId= expands to full subtree
+  via materialized-path prefix matching (all descendants included)
+  MasterAttributeAdminController: findSubtreeByPathPrefix()
 
-Phase 3 (Recommended — channel category sync)
+Phase 3 ✅ DONE — Channel category sync
 ──────────────────────────────────────────────────────────────────
-  Add channelMappings[] to ProductCategory backend schema
-  Build collection import wizard for Shopify/WooCommerce onboarding
-  Webhook handler: detect unmapped collections, mark DRIFTED
-  UI: drift notification + resolution flow in category admin
-  ✓ Merchant onboarding time drops from days to minutes
+  channel_category_mappings collection
+  ChannelCategoryMappingService, CategoryDriftPollingJob
+  Import wizard, DRIFTED/UNMAPPED detection, drift resolution API
 
-Phase 4 (Required for scale — ProductType entity)
+Phase 4 ✅ DONE — ProductType entity + attribute filtering
 ──────────────────────────────────────────────────────────────────
-  Backend: new collection product_types
-  ProductCategory gains: productTypeId field
-  MasterAttribute gains: productTypeIds[] replacing categoryIds
-  Master Attributes sidebar: filter by ProductType
-  Category edit modal: ProductType selector with preview
-  ✓ Full ownership separation, merchant fully independent
+  product_types collection — ProductTypeAdminController CRUD
+  ProductCategory.productTypeId → links category to stable type
+  MasterAttribute.productTypeIds[] → links attribute to type(s)
+  
+  Attribute filtering (implemented 2026-04-27):
+  ┌──────────────────────────────────────────────────────────────┐
+  │  RUNTIME FILTER CHAIN (DynamicChannelSchemaService)           │
+  │                                                              │
+  │  1. Resolve category slug → ProductCategory.productTypeId    │
+  │  2. Attribute has productTypeIds (non-empty)?                 │
+  │     YES → Phase 4 path: include if productTypeId matches     │
+  │            (permissive if category has no type assigned)      │
+  │     NO  → Legacy path: check applicableProductCategories      │
+  │  3. Neither field set → global attribute, always included    │
+  └──────────────────────────────────────────────────────────────┘
+  
+  Admin sidebar (MasterAttributeAdminController GET /):
+  • ?productTypeId= — direct Phase 4 filter
+  • ?categoryId=    — hybrid: Phase 4 attrs UNION legacy attrs
+  
+  Category badge counts (GET /category-counts):
+  • Category with productTypeId → MongoDB count using hybrid OR
+  • Category without productTypeId → in-memory legacy subtree count
+  
+  attributeCount on ProductType is denormalized and kept in sync
+  whenever any attribute's productTypeIds changes
 
-Phase 5 (Complete — variant matrix)
+Phase 5 ✅ DONE — Variant matrix from ProductType
 ──────────────────────────────────────────────────────────────────
-  ProductType gains: variantDimensions[]
-  Product create form generates SKU matrix from type definition
-  Channel adapters read variant dimensions to generate variants
-  Import wizard: detect Shopify product options → suggest variant dims
-  ✓ End-to-end variant handling, fully type-driven, omnichannel-ready
+  ProductType.variantDimensions[] drives SKU grid axes
+  ChannelStepSchemaService resolves productType from category
+  and populates MasterProductSnapshot.productTypeVariantDimensions
+  POST /admin/product-types/match-by-options for import suggestions
+
+Phase 6 ✅ DONE — Step 1 form schema uses Phase 4 chain (2026-04-27)
+──────────────────────────────────────────────────────────────────
+  DataDrivenSchemaGenerationService (POST /form-schema/generate,
+  POST /form-schema/refresh) now applies the same Phase 4 priority
+  chain as the publish pipeline:
+
+  ┌──────────────────────────────────────────────────────────────┐
+  │  STEP 1 FORM FILTER (DataDrivenSchemaGenerationService)       │
+  │                                                              │
+  │  No category selected?                                       │
+  │    → show only global attrs (empty typeIds + empty           │
+  │      applicableCategories). Initial form = basics only.      │
+  │                                                              │
+  │  Category selected, has productTypeId?                       │
+  │    → Phase 4: include if attr.productTypeIds ∋ typeId        │
+  │      (permissive if category has no productTypeId yet)       │
+  │                                                              │
+  │  Category selected, no productTypeId?                        │
+  │    → Legacy: include if applicableCategories ∋ category._id  │
+  │                                                              │
+  │  attr has neither field → global, always included            │
+  └──────────────────────────────────────────────────────────────┘
+
+  UX contract:
+  • Initial load (no category) → minimal global fields (name,
+    description, price, sku, images, …)
+  • Category selected → POST /form-schema/refresh → server returns
+    the correct attribute set for that type — no more client-side
+    conditionalVisibility hacks needed for type-scoped fields
+  • The form never contains fields that will be silently dropped
+    by the publish pipeline
 ```

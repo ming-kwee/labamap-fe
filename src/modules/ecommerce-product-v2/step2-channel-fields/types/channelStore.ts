@@ -322,6 +322,17 @@ export interface MasterProductSnapshot {
     /** All master variant attributes — open map so any fieldName resolves correctly in the variant table */
     [fieldName: string]: unknown;
   }>;
+  /**
+   * Phase 5: populated by backend when the master product has a ProductType with variantDimensions.
+   * Used by ChannelStoreTab to display an informational banner about the variant structure.
+   */
+  productTypeName?: string;
+  productTypeVariantDimensions?: Array<{
+    attributeCode: string;
+    attributeName: string;
+    order: number;
+    required: boolean;
+  }>;
 }
 
 export interface ChannelFormSection {

@@ -1,7 +1,8 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { MasterAttribute, AttributeCategory, AttributeType, AttributeStatus, AttributeOption, DisplayLevel, AppliesTo, VariantScope } from "../_types/attribute";
+import { MasterAttribute, AttributeType, AttributeStatus, AttributeOption, DisplayLevel, AppliesTo, VariantScope } from "../_types/attribute";
+import type { ProductType } from "../../product-types/_types/product-type";
 
 // ─── Inline icons ──────────────────────────────────────────────────────────────
 const XIcon = () => (
@@ -68,7 +69,7 @@ type Step = "basic" | "config" | "assignment";
 
 interface Props {
   attribute: MasterAttribute | null;
-  categories: AttributeCategory[];
+  productTypes?: ProductType[];
   onSave: (attr: MasterAttribute) => void;
   onClose: () => void;
 }
@@ -107,7 +108,7 @@ const EMPTY_ATTRIBUTE: Omit<MasterAttribute, "id" | "createdAt" | "updatedAt"> =
   usageCount: 0,
 };
 
-export function AddEditAttributeModal({ attribute, categories, onSave, onClose }: Props) {
+export function AddEditAttributeModal({ attribute, productTypes = [], onSave, onClose }: Props) {
   const isEdit = !!attribute;
   const [step, setStep] = useState<Step>("basic");
   const [form, setForm] = useState<Omit<MasterAttribute, "id" | "createdAt" | "updatedAt">>(() =>
@@ -467,71 +468,73 @@ export function AddEditAttributeModal({ attribute, categories, onSave, onClose }
           {/* ── Step 3: Assignment ─────────────────────────────────────────── */}
           {step === "assignment" && (
             <>
-              {/* Scope */}
+              {/* Product Types (Phase 4 — preferred) */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Scope</label>
-                <div className="grid grid-cols-2 gap-3">
-                  <button
-                    onClick={() => set("scope", "GLOBAL")}
-                    className={`p-3 rounded-xl border text-left transition-all ${
-                      form.scope === "GLOBAL"
-                        ? "border-brand-400 ring-2 ring-brand-400/20 bg-brand-50 dark:bg-brand-500/10"
-                        : "border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600"
-                    }`}
-                  >
-                    <div className="text-sm font-semibold text-gray-900 dark:text-white mb-0.5">🌍 Global</div>
-                    <div className="text-xs text-gray-500 dark:text-gray-400">Applies to all product categories</div>
-                  </button>
-                  <button
-                    onClick={() => set("scope", "CATEGORY_SPECIFIC")}
-                    className={`p-3 rounded-xl border text-left transition-all ${
-                      form.scope === "CATEGORY_SPECIFIC"
-                        ? "border-brand-400 ring-2 ring-brand-400/20 bg-brand-50 dark:bg-brand-500/10"
-                        : "border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600"
-                    }`}
-                  >
-                    <div className="text-sm font-semibold text-gray-900 dark:text-white mb-0.5">🏷 Category-specific</div>
-                    <div className="text-xs text-gray-500 dark:text-gray-400">Only for selected categories</div>
-                  </button>
+                <div className="flex items-center justify-between mb-2">
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                    Product Types
+                  </label>
+                  <span className="text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400">
+                    Preferred
+                  </span>
                 </div>
-              </div>
-
-              {/* Category selection */}
-              {form.scope === "CATEGORY_SPECIFIC" && (
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Assign to Categories</label>
-                  <div className="grid grid-cols-2 gap-1.5">
-                    {categories.map(cat => {
-                      const selected = form.categoryIds.includes(cat.id);
+                <p className="text-[11px] text-gray-400 dark:text-gray-500 mb-2 leading-relaxed">
+                  Scope this attribute to one or more ProductTypes. New attributes should use this instead of the legacy Category Scope below.
+                </p>
+                {productTypes.length === 0 ? (
+                  <div className="rounded-lg border border-dashed border-gray-200 dark:border-gray-700 py-4 px-3 text-center">
+                    <p className="text-xs text-gray-400 dark:text-gray-500">No product types configured yet.</p>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-2 gap-1.5 max-h-48 overflow-y-auto pr-0.5">
+                    {productTypes.filter(pt => pt.active).map(pt => {
+                      const selected = form.productTypeIds.includes(pt.id);
                       return (
                         <label
-                          key={cat.id}
+                          key={pt.id}
                           className={`flex items-center gap-2 px-3 py-2 rounded-lg border cursor-pointer transition-colors ${
                             selected
-                              ? "border-2"
+                              ? "border-indigo-400 ring-2 ring-indigo-400/20 bg-indigo-50 dark:bg-indigo-500/10"
                               : "border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600"
                           }`}
-                          style={selected ? { borderColor: cat.color, background: cat.color + "10" } : {}}
                         >
                           <input
                             type="checkbox"
                             checked={selected}
                             onChange={e => {
-                              set("categoryIds", e.target.checked
-                                ? [...form.categoryIds, cat.id]
-                                : form.categoryIds.filter(id => id !== cat.id)
+                              set("productTypeIds", e.target.checked
+                                ? [...form.productTypeIds, pt.id]
+                                : form.productTypeIds.filter(id => id !== pt.id)
                               );
                             }}
-                            className="h-3.5 w-3.5 rounded border-gray-300 text-brand-500 cursor-pointer"
+                            className="h-3.5 w-3.5 rounded border-gray-300 text-indigo-500 cursor-pointer"
                           />
-                          <span className="text-base">{cat.icon}</span>
-                          <span className="text-xs font-medium text-gray-700 dark:text-gray-300 truncate">{cat.name}</span>
+                          <div className="min-w-0 flex-1">
+                            <div className="text-xs font-medium text-gray-800 dark:text-gray-200 truncate">{pt.name}</div>
+                            {pt.variantDimensions.length > 0 && (
+                              <div className="text-[10px] text-gray-400 dark:text-gray-500 truncate font-mono">
+                                {[...pt.variantDimensions].sort((a, b) => a.order - b.order).map(d => d.attributeCode).join(" × ")}
+                              </div>
+                            )}
+                          </div>
+                          <span className={`flex-shrink-0 text-[10px] font-medium tabular-nums px-1.5 py-0.5 rounded-full ${
+                            selected
+                              ? "bg-indigo-100 dark:bg-indigo-500/20 text-indigo-600 dark:text-indigo-400"
+                              : "bg-gray-100 dark:bg-gray-700 text-gray-400 dark:text-gray-500"
+                          }`}>
+                            {pt.attributeCount}
+                          </span>
                         </label>
                       );
                     })}
                   </div>
-                </div>
-              )}
+                )}
+                {form.productTypeIds.length > 0 && (
+                  <p className="mt-1.5 text-[11px] text-indigo-600 dark:text-indigo-400">
+                    {form.productTypeIds.length} type{form.productTypeIds.length !== 1 ? "s" : ""} selected
+                  </p>
+                )}
+              </div>
 
               {/* Behavior flags */}
               <div>
@@ -586,33 +589,45 @@ export function AddEditAttributeModal({ attribute, categories, onSave, onClose }
                 </div>
               </div>
 
-              {/* Applies To + Variant Scope */}
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Applies To</label>
-                  <select
-                    value={form.appliesTo ?? "both"}
-                    onChange={e => set("appliesTo", e.target.value as AppliesTo)}
-                    className="w-full border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-500/30"
-                  >
-                    <option value="both">Both (product + variant)</option>
-                    <option value="product">Product only</option>
-                    <option value="variant">Variant only</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Variant Scope</label>
-                  <select
-                    value={form.variantScope ?? "product_only"}
-                    onChange={e => set("variantScope", e.target.value as VariantScope)}
-                    className="w-full border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-500/30"
-                  >
-                    <option value="product_only">Product only</option>
-                    <option value="variant_only">Variant only</option>
-                    <option value="dual">Dual (both)</option>
-                  </select>
-                </div>
-              </div>
+              {/* Variant Scope (merged from appliesTo + variantScope) */}
+              {(() => {
+                const mode = form.appliesTo === "variant" ? "variant" : form.appliesTo === "product" ? "product" : "both";
+                const setMode = (m: "product" | "variant" | "both") => {
+                  const map = {
+                    product: { appliesTo: "product" as AppliesTo, variantScope: "product_only" as VariantScope },
+                    variant: { appliesTo: "variant" as AppliesTo, variantScope: "variant_only" as VariantScope },
+                    both:    { appliesTo: "both"    as AppliesTo, variantScope: "dual"          as VariantScope },
+                  };
+                  setForm(f => ({ ...f, ...map[m] }));
+                };
+                const options: { value: "product" | "variant" | "both"; label: string; desc: string }[] = [
+                  { value: "product", label: "Product only",   desc: "One value shared across all variants" },
+                  { value: "variant", label: "Variant only",   desc: "A separate value stored per SKU" },
+                  { value: "both",    label: "Product + Variant", desc: "Default at product level, overridable per variant" },
+                ];
+                return (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Variant Scope</label>
+                    <div className="grid grid-cols-3 gap-1.5">
+                      {options.map(o => (
+                        <button
+                          key={o.value}
+                          type="button"
+                          onClick={() => setMode(o.value)}
+                          className={`p-2.5 rounded-xl border text-left transition-all ${
+                            mode === o.value
+                              ? "border-brand-400 ring-2 ring-brand-400/20 bg-brand-50 dark:bg-brand-500/10"
+                              : "border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600"
+                          }`}
+                        >
+                          <div className={`text-xs font-semibold ${mode === o.value ? "text-brand-700 dark:text-brand-400" : "text-gray-700 dark:text-gray-300"}`}>{o.label}</div>
+                          <div className="text-[10px] text-gray-400 mt-0.5 leading-tight">{o.desc}</div>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })()}
             </>
           )}
         </div>

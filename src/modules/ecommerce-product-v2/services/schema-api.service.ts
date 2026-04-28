@@ -64,6 +64,39 @@ export async function refreshFormSchema(context: BackendContext): Promise<Dynami
   return response.json();
 }
 
+// DELETE /api/v1/ecommerce/form-schema/cache/product-type/{productTypeId}
+export async function invalidateSchemaByProductType(productTypeId: string): Promise<{
+  success: boolean;
+  deletedCount: number;
+  productTypeId: string;
+  message: string;
+}> {
+  const response = await fetch(
+    `${BACKEND_BASE_URL}/form-schema/cache/product-type/${productTypeId}`,
+    { method: 'DELETE', headers: { 'Content-Type': 'application/json' } }
+  );
+  if (!response.ok) {
+    let errorMessage = response.statusText;
+    try {
+      const body = await response.json();
+      errorMessage = body.message || body.error || errorMessage;
+    } catch { /* ignore */ }
+    throw new Error(`Failed to invalidate schema cache: ${errorMessage}`);
+  }
+  return response.json();
+}
+
+// DELETE /api/v1/ecommerce/form-schema/cache  (full wipe)
+export async function invalidateAllSchemaCache(): Promise<void> {
+  const response = await fetch(`${BACKEND_BASE_URL}/form-schema/cache`, {
+    method: 'DELETE',
+    headers: { 'Content-Type': 'application/json' },
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to invalidate all schema cache: ${response.statusText}`);
+  }
+}
+
 // GET /api/v1/ecommerce/master-attributes/category-config?category=electronics
 export async function getCategoryConfig(category: string): Promise<any> {
   const response = await fetch(

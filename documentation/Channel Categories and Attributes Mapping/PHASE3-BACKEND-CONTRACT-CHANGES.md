@@ -7,6 +7,38 @@
 
 ---
 
+## ⚠️ Current Status — 404 on Page Load
+
+The Channel Category Mapping page (`/omni-admin/channel-category-mapping`) is deployed and
+operational, but immediately throws a 404 error on open because the backend controller
+does not exist yet.
+
+**Failing call:** `GET /labamap/api/v1/admin/channel-category-mappings?organizationId=org_123`
+
+**Frontend workaround applied:** The frontend now treats a 404 from `listAll` as an empty
+result (`[]`) so the page renders without crashing. Once the backend endpoint exists, real
+data will flow automatically — no further frontend change is needed.
+
+**Unblocking priority: implement §2.1 first.**
+
+---
+
+## ⚠️ Path Corrections vs. Earlier Draft
+
+Four endpoint paths in the earlier version of this document did not match what the frontend
+service actually calls. The frontend is deployed and its paths are authoritative.
+**Backend must implement the paths in this document, not the old draft.**
+
+| Section | Old (wrong) path | Correct path (frontend calls this) |
+|---------|-----------------|-----------------------------------|
+| §2.4 | `POST /import/start` | `POST /import` |
+| §2.7 | `POST /second-channel/map` | `POST /second-channel` |
+| §2.8 | `PATCH /{mappingId}/resolve-drift` | `PATCH /{mappingId}/drift/resolve` |
+| §2.9 | `POST /sync` | `POST /sync-all` |
+| §2.9 | response `{ synced, drifted }` | response `{ syncedCount }` |
+
+---
+
 ## 1. New Collection — `channel_category_mappings`
 
 One document per *(ProductCategory × ChannelStoreConnection)* pair.
@@ -37,7 +69,7 @@ One document per *(ProductCategory × ChannelStoreConnection)* pair.
 ```js
 { organizationId: 1, categoryId: 1 }         // list by category
 { organizationId: 1, storeId: 1 }            // list by store
-{ categoryId: 1, storeId: 1 }                // unique mapping lookup (consider unique index)
+{ categoryId: 1, storeId: 1 }                // unique mapping lookup (unique index)
 { syncStatus: 1, organizationId: 1 }         // drift dashboard query
 ```
 
@@ -47,11 +79,17 @@ One document per *(ProductCategory × ChannelStoreConnection)* pair.
 
 Base path: `/labamap/api/v1/admin/channel-category-mappings`
 
-### 2.1 List all mappings for an org
+---
+
+### 2.1 List all mappings for an org  ← **implement this first — fixes the 404**
 
 ```
 GET /?organizationId={orgId}
 ```
+
+Returns all mapping documents for the org. The frontend uses this on page load to build the
+category × store status grid. An empty array `[]` is a valid response when no imports have
+happened yet.
 
 Response: `ChannelCategoryMappingDto[]`
 
@@ -85,7 +123,7 @@ Response: `ChannelCategoryMappingDto[]`
 GET /{categoryId}?organizationId={orgId}
 ```
 
-Response: `ChannelCategoryMappingDto[]` (all store mappings for this category)
+Response: `ChannelCategoryMappingDto[]` (all store mappings for this one category)
 
 ---
 
@@ -96,7 +134,8 @@ GET /import/preview?storeId={storeId}&organizationId={orgId}
 ```
 
 Calls the channel's API to fetch collections / categories the merchant owns (TYPE 1 channels only:
-Shopify, WooCommerce, Etsy). Returns them **without** persisting anything.
+Shopify, WooCommerce, Etsy). Returns them **without** persisting anything. Used in step 1 of the
+import wizard so the merchant can review and select which to bring in.
 
 Response: `ImportableCollectionDto[]`
 
@@ -112,7 +151,7 @@ Response: `ImportableCollectionDto[]`
 ]
 ```
 
-`collectionType`: `"manual"` | `"smart"` | `"unknown"`  
+`collectionType`: `"manual"` | `"smart"` | `"unknown"`
 Smart collections (Shopify rule-based) should be flagged — the wizard shows them but recommends skipping.
 
 ---
@@ -120,7 +159,7 @@ Smart collections (Shopify rule-based) should be flagged — the wizard shows th
 ### 2.4 Start import — create platform categories from channel collections
 
 ```
-POST /import/start
+POST /import
 ```
 
 Body:
@@ -136,7 +175,14 @@ Actions (per selected collection):
 1. Create a new `ProductCategory` (name from `externalName`; slug auto-derived; parentId = null → root).
 2. Create a `ChannelCategoryMapping` with `syncStatus = PENDING_IMPORT`, `importedFrom = true`.
 
-Response: `ChannelCategoryMappingDto[]` — the newly created PENDING_IMPORT mappings.
+Response: `{ importedCount: number, categoryIds: string[] }`
+
+```json
+{
+  "importedCount": 2,
+  "categoryIds": ["<categoryId1>", "<categoryId2>"]
+}
+```
 
 ---
 
@@ -155,10 +201,10 @@ Body:
 }
 ```
 
-Promotes the listed category mappings from `PENDING_IMPORT` to `MAPPED`.  
-Also updates `channelSyncSummary.totalMapped` on each affected `ProductCategory`.
+Promotes the listed category mappings from `PENDING_IMPORT` to `MAPPED`.
+Also recomputes `channelSyncSummary.totalMapped` on each affected `ProductCategory`.
 
-Response: `ChannelCategoryMappingDto[]` — confirmed mappings.
+Response: `204 No Content`
 
 ---
 
@@ -169,7 +215,8 @@ GET /second-channel/preview?storeId={storeId}&organizationId={orgId}
 ```
 
 Fetches the new channel's categories and fuzzy-matches them against existing platform categories
-(by name similarity, TF-IDF, or Levenshtein distance ≤ threshold).
+(by name similarity — Levenshtein distance or TF-IDF). Used when the merchant connects their
+2nd+ channel so they can link channel categories to already-existing platform categories.
 
 Response: `FuzzyMatchSuggestionDto[]`
 
@@ -186,14 +233,15 @@ Response: `FuzzyMatchSuggestionDto[]`
 ]
 ```
 
-`matchConfidence`: 0–100. Frontend shows "Accept" shortcut at ≥ 70.
+`matchConfidence`: 0–100. Frontend shows an "Accept" shortcut for matches ≥ 70.
+`suggestedCategoryId`: null when no platform category matched.
 
 ---
 
 ### 2.7 Confirm second-channel mapping
 
 ```
-POST /second-channel/map
+POST /second-channel
 ```
 
 Body:
@@ -214,14 +262,14 @@ Body:
 
 Creates `ChannelCategoryMapping` documents with `syncStatus = MAPPED`, `importedFrom = false`.
 
-Response: `ChannelCategoryMappingDto[]`
+Response: `204 No Content`
 
 ---
 
 ### 2.8 Resolve drift
 
 ```
-PATCH /{mappingId}/resolve-drift
+PATCH /{mappingId}/drift/resolve
 ```
 
 Body:
@@ -235,25 +283,35 @@ Valid values: `RENAME_PLATFORM` | `RENAME_CHANNEL` | `KEEP_BOTH`
 
 | Value | Action |
 |---|---|
-| `RENAME_PLATFORM` | Update `ProductCategory.name` to `externalName`; set `syncStatus = MAPPED`. |
-| `RENAME_CHANNEL` | Push the platform name to the channel API; set `syncStatus = MAPPED`. |
-| `KEEP_BOTH` | Clear `syncStatus` back to `MAPPED`; record `driftReason = "acknowledged"`. |
+| `RENAME_PLATFORM` | Update `ProductCategory.name` to `externalName`; set `syncStatus = MAPPED`; clear `driftReason`. |
+| `RENAME_CHANNEL` | Push the platform category name to the channel API; update `externalName` snapshot; set `syncStatus = MAPPED`. |
+| `KEEP_BOTH` | Set `syncStatus = MAPPED`; set `driftReason = "acknowledged"`; do not rename either side. |
 
-Response: `ChannelCategoryMappingDto` (updated)
+In all three cases: update `channelSyncSummary` on the linked `ProductCategory`.
+
+Response: `ChannelCategoryMappingDto` (the updated mapping document)
 
 ---
 
 ### 2.9 Trigger manual sync for all mappings in an org
 
 ```
-POST /sync?organizationId={orgId}
+POST /sync-all?organizationId={orgId}
 ```
 
-Re-fetches each channel's categories and compares against stored `externalName` snapshots.
-Sets `syncStatus = DRIFTED` + `driftReason` + `lastDriftAt` for any that changed.
-Sets `lastSyncedAt` on all mappings in the org.
+Re-fetches each channel's category names (via the channel's API) and compares against the
+stored `externalName` snapshot on each `MAPPED` document.
 
-Response: `{ synced: number, drifted: number }`
+- Name changed → set `syncStatus = DRIFTED`, write `driftReason`, set `lastDriftAt`
+- Name unchanged → update `lastSyncedAt`
+- Also recomputes `channelSyncSummary` on every affected `ProductCategory`
+
+Response:
+```json
+{
+  "syncedCount": 14
+}
+```
 
 ---
 
@@ -263,10 +321,19 @@ Response: `{ synced: number, drifted: number }`
 DELETE /{mappingId}
 ```
 
-Hard delete. Does NOT delete the linked `ProductCategory`.  
-If `importedFrom = true`, return a 409 with a warning body — the frontend should confirm.
+Hard delete — severs the link without deleting the `ProductCategory`.
 
-Response: `204 No Content`
+If `importedFrom = true`, return **409 Conflict** with a warning body so the frontend can
+show a confirmation step before allowing deletion:
+
+```json
+{
+  "error": "IMPORTED_CATEGORY",
+  "message": "This platform category was created by importing this channel collection. Deleting the mapping will not delete the category but it will no longer sync."
+}
+```
+
+Response (on success): `204 No Content`
 
 ---
 
@@ -289,11 +356,18 @@ public record ChannelSyncSummary(
 ) {}
 ```
 
-**Updated by:** any operation that changes a mapping's `syncStatus` (import, drift resolution,
-sync job). Keep it denormalized — avoids a join on every category tree load.
+**When to recompute:** any operation that changes a mapping's `syncStatus`:
+- §2.4 start import → increment `totalUnmapped` (PENDING_IMPORT documents)
+- §2.5 confirm import → increment `totalMapped`, decrement `totalUnmapped`
+- §2.8 resolve drift → decrement `totalDrifted`, increment `totalMapped`
+- §2.9 sync-all → recompute from live counts after drift detection
+- §2.10 delete → decrement whichever status bucket the deleted mapping was in
+
+Keep it denormalized — avoids a join on every category tree load.
 
 **Exposed by:** `GET /product-categories/tree` and `GET /product-categories/{id}` — include
-`channelSyncSummary` in the response DTO.
+`channelSyncSummary` in the response DTO. The frontend reads it to show drift badge counts
+on the category name column without an extra API call.
 
 ---
 
@@ -319,27 +393,30 @@ public record ChannelSyncSummaryDto(
 
 ### 4.1 Shopify — real-time webhook
 
-Register `categories/update` webhook on store connect:
+Register `collections/update` webhook when a Shopify store connects:
 
 ```
 POST /webhooks/shopify/category-update
 ```
 
-Payload from Shopify: contains collection id + updated title.  
+Payload from Shopify: contains collection id + updated title.
 Handler: look up mapping by `storeId` + `externalId`; if `externalName` differs → set
-`syncStatus = DRIFTED`, write `driftReason`, update `channelSyncSummary` on the linked
-`ProductCategory`.
+`syncStatus = DRIFTED`, write `driftReason` (e.g. `"Name changed from 'Tops' to 'T-Shirts'"`),
+set `lastDriftAt`, and recompute `channelSyncSummary` on the linked `ProductCategory`.
 
 ---
 
-### 4.2 WooCommerce / Etsy — scheduled polling
+### 4.2 WooCommerce / Etsy — scheduled polling ✅ Implemented
 
 Daily job: `CategoryDriftPollingJob`
+(`channel/category/job/CategoryDriftPollingJob.java`)
 
-For each org × store (non-Shopify), fetch current category names from the channel API and
-compare against all `MAPPED` mappings' `externalName`. Write drift where detected.
+Queries all distinct `organizationId` values from `channel_category_mappings`, then calls
+`ChannelCategoryImportService.syncAllMappings(orgId)` for each. Marks mappings DRIFTED where
+the re-fetched channel name differs from the stored `externalName` snapshot.
 
-Recommended schedule: `0 2 * * *` (2 AM UTC daily).
+Schedule: `0 30 2 * * *` (2:30 AM UTC daily, after `CategorySyncJob` at 2:00 AM).
+Configurable via `${channel.category.drift.cron}`.
 
 ---
 
@@ -358,18 +435,39 @@ db.product_categories.createIndex({ "channelSyncSummary.totalDrifted": 1 })
 
 ---
 
-## 6. Summary of New Endpoints
+## 6. Implementation Priority
+
+Implement in this order to unblock the frontend incrementally:
+
+| Priority | Endpoint | Unblocks |
+|----------|----------|----------|
+| 1 | `GET /` (§2.1) | Page loads without 404; mapping grid renders (empty) |
+| 2 | `POST /import` (§2.4) + `POST /import/confirm` (§2.5) | Import wizard fully functional |
+| 3 | `PATCH /{mappingId}/drift/resolve` (§2.8) | Drift resolution modal works |
+| 4 | `POST /sync-all` (§2.9) | Sync All button works |
+| 5 | `GET /import/preview` (§2.3) | Import wizard step 1 (channel collection list) |
+| 6 | `GET /second-channel/preview` (§2.6) + `POST /second-channel` (§2.7) | Second-channel connect flow |
+| 7 | `DELETE /{mappingId}` (§2.10) | Mapping deletion |
+| 8 | §3.1 `channelSyncSummary` on ProductCategory | Drift badge counts in category tree |
+| 9 | §4.1 Shopify webhook | Real-time drift detection |
+| 10 | §4.2 Polling job | WooCommerce/Etsy drift detection |
+
+> **Status (2026-04-24):** All items above are implemented. ✅
+
+---
+
+## 7. Summary of All New Endpoints
 
 | Method | Path | Purpose |
 |--------|------|---------|
-| GET | `/channel-category-mappings/` | List all mappings for org |
+| GET | `/channel-category-mappings/` | List all mappings for org — **fixes 404 on page open** |
 | GET | `/channel-category-mappings/{categoryId}` | Mappings for one category |
-| GET | `/channel-category-mappings/import/preview` | Preview importable collections |
-| POST | `/channel-category-mappings/import/start` | Create platform categories + PENDING_IMPORT mappings |
+| GET | `/channel-category-mappings/import/preview` | Preview importable collections from channel |
+| POST | `/channel-category-mappings/import` | Create platform categories + PENDING_IMPORT mappings |
 | POST | `/channel-category-mappings/import/confirm` | Promote PENDING_IMPORT → MAPPED |
-| GET | `/channel-category-mappings/second-channel/preview` | Fuzzy match second channel collections |
-| POST | `/channel-category-mappings/second-channel/map` | Create MAPPED links for second channel |
-| PATCH | `/channel-category-mappings/{mappingId}/resolve-drift` | Resolve DRIFTED mapping |
-| POST | `/channel-category-mappings/sync` | Trigger full sync for org |
-| DELETE | `/channel-category-mappings/{mappingId}` | Delete mapping |
-| POST | `/webhooks/shopify/category-update` | Real-time Shopify drift detection |
+| GET | `/channel-category-mappings/second-channel/preview` | Fuzzy-match second-channel categories |
+| POST | `/channel-category-mappings/second-channel` | Create MAPPED links for second channel |
+| PATCH | `/channel-category-mappings/{mappingId}/drift/resolve` | Resolve DRIFTED mapping |
+| POST | `/channel-category-mappings/sync-all` | Trigger full org sync + drift detection |
+| DELETE | `/channel-category-mappings/{mappingId}` | Delete mapping (409 if importedFrom=true) |
+| POST | `/webhooks/shopify/category-update` | Real-time Shopify drift webhook |

@@ -1884,7 +1884,7 @@ export default function MasterAttributesPage() {
       {showModal && (
         <AddEditAttributeModal
           attribute={editingAttribute}
-          categories={categories}
+          productTypes={productTypes}
           onSave={handleModalSave}
           onClose={() => { setShowModal(false); setEditingAttribute(null); setInsertAtIndex(null); }}
         />

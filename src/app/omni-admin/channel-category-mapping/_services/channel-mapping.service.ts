@@ -63,6 +63,8 @@ export const ChannelMappingService = {
     const res = await fetch(`${BASE}?organizationId=${encodeURIComponent(organizationId)}`, {
       method: "GET", headers: JSON_HEADERS,
     });
+    // 404 = backend Phase 3 endpoint not yet deployed; return empty so page still renders
+    if (res.status === 404) return [];
     const raw = await handleResponse<unknown>(res);
     const arr = Array.isArray(raw) ? raw : ((raw as Record<string, unknown>)?.content as unknown[] ?? []);
     return (arr as unknown[]).map(mapMappingDoc);

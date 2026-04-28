@@ -243,7 +243,7 @@ If `productTypeId` changes:
 1. Validate the new ID exists in `product_types`
 2. Copy `productType.name` into `productTypeName` for denormalization
 
-### 4.3 Updated GET responses
+### 4.3 Updated GET responses ✅ Implemented (2026-04-24)
 
 Include `productTypeId` and `productTypeName` in all `ProductCategoryDto` responses:
 ```json
@@ -257,6 +257,14 @@ Include `productTypeId` and `productTypeName` in all `ProductCategoryDto` respon
 ```
 
 Applies to: `GET /`, `GET /tree`, `GET /{id}`, `GET /{id}/children`, `GET /slugs`
+
+`GET /` / `GET /{id}` / `GET /{id}/children` return `ProductCategoryDocument` directly —
+fields are always included when non-null.
+
+`GET /tree` — `buildTree()` now adds `productTypeId`, `productTypeName`, and `channelSyncSummary`
+to each node map when non-null.
+
+`GET /slugs` — slug map now includes `productTypeId` and `productTypeName` when non-null.
 
 ---
 
@@ -335,9 +343,157 @@ db.product_categories.createIndex({ productTypeId: 1 })
 | PUT | `/product-types/{id}` | **NEW** — update type |
 | PATCH | `/product-types/{id}/active` | **NEW** — toggle active |
 | DELETE | `/product-types/{id}` | **NEW** — delete (blocked if categories reference it) |
-| GET | `/master-attributes/` | **CHANGED** — response includes `productTypeIds` |
+| GET | `/master-attributes/` | **CHANGED** — response includes `productTypeIds`; new `?productTypeId=` filter |
 | POST | `/master-attributes/` | **CHANGED** — accepts `productTypeIds` in body |
 | PUT | `/master-attributes/{id}` | **CHANGED** — accepts `productTypeIds` in body |
+| GET | `/master-attributes/?categoryId=` | **CHANGED** — hybrid Phase 4 filter (see section 9) |
+| GET | `/master-attributes/category-counts` | **CHANGED** — counts via productTypeIds when category has a type |
 | GET | `/product-categories/` (all variants) | **CHANGED** — response includes `productTypeId`, `productTypeName` |
 | POST | `/product-categories/` | **CHANGED** — accepts `productTypeId` in body |
 | PUT | `/product-categories/{id}` | **CHANGED** — accepts `productTypeId`; denormalizes `productTypeName` |
+| POST | `/ecommerce/form-schema/generate` | **CHANGED** — Phase 4 filter applied; see section 10 |
+| POST | `/ecommerce/form-schema/refresh` | **CHANGED** — Phase 4 filter applied; see section 10 |
+
+---
+
+## 9. Attribute Filtering via ProductType — Implementation (2026-04-27)
+
+> This completes the Phase 4 attribute-scoping contract. Assigning `productTypeIds`
+> on an attribute now drives which products see it. The legacy `applicableProductCategories`
+> field continues to work for unmigrated attributes.
+
+### 9.1 Runtime filtering (`DynamicChannelSchemaService`)
+
+When generating a channel schema for a product, the system now:
+
+1. Resolves `productCategory` slug → `ProductCategoryDocument.productTypeId`
+2. For each attribute, applies the following priority chain:
+
+```
+attribute has productTypeIds (non-empty)?
+  YES → Phase 4 path
+        resolvedProductTypeId in productTypeIds? → include
+        resolvedProductTypeId NOT in list?       → exclude
+        resolvedProductTypeId is null?           → permissive (include)
+  NO  → Legacy path
+        applicableProductCategories set?
+          YES → include only if category matches
+          NO  → global attribute, always include
+```
+
+**Why permissive when productTypeId is null:** If the category hasn't been assigned a
+ProductType yet, we can't make a scoping decision on Phase 4 attrs. Excluding them would
+hide valid attributes during the transition period. Assign a ProductType to the category
+to activate strict filtering.
+
+### 9.2 Admin list filter — new `?productTypeId=` param
+
+```
+GET /api/v1/admin/master-attributes?productTypeId=<ObjectId>
+```
+
+Returns only attributes where `productTypeIds` contains the given ID.
+Takes precedence over `?categoryId=` when both are supplied.
+
+### 9.3 Admin list filter — upgraded `?categoryId=` param
+
+When a `categoryId` with an assigned `productTypeId` is used:
+
+```
+Results = Phase4Attrs(productTypeIds ∋ resolvedTypeId)
+        ∪ LegacyAttrs(productTypeIds empty/missing AND applicableProductCategories ∈ subtree)
+```
+
+When the category has **no** `productTypeId` assigned:
+
+```
+Results = LegacyAttrs(applicableProductCategories ∈ subtree)  ← unchanged behaviour
+```
+
+### 9.4 Category-counts badge — upgraded
+
+`GET /api/v1/admin/master-attributes/category-counts` now returns:
+
+```json
+[
+  {
+    "categoryId":   "...",
+    "categoryName": "Smartphones",
+    "categoryPath": "electronics/smartphones",
+    "productTypeId": "...",      ← present when category has a ProductType assigned
+    "count": 14
+  }
+]
+```
+
+`count` = Phase 4 attrs + legacy attrs (hybrid, no double-counting).
+`productTypeId` field is omitted for categories without a type assigned.
+
+---
+
+## 10. Step 1 Form Schema — Phase 4 Filter (2026-04-27)
+
+> **Service:** `DataDrivenSchemaGenerationService`  
+> **Endpoints affected:** `POST /form-schema/generate`, `POST /form-schema/refresh`
+
+### Why this changed
+
+Previously `getFilteredMasterAttributes()` loaded **all** active master product attributes
+regardless of the selected category. Category-specific visibility was delegated to
+client-side `conditionalVisibility.showWhen` rules. This created two problems:
+
+1. **Publish inconsistency** — The publish pipeline (`DynamicChannelSchemaService`) filters
+   attributes by `productTypeIds`. A merchant could fill in `isbn` or `screen-size` on an
+   electronics product because those fields were rendered (just disabled), and have them
+   silently dropped at publish time.
+
+2. **Validation drift** — Required-field checks and completion percentage ran against a
+   superset of attributes that included irrelevant fields from other product types.
+
+### New filter chain
+
+```
+POST /form-schema/generate?productCategory=<slug>   (or body context.productCategory)
+POST /form-schema/refresh   { context: { productCategory: "smartphones" } }
+
+Step 1: Resolve category slug → ProductCategoryDocument
+Step 2: Read ProductCategoryDocument.productTypeId  (may be null)
+Step 3: For each master attribute, apply:
+
+  attr.productTypeIds non-empty?
+    YES → Phase 4 path
+          resolvedTypeId in productTypeIds? → include
+          resolvedTypeId NOT in list?       → exclude
+          category has no productTypeId?   → permissive (include)
+    NO  → Legacy path
+          applicableProductCategories non-empty?
+            YES → include only if category._id is in the list
+            NO  → global attr, always include
+
+  No category provided?
+    → only global attrs returned (initial form load = basics only)
+```
+
+### Behaviour by scenario
+
+| Scenario | Result |
+|---|---|
+| No category selected (initial load) | Only global attrs: name, description, price, sku, images, … |
+| Category selected, has ProductType | Phase 4: attrs for that type + global attrs |
+| Category selected, no ProductType yet | Permissive: all Phase 4 attrs + legacy matched attrs + global |
+| Category not found in DB | Treated as "no category" — global attrs only |
+
+### UX contract for frontend
+
+The `/form-schema/refresh` endpoint already exists. The correct flow:
+
+1. Initial render: call `/generate` with no category → show minimal global form
+2. Merchant selects category from the `category` field dropdown
+3. Frontend calls `/form-schema/refresh` with `{ context: { productCategory: "<slug>" } }`
+4. Server returns the correct attribute set — no client-side show/hide needed for type-scoped fields
+5. `conditionalVisibility` rules on individual attributes remain valid for intra-form
+   conditional logic (e.g. show `compareAtPrice` only when `price > 0`) but are no longer
+   responsible for type-based field visibility
+
+The `metadata.isInitialLoad` and `metadata.selectedCategory` fields in the response
+give the frontend the context to know which state the form is in.

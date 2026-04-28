@@ -4,6 +4,7 @@ import React from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/shared/ui/card/Card';
 import VariantConfigurator from '../VariantConfigurator';
 import { onVariantsEnabled, onVariantsDisabled } from '../../../utils/variant-scope';
+import type { VariantDimension } from '@/app/omni-admin/product-types/_types/product-type';
 
 interface VariantsSectionProps {
   schema: any;
@@ -12,6 +13,9 @@ interface VariantsSectionProps {
   onVariantChange: (value: string) => void;
   organizationId: string;
   productId: string;
+  /** Phase 5: ordered dimensions from the category's ProductType. */
+  productTypeDimensions?: VariantDimension[];
+  productTypeName?: string | null;
 }
 
 export default function VariantsSection({
@@ -21,6 +25,8 @@ export default function VariantsSection({
   onVariantChange,
   organizationId,
   productId,
+  productTypeDimensions,
+  productTypeName,
 }: VariantsSectionProps) {
   if (!schema?.fields) return null;
 
@@ -110,6 +116,8 @@ export default function VariantsSection({
             formData={formData}
             organizationId={organizationId}
             productId={productId}
+            productTypeDimensions={productTypeDimensions}
+            productTypeName={productTypeName}
           />
         )}
       </CardContent>

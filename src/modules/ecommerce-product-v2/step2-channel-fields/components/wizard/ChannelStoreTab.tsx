@@ -234,8 +234,25 @@ export default function ChannelStoreTab({ schema, values, onChange, isSaving, la
 
     if (section.sectionName === "variant_overrides") {
       if (!section.variantFields?.length || !section.variants?.length) return null;
+      const ptDims = masterProduct?.productTypeVariantDimensions;
+      const ptName = masterProduct?.productTypeName;
       return (
         <div key={section.sectionName} className="space-y-3">
+          {/* Phase 5: ProductType variant dimensions info banner */}
+          {ptName && ptDims && ptDims.length > 0 && (
+            <div className="flex items-start gap-2 px-3 py-2 rounded-lg bg-brand-50 dark:bg-brand-500/10 border border-brand-200 dark:border-brand-500/30">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-brand-600 dark:text-brand-400 flex-shrink-0 mt-0.5">
+                <polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/>
+              </svg>
+              <span className="text-xs text-brand-700 dark:text-brand-300">
+                Variant axes defined by <strong>{ptName}</strong>:{" "}
+                {[...ptDims].sort((a, b) => a.order - b.order).map(d => d.attributeName).join(" × ")}
+                {ptDims.some(d => d.required) && (
+                  <span className="ml-1 text-brand-500 dark:text-brand-400">(required per SKU)</span>
+                )}
+              </span>
+            </div>
+          )}
           <SectionHeader label={section.label} count={section.variants.length} expanded />
           <VariantOverridesTable
             variantFields={section.variantFields}

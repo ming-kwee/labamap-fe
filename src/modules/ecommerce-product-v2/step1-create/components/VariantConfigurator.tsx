@@ -2,11 +2,15 @@
 
 /**
  * VariantConfigurator
- * Fully dynamic variant configurator — detects dimensions from backend schema
+ * Fully dynamic variant configurator — detects dimensions from backend schema.
+ * Phase 5: when productTypeDimensions is provided, those dimensions take
+ * precedence over the heuristic schema detection (filtered + sorted by type order).
  */
 
 import React, { useState, useMemo } from 'react';
 import VariantMultiImageUpload from './VariantMultiImageUpload';
+import SkuMatrixPreview from './SkuMatrixPreview';
+import type { VariantDimension as ProductTypeVariantDimension } from '@/app/omni-admin/product-types/_types/product-type';
 
 interface VariantOption {
   id: string;
@@ -26,6 +30,15 @@ interface VariantConfiguratorProps {
   formData?: any;
   organizationId?: string;
   productId?: string;
+  /**
+   * Phase 5: ordered variant dimensions from the category's ProductType.
+   * When provided, only schema fields whose name matches an attributeCode here
+   * are used as dimensions, ordered by ProductType.variantDimension.order.
+   * Falls back to heuristic schema detection when empty/undefined.
+   */
+  productTypeDimensions?: ProductTypeVariantDimension[];
+  /** Display name of the resolved ProductType (shown in banner). */
+  productTypeName?: string | null;
 }
 
 const VariantConfigurator: React.FC<VariantConfiguratorProps> = ({
@@ -34,7 +47,9 @@ const VariantConfigurator: React.FC<VariantConfiguratorProps> = ({
   schema,
   formData = {},
   organizationId = 'org-default',
-  productId = 'temp-product'
+  productId = 'temp-product',
+  productTypeDimensions = [],
+  productTypeName,
 }) => {
   function isFieldVisible(field: any, currentFormData: any): boolean {
     if (!field.conditionalVisibility) return true;
@@ -129,20 +144,37 @@ const VariantConfigurator: React.FC<VariantConfiguratorProps> = ({
     return { variantDimensions: dimensions, variantConfig: getVariantFields() };
   }, [schema, formData]);
 
+  // Phase 5: when productTypeDimensions is provided, filter + sort schema dimensions by type order.
+  // Matching: normalize both codes to lowercase with underscores stripped for fuzzy matching.
+  const activeDimensions = useMemo(() => {
+    if (!productTypeDimensions.length) return variantDimensions;
+
+    const normalize = (s: string) => s.toLowerCase().replace(/[_-]/g, '');
+    const codeToOrder = new Map(productTypeDimensions.map(d => [normalize(d.attributeCode), d.order]));
+
+    const filtered = variantDimensions.filter(dim => codeToOrder.has(normalize(dim.name)));
+    filtered.sort((a, b) => {
+      const orderA = codeToOrder.get(normalize(a.name)) ?? 999;
+      const orderB = codeToOrder.get(normalize(b.name)) ?? 999;
+      return orderA - orderB;
+    });
+    return filtered;
+  }, [variantDimensions, productTypeDimensions]);
+
   const [selectedOptions, setSelectedOptions] = useState<Record<string, string[]>>({});
   const [variants, setVariants] = useState<VariantOption[]>([]);
   const [lastCategory, setLastCategory] = useState<string | undefined>(formData?.category);
 
   React.useEffect(() => {
     const currentCategory = formData?.category;
-    if (currentCategory !== lastCategory && variantDimensions.length > 0) {
+    if (currentCategory !== lastCategory && activeDimensions.length > 0) {
       const resetSelections: Record<string, string[]> = {};
-      variantDimensions.forEach(dim => { resetSelections[dim.name] = []; });
+      activeDimensions.forEach(dim => { resetSelections[dim.name] = []; });
       setSelectedOptions(resetSelections);
       setVariants([]);
       setLastCategory(currentCategory);
     }
-  }, [formData?.category, variantDimensions, lastCategory]);
+  }, [formData?.category, activeDimensions, lastCategory]);
 
   React.useEffect(() => {
     if (value) {
@@ -163,7 +195,7 @@ const VariantConfigurator: React.FC<VariantConfiguratorProps> = ({
       variants: newVariants,
       options: selections,
       totalVariants: newVariants.length,
-      dimensions: variantDimensions.map(dim => ({
+      dimensions: activeDimensions.map(dim => ({
         name: dim.name,
         label: dim.label,
         selectedCount: selections[dim.name]?.length || 0,
@@ -184,10 +216,10 @@ const VariantConfigurator: React.FC<VariantConfiguratorProps> = ({
   };
 
   const generateVariants = () => {
-    const activeDimensions = variantDimensions.filter(dim =>
+    const dimsWithSelections = activeDimensions.filter(dim =>
       selectedOptions[dim.name] && selectedOptions[dim.name].length > 0
     );
-    if (activeDimensions.length === 0) return;
+    if (dimsWithSelections.length === 0) return;
 
     const generateCombinations = (dims: VariantDimension[], current: Record<string, string> = {}): Record<string, string>[] => {
       if (dims.length === 0) return [current];
@@ -198,10 +230,10 @@ const VariantConfigurator: React.FC<VariantConfiguratorProps> = ({
       );
     };
 
-    const allCombinations = generateCombinations(activeDimensions);
+    const allCombinations = generateCombinations(dimsWithSelections);
 
     const newVariants: VariantOption[] = allCombinations.map(combination => {
-      const idParts = activeDimensions.map(dim => combination[dim.name]).join('-');
+      const idParts = dimsWithSelections.map(dim => combination[dim.name]).join('-');
       const id = idParts.toLowerCase().replace(/\s+/g, '-');
       const existing = variants.find(v => v.id === id);
 
@@ -237,16 +269,42 @@ const VariantConfigurator: React.FC<VariantConfiguratorProps> = ({
     updateParent(updated, selectedOptions);
   };
 
-  const totalCombinations = variantDimensions.reduce((total, dim) => {
+  const totalCombinations = activeDimensions.reduce((total, dim) => {
     const selectedCount = selectedOptions[dim.name]?.length || 0;
     return selectedCount > 0 ? total * selectedCount : total;
   }, 1);
 
+  // Dimensions shaped for SkuMatrixPreview
+  const matrixDimensions = activeDimensions.map(dim => ({
+    name: dim.name,
+    label: dim.label,
+    selectedOptions: selectedOptions[dim.name] ?? [],
+  }));
+
+  const isTypeDriven = productTypeDimensions.length > 0;
+
   return (
     <div className="space-y-6">
+      {/* Phase 5: ProductType banner */}
+      {isTypeDriven && productTypeName && (
+        <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-brand-50 dark:bg-brand-500/10 border border-brand-200 dark:border-brand-500/30">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-brand-600 dark:text-brand-400 flex-shrink-0">
+            <polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/>
+          </svg>
+          <span className="text-xs text-brand-700 dark:text-brand-300">
+            Variant axes driven by <strong>{productTypeName}</strong> product type
+            {activeDimensions.length > 0 && (
+              <span className="ml-1 font-normal text-brand-600 dark:text-brand-400">
+                — {activeDimensions.map(d => d.label).join(' × ')}
+              </span>
+            )}
+          </span>
+        </div>
+      )}
+
       {/* Option selectors */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {variantDimensions.map(dimension => (
+        {activeDimensions.map(dimension => (
           <div key={dimension.name}>
             <h4 className="font-medium mb-3">
               {dimension.label}
@@ -270,6 +328,11 @@ const VariantConfigurator: React.FC<VariantConfiguratorProps> = ({
         ))}
       </div>
 
+      {/* SKU matrix live preview */}
+      {totalCombinations > 1 && (
+        <SkuMatrixPreview dimensions={matrixDimensions} totalSkus={totalCombinations} />
+      )}
+
       {/* Generate button */}
       <div className="flex gap-4 items-center">
         <button
@@ -278,16 +341,16 @@ const VariantConfigurator: React.FC<VariantConfiguratorProps> = ({
           disabled={totalCombinations === 1}
           className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50"
         >
-          Preview Variants
-          {variantDimensions.length > 0 && (
+          Confirm Variants
+          {activeDimensions.length > 0 && (
             <span className="ml-2">
-              ({variantDimensions.map(dim => selectedOptions[dim.name]?.length || 0).join(' × ')} = {totalCombinations} SKUs)
+              ({activeDimensions.map(dim => selectedOptions[dim.name]?.length || 0).join(' × ')} = {totalCombinations} SKUs)
             </span>
           )}
         </button>
-        {variantDimensions.length > 0 && (
+        {activeDimensions.length > 0 && (
           <div className="text-sm text-gray-600">
-            {variantDimensions.length} option{variantDimensions.length !== 1 ? 's' : ''} available
+            {activeDimensions.length} option{activeDimensions.length !== 1 ? 's' : ''} available
           </div>
         )}
       </div>
@@ -367,13 +430,13 @@ const VariantConfigurator: React.FC<VariantConfiguratorProps> = ({
 
           <div className="p-3 bg-blue-50 rounded border">
             <div className="text-sm text-blue-800">
-              {variants.length} SKU{variants.length !== 1 ? 's' : ''} · {variantDimensions.length} option{variantDimensions.length !== 1 ? 's' : ''} ({variantDimensions.map(d => d.label).join(', ')})
+              {variants.length} SKU{variants.length !== 1 ? 's' : ''} · {activeDimensions.length} option{activeDimensions.length !== 1 ? 's' : ''} ({activeDimensions.map(d => d.label).join(', ')})
             </div>
           </div>
         </div>
       )}
 
-      {variantDimensions.length === 0 && (
+      {activeDimensions.length === 0 && (
         <div className="p-3 bg-gray-50 border border-gray-200 rounded dark:bg-gray-800 dark:border-gray-700">
           <div className="text-sm text-gray-600 dark:text-gray-400">
             No options available for this product category. Select a category first to see available options like size or color.

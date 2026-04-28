@@ -25,6 +25,7 @@ import { useFieldHandler } from '../hooks/useFieldHandler';
 import { useFieldVisibility } from '../hooks/useFieldVisibility';
 import { useFieldValidation } from '../hooks/useFieldValidation';
 import { useProductSubmit } from '../hooks/useProductSubmit';
+import { useProductTypeVariants } from '../hooks/useProductTypeVariants';
 import {
   getSectionMetadata,
   groupFieldsBySection,
@@ -120,6 +121,9 @@ export default function ProductCreateForm({
     schemaError,
     formStage,
     isAddingCategoryFields,
+    selectedCategory,
+    productTypeId,
+    productTypeName,
     loadSchema,
     loadCategoryFieldsSmooth,
   } = useFormSchema({ userId, organizationId, userRole, targetChannels });
@@ -153,6 +157,12 @@ export default function ProductCreateForm({
 
   const { handleFieldChange: handleFieldChangeInternal, handleVariantConfiguratorChange } =
     useFieldHandler({ formData, setFormData, onCategoryChange: handleCategoryChange });
+
+  // Phase 5: resolve ProductType variant dimensions from the selected category
+  const {
+    productTypeDimensions,
+    productTypeName: resolvedProductTypeName,
+  } = useProductTypeVariants(formData.category || undefined);
 
   // ── Effects ────────────────────────────────────────────────────────────────
 
@@ -389,8 +399,12 @@ export default function ProductCreateForm({
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Create Product</h1>
           <p className="text-gray-600 dark:text-gray-400 mt-1">
             {formStage === 'essential'
-              ? 'Fill in essential product details'
-              : 'Complete product information'}
+              ? 'Fill in the basics, then select a category to unlock product-type fields'
+              : productTypeName
+                ? `Fields shown for: ${productTypeName}`
+                : selectedCategory && !productTypeId
+                  ? 'Category-specific fields loaded — no product type assigned yet'
+                  : 'Complete product information'}
           </p>
         </div>
         <Button
@@ -429,12 +443,30 @@ export default function ProductCreateForm({
         )}
       </div>
 
-      {/* Category fields loading indicator */}
-      {isAddingCategoryFields && (
-        <Alert>
-          <Loader2 className="h-4 w-4 animate-spin" />
-          <AlertDescription>Loading category-specific fields...</AlertDescription>
-        </Alert>
+      {/* Phase 1 — initial load prompt: no category selected yet */}
+      {formStage === 'essential' && !formData.category && !isAddingCategoryFields && (
+        <div className="flex items-start gap-3 px-4 py-3.5 rounded-xl bg-blue-50 dark:bg-blue-500/10 border border-blue-200 dark:border-blue-500/30 text-sm text-blue-700 dark:text-blue-300">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="flex-shrink-0 mt-0.5">
+            <circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/>
+          </svg>
+          <p>
+            <span className="font-semibold">Select a product category</span> to load the matching attribute set.
+            Only global fields are shown until a category is chosen.
+          </p>
+        </div>
+      )}
+
+      {/* Category selected but no ProductType assigned — neutral hint */}
+      {formStage === 'category-specific' && selectedCategory && !productTypeId && !isAddingCategoryFields && (
+        <div className="flex items-start gap-3 px-4 py-3.5 rounded-xl bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/30 text-sm text-amber-700 dark:text-amber-300">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="flex-shrink-0 mt-0.5">
+            <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/>
+          </svg>
+          <p>
+            Category-specific fields loaded — no product type assigned to this category yet.
+            Contact your admin to assign a product type for stricter attribute filtering.
+          </p>
+        </div>
       )}
 
       {/* Submit error */}
@@ -450,20 +482,40 @@ export default function ProductCreateForm({
         <ValidationSummary result={validationResult} onClose={() => setShowValidation(false)} />
       )}
 
-      {/* Schema-driven sections */}
-      {sortedSections.map(([sectionKey, fields]) =>
-        renderSection(sectionKey, {
-          sectionKey,
-          fields,
-          isExpanded: expandedSections.has(sectionKey),
-          onToggle: () => toggleSection(sectionKey),
-          formData,
-          fieldErrors,
-          organizationId,
-          productId,
-          onChange: handleFieldChange,
-          onBlur: handleFieldBlur,
-        })
+      {/* Schema-driven sections — skeleton while category schema is loading */}
+      {isAddingCategoryFields ? (
+        <div className="space-y-4" aria-busy="true" aria-label="Loading category fields">
+          {[1, 2, 3].map(i => (
+            <div key={i} className="rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden animate-pulse" style={{ opacity: 1 - i * 0.2 }}>
+              <div className="h-12 bg-gray-100 dark:bg-gray-800 px-4 flex items-center gap-3">
+                <div className="h-4 w-4 rounded bg-gray-200 dark:bg-gray-700" />
+                <div className="h-3.5 w-32 rounded bg-gray-200 dark:bg-gray-700" />
+              </div>
+              <div className="p-4 space-y-3 bg-white dark:bg-gray-900">
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="h-9 rounded-lg bg-gray-100 dark:bg-gray-800" />
+                  <div className="h-9 rounded-lg bg-gray-100 dark:bg-gray-800" />
+                </div>
+                <div className="h-9 rounded-lg bg-gray-100 dark:bg-gray-800 w-3/4" />
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        sortedSections.map(([sectionKey, fields]) =>
+          renderSection(sectionKey, {
+            sectionKey,
+            fields,
+            isExpanded: expandedSections.has(sectionKey),
+            onToggle: () => toggleSection(sectionKey),
+            formData,
+            fieldErrors,
+            organizationId,
+            productId,
+            onChange: handleFieldChange,
+            onBlur: handleFieldBlur,
+          })
+        )
       )}
 
       {/* Variants section (special rendering) */}
@@ -474,6 +526,8 @@ export default function ProductCreateForm({
         onVariantChange={handleVariantConfiguratorChange}
         organizationId={organizationId}
         productId={productId}
+        productTypeDimensions={productTypeDimensions}
+        productTypeName={resolvedProductTypeName}
       />
 
       {/* JSON preview */}

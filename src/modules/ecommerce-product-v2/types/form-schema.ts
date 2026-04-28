@@ -231,6 +231,10 @@ export interface DynamicFormSchema {
     formStage?: 'essential' | 'category-specific';
     variantScopedFields?: string[] | null;
     variantDimensions?: string[] | null;
+    // Phase 4 / Section 10 fields
+    isInitialLoad?: boolean;       // true when no productCategory was in the request
+    isCategorySpecific?: boolean;  // true when category was resolved and Phase 4 filter applied
+    selectedCategory?: string | null; // the category slug the backend used
   };
 }
 
@@ -254,6 +258,8 @@ export interface FormSchemaResponse {
     generatedAt: string;
     generatedFor: FormGenerationContext;
     schemaVersion: string;
+    productTypeId?: string | null;   // Phase 5: resolved ProductType ObjectId (null = no type assigned)
+    productTypeName?: string | null; // Phase 5: human-readable name (e.g. "Laptop")
   };
   error?: string;
   details?: string;

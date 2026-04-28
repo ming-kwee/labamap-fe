@@ -165,6 +165,27 @@ export const CategoryService = {
     await handleResponse<unknown>(res);
   },
 
+  /** GET /{id}/effective-product-type — resolved type including ancestor inheritance */
+  async getEffectiveProductType(id: string): Promise<{
+    productTypeId: string;
+    productTypeName: string;
+    inheritedFrom: string | null;
+    inheritedFromName: string | null;
+  } | null> {
+    try {
+      const res = await fetch(`${BASE}/${id}/effective-product-type`, { method: "GET", headers: JSON_HEADERS });
+      if (res.status === 404 || res.status === 204) return null;
+      return await handleResponse<{
+        productTypeId: string;
+        productTypeName: string;
+        inheritedFrom: string | null;
+        inheritedFromName: string | null;
+      }>(res);
+    } catch {
+      return null;
+    }
+  },
+
   /** DELETE /{id} — throws with 409 message if active children exist */
   async delete(id: string): Promise<void> {
     const res = await fetch(`${BASE}/${id}`, { method: "DELETE", headers: JSON_HEADERS });
