@@ -158,11 +158,15 @@ export default function ProductCreateForm({
   const { handleFieldChange: handleFieldChangeInternal, handleVariantConfiguratorChange } =
     useFieldHandler({ formData, setFormData, onCategoryChange: handleCategoryChange });
 
-  // Phase 5: resolve ProductType variant dimensions from the selected category
+  // Phase 5: resolve ProductType variant dimensions + options.
+  // Uses productTypeId from the schema response (Phase 5 metadata) — avoids the broken
+  // category-slug → CategoryService.get(ObjectId) lookup that caused empty options.
   const {
     productTypeDimensions,
+    dimensionOptions,
     productTypeName: resolvedProductTypeName,
-  } = useProductTypeVariants(formData.category || undefined);
+    loading: isLoadingVariantOptions,
+  } = useProductTypeVariants(productTypeId || undefined);
 
   // ── Effects ────────────────────────────────────────────────────────────────
 
@@ -527,7 +531,9 @@ export default function ProductCreateForm({
         organizationId={organizationId}
         productId={productId}
         productTypeDimensions={productTypeDimensions}
+        dimensionOptions={dimensionOptions}
         productTypeName={resolvedProductTypeName}
+        isLoadingVariantOptions={isLoadingVariantOptions}
       />
 
       {/* JSON preview */}

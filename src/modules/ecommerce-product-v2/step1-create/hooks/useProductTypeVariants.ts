@@ -1,19 +1,29 @@
 'use client';
 /**
  * useProductTypeVariants
- * Given a category ID, resolves the ProductType and returns its ordered
- * variant dimensions. Used by ProductCreateForm to drive VariantConfigurator.
+ * Given a productTypeId (from schema response metadata), fetches the
+ * ProductType's ordered variant dimensions AND the master-attribute options
+ * (e.g. Color → [Red, Blue, Green]) for each dimension axis.
  *
- * Chain: category → productTypeId → ProductType.variantDimensions
+ * Chain: productTypeId
+ *   → GET /admin/product-types/{id}                        → sorted variantDimensions
+ *   → GET /admin/master-attributes?productTypeId={id}      → SELECT attrs → options per axis
+ *
+ * productTypeId is supplied by useFormSchema (read from schema response metadata).
  */
 import { useState, useEffect } from 'react';
 import type { VariantDimension } from '@/app/omni-admin/product-types/_types/product-type';
-import { CategoryService } from '@/app/omni-admin/product-categories/_services/category.service';
 import { ProductTypeService } from '@/app/omni-admin/product-types/_services/product-type.service';
+import { AttributeService } from '@/app/omni-admin/master-attributes/_services/attribute.service';
 
 export interface UseProductTypeVariantsResult {
-  /** Ordered variant dimensions from the ProductType. Empty when none. */
+  /** Ordered variant dimensions from the ProductType (axes only, no options). */
   productTypeDimensions: VariantDimension[];
+  /**
+   * Options per dimension: attributeCode → string[] of selectable values.
+   * Populated from master attributes of type SELECT / MULTI_SELECT.
+   */
+  dimensionOptions: Map<string, string[]>;
   /** Display name of the resolved ProductType, or null. */
   productTypeName: string | null;
   /** ID of the resolved ProductType, or null. */
@@ -22,9 +32,10 @@ export interface UseProductTypeVariantsResult {
   error: string | null;
 }
 
-export function useProductTypeVariants(categoryId: string | undefined): UseProductTypeVariantsResult {
+export function useProductTypeVariants(productTypeId: string | null | undefined): UseProductTypeVariantsResult {
   const [state, setState] = useState<UseProductTypeVariantsResult>({
     productTypeDimensions: [],
+    dimensionOptions: new Map(),
     productTypeName: null,
     productTypeId: null,
     loading: false,
@@ -32,8 +43,8 @@ export function useProductTypeVariants(categoryId: string | undefined): UseProdu
   });
 
   useEffect(() => {
-    if (!categoryId) {
-      setState({ productTypeDimensions: [], productTypeName: null, productTypeId: null, loading: false, error: null });
+    if (!productTypeId) {
+      setState({ productTypeDimensions: [], dimensionOptions: new Map(), productTypeName: null, productTypeId: null, loading: false, error: null });
       return;
     }
 
@@ -42,23 +53,31 @@ export function useProductTypeVariants(categoryId: string | undefined): UseProdu
 
     (async () => {
       try {
-        const category = await CategoryService.get(categoryId);
+        const [productType, attributes] = await Promise.all([
+          ProductTypeService.get(productTypeId),
+          AttributeService.listAttributes({ productTypeId }).catch(() => []),
+        ]);
         if (cancelled) return;
 
-        if (!category.productTypeId) {
-          // Category exists but has no ProductType assigned
-          setState({ productTypeDimensions: [], productTypeName: null, productTypeId: null, loading: false, error: null });
-          return;
-        }
-
-        const productType = await ProductTypeService.get(category.productTypeId);
-        if (cancelled) return;
-
-        // Sort dimensions by order ascending (order 1 = primary axis, 2 = secondary, ...)
         const sortedDimensions = [...productType.variantDimensions].sort((a, b) => a.order - b.order);
+
+        const dimensionOptions = new Map<string, string[]>();
+        const normalize = (s: string) => s.toLowerCase().replace(/[_-]/g, '');
+
+        for (const dim of sortedDimensions) {
+          const dimCode = normalize(dim.attributeCode);
+          const attr = attributes.find(a => {
+            const attrCode = normalize(a.code);
+            return attrCode === dimCode || attrCode.includes(dimCode) || dimCode.includes(attrCode);
+          });
+          if (attr && (attr.type === 'SELECT' || attr.type === 'MULTI_SELECT') && attr.options && attr.options.length > 0) {
+            dimensionOptions.set(dim.attributeCode, attr.options.map(o => o.label || o.value).filter(Boolean));
+          }
+        }
 
         setState({
           productTypeDimensions: sortedDimensions,
+          dimensionOptions,
           productTypeName: productType.name,
           productTypeId: productType.id,
           loading: false,
@@ -66,9 +85,9 @@ export function useProductTypeVariants(categoryId: string | undefined): UseProdu
         });
       } catch (err) {
         if (cancelled) return;
-        // Non-fatal: fall back to schema-heuristic detection
         setState({
           productTypeDimensions: [],
+          dimensionOptions: new Map(),
           productTypeName: null,
           productTypeId: null,
           loading: false,
@@ -78,7 +97,7 @@ export function useProductTypeVariants(categoryId: string | undefined): UseProdu
     })();
 
     return () => { cancelled = true; };
-  }, [categoryId]);
+  }, [productTypeId]);
 
   return state;
 }

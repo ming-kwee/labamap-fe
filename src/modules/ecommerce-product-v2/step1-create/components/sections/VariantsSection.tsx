@@ -15,7 +15,11 @@ interface VariantsSectionProps {
   productId: string;
   /** Phase 5: ordered dimensions from the category's ProductType. */
   productTypeDimensions?: VariantDimension[];
+  /** Phase 5: options per axis fetched from master attributes. */
+  dimensionOptions?: Map<string, string[]>;
   productTypeName?: string | null;
+  /** True while useProductTypeVariants is fetching dimensions + options. */
+  isLoadingVariantOptions?: boolean;
 }
 
 export default function VariantsSection({
@@ -26,7 +30,9 @@ export default function VariantsSection({
   organizationId,
   productId,
   productTypeDimensions,
+  dimensionOptions,
   productTypeName,
+  isLoadingVariantOptions,
 }: VariantsSectionProps) {
   if (!schema?.fields) return null;
 
@@ -117,7 +123,9 @@ export default function VariantsSection({
             organizationId={organizationId}
             productId={productId}
             productTypeDimensions={productTypeDimensions}
+            dimensionOptions={dimensionOptions}
             productTypeName={productTypeName}
+            isLoadingVariantOptions={isLoadingVariantOptions}
           />
         )}
       </CardContent>

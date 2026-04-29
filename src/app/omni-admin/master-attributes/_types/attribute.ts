@@ -406,6 +406,7 @@ export interface AttributeListParams {
   group?: AttributeGroup;
   channelType?: string;
   isChannelField?: boolean;
+  productTypeId?: string;  // Phase 4 — filter by productTypeId
 }
 
 export interface AttributeCategory {

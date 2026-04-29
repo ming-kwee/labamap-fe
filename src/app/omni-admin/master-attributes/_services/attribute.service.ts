@@ -116,6 +116,7 @@ export const AttributeService = {
       group:          params?.group,
       channelType:    params?.channelType,
       isChannelField: params?.isChannelField,
+      productTypeId:  params?.productTypeId,
     });
     const res = await fetch(`${BASE}${qs}`, {
       method: "GET",

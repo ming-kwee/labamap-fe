@@ -94,6 +94,9 @@ export const ChannelMappingService = {
       `${BASE}/import/preview?storeId=${encodeURIComponent(storeId)}&organizationId=${encodeURIComponent(organizationId)}`,
       { method: "GET", headers: JSON_HEADERS }
     );
+    if (res.status === 404) {
+      throw new Error("Import preview endpoint not found (404). The server may need a restart to load Phase 3 code.");
+    }
     const raw = await handleResponse<unknown>(res);
     const arr = Array.isArray(raw) ? raw : [];
     return (arr as Record<string, unknown>[]).map(r => ({

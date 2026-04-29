@@ -9,6 +9,7 @@
 import React from 'react';
 import { Info, HelpCircle, AlertCircle } from '@/shared/ui/icons/Icons';
 import ImageUploadField from './ImageUploadField';
+import CategorySelectField from './CategorySelectField';
 
 interface FieldRendererProps {
   field: any;
@@ -30,7 +31,8 @@ export default function FieldRenderer({
   onBlur,
 }: FieldRendererProps) {
   const fieldName = field.name || field.fieldName;
-  const fieldType = (field.fieldType || '').toLowerCase();
+  // Normalise: lowercase + underscores → hyphens so "CATEGORY_SELECT" and "category-select" both match
+  const fieldType = (field.fieldType || '').toLowerCase().replace(/_/g, '-');
 
   const errorClass = error
     ? 'border-red-500 focus:ring-red-500 focus:border-red-500'
@@ -39,7 +41,21 @@ export default function FieldRenderer({
 
   let input: React.ReactNode;
 
-  if (fieldType === 'textarea') {
+  if (fieldType === 'category-select') {
+    input = (
+      <CategorySelectField
+        value={value || ''}
+        onChange={(slug) => onChange(fieldName, slug)}
+        onBlur={() => onBlur(field)}
+        required={field.required}
+        placeholder={field.placeholder}
+        disabled={field.readOnly}
+        className={error
+          ? 'border-red-500 focus:ring-red-500 focus:border-red-500'
+          : 'border-gray-300 focus:ring-blue-500 focus:border-blue-500'}
+      />
+    );
+  } else if (fieldType === 'textarea') {
     input = (
       <textarea
         name={fieldName}

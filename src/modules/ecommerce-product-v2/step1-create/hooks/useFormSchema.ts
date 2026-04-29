@@ -72,13 +72,23 @@ export function useFormSchema(options: UseFormSchemaOptions): UseFormSchemaRetur
     return schemaData;
   }
 
-  // Returns { schema, topMeta } — schema is the flattened formSchema, topMeta is the outer response metadata
+  // Returns { schema, topMeta } — schema is the flattened formSchema, topMeta is the merged metadata.
+  // Merges outer response.metadata with inner formSchema.metadata so productTypeId is found
+  // regardless of which level the backend embeds it in.
   function unwrapSchema(rawResponse: any): { schema: any; topMeta: any } {
-    const topMeta = rawResponse?.metadata ?? {};
+    const outerMeta = rawResponse?.metadata ?? {};
     const schemaData = rawResponse?.formSchema ?? rawResponse;
     if (!schemaData || (!schemaData.sections && !schemaData.fields)) {
       throw new Error('Invalid schema format received from backend - missing both sections and fields');
     }
+    const innerMeta = schemaData.metadata ?? {};
+    // Outer response metadata takes precedence; inner fills any gaps
+    const topMeta = {
+      ...innerMeta,
+      ...outerMeta,
+      productTypeId: outerMeta.productTypeId ?? innerMeta.productTypeId ?? null,
+      productTypeName: outerMeta.productTypeName ?? innerMeta.productTypeName ?? null,
+    };
     return { schema: flattenSections(schemaData), topMeta };
   }
 

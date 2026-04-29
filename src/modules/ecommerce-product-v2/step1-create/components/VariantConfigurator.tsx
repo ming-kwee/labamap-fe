@@ -37,8 +37,16 @@ interface VariantConfiguratorProps {
    * Falls back to heuristic schema detection when empty/undefined.
    */
   productTypeDimensions?: ProductTypeVariantDimension[];
+  /**
+   * Phase 5: options per dimension axis fetched from master attributes.
+   * Maps attributeCode → string[] of selectable values (e.g. "color" → ["Red","Blue"]).
+   * When provided alongside productTypeDimensions, bypasses schema-derived options entirely.
+   */
+  dimensionOptions?: Map<string, string[]>;
   /** Display name of the resolved ProductType (shown in banner). */
   productTypeName?: string | null;
+  /** True while the ProductType + attribute options are being fetched. */
+  isLoadingVariantOptions?: boolean;
 }
 
 const VariantConfigurator: React.FC<VariantConfiguratorProps> = ({
@@ -49,7 +57,9 @@ const VariantConfigurator: React.FC<VariantConfiguratorProps> = ({
   organizationId = 'org-default',
   productId = 'temp-product',
   productTypeDimensions = [],
+  dimensionOptions,
   productTypeName,
+  isLoadingVariantOptions = false,
 }) => {
   function isFieldVisible(field: any, currentFormData: any): boolean {
     if (!field.conditionalVisibility) return true;
@@ -144,22 +154,39 @@ const VariantConfigurator: React.FC<VariantConfiguratorProps> = ({
     return { variantDimensions: dimensions, variantConfig: getVariantFields() };
   }, [schema, formData]);
 
-  // Phase 5: when productTypeDimensions is provided, filter + sort schema dimensions by type order.
-  // Matching: normalize both codes to lowercase with underscores stripped for fuzzy matching.
+  // Phase 5: when productTypeDimensions + dimensionOptions are provided, build dimensions
+  // directly from the ProductType — bypasses schema-derived options entirely.
+  // This fixes the case where the schema endpoint doesn't return SELECT options.
   const activeDimensions = useMemo(() => {
-    if (!productTypeDimensions.length) return variantDimensions;
+    if (productTypeDimensions.length > 0 && dimensionOptions && dimensionOptions.size > 0) {
+      // Primary path: type-driven with fetched options
+      return productTypeDimensions
+        .slice()
+        .sort((a, b) => a.order - b.order)
+        .map(dim => ({
+          name: dim.attributeCode,
+          label: dim.attributeName,
+          options: dimensionOptions.get(dim.attributeCode) ?? [],
+        }))
+        .filter(dim => dim.options.length > 0);
+    }
 
-    const normalize = (s: string) => s.toLowerCase().replace(/[_-]/g, '');
-    const codeToOrder = new Map(productTypeDimensions.map(d => [normalize(d.attributeCode), d.order]));
+    if (productTypeDimensions.length > 0) {
+      // Type-driven but options not yet loaded — filter + sort schema-derived dims as fallback
+      const normalize = (s: string) => s.toLowerCase().replace(/[_-]/g, '');
+      const codeToOrder = new Map(productTypeDimensions.map(d => [normalize(d.attributeCode), d.order]));
+      const filtered = variantDimensions.filter(dim => codeToOrder.has(normalize(dim.name)));
+      filtered.sort((a, b) => {
+        const orderA = codeToOrder.get(normalize(a.name)) ?? 999;
+        const orderB = codeToOrder.get(normalize(b.name)) ?? 999;
+        return orderA - orderB;
+      });
+      return filtered;
+    }
 
-    const filtered = variantDimensions.filter(dim => codeToOrder.has(normalize(dim.name)));
-    filtered.sort((a, b) => {
-      const orderA = codeToOrder.get(normalize(a.name)) ?? 999;
-      const orderB = codeToOrder.get(normalize(b.name)) ?? 999;
-      return orderA - orderB;
-    });
-    return filtered;
-  }, [variantDimensions, productTypeDimensions]);
+    // Heuristic fallback: use schema-derived dimensions (no productType assigned)
+    return variantDimensions;
+  }, [variantDimensions, productTypeDimensions, dimensionOptions]);
 
   const [selectedOptions, setSelectedOptions] = useState<Record<string, string[]>>({});
   const [variants, setVariants] = useState<VariantOption[]>([]);
@@ -438,9 +465,29 @@ const VariantConfigurator: React.FC<VariantConfiguratorProps> = ({
 
       {activeDimensions.length === 0 && (
         <div className="p-3 bg-gray-50 border border-gray-200 rounded dark:bg-gray-800 dark:border-gray-700">
-          <div className="text-sm text-gray-600 dark:text-gray-400">
-            No options available for this product category. Select a category first to see available options like size or color.
-          </div>
+          {isLoadingVariantOptions ? (
+            <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
+              <svg className="animate-spin h-4 w-4 flex-shrink-0" viewBox="0 0 24 24" fill="none">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/>
+              </svg>
+              Loading variant options…
+            </div>
+          ) : isTypeDriven && productTypeDimensions.length === 0 ? (
+            <div className="text-sm text-amber-700 dark:text-amber-400">
+              The product type assigned to this category has no variant dimensions configured.
+              Ask your admin to add dimensions (e.g. Color, Size) to the <strong>{productTypeName}</strong> product type.
+            </div>
+          ) : isTypeDriven && productTypeDimensions.length > 0 ? (
+            <div className="text-sm text-amber-700 dark:text-amber-400">
+              Variant dimensions are configured but no selectable options were found.
+              Ask your admin to add options to the variant attributes (Color, Size, etc.) for the <strong>{productTypeName}</strong> product type.
+            </div>
+          ) : (
+            <div className="text-sm text-gray-600 dark:text-gray-400">
+              Select a product category to see available variant options (e.g. Size, Color).
+            </div>
+          )}
         </div>
       )}
     </div>

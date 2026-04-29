@@ -37,7 +37,8 @@ export type FormFieldType =
   | 'color'
   | 'range'
   | 'variant-configurator'
-  | 'channel-settings';
+  | 'channel-settings'
+  | 'category-select';
 
 // Field Options
 export interface FormFieldOption {
