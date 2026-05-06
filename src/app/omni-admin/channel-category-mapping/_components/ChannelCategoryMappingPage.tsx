@@ -7,11 +7,11 @@ import type { ProductCategoryTree } from "../../product-categories/_types/catego
 import { flattenTree } from "../../product-categories/_types/category";
 import { ChannelMappingService } from "../_services/channel-mapping.service";
 import type { ChannelCategoryMapping, SyncStatus } from "../_types/channel-mapping";
-import { isImportCapable } from "../_types/channel-mapping";
 import { ChannelStoreService } from "@/modules/ecommerce-product-v2/step2-channel-fields/services/channelStore.service";
 import type { ChannelStoreConnection } from "@/modules/ecommerce-product-v2/step2-channel-fields/types/channelStore";
 import { DriftResolutionModal } from "./DriftResolutionModal";
 import { ImportWizardModal } from "./ImportWizardModal";
+import { TaxonomyMapperModal } from "./TaxonomyMapperModal";
 
 const ORG_ID = "org_123";
 
@@ -273,6 +273,11 @@ export default function ChannelCategoryMappingPage() {
   // Modals
   const [driftModal, setDriftModal] = useState<{ mapping: ChannelCategoryMapping; categoryName: string } | null>(null);
   const [importModal, setImportModal] = useState<boolean>(false);
+  const [taxonomyModal, setTaxonomyModal] = useState<{
+    store: ChannelStoreConnection;
+    unmappedCategories: ProductCategoryTree[];
+    initialCategoryId?: string;
+  } | null>(null);
 
   const showToast = useCallback((msg: string, type: "ok" | "err" = "ok") => {
     setToast({ msg, type });
@@ -319,8 +324,8 @@ export default function ChannelCategoryMappingPage() {
   // Drift count for attention banner
   const driftedCount = useMemo(() => mappings.filter(m => m.syncStatus === "DRIFTED").length, [mappings]);
 
-  // Import-capable stores (Shopify / WooCommerce / Etsy)
-  const importableStores = useMemo(() => stores.filter(s => isImportCapable(s.channelType)), [stores]);
+  // Import-capable stores — WooCommerce, Etsy (backend-driven via store.importCapable)
+  const importableStores = useMemo(() => stores.filter(s => s.importCapable === true), [stores]);
 
   const toggleExpand = useCallback((id: string) => {
     setExpandedIds(prev => {
@@ -349,10 +354,21 @@ export default function ChannelCategoryMappingPage() {
     showToast("Drift resolved");
   };
 
-  const handleOpenMap = (categoryId: string, categoryName: string, storeId: string) => {
-    // For now: show a toast explaining manual mapping is via the drift/link UI
-    // Full manual link picker is a future enhancement
-    showToast(`Manual link for "${categoryName}" — use the drift resolution or import wizard`);
+  const handleOpenMap = (categoryId: string, _categoryName: string, storeId: string) => {
+    const store = stores.find(s => s.storeId === storeId);
+    if (!store) return;
+    if (store.taxonomyEnabled === true) {
+      // Compute all unmapped categories for this store to show in the batch mapper
+      const unmapped = flatNodes.filter(n => {
+        const m = mappingIndex.get(`${n.id}-${storeId}`);
+        return !m || m.syncStatus === "UNMAPPED";
+      });
+      setTaxonomyModal({ store, unmappedCategories: unmapped, initialCategoryId: categoryId });
+    } else if (store.importCapable === true) {
+      showToast(`Use "Import from channel" to create mappings for ${store.storeName}`);
+    } else {
+      showToast(`No mapping flow configured for ${store.storeName}`);
+    }
   };
 
   // Filter tree for search
@@ -436,7 +452,7 @@ export default function ChannelCategoryMappingPage() {
               )}
               {importableStores.length === 0 && stores.length > 0 && (
                 <p className="text-[11px] text-gray-400 dark:text-gray-500 mt-1">
-                  No import-capable stores (Shopify, WooCommerce)
+                  No import-capable stores (WooCommerce, Etsy)
                 </p>
               )}
             </div>
@@ -524,7 +540,7 @@ export default function ChannelCategoryMappingPage() {
           <div className="w-16 h-16 rounded-2xl bg-gray-100 dark:bg-gray-800 flex items-center justify-center mb-4 text-3xl">🔌</div>
           <h3 className="text-base font-semibold text-gray-900 dark:text-white mb-1">No connected stores</h3>
           <p className="text-sm text-gray-500 dark:text-gray-400 max-w-xs leading-relaxed mb-6">
-            Connect a Shopify or WooCommerce store to start syncing your category tree.
+            Connect a store to start mapping your platform categories to channel taxonomies.
           </p>
           <Link
             href="/channels/stores"
@@ -643,15 +659,27 @@ export default function ChannelCategoryMappingPage() {
         />
       )}
 
-      {/* Import wizard modal */}
+      {/* Import wizard modal — WooCommerce / Etsy only */}
       {importModal && (
         <ImportWizardModal
           organizationId={ORG_ID}
           importableStores={importableStores}
-          onDone={() => {
-            loadAll();
-          }}
+          onDone={() => { loadAll(); }}
           onClose={() => setImportModal(false)}
+        />
+      )}
+
+      {/* Taxonomy mapper modal — Shopify / Amazon / TikTok / eBay (batch) */}
+      {taxonomyModal && (
+        <TaxonomyMapperModal
+          organizationId={ORG_ID}
+          store={taxonomyModal.store}
+          unmappedCategories={taxonomyModal.unmappedCategories}
+          initialCategoryId={taxonomyModal.initialCategoryId}
+          onMapped={() => {
+            ChannelMappingService.listAll(ORG_ID).then(setMappings);
+          }}
+          onClose={() => setTaxonomyModal(null)}
         />
       )}
     </div>

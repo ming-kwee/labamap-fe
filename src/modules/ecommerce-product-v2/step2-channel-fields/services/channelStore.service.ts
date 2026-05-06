@@ -80,6 +80,8 @@ export function mapStore(raw: unknown): ChannelStoreConnection {
     connectionStatus:  r.connectionStatus  as ChannelStoreConnection["connectionStatus"],
     disconnectedAt:    r.disconnectedAt    as string | undefined,
     disconnectReason:  r.disconnectReason  as string | undefined,
+    taxonomyEnabled:   r.taxonomyEnabled   != null ? Boolean(r.taxonomyEnabled)  : undefined,
+    importCapable:     r.importCapable     != null ? Boolean(r.importCapable)    : undefined,
   };
 }
 

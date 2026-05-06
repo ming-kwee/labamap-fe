@@ -13,6 +13,7 @@ import type {
   ConfirmImportRequest,
   MapSecondChannelRequest,
   ResolveDriftRequest,
+  TaxonomyCategory,
 } from "../_types/channel-mapping";
 
 const BASE = "http://localhost:8888/labamap/api/v1/admin/channel-category-mappings";
@@ -36,21 +37,22 @@ async function handleResponse<T>(res: Response): Promise<T | null> {
 function mapMappingDoc(raw: unknown): ChannelCategoryMapping {
   const r = raw as Record<string, unknown>;
   return {
-    id:           String(r.id ?? r._id ?? ""),
-    categoryId:   String(r.categoryId ?? ""),
-    categoryName: String(r.categoryName ?? ""),
-    storeId:      String(r.storeId ?? ""),
-    channelType:  String(r.channelType ?? ""),
-    externalId:   String(r.externalId ?? ""),
-    externalSlug: r.externalSlug != null ? String(r.externalSlug) : null,
-    externalName: String(r.externalName ?? ""),
-    syncStatus:   (r.syncStatus as ChannelCategoryMapping["syncStatus"]) ?? "UNMAPPED",
-    importedFrom: Boolean(r.importedFrom),
-    lastSyncedAt: r.lastSyncedAt != null ? String(r.lastSyncedAt) : null,
-    lastDriftAt:  r.lastDriftAt  != null ? String(r.lastDriftAt)  : null,
-    driftReason:  r.driftReason  != null ? String(r.driftReason)  : null,
-    createdAt:    String(r.createdAt ?? ""),
-    updatedAt:    String(r.updatedAt ?? ""),
+    id:             String(r.id ?? r._id ?? ""),
+    organizationId: String(r.organizationId ?? ""),
+    categoryId:     String(r.categoryId ?? ""),
+    categoryName:   String(r.categoryName ?? ""),
+    storeId:        String(r.storeId ?? ""),
+    channelType:    String(r.channelType ?? ""),
+    externalId:     String(r.externalId ?? ""),
+    externalSlug:   r.externalSlug != null ? String(r.externalSlug) : null,
+    externalName:   String(r.externalName ?? ""),
+    syncStatus:     (r.syncStatus as ChannelCategoryMapping["syncStatus"]) ?? "UNMAPPED",
+    importedFrom:   Boolean(r.importedFrom),
+    lastSyncedAt:   r.lastSyncedAt != null ? String(r.lastSyncedAt) : undefined,
+    lastDriftAt:    r.lastDriftAt  != null ? String(r.lastDriftAt)  : null,
+    driftReason:    r.driftReason  != null ? String(r.driftReason)  : null,
+    createdAt:      String(r.createdAt ?? ""),
+    updatedAt:      String(r.updatedAt ?? ""),
   };
 }
 
@@ -102,9 +104,9 @@ export const ChannelMappingService = {
     return (arr as Record<string, unknown>[]).map(r => ({
       externalId:      String(r.externalId   ?? ""),
       externalName:    String(r.externalName ?? ""),
-      externalSlug:    r.externalSlug != null ? String(r.externalSlug) : null,
-      collectionType:  (r.collectionType ?? r.type ?? "unknown") as ImportableCollection["collectionType"],
-      productCount:    Number(r.productCount ?? 0),
+      externalSlug:    String(r.externalSlug ?? ""),
+      collectionType:  ((r.collectionType ?? r.type ?? "manual") === "smart" ? "smart" : "manual") as ImportableCollection["collectionType"],
+      productCount:    r.productCount != null ? Number(r.productCount) : null,
     }));
   },
 
@@ -190,6 +192,40 @@ export const ChannelMappingService = {
     );
     const data = await handleResponse<{ syncedCount: number }>(res);
     return data ?? { syncedCount: 0 };
+  },
+
+  /**
+   * GET /admin/channel-category-mappings/taxonomy/{channelType}/children
+   * Returns direct children of a taxonomy node for Type 2 channels (Shopify, Amazon, TikTok, eBay).
+   * Omit parentId to get root nodes.
+   */
+  async browseTaxonomy(
+    channelType: string,
+    storeId: string,
+    organizationId: string,
+    parentId?: string,
+  ): Promise<TaxonomyCategory[]> {
+    const params = new URLSearchParams({ storeId, organizationId });
+    if (parentId) params.set("parentId", parentId);
+    const res = await fetch(
+      `${BASE}/taxonomy/${encodeURIComponent(channelType)}/children?${params}`,
+      { method: "GET", headers: JSON_HEADERS },
+    );
+    if (res.status === 404) {
+      throw new Error(`Taxonomy browser not available for "${channelType}" — the backend taxonomy endpoint returned 404. Check that the channel_category_cache is seeded and the taxonomy children endpoint is deployed.`);
+    }
+    const raw = await handleResponse<unknown>(res);
+    const arr = Array.isArray(raw) ? raw : [];
+    return (arr as Record<string, unknown>[]).map(r => ({
+      id:          String(r.id ?? ""),
+      name:        String(r.name ?? ""),
+      fullName:    String(r.fullName ?? r.name ?? ""),
+      level:       Number(r.level ?? 0),
+      isLeaf:      Boolean(r.isLeaf),
+      isRoot:      Boolean(r.isRoot),
+      childrenIds: Array.isArray(r.childrenIds) ? (r.childrenIds as string[]) : [],
+      ancestorIds: Array.isArray(r.ancestorIds) ? (r.ancestorIds as string[]) : [],
+    }));
   },
 
   /**

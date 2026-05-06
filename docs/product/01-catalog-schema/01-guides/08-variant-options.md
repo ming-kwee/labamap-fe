@@ -144,11 +144,61 @@ The seeder does NOT overwrite custom options already configured by engineers.
 
 ---
 
+## Per-Variant Data Fields
+
+Each generated SKU row in the table has editable fields in addition to the dimension
+values (color, size, etc.). These are the fields the merchant fills in per variant:
+
+| Field | Key in payload | Type | Notes |
+|-------|---------------|------|-------|
+| SKU | `sku` | text | Auto-generated as `SKU-{OPTION1}-{OPTION2}`, editable |
+| Price | `price` | number (0.01 step) | |
+| Compare Price | `comparePrice` | number (0.01 step) | Crossed-out price shown to buyer |
+| Inventory | `inventory` | number (integer) | Units in stock |
+| Barcode | `barcode` | text | EAN / UPC |
+| Weight | `weight` | number | Shipping weight |
+
+These fields are seeded with zero/empty defaults by `VariantConfigurator.generateVariants()`
+and stored inside `variantConfigurator.variants[]` in the form submission:
+
+```json
+{
+  "variantConfigurator": {
+    "variants": [
+      {
+        "id": "midnight-black-128gb",
+        "color": "Midnight Black",
+        "storage_capacity": "128GB",
+        "sku": "SKU-MIDNIGHT-BLACK-128GB",
+        "price": 0,
+        "comparePrice": 0,
+        "inventory": 0,
+        "barcode": "",
+        "weight": 0,
+        "variantImages": []
+      }
+    ]
+  }
+}
+```
+
+The backend seeds the same set of fields via `MasterAttributeSchemaService.addBaseVariantAttributes()`
+when generating variant combinations. The field names must match exactly:
+
+- Use `inventory` — **not** `stock`. The backend stores and validates against `inventory`.
+- `cost` is not a backend-seeded field and is not included in the table.
+
+The `variantConfigurator` field itself is treated as a system field by the backend
+validator — its contents are passed through without pattern or required-field validation
+(individual variant fields are not validated by the master attribute schema).
+
+---
+
 ## Codebase
 
 | File | Purpose |
 |------|---------|
 | `src/modules/ecommerce-product-v2/step1-create/hooks/useProductTypeVariants.ts` | Two parallel fetches → builds `dimensionOptions` Map |
-| `src/modules/ecommerce-product-v2/step1-create/components/VariantConfigurator.tsx` | Renders axis selectors + SKU matrix; handles 4 states |
-| `src/modules/ecommerce-product-v2/step1-create/components/SkuMatrixPreview.tsx` | Grid visualization; computes cartesian product of selected values |
+| `src/modules/ecommerce-product-v2/step1-create/components/VariantConfigurator.tsx` | Renders axis selectors + SKU matrix table with editable per-variant fields |
+| `src/modules/ecommerce-product-v2/step1-create/components/SkuMatrixPreview.tsx` | Read-only grid visualization; computes cartesian product of selected values |
 | `src/modules/ecommerce-product-v2/step1-create/components/sections/VariantsSection.tsx` | Section wrapper that passes `topMeta.productTypeId` into `useProductTypeVariants` |

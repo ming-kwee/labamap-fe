@@ -8,18 +8,19 @@ export type DriftResolution = "RENAME_PLATFORM" | "RENAME_CHANNEL" | "KEEP_BOTH"
 /** One document in channel_category_mappings — one per (ProductCategory × ChannelStoreConnection) pair */
 export interface ChannelCategoryMapping {
   id: string;
+  organizationId: string;
   categoryId: string;         // FK → product_categories._id
   categoryName: string;       // denormalized for display
   storeId: string;            // FK → channel_stores._id
   channelType: string;        // "shopify" | "woocommerce" | "amazon" | …
-  externalId: string;         // channel's own ID for this category
-  externalSlug: string | null;
-  externalName: string;       // snapshot at time of last sync (used for drift detection)
+  externalId: string;         // Shopify: "gid://shopify/TaxonomyCategory/aa-1-1-1"
+  externalSlug: string | null;  // null for all taxonomy channels
+  externalName: string;       // snapshot of channel category name — display only for taxonomy channels
   syncStatus: SyncStatus;
-  importedFrom: boolean;      // true = this platform category was created by importing this channel
-  lastSyncedAt: string | null;
-  lastDriftAt: string | null;
-  driftReason: string | null; // human-readable explanation shown in drift resolution UI
+  importedFrom: boolean;      // always false for taxonomy channels
+  lastSyncedAt?: string;
+  lastDriftAt?: string | null;
+  driftReason?: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -32,14 +33,14 @@ export interface ChannelSyncSummary {
   lastSyncedAt: string | null;
 }
 
-/** One channel collection returned by the import preview endpoint */
+/** One channel collection returned by the import preview endpoint (Type 1: WooCommerce, Etsy only) */
 export interface ImportableCollection {
   externalId: string;
   externalName: string;
-  externalSlug: string | null;
+  externalSlug: string;
   /** manual = merchant-created; smart = Shopify auto-rule (recommend skip) */
-  collectionType: "manual" | "smart" | "unknown";
-  productCount: number;
+  collectionType: "manual" | "smart";
+  productCount: number | null;
 }
 
 /** Mapping suggestion when connecting a second channel */
@@ -85,12 +86,27 @@ export interface ResolveDriftRequest {
   resolution: DriftResolution;
 }
 
-// ─── Channels that support import (merchant-owned collections) ─────────────────
-// Amazon / TikTok / eBay are TYPE 2 (fixed taxonomies owned by the channel)
-// — they can only be MAPPED TO, never imported as platform categories.
-export const IMPORT_CAPABLE_CHANNELS = ["shopify", "woocommerce", "etsy"] as const;
+// ─── Type 1: merchant-owned collections — import wizard creates platform categories ──
+export const IMPORT_CAPABLE_CHANNELS = ["woocommerce", "etsy"] as const;
 export type ImportCapableChannel = typeof IMPORT_CAPABLE_CHANNELS[number];
 
 export function isImportCapable(channelType: string): boolean {
   return IMPORT_CAPABLE_CHANNELS.includes(channelType as ImportCapableChannel);
+}
+
+// ─── Taxonomy capability is determined per-store from the backend ─────────────
+// DO NOT add a hardcoded TAXONOMY_CHANNELS list here.
+// Use store.taxonomyEnabled (from ChannelConfiguration.taxonomyConfig.enabled)
+// and store.importCapable from the channel store API response instead.
+
+// ─── One node from GET /taxonomy/{channelType}/children ────────────────────────
+export interface TaxonomyCategory {
+  id: string;          // e.g. "gid://shopify/TaxonomyCategory/aa-1-1-1"
+  name: string;        // "Smartphones"
+  fullName: string;    // "Electronics > Phones > Smartphones"
+  level: number;       // 0 = root
+  isLeaf: boolean;
+  isRoot: boolean;
+  childrenIds: string[];
+  ancestorIds: string[];
 }

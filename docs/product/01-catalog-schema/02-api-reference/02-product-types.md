@@ -24,7 +24,7 @@ Base path: `/labamap/api/v1/admin/product-types`
 }
 ```
 
-`attributeCount` is denormalized — updated whenever `MasterAttribute.productTypeIds` changes. Used in the ProductType list view without querying `master_attributes`.
+`attributeCount` is denormalized — updated whenever `MasterAttribute.productTypeIds` changes. Used in the ProductType list view without querying `ecommerce_master_attributes`.
 
 Each entry in `variantDimensions` references a MasterAttribute by `attributeCode`. The attribute must be `SELECT` or `MULTI_SELECT` with an `options[]` array populated. `order` determines which axis is rows (1) and which is columns (2, 3, ...) in the variant matrix.
 
@@ -90,7 +90,7 @@ Returns a single ProductType with full `variantDimensions` array. This is the en
 ```
 
 **Backend validations:**
-- Each `attributeCode` in `variantDimensions` must exist in `master_attributes`
+- Each `attributeCode` in `variantDimensions` must exist in `ecommerce_master_attributes`
 - Initializes `attributeCount: 0`
 
 ---

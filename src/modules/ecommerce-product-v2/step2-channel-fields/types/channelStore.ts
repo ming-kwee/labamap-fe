@@ -41,6 +41,10 @@ export interface ChannelStoreConnection {
   disconnectedAt?: string;
   /** Phase D: machine-readable reason ("app_uninstalled" | "deauthorize" | "app_removed" | "manual" | …) */
   disconnectReason?: string;
+  /** From ChannelConfiguration.taxonomyConfig.enabled — true = use TaxonomyMapperModal, not import wizard */
+  taxonomyEnabled?: boolean;
+  /** Derived from !taxonomyEnabled — true = can use the import wizard (WooCommerce, Etsy) */
+  importCapable?: boolean;
 }
 
 /**

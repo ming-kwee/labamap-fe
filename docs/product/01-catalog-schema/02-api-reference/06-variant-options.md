@@ -122,6 +122,39 @@ interface ProductTypeVariantsResult {
 
 ---
 
+## Per-Variant Fields in the Submission Payload
+
+When the merchant submits a product with variants, the `variantConfigurator` field in
+the request body carries both the dimension values and the per-SKU data:
+
+```json
+{
+  "variantConfigurator": "{\"variants\":[{\"id\":\"midnight-black-128gb\",\"color\":\"Midnight Black\",\"storage_capacity\":\"128GB\",\"sku\":\"SKU-MIDNIGHT-BLACK-128GB\",\"price\":999,\"comparePrice\":1099,\"inventory\":50,\"barcode\":\"0123456789\",\"weight\":0.2,\"variantImages\":[]}]}"
+}
+```
+
+The `variantConfigurator` value is a **JSON string** (serialized by the frontend before
+submission). The backend treats it as a system field and passes it through without master
+attribute pattern validation.
+
+`MasterAttributeSchemaService.addBaseVariantAttributes()` seeds these fields when
+generating variant combinations on the backend:
+
+| Field | Type | Notes |
+|-------|------|-------|
+| `sku` | string | Required per variant; pattern `^[A-Za-z0-9_-]+$` applies only to the root-level `sku` field, **not** per-variant SKUs |
+| `price` | number | |
+| `comparePrice` | number | Crossed-out display price |
+| `inventory` | number | **Not** `stock` — use `inventory` to match the backend field name |
+| `barcode` | string | |
+| `weight` | number | |
+
+**Key constraint:** When `hasVariants = true`, the root-level `sku` field in the form is
+excluded from both required-field and pattern-validation checks on the backend, because
+each variant has its own SKU. The root-level `sku` can be empty or absent for variant products.
+
+---
+
 ## POST `/admin/product-types/match-by-options` (Phase 5)
 
 Auto-suggests ProductTypes for channel categories during second-channel onboarding.

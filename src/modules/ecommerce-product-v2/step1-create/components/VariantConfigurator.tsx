@@ -142,12 +142,11 @@ const VariantConfigurator: React.FC<VariantConfiguratorProps> = ({
         ...dimensions.map(dim => ({ name: dim.name, label: dim.label, type: 'select' })),
         { name: 'variantImages', label: 'Images', type: 'images' },
         { name: 'price', label: 'Price', type: 'number' },
-        { name: 'cost', label: 'Cost', type: 'number' },
         { name: 'comparePrice', label: 'Compare Price', type: 'number' },
-        { name: 'stock', label: 'Stock', type: 'number' },
+        { name: 'inventory', label: 'Inventory', type: 'number' },
         { name: 'sku', label: 'SKU', type: 'text' },
-        { name: 'weight', label: 'Weight', type: 'number' },
-        { name: 'barcode', label: 'Barcode', type: 'text' }
+        { name: 'barcode', label: 'Barcode', type: 'text' },
+        { name: 'weight', label: 'Weight', type: 'number' }
       ];
     };
 
@@ -269,12 +268,11 @@ const VariantConfigurator: React.FC<VariantConfiguratorProps> = ({
         ...combination,
         variantImages: existing?.variantImages || [],
         price: existing?.price || 0,
-        cost: existing?.cost || 0,
         comparePrice: existing?.comparePrice || 0,
-        stock: existing?.stock || 0,
-        weight: existing?.weight || 0,
+        inventory: existing?.inventory || 0,
         sku: existing?.sku || `SKU-${idParts.toUpperCase()}`,
-        barcode: existing?.barcode || ''
+        barcode: existing?.barcode || '',
+        weight: existing?.weight || 0
       };
 
       variantConfig.forEach((field: any) => {
@@ -421,7 +419,7 @@ const VariantConfigurator: React.FC<VariantConfiguratorProps> = ({
                             value={variant[field.name] || 0}
                             onChange={(e) => updateVariant(variant.id, field.name, Number(e.target.value))}
                             className="w-20 p-1 border rounded"
-                            step={['price', 'cost', 'comparePrice'].includes(field.name) ? '0.01' : '1'}
+                            step={['price', 'comparePrice'].includes(field.name) ? '0.01' : '1'}
                             min="0"
                           />
                         ) : field.type === 'text' ? (
