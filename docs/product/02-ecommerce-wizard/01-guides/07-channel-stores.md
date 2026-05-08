@@ -2,9 +2,9 @@
 
 ## What This Module Does
 
-Channel stores management lets sellers connect, configure, and manage e-commerce platform integrations (Shopify, Amazon, TikTok, Lazada, etc.). Connected stores appear as tabs in Step 2 and as publish targets in Step 3.
-
-**This is distinct from `src/modules/channel-platform/`** — that module is an unfinished dashboard concept with mock data only. This `step2-channel-fields/stores/` implementation is production-ready and calls real API endpoints.
+Channel stores management lets sellers connect, configure, and manage e-commerce platform
+integrations. Connected stores become tabs in Step 2 (channel-specific field entry) and
+publish targets in Step 3. A store must be ACTIVE to appear in either place.
 
 ---
 
@@ -15,19 +15,283 @@ channel_configurations          channel_store_connections         channel_produc
 (one per CHANNEL TYPE)          (one per STORE INSTANCE)          (one per PRODUCT × STORE)
 ──────────────────────          ─────────────────────────         ──────────────────────────
 Transformation contract         Physical connection               What the seller filled in
-How to transform data           Where to send it + auth           for this product × store
-for this channel type           credentials
-
-joltSpec                        storeId: "shopify-us-store"       masterProductId
-requiredFieldObjects            channelType: "shopify"            storeId
-apiWrapperConfig                storeName: "My Shopify US"        channelData: {}
-channelMappings                 credentials: { accessToken }      masterOverrides: {}
-                                organizationId                    variantOverrides: {}
+JOLT spec, field mappings,      Store name, URL, region,          for this product × store
+postProcessingRules,            encrypted credentials,
+apiWrapperConfig,               token expiry, OAuth state,
+channelMappings                 connectionStatus lifecycle
 ```
 
-**Why channel_configurations must stay per channel type:** Fields like `joltSpec`, `postProcessingRules`, `apiSchema` are identical for all Shopify stores. Duplicating them per store would mean an org with 3 Shopify stores has 3 identical JOLT specs — any pipeline change requires updating 3 documents.
+`channel_configurations` is per channel TYPE — all Shopify stores share one document.
+`channel_store_connections` is per STORE INSTANCE — one org with two Shopify stores has two documents.
 
-**Why channel_store_connections must be per store:** `storeId`, `storeName`, `storeUrl`, `credentials`, `region`, `isActive` are all different per store instance.
+---
+
+## Two Connection Methods
+
+### OAuth channels (redirect flow)
+`OAUTH_CHANNELS = { shopify, wix, tiktok, amazon, ebay }`
+
+The merchant never enters credentials. The modal redirects the browser to the channel's
+OAuth consent screen; the backend exchanges the authorization code for tokens and stores
+them encrypted. No credential form is shown on the frontend.
+
+### Manual channels (credential form)
+`lazada, tokopedia, facebook, shopee, walmart`
+
+The merchant enters API keys, access tokens, store IDs, etc. The exact fields are
+**data-driven** — fetched from `GET /channel-stores/credential-schema/{channelType}`.
+The form renders one input per `CredentialFieldSchema` entry; the backend can add, rename,
+or remove fields by updating the schema document without frontend changes.
+
+---
+
+## ConnectStoreModal: Which Flow to Show
+
+The modal contains two branches — only one is active at a time:
+
+```
+existingStore?  connectionStatus?  channelType in OAUTH_CHANNELS?  → result
+─────────────────────────────────────────────────────────────────────────────
+null (new conn) —                  YES                              showOAuthFlow
+null (new conn) —                  NO                               showManualForm
+ACTIVE          —                  YES                              showManualForm  ← edit OAuth store's stored creds
+ACTIVE          —                  NO                               showManualForm
+RECONNECT_REQUIRED / DISCONNECTED  YES                              showOAuthFlow   ← reconnect passes storeId
+RECONNECT_REQUIRED / DISCONNECTED  NO                               showManualForm
+```
+
+Key decision expression:
+```typescript
+const isReconnectMode = existingStore?.connectionStatus === "RECONNECT_REQUIRED"
+                     || existingStore?.connectionStatus === "DISCONNECTED";
+const isEditMode = Boolean(existingStore) && !isReconnectMode;
+
+const isOAuthChannel = OAUTH_CHANNELS.has(channelType);
+const showOAuthFlow = isOAuthChannel && (!existingStore || isReconnectMode);
+const showManualForm = !showOAuthFlow;
+```
+
+When editing an ACTIVE OAuth store (e.g., updating a Shopify store name), the manual form
+shows the credential schema fields with "Leave blank to keep existing" placeholders — the
+backend only overwrites credentials that are non-empty in the submission.
+
+---
+
+## Full OAuth Connection Flow (Phase B)
+
+```
+1. Merchant opens ConnectStoreModal, selects channel type (e.g. Shopify)
+   → showOAuthFlow = true
+
+2. Merchant enters store name + optional region
+   Shopify only: also enters shop domain (e.g. my-brand.myshopify.com)
+   Other OAuth channels: no domain needed
+
+3. Merchant clicks "Connect with {Channel}"
+   → ConnectStoreModal.handleOAuthConnect()
+   → ChannelStoreService.initiateOAuth({
+       channelType, organizationId, storeName, region?,
+       shop?,       ← Shopify only (subdomain without protocol or .myshopify.com)
+       storeId?     ← only in reconnect mode (tells backend to update existing store)
+     })
+   → GET /api/v1/oauth/initiate?channelType=...&organizationId=...&storeName=...&shop=...
+   → { authorizationUrl, nonce, channelType }
+
+4. window.location.href = authorizationUrl
+   → Browser navigates to channel consent screen (Shopify, Wix installer, Amazon, etc.)
+
+5. Merchant approves scopes
+
+6. Channel redirects to BACKEND callback URL (not the frontend)
+   Backend: exchanges code → creates/updates channel_store_connections → stores encrypted token
+   Backend: redirects browser to /channels/stores?connected={channelType}
+
+7. ChannelStoresDashboard detects ?connected={channelType} via useSearchParams
+   → shows success toast "Shopify store connected successfully"
+   → calls listAllStores() to reload the grid
+```
+
+**Reconnect flow** follows the same steps, with these differences:
+
+- The **Reconnect button** on the StoreCard passes the full `existingStore` object to `ConnectStoreModal`
+  as the `existingStore` prop. There is no `storeId` form field — the merchant never types it.
+- The modal detects reconnect mode from `connectionStatus`:
+  ```typescript
+  const isReconnectMode =
+    existingStore?.connectionStatus === "RECONNECT_REQUIRED" ||
+    existingStore?.connectionStatus === "DISCONNECTED";
+  ```
+- The channel type dropdown is **locked** (disabled) — the merchant cannot change it.
+- Store name and region fields are **pre-filled** from the existing store record.
+- In step 3, `handleOAuthConnect()` silently reads `existingStore.storeId` and passes it:
+  ```typescript
+  storeId: isReconnectMode ? existingStore?.storeId : undefined,
+  ```
+- The backend receives `storeId` and **updates** the existing `channel_store_connections` document
+  (new token, clears `reconnectRequired`, sets `connectionStatus = ACTIVE`) rather than creating a new one.
+- On return, the backend redirects to `/channels/stores?reconnected={channelType}`.
+  The dashboard detects `?reconnected=` via `useSearchParams` and shows a success toast.
+
+---
+
+## OAuth Endpoint: Unified vs Legacy
+
+| Version | Frontend call | Backend path |
+|---------|--------------|-------------|
+| **Current (Phase B+)** | `GET /oauth/initiate?channelType=...` | Single generic handler |
+| Legacy (Phase A) | `GET /oauth/{channelType}/initiate` | Per-channel handler |
+| Legacy callback | `POST /oauth/{channelType}/callback` | Per-channel (deprecated) |
+
+`ChannelOAuthService.completeOAuth()` calls the legacy POST callback — it is kept for
+backwards compatibility but is never called in the Phase B+ flow. The backend now handles
+the callback GET itself and redirects directly to `/channels/stores`.
+
+---
+
+## ConnectionStatus State Machine
+
+```
+                    ┌──────────────────────────────────────────┐
+                    │              ACTIVE                       │
+                    │  isActive=true, reconnectRequired=false   │
+                    └────┬──────────────────────────────────────┘
+                         │                     ▲
+              token expires/             OAuth reconnect
+              revoked (401/403)          (OAuthCallbackService
+                         │                clears reconnectRequired)
+                         ▼
+                ┌─────────────────────────────────┐
+                │       RECONNECT_REQUIRED         │
+                │  reconnectRequired=true           │
+                └────┬────────────────────────────-┘
+                     │                     ▲
+         webhook fires              (not restorable
+         (app_uninstalled,           from DISCONNECTED —
+          deauthorize, etc.)         must reconnect fresh)
+                     │
+                     ▼
+                ┌─────────────────────────────────┐
+                │          DISCONNECTED            │
+                │  isActive=false, disconnectedAt  │
+                │  reconnectRequired may be true   │
+                └─────────────────────────────────┘
+
+Manual deactivate (PUT /deactivate) → INACTIVE  (isActive=false, no disconnectReason)
+Manual reactivate (PUT /activate)   → ACTIVE
+DELETE → store removed permanently
+```
+
+`connectionStatus` is derived by the backend from `isActive + reconnectRequired + disconnectedAt`.
+The frontend uses `deriveStatus()` as a fallback for stores created before Phase E:
+
+```typescript
+function deriveStatus(store: ChannelStoreConnection): ConnectionStatus {
+  if (store.connectionStatus) return store.connectionStatus;
+  return store.isActive ? "ACTIVE" : "INACTIVE";
+}
+```
+
+**Webhook disconnect reasons per channel:**
+| Channel | `disconnectReason` value |
+|---------|-------------------------|
+| Shopify | `"app_uninstalled"` |
+| TikTok Shop | `"deauthorize"` |
+| Wix | `"app_removed"` |
+| Amazon | `"app_deauthorized"` |
+| eBay | `"account_deletion"` |
+| Manual API | `"manual"` |
+
+---
+
+## StoreCard Action Buttons by Status
+
+| Status | OAuth channel | Manual channel |
+|--------|--------------|----------------|
+| ACTIVE | [Deactivate] | [Edit, Deactivate] |
+| RECONNECT_REQUIRED | [Reconnect (amber), Deactivate] | [Edit, Deactivate] |
+| DISCONNECTED | [Reconnect, Delete] | [Edit, Delete] |
+| INACTIVE | [Reactivate, Delete] | [Reactivate, Delete] |
+
+OAuth channels never show an Edit button when ACTIVE because there are no credentials to
+edit — tokens are managed by the OAuth flow, not entered manually.
+
+---
+
+## Token Lifecycle
+
+```
+Before every publish:
+  GenericTokenRefreshService.getValidCredentials()
+    checks tokenExpiry[credentialKey]
+
+  If expires within buffer (default 5 min):
+    → call channel token refresh endpoint
+    → update channel_store_connections with new token + new expiry
+    → proceed with fresh token
+
+  If refresh fails (401/403 from channel):
+    → set reconnectRequired = true
+    → set connectionStatus = RECONNECT_REQUIRED
+    → throw error; publish is blocked until merchant re-authorizes
+```
+
+The frontend does not manage token refresh. It only shows the `RECONNECT_REQUIRED` badge
+and provides the reconnect button.
+
+---
+
+## `mapStore()` — Response Normalization
+
+`mapStore(raw)` (exported from `channelStore.service.ts`) normalizes raw backend responses
+into typed `ChannelStoreConnection` objects. All service methods call it via `.then(mapStore)`.
+
+Key defense it provides:
+```typescript
+isActive: Boolean(r.isActive ?? r.active)
+```
+The Jackson library serializes `isActive` boolean fields as `active` (strips the `is` prefix)
+in some backend versions. `mapStore` reads whichever key is present so the frontend works
+correctly regardless of which backend version it talks to.
+
+---
+
+## `listStores` vs `listAllStores`
+
+| Method | Endpoint | Use |
+|--------|----------|-----|
+| `listStores(orgId)` | `GET /channel-stores?organizationId=...` | Step 2 tabs, Step 3 publish targets — only active stores |
+| `listAllStores(orgId)` | `GET /channel-stores?organizationId=...&includeInactive=true` | Channel Stores Dashboard, Channel Category Mapping — all statuses |
+
+`ChannelStoresDashboard` and `ChannelCategoryMappingPage` call `listAllStores` so
+RECONNECT_REQUIRED and DISCONNECTED stores are shown with their attention badges.
+
+---
+
+## Credential Payload: `CredentialEntry[]`
+
+The current `StoreConnectionRequest.credentials` field is `CredentialEntry[]`, not the
+old `Record<string, string>`:
+
+```typescript
+interface CredentialEntry {
+  credId: string;       // backend schema identifier — from CredentialFieldSchema.credId
+  chnlCredName: string; // canonical key stored in the credentials map
+  chnlCredValue: string;
+}
+```
+
+`ConnectStoreModal` builds this array from the credential schema:
+```typescript
+const credentialEntries: CredentialEntry[] = credentialSchema
+  .filter(f => (credentials[f.chnlCredName] ?? "").trim() !== "")
+  .map(f => ({
+    credId:        f.credId,
+    chnlCredName:  f.chnlCredName,
+    chnlCredValue: credentials[f.chnlCredName].trim(),
+  }));
+```
+
+Fields with empty values are omitted — in edit mode this means "keep existing credential".
 
 ---
 
@@ -35,165 +299,8 @@ channelMappings                 credentials: { accessToken }      masterOverride
 
 | Route | Component |
 |-------|-----------|
-| `/channels/stores` | `ChannelStoresDashboard` |
-| `/channels/oauth/callback` | `ChannelOAuthCallbackPage` |
-
----
-
-## Components
-
-### ChannelStoresDashboard
-
-Full store management UI. Fetches its own data — no props needed.
-
-```tsx
-<ChannelStoresDashboard />
-```
-
-Features:
-- Lists all connected stores as cards
-- Channel type badge + store name + URL + region + connection date
-- Active / Inactive toggle per store
-- Deactivate / Reactivate / Delete actions with confirmation
-- "Connect Store" button → opens `ConnectStoreModal`
-- Edit credentials → opens `ConnectStoreModal` in edit mode
-- Empty state guidance when no stores are connected
-
-### ConnectStoreModal
-
-Add-store or edit-store modal. Credential fields are **data-driven** — fetched from the backend, not hardcoded.
-
-**Add flow:**
-1. Seller selects channel type
-2. `GET /channel-stores/credential-schema/{channelType}` → dynamic credential inputs
-3. Seller fills store name, URL, region, credentials
-4. Submit → `ChannelStoreService.connectStore()`
-
-**Edit flow:**
-1. Channel type locked (cannot change after connection)
-2. Credential fields: "Leave blank to keep existing"
-3. Submit → `ChannelStoreService.updateStore()`
-
-The credential schema endpoint returns `CredentialFieldSchema[]` — each entry has `label`, `inputType`, `sensitive`, `required`, `helpText`. The form renders one `<input>` per entry. The submission payload keys are the `chnlCredName` values from the schema.
-
-### ChannelTypeBadge
-
-Color-coded chip for a channel type.
-
-```tsx
-<ChannelTypeBadge channelType="shopify" size="md" />
-
-// To build custom badge UI:
-const { label, bgClass, textClass } = getChannelMeta("shopify");
-```
-
-Supported types: `shopify`, `wix`, `amazon`, `ebay`, `tiktok`, `lazada`, `tokopedia`, `facebook`, `shopee`, `walmart`.
-
----
-
-## OAuth Flow (Shopify)
-
-Currently only Shopify has an in-UI OAuth flow. Other OAuth-capable channels (TikTok, WiX) use manual credentials until their per-channel logic is added.
-
-```
-ConnectStoreModal (Shopify mode)
-  → seller enters shop domain (e.g. mystore.myshopify.com)
-  → ChannelOAuthService.initiateOAuth("shopify", { organizationId, returnUrl, extras: { shopDomain } })
-  → GET /oauth/shopify/initiate?...  → { authUrl: "https://...consent..." }
-  → window.location.href = authUrl
-
-Shopify consent screen
-  → seller approves scopes
-  → Shopify → /channels/oauth/callback?code=...&state=...&channelType=shopify&shop=...&hmac=...
-
-ChannelOAuthCallbackPage
-  → ChannelOAuthService.completeOAuth("shopify", { code, state, extras: { shop, hmac } })
-  → POST /oauth/shopify/callback  → ChannelStoreConnection
-  → redirect /channels/stores after 2s
-```
-
-The `extras` bag is the mechanism for channel-specific parameters without per-channel typed interfaces. The callback page automatically forwards all URL params not in `{code, state, channelType}` as `extras`.
-
----
-
-## ChannelStoreService
-
-```typescript
-// All methods static. All mutating ops require organizationId.
-ChannelStoreService.listStores(orgId)        // GET /channel-stores?organizationId=
-ChannelStoreService.getStore(storeId, orgId) // GET /channel-stores/{storeId}
-ChannelStoreService.connectStore(req, orgId) // POST /channel-stores
-ChannelStoreService.updateStore(id, req, org)// PUT  /channel-stores/{storeId}
-ChannelStoreService.deactivateStore(id, org) // PATCH /channel-stores/{storeId}/deactivate
-ChannelStoreService.reactivateStore(id, org) // PATCH /channel-stores/{storeId}/reactivate
-ChannelStoreService.deleteStore(id, org)     // DELETE /channel-stores/{storeId}
-ChannelStoreService.updateDisplayOrder(id,n,org)// PATCH .../display-order
-```
-
-`mapStore(raw)` — utility normalizes raw API responses to `ChannelStoreConnection` (handles missing fields, timestamp formats).
-
----
-
-## Token Lifecycle and Reconnect
-
-OAuth-capable channels (TikTok Shop, WIX, Shopify) use short-lived access tokens. The backend manages token expiry automatically — the frontend does not need to handle this.
-
-**Normal refresh flow:**
-1. Before every publish, `GenericTokenRefreshService.getValidCredentials()` checks `tokenExpiry[credentialKey]`.
-2. If the token expires within the configured buffer (default 5 minutes), the service calls the channel's token refresh endpoint and updates `channel_store_connections` with the new token + expiry.
-3. The publish proceeds with fresh credentials.
-
-**Reconnect required:**
-- If the refresh token itself is expired or revoked (HTTP 401/403 from the channel's token endpoint), `GenericTokenRefreshService` sets `reconnectRequired = true` on the store.
-- The frontend should detect `reconnectRequired: true` in the store response and show a "Re-authorize" prompt. The merchant re-initiates OAuth via `/oauth/{channelType}/initiate`.
-- `OAuthCallbackService` clears `reconnectRequired = false` after successful re-authorization.
-
-**Webhook deactivation:**
-- Marketplace webhooks (Shopify `app/uninstalled`, TikTok `deauthorize`, WIX `app-removed`, etc.) trigger `WebhookService`, which sets `isActive = false`, `disconnectedAt`, and `disconnectReason` via `ChannelStoreConnectionService.deactivateByWebhook()`.
-- The store remains in the database for audit purposes but is excluded from Step 2 tabs and Step 3 publish targets.
-
----
-
-## Key Types
-
-```typescript
-interface ChannelStoreConnection {
-  storeId: string;
-  channelType: ChannelType;
-  storeName: string;
-  storeUrl: string;
-  region?: string;
-  organizationId: string;
-  credentials: Record<string, string>;  // masked ("***MASKED***") in GET responses
-  tokenExpiry?: Record<string, string>; // credential key → ISO datetime
-  isActive: boolean;
-  displayOrder: number;
-  connectedAt: string | number;
-  lastSyncedAt?: string | number;
-  reconnectRequired?: boolean;          // true = merchant must re-authorize via OAuth
-  disconnectedAt?: string;              // set by webhook deactivation
-  disconnectReason?: string;            // "app_uninstalled" | "deauthorize" | "manual" | ...
-}
-
-interface StoreConnectionRequest {
-  channelType: ChannelType;
-  storeName: string;
-  storeUrl: string;
-  storeId?: string;        // present in edit mode
-  region?: string;
-  credentials: Record<string, string>;  // keys = chnlCredName from credential schema
-}
-
-interface CredentialFieldSchema {
-  credId: string;
-  chnlCredName: string;   // used as key in credentials map
-  label: string;
-  inputType: "text" | "password" | "email" | "url" | "number";
-  sensitive: boolean;
-  required: boolean;
-  helpText?: string;
-}
-```
+| `/channels/stores` | `ChannelStoresDashboard` (wrapped in `<Suspense>` for `useSearchParams`) |
+| `/channels/oauth/callback` | `ChannelOAuthCallbackPage` (legacy — not used in Phase B+ flow) |
 
 ---
 
@@ -201,9 +308,9 @@ interface CredentialFieldSchema {
 
 | File | Purpose |
 |------|---------|
-| `step2-channel-fields/components/stores/ChannelStoresDashboard.tsx` | Full store management UI |
-| `step2-channel-fields/components/stores/ConnectStoreModal.tsx` | Add/edit store modal with data-driven credentials |
-| `step2-channel-fields/components/stores/ChannelTypeBadge.tsx` | Color-coded channel type chip |
+| `step2-channel-fields/components/stores/ChannelStoresDashboard.tsx` | Full store management UI; detects OAuth callback query params |
+| `step2-channel-fields/components/stores/ConnectStoreModal.tsx` | Add/edit/reconnect modal; branches on OAuth vs manual flow |
+| `step2-channel-fields/components/stores/ChannelTypeBadge.tsx` | Color-coded channel type chip; exports `getChannelMeta()` |
 | `step2-channel-fields/services/channelStore.service.ts` | `ChannelStoreService`, `ChannelCredentialSchemaService`, `mapStore` |
-| `step2-channel-fields/services/channelOAuth.service.ts` | `ChannelOAuthService` — OAuth initiation + completion |
-| `step2-channel-fields/types/channelStore.ts` | All TypeScript types for stores, OAuth, connection |
+| `step2-channel-fields/services/channelOAuth.service.ts` | `ChannelOAuthService` — `initiateOAuth` (Phase B+); `completeOAuth` (legacy, deprecated) |
+| `step2-channel-fields/types/channelStore.ts` | All TypeScript types |

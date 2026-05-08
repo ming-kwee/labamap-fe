@@ -195,39 +195,73 @@ Updates the tab order in the Step 2 wizard.
 
 ## OAuth Endpoints
 
-### GET `/oauth/{channelType}/initiate`
+### GET `/oauth/initiate` (Phase B+ — current)
 
-Initiates OAuth for a channel. The frontend redirects the user's browser to the returned `authUrl`.
+Unified OAuth initiation endpoint for all channels. The frontend redirects the browser
+to the returned `authorizationUrl`.
 
 **Query params:**
 ```
-organizationId=org_123
-returnUrl=/channels/oauth/callback?channelType=shopify
-shopDomain=mystore.myshopify.com   ← channel-specific extras as query params
+channelType=shopify          ← required
+organizationId=org_123       ← required
+storeName=My+Shopify+Store   ← required
+region=US                    ← optional
+shop=my-brand                ← Shopify only: subdomain (no protocol, no .myshopify.com)
+storeId=shopify-us-store     ← reconnect mode only: tells backend to update this store
 ```
 
 **Response:**
 ```json
-{ "authUrl": "https://mystore.myshopify.com/admin/oauth/authorize?client_id=...&scope=...&state=..." }
-```
-
----
-
-### POST `/oauth/{channelType}/callback`
-
-Exchanges the OAuth code for a token, creates the `channel_store_connections` document, returns the store.
-
-**Request body:**
-```json
 {
-  "code":  "abc123",
-  "state": "state_xyz",
-  "shop":  "mystore.myshopify.com",
-  "hmac":  "abcdef123456"
+  "authorizationUrl": "https://my-brand.myshopify.com/admin/oauth/authorize?client_id=...&scope=...&state=...",
+  "nonce": "abc123xyz",
+  "channelType": "shopify"
 }
 ```
 
-**Response:** `ChannelStoreConnection`
+The frontend calls `window.location.href = authorizationUrl`. The backend handles the
+channel's callback GET, exchanges the code, saves the store, and redirects to
+`/channels/stores?connected={channelType}`.
+
+**Note on `shop` for Shopify:** pass only the subdomain. The backend builds the full
+`{shop}.myshopify.com` URL internally. Passing the full `.myshopify.com` domain will
+result in a double-suffix URL and a failed redirect.
+
+---
+
+### GET `/oauth/{channelType}/initiate` (Legacy — do not use)
+
+Per-channel path, superseded by the unified endpoint above. Still active on the backend
+for backwards compatibility. The frontend no longer calls this path.
+
+---
+
+### POST `/oauth/{channelType}/callback` (Legacy — do not use)
+
+Manual code-exchange endpoint. In Phase B+, the backend handles the OAuth provider's
+GET callback directly and redirects to `/channels/stores`. The frontend `ChannelOAuthCallbackPage`
+and `ChannelOAuthService.completeOAuth()` are kept for backwards compatibility but are
+not called in the current flow.
+
+---
+
+### PUT `/channel-stores/{storeId}/deactivate`
+
+Soft-disables the store (sets `isActive = false`, `disconnectReason = "manual"`).
+The store remains in the database. Returns `204 No Content`.
+
+Note: the API reference originally showed `PATCH` — the actual method is `PUT`.
+
+---
+
+### PUT `/channel-stores/{storeId}/activate`
+
+Re-enables a deactivated store (sets `isActive = true`, clears `reconnectRequired`).
+
+**Response:** Updated `ChannelStoreConnection`
+
+Note: the API reference originally showed `PATCH /reactivate` — the actual path is
+`PUT /activate`.
 
 ---
 
@@ -240,6 +274,9 @@ type ChannelType =
   | "shopify" | "wix" | "amazon" | "ebay" | "tiktok"
   | "lazada" | "tokopedia" | "facebook" | "shopee" | "walmart";
 
+// Phase E: derived by backend from isActive + reconnectRequired + disconnectedAt
+type ConnectionStatus = "ACTIVE" | "RECONNECT_REQUIRED" | "DISCONNECTED" | "INACTIVE";
+
 interface ChannelStoreConnection {
   storeId: string;
   channelType: ChannelType;
@@ -247,15 +284,26 @@ interface ChannelStoreConnection {
   storeUrl: string;
   region?: string;
   organizationId: string;
-  credentials: Record<string, string>;  // masked in GET responses
-  tokenExpiry?: Record<string, string>; // credential key → ISO datetime
+  credentials: Record<string, string>;   // masked to "***MASKED***" in GET responses
+  tokenExpiry?: Record<string, string>;  // credential key → ISO datetime
   isActive: boolean;
   displayOrder: number;
-  connectedAt: string | number;
+  connectedAt: string | number;          // ISO string or epoch-seconds; use formatDate() helper
   lastSyncedAt?: string | number;
-  reconnectRequired?: boolean;          // true = merchant must re-authorize
-  disconnectedAt?: string;              // set by webhook deactivation
-  disconnectReason?: string;            // "app_uninstalled" | "deauthorize" | "manual" | ...
+  reconnectRequired?: boolean;           // true = merchant must re-authorize
+  connectionStatus?: ConnectionStatus;   // Phase E — preferred over isActive for UI logic
+  disconnectedAt?: string;               // set by webhook deactivation
+  disconnectReason?: string;             // "app_uninstalled" | "deauthorize" | "app_removed" | "manual" | ...
+  taxonomyEnabled?: boolean;             // from ChannelCategoryApiConfig.taxonomyEnabled (true = fixed channel-owned taxonomy tree)
+  importCapable?: boolean;               // from ChannelCategoryApiConfig.importCapable (true = import wizard for merchant collections)
+  // Note: both flags are independent. Shopify has taxonomyEnabled=true AND importCapable=true.
+}
+
+// credentials field is CredentialEntry[] in POST/PUT requests (NOT Record<string,string>)
+interface CredentialEntry {
+  credId: string;        // from CredentialFieldSchema.credId
+  chnlCredName: string;  // canonical credential key stored in the map
+  chnlCredValue: string;
 }
 
 interface StoreConnectionRequest {
@@ -265,16 +313,31 @@ interface StoreConnectionRequest {
   storeId?: string;          // present in edit mode
   region?: string;
   displayOrder?: number;
-  credentials: Record<string, string>;
+  credentials: CredentialEntry[];  // ← structured list, not flat map
 }
 
 interface CredentialFieldSchema {
-  credId: string;
-  chnlCredName: string;
+  credId: string;         // backend schema identifier
+  chnlCredName: string;   // key used in the credentials map
   label: string;
   inputType: "text" | "password" | "email" | "url" | "number";
   sensitive: boolean;
   required: boolean;
   helpText?: string;
+}
+
+interface OAuthInitiateRequest {
+  channelType: ChannelType;
+  organizationId: string;
+  storeName: string;
+  region?: string;
+  shop?: string;    // Shopify only: subdomain without protocol or .myshopify.com
+  storeId?: string; // reconnect mode: update this store instead of creating new
+}
+
+interface OAuthInitiateResponse {
+  authorizationUrl: string;
+  nonce: string;
+  channelType: ChannelType;
 }
 ```

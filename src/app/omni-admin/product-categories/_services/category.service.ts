@@ -15,6 +15,8 @@
  *   PUT    /{id}       — full update, reparent supported (cascades path)
  *   PATCH  /{id}/active    — toggle active
  *   DELETE /{id}       — blocked with 409 if active children exist
+ *
+ * All endpoints require organizationId (query param or X-Organization-Id header).
  */
 
 import {
@@ -28,9 +30,20 @@ import {
 } from "../_types/category";
 
 const BASE = "http://localhost:8888/labamap/api/v1/admin/product-categories";
-const JSON_HEADERS = { "Content-Type": "application/json" };
 
-// ─── HTTP helper ──────────────────────────────────────────────────────────────
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function orgHeaders(orgId?: string): Record<string, string> {
+  const h: Record<string, string> = { "Content-Type": "application/json" };
+  if (orgId) h["X-Organization-Id"] = orgId;
+  return h;
+}
+
+function withOrg(url: string, orgId?: string): string {
+  if (!orgId) return url;
+  const sep = url.includes("?") ? "&" : "?";
+  return `${url}${sep}organizationId=${encodeURIComponent(orgId)}`;
+}
 
 async function handleResponse<T>(res: Response): Promise<T | null> {
   if (!res.ok) {
@@ -55,28 +68,28 @@ async function handleResponse<T>(res: Response): Promise<T | null> {
 
 export const CategoryService = {
   /** GET / — flat list, optionally filtered */
-  async list(params?: { active?: boolean; q?: string }): Promise<ProductCategory[]> {
+  async list(orgId?: string, params?: { active?: boolean; q?: string }): Promise<ProductCategory[]> {
     const qs = new URLSearchParams();
     if (params?.active !== undefined) qs.set("active", String(params.active));
     if (params?.q) qs.set("q", params.q);
-    const url = `${BASE}${qs.toString() ? `?${qs}` : ""}`;
-    const res = await fetch(url, { method: "GET", headers: JSON_HEADERS });
+    const base = `${BASE}${qs.toString() ? `?${qs}` : ""}`;
+    const res = await fetch(withOrg(base, orgId), { method: "GET", headers: orgHeaders(orgId) });
     const raw = await handleResponse<unknown>(res);
     const arr = Array.isArray(raw) ? raw : ((raw as Record<string, unknown>)?.content as unknown[] ?? []);
     return (arr as ProductCategoryDoc[]).map(docToCategory);
   },
 
   /** GET /tree — full nested tree */
-  async getTree(): Promise<ProductCategoryTree[]> {
-    const res = await fetch(`${BASE}/tree`, { method: "GET", headers: JSON_HEADERS });
+  async getTree(orgId?: string): Promise<ProductCategoryTree[]> {
+    const res = await fetch(withOrg(`${BASE}/tree`, orgId), { method: "GET", headers: orgHeaders(orgId) });
     const raw = await handleResponse<unknown>(res);
     const arr = Array.isArray(raw) ? raw : [];
     return (arr as ProductCategoryDoc[]).map(docToTree);
   },
 
   /** GET /slugs — lightweight list for pickers */
-  async getSlugs(): Promise<CategorySlugItem[]> {
-    const res = await fetch(`${BASE}/slugs`, { method: "GET", headers: JSON_HEADERS });
+  async getSlugs(orgId?: string): Promise<CategorySlugItem[]> {
+    const res = await fetch(withOrg(`${BASE}/slugs`, orgId), { method: "GET", headers: orgHeaders(orgId) });
     const raw = await handleResponse<unknown>(res);
     const arr = Array.isArray(raw) ? raw : [];
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -92,24 +105,24 @@ export const CategoryService = {
   },
 
   /** GET /{id} */
-  async get(id: string): Promise<ProductCategory> {
-    const res = await fetch(`${BASE}/${id}`, { method: "GET", headers: JSON_HEADERS });
+  async get(id: string, orgId?: string): Promise<ProductCategory> {
+    const res = await fetch(withOrg(`${BASE}/${id}`, orgId), { method: "GET", headers: orgHeaders(orgId) });
     const doc = await handleResponse<ProductCategoryDoc>(res);
     if (!doc) throw new Error(`[CategoryService] GET ${id} returned no content`);
     return docToCategory(doc);
   },
 
   /** GET /{id}/children */
-  async getChildren(id: string): Promise<ProductCategory[]> {
-    const res = await fetch(`${BASE}/${id}/children`, { method: "GET", headers: JSON_HEADERS });
+  async getChildren(id: string, orgId?: string): Promise<ProductCategory[]> {
+    const res = await fetch(withOrg(`${BASE}/${id}/children`, orgId), { method: "GET", headers: orgHeaders(orgId) });
     const raw = await handleResponse<unknown>(res);
     const arr = Array.isArray(raw) ? raw : [];
     return (arr as ProductCategoryDoc[]).map(docToCategory);
   },
 
   /** GET /{id}/breadcrumb */
-  async getBreadcrumb(id: string): Promise<ProductCategory[]> {
-    const res = await fetch(`${BASE}/${id}/breadcrumb`, { method: "GET", headers: JSON_HEADERS });
+  async getBreadcrumb(id: string, orgId?: string): Promise<ProductCategory[]> {
+    const res = await fetch(withOrg(`${BASE}/${id}/breadcrumb`, orgId), { method: "GET", headers: orgHeaders(orgId) });
     const raw = await handleResponse<unknown>(res);
     const arr = Array.isArray(raw) ? raw : [];
     return (arr as ProductCategoryDoc[]).map(docToCategory);
@@ -117,12 +130,13 @@ export const CategoryService = {
 
   /** POST / — create new category */
   async create(
-    cat: Omit<ProductCategory, "id" | "path" | "level" | "createdAt" | "updatedAt">
+    cat: Omit<ProductCategory, "id" | "path" | "level" | "createdAt" | "updatedAt">,
+    orgId?: string,
   ): Promise<ProductCategory> {
     const payload = categoryToPayload(cat);
-    const res = await fetch(BASE, {
+    const res = await fetch(withOrg(BASE, orgId), {
       method: "POST",
-      headers: JSON_HEADERS,
+      headers: orgHeaders(orgId),
       body: JSON.stringify(payload),
     });
     const doc = await handleResponse<ProductCategoryDoc>(res);
@@ -133,21 +147,21 @@ export const CategoryService = {
   /** PUT /{id} — full update, supports reparenting */
   async update(
     id: string,
-    cat: Omit<ProductCategory, "id" | "path" | "level" | "createdAt" | "updatedAt">
+    cat: Omit<ProductCategory, "id" | "path" | "level" | "createdAt" | "updatedAt">,
+    orgId?: string,
   ): Promise<ProductCategory> {
     const payload = categoryToPayload(cat);
-    const res = await fetch(`${BASE}/${id}`, {
+    const res = await fetch(withOrg(`${BASE}/${id}`, orgId), {
       method: "PUT",
-      headers: JSON_HEADERS,
+      headers: orgHeaders(orgId),
       body: JSON.stringify(payload),
     });
     const doc = await handleResponse<ProductCategoryDoc>(res);
     if (doc === null) {
-      // 204 No Content — reconstruct from sent payload
       return {
         ...cat,
         id,
-        path: "",   // backend recomputes; caller should refetch tree
+        path: "",
         level: 0,
         updatedAt: new Date().toISOString(),
       };
@@ -156,24 +170,21 @@ export const CategoryService = {
   },
 
   /** PATCH /{id}/active */
-  async setActive(id: string, active: boolean): Promise<void> {
-    const res = await fetch(`${BASE}/${id}/active?active=${active}`, {
-      method: "PATCH",
-      headers: JSON_HEADERS,
-    });
-    // Accept both 200 (body) and 204 (no body) — both mean success
+  async setActive(id: string, active: boolean, orgId?: string): Promise<void> {
+    const url = withOrg(`${BASE}/${id}/active?active=${active}`, orgId);
+    const res = await fetch(url, { method: "PATCH", headers: orgHeaders(orgId) });
     await handleResponse<unknown>(res);
   },
 
   /** GET /{id}/effective-product-type — resolved type including ancestor inheritance */
-  async getEffectiveProductType(id: string): Promise<{
+  async getEffectiveProductType(id: string, orgId?: string): Promise<{
     productTypeId: string;
     productTypeName: string;
     inheritedFrom: string | null;
     inheritedFromName: string | null;
   } | null> {
     try {
-      const res = await fetch(`${BASE}/${id}/effective-product-type`, { method: "GET", headers: JSON_HEADERS });
+      const res = await fetch(withOrg(`${BASE}/${id}/effective-product-type`, orgId), { method: "GET", headers: orgHeaders(orgId) });
       if (res.status === 404 || res.status === 204) return null;
       return await handleResponse<{
         productTypeId: string;
@@ -187,8 +198,8 @@ export const CategoryService = {
   },
 
   /** DELETE /{id} — throws with 409 message if active children exist */
-  async delete(id: string): Promise<void> {
-    const res = await fetch(`${BASE}/${id}`, { method: "DELETE", headers: JSON_HEADERS });
+  async delete(id: string, orgId?: string): Promise<void> {
+    const res = await fetch(withOrg(`${BASE}/${id}`, orgId), { method: "DELETE", headers: orgHeaders(orgId) });
     if (!res.ok) {
       let message = res.statusText;
       try {

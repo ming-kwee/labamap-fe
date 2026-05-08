@@ -71,6 +71,13 @@ const navItems: NavItem[] = [
     ],
   },
   {
+    icon: <PaperPlaneIcon />,
+    name: "Platform Admin",
+    subItems: [
+      { name: "Category Templates", path: "/platform-admin/category-templates", pro: false, new: true },
+    ],
+  },
+  {
     icon: <TaskIcon />,
     name: "Business Rules",
     path: "/business-rules",

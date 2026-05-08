@@ -44,6 +44,7 @@ export default function FieldRenderer({
   if (fieldType === 'category-select') {
     input = (
       <CategorySelectField
+        orgId={organizationId}
         value={value || ''}
         onChange={(slug) => onChange(fieldName, slug)}
         onBlur={() => onBlur(field)}

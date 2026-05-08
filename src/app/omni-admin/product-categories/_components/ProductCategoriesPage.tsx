@@ -4,6 +4,7 @@ import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { ProductCategory, ProductCategoryTree, flattenTree, countDescendants } from "../_types/category";
 import { CategoryService } from "../_services/category.service";
 import { AddEditCategoryModal } from "./AddEditCategoryModal";
+import { useAuth } from "@/shared/contexts/AuthContext";
 
 // ─── Icons ─────────────────────────────────────────────────────────────────────
 
@@ -275,22 +276,39 @@ function TreeNode({
 
 // ─── Empty State ───────────────────────────────────────────────────────────────
 
-function EmptyState({ onAdd }: { onAdd: () => void }) {
+function EmptyState({ onAdd, onRetry }: { onAdd: () => void; onRetry: () => void }) {
   return (
     <div className="flex flex-col items-center justify-center py-24 px-6 text-center">
       <div className="w-16 h-16 rounded-2xl bg-gray-100 dark:bg-gray-800 flex items-center justify-center mb-4 text-3xl">
         📂
       </div>
       <h3 className="text-base font-semibold text-gray-900 dark:text-white mb-1">No categories yet</h3>
-      <p className="text-sm text-gray-500 dark:text-gray-400 max-w-xs leading-relaxed mb-6">
-        Create your first root category to start organising your product catalog.
+      <p className="text-sm text-gray-500 dark:text-gray-400 max-w-sm leading-relaxed mb-1">
+        Your category tree is being set up. If it doesn&apos;t appear after a moment, try refreshing.
       </p>
-      <button
-        onClick={onAdd}
-        className="inline-flex items-center gap-2 px-4 py-2.5 text-sm font-semibold bg-brand-500 hover:bg-brand-600 text-white rounded-xl transition-colors shadow-sm"
-      >
-        <PlusIcon /> Create first category
-      </button>
+      <p className="text-xs text-gray-400 dark:text-gray-500 mb-6">
+        If the problem persists, contact your platform admin.
+      </p>
+      <div className="flex items-center gap-3">
+        <button
+          onClick={onRetry}
+          className="inline-flex items-center gap-2 px-4 py-2.5 text-sm font-semibold bg-brand-500 hover:bg-brand-600 text-white rounded-xl transition-colors shadow-sm"
+        >
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/>
+            <path d="M21 3v5h-5"/>
+            <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/>
+            <path d="M8 16H3v5"/>
+          </svg>
+          Refresh
+        </button>
+        <button
+          onClick={onAdd}
+          className="px-4 py-2.5 text-sm font-medium text-gray-500 dark:text-gray-400 border border-gray-200 dark:border-gray-700 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+        >
+          Create manually
+        </button>
+      </div>
     </div>
   );
 }
@@ -298,6 +316,13 @@ function EmptyState({ onAdd }: { onAdd: () => void }) {
 // ─── Main Page ─────────────────────────────────────────────────────────────────
 
 export default function ProductCategoriesPage() {
+  const { organization } = useAuth();
+  const orgId = organization?.organizationId ?? "";
+
+  const emitCategoryTreeChanged = useCallback(() => {
+    if (!orgId) return;
+    window.dispatchEvent(new CustomEvent('categoryTreeChanged', { detail: { orgId } }));
+  }, [orgId]);
   const [tree, setTree] = useState<ProductCategoryTree[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -320,19 +345,19 @@ export default function ProductCategoriesPage() {
   // ── Load tree ──────────────────────────────────────────────────────────────
 
   const loadTree = useCallback(async () => {
+    if (!orgId) return;
     setIsLoading(true);
     setLoadError(null);
     try {
-      const data = await CategoryService.getTree();
+      const data = await CategoryService.getTree(orgId);
       setTree(data);
-      // Auto-expand root nodes
       setExpandedIds(new Set(data.map(n => n.id)));
     } catch (err) {
       setLoadError(String((err as Error).message ?? err));
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [orgId]);
 
   useEffect(() => { loadTree(); }, [loadTree]);
 
@@ -411,8 +436,9 @@ export default function ProductCategoriesPage() {
       );
     setTree(prev => updateActive(prev));
     try {
-      await CategoryService.setActive(cat.id, !cat.active);
+      await CategoryService.setActive(cat.id, !cat.active, orgId);
       showToast(`${cat.name} ${cat.active ? "deactivated" : "activated"}`);
+      emitCategoryTreeChanged();
     } catch (err) {
       // Rollback
       setTree(prev => updateActive(prev));
@@ -428,13 +454,14 @@ export default function ProductCategoriesPage() {
     setShowModal(false);
     try {
       if (editingCategory) {
-        await CategoryService.update(editingCategory.id, payload);
+        await CategoryService.update(editingCategory.id, payload, orgId);
         showToast(`"${payload.name}" updated`);
       } else {
-        await CategoryService.create(payload);
+        await CategoryService.create(payload, orgId);
         showToast(`"${payload.name}" created`);
       }
       await loadTree();
+      emitCategoryTreeChanged();
     } catch (err) {
       showToast((err as Error).message, "err");
     }
@@ -450,9 +477,10 @@ export default function ProductCategoriesPage() {
     setDeleteTarget(null);
     setSavingId(target.id);
     try {
-      await CategoryService.delete(target.id);
+      await CategoryService.delete(target.id, orgId);
       showToast(`"${target.name}" deleted`);
       await loadTree();
+      emitCategoryTreeChanged();
     } catch (err) {
       showToast((err as Error).message, "err");
     } finally {
@@ -569,7 +597,10 @@ export default function ProductCategoriesPage() {
 
         {/* Empty state */}
         {!isLoading && !loadError && tree.length === 0 && (
-          <EmptyState onAdd={() => handleOpenAdd(null)} />
+          <EmptyState
+            onAdd={() => handleOpenAdd(null)}
+            onRetry={loadTree}
+          />
         )}
 
         {/* Search results — flat list */}
@@ -618,6 +649,7 @@ export default function ProductCategoriesPage() {
           category={editingCategory}
           parentId={newParentId}
           tree={tree}
+          orgId={orgId}
           onSave={handleModalSave}
           onClose={() => setShowModal(false)}
         />

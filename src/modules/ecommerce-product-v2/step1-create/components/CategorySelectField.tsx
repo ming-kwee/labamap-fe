@@ -6,6 +6,7 @@ import type { CategorySlugItem } from '@/app/omni-admin/product-categories/_type
 import { Search, ChevronDown, X } from '@/shared/ui/icons/Icons';
 
 interface CategorySelectFieldProps {
+  orgId: string;
   value: string;
   onChange: (slug: string) => void;
   onBlur: () => void;
@@ -15,23 +16,30 @@ interface CategorySelectFieldProps {
   className?: string;
 }
 
-// Module-level cache — shared across all instances for the lifetime of the browser tab
-let slugCache: CategorySlugItem[] | null = null;
-let fetchPromise: Promise<CategorySlugItem[]> | null = null;
+// Module-level org-keyed cache — one entry per org, shared across all instances for the tab lifetime
+const slugCacheByOrg = new Map<string, CategorySlugItem[]>();
+const fetchPromiseByOrg = new Map<string, Promise<CategorySlugItem[]>>();
 
-function fetchSlugs(): Promise<CategorySlugItem[]> {
-  if (slugCache) return Promise.resolve(slugCache);
-  if (fetchPromise) return fetchPromise;
-  fetchPromise = CategoryService.getSlugs().then(items => {
-    // Sort by path once — alphabetic path sort = correct parent-before-child tree order
-    slugCache = [...items].sort((a, b) => a.path.localeCompare(b.path));
-    fetchPromise = null;
-    return slugCache;
+function fetchSlugs(orgId: string): Promise<CategorySlugItem[]> {
+  if (slugCacheByOrg.has(orgId)) return Promise.resolve(slugCacheByOrg.get(orgId)!);
+  if (fetchPromiseByOrg.has(orgId)) return fetchPromiseByOrg.get(orgId)!;
+
+  const promise = CategoryService.getSlugs(orgId).then(items => {
+    slugCacheByOrg.set(orgId, [...items].sort((a, b) => a.path.localeCompare(b.path)));
+    fetchPromiseByOrg.delete(orgId);
+    return slugCacheByOrg.get(orgId)!;
   });
-  return fetchPromise;
+  fetchPromiseByOrg.set(orgId, promise);
+  return promise;
+}
+
+function invalidateOrgCache(orgId: string) {
+  slugCacheByOrg.delete(orgId);
+  fetchPromiseByOrg.delete(orgId);
 }
 
 export default function CategorySelectField({
+  orgId,
   value,
   onChange,
   onBlur,
@@ -55,7 +63,9 @@ export default function CategorySelectField({
   // ── Fetch categories ────────────────────────────────────────────────────────
   useEffect(() => {
     mounted.current = true;
-    fetchSlugs()
+    setLoading(true);
+    setError(null);
+    fetchSlugs(orgId)
       .then(data => {
         if (!mounted.current) return;
         setItems(data);
@@ -67,7 +77,22 @@ export default function CategorySelectField({
         setLoading(false);
       });
     return () => { mounted.current = false; };
-  }, []);
+  }, [orgId]);
+
+  // ── Cache invalidation via global event ─────────────────────────────────────
+  useEffect(() => {
+    const handler = (e: CustomEvent<{ orgId: string }>) => {
+      if (e.detail.orgId !== orgId) return;
+      invalidateOrgCache(orgId);
+      setLoading(true);
+      setError(null);
+      fetchSlugs(orgId)
+        .then(data => { if (mounted.current) { setItems(data); setLoading(false); } })
+        .catch(err => { if (mounted.current) { setError(err instanceof Error ? err.message : 'Failed to load categories'); setLoading(false); } });
+    };
+    window.addEventListener('categoryTreeChanged', handler as EventListener);
+    return () => window.removeEventListener('categoryTreeChanged', handler as EventListener);
+  }, [orgId]);
 
   // ── Derived values ──────────────────────────────────────────────────────────
   const selectedItem = useMemo(
@@ -164,7 +189,6 @@ export default function CategorySelectField({
   // ── Ancestry breadcrumb (shown inside each option) ──────────────────────────
   const parentPath = (item: CategorySlugItem) => {
     if (item.level === 0) return null;
-    // path is "a/b/c" → parent names are "a / b"
     const parts = item.path.split('/').slice(0, -1);
     return parts.join(' / ');
   };

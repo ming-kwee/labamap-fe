@@ -57,12 +57,12 @@ Backend: DataDrivenSchemaGenerationService
                 ▼
 FieldRenderer.tsx
   fieldType = "CATEGORY_SELECT".toLowerCase().replace(/_/g, '-') → "category-select"
-  → renders <CategorySelectField value={...} onChange={(slug) => onChange("category", slug)} />
+  → renders <CategorySelectField orgId={orgId} value={...} onChange={(slug) => onChange("category", slug)} />
                 │
                 ▼
 CategorySelectField (mounts)
-  → fetchSlugs()
-  → GET /admin/product-categories/slugs
+  → fetchSlugs(orgId)
+  → GET /admin/product-categories/slugs   [org resolved server-side from auth token]
   → sort by path (lexicographic = parent-before-child)
   → render combobox
 
@@ -148,28 +148,68 @@ When `query` is set, each matching item shows its ancestor breadcrumb. In browse
 
 ---
 
-## Module-Level Slug Cache
+## Module-Level Slug Cache — Org-Keyed (Important)
 
-`CategorySelectField` uses a module-level singleton so that multiple instances on the same page share one fetch:
+### Why the cache must be keyed by orgId
+
+Categories are org-scoped. Org A's tree differs from Org B's tree after each merchant
+customises their own taxonomy. A singleton cache (the old design) would serve stale data
+when:
+- A platform admin manages multiple organisations in the same browser tab
+- An admin switches org context without a full page reload
+
+### Correct implementation
 
 ```typescript
-// Module scope — shared across all instances for the tab lifetime
-let slugCache: CategorySlugItem[] | null = null;
-let fetchPromise: Promise<CategorySlugItem[]> | null = null;
+// Module scope — one entry per org, shared across all component instances for the tab lifetime
+const slugCacheByOrg = new Map<string, CategorySlugItem[]>();
+const fetchPromiseByOrg = new Map<string, Promise<CategorySlugItem[]>>();
 
-function fetchSlugs(): Promise<CategorySlugItem[]> {
-  if (slugCache) return Promise.resolve(slugCache);   // already loaded
-  if (fetchPromise) return fetchPromise;              // in flight, share
-  fetchPromise = CategoryService.getSlugs().then(items => {
-    slugCache = [...items].sort((a, b) => a.path.localeCompare(b.path));
-    fetchPromise = null;
-    return slugCache;
+function fetchSlugs(orgId: string): Promise<CategorySlugItem[]> {
+  if (slugCacheByOrg.has(orgId)) return Promise.resolve(slugCacheByOrg.get(orgId)!);
+  if (fetchPromiseByOrg.has(orgId)) return fetchPromiseByOrg.get(orgId)!;
+
+  const promise = CategoryService.getSlugs(orgId).then(items => {
+    slugCacheByOrg.set(orgId, [...items].sort((a, b) => a.path.localeCompare(b.path)));
+    fetchPromiseByOrg.delete(orgId);
+    return slugCacheByOrg.get(orgId)!;
   });
-  return fetchPromise;
+  fetchPromiseByOrg.set(orgId, promise);
+  return promise;
+}
+
+// Call from component:
+function invalidateOrgCache(orgId: string) {
+  slugCacheByOrg.delete(orgId);
+  fetchPromiseByOrg.delete(orgId);
 }
 ```
 
-Cache persists for the tab lifetime. Category tree changes require a page refresh.
+### When to invalidate
+
+| Event | Action |
+|---|---|
+| Merchant creates / renames / deletes a category | `invalidateOrgCache(orgId)` |
+| User switches to a different org | The new org has its own cache entry — no invalidation needed |
+| Page hard-reload | All entries cleared automatically (module-scope is tab-lifetime) |
+
+The backend category admin operations (`POST`, `PUT`, `DELETE` on `/admin/product-categories`)
+should emit a cache-bust signal after success. The simplest approach is a React context event
+or a global event bus:
+
+```typescript
+// After a successful category mutation:
+window.dispatchEvent(new CustomEvent('categoryTreeChanged', { detail: { orgId } }));
+
+// In CategorySelectField:
+useEffect(() => {
+  const handler = (e: CustomEvent<{ orgId: string }>) => {
+    if (e.detail.orgId === currentOrgId) invalidateOrgCache(currentOrgId);
+  };
+  window.addEventListener('categoryTreeChanged', handler as EventListener);
+  return () => window.removeEventListener('categoryTreeChanged', handler as EventListener);
+}, [currentOrgId]);
+```
 
 ---
 
@@ -199,8 +239,8 @@ Yes. Any node — root, branch, or leaf — is selectable. Leaf-only restriction
 
 | File | Purpose |
 |------|---------|
-| `src/modules/ecommerce-product-v2/step1-create/components/CategorySelectField.tsx` | The combobox component with module-level cache |
+| `src/modules/ecommerce-product-v2/step1-create/components/CategorySelectField.tsx` | Combobox component with org-keyed module-level cache |
 | `src/modules/ecommerce-product-v2/step1-create/components/FieldRenderer.tsx` | Detects `category-select`, renders `CategorySelectField` |
 | `src/modules/ecommerce-product-v2/step1-create/hooks/useFieldHandler.ts` | Detects `fieldName === "category"` change → calls `loadCategoryFieldsSmooth` |
-| `src/app/omni-admin/product-categories/_services/category.service.ts` | `CategoryService.getSlugs()` |
+| `src/app/omni-admin/product-categories/_services/category.service.ts` | `CategoryService.getSlugs(orgId)` |
 | `src/app/omni-admin/product-categories/_types/category.ts` | `CategorySlugItem` type |

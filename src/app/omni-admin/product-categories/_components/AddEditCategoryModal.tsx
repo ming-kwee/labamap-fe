@@ -25,6 +25,7 @@ interface Props {
   category: ProductCategory | null;       // null = create new
   parentId?: string | null;               // pre-selected parent for "Add child"
   tree: ProductCategoryTree[];            // for parent picker
+  orgId?: string;
   onSave: (cat: Omit<ProductCategory, "id" | "path" | "level" | "createdAt" | "updatedAt">) => void;
   onClose: () => void;
 }
@@ -41,7 +42,7 @@ const EMPTY: Omit<ProductCategory, "id" | "path" | "level" | "createdAt" | "upda
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
-export function AddEditCategoryModal({ category, parentId, tree, onSave, onClose }: Props) {
+export function AddEditCategoryModal({ category, parentId, tree, orgId, onSave, onClose }: Props) {
   const isEdit = !!category;
   const [form, setForm] = useState<Omit<ProductCategory, "id" | "path" | "level" | "createdAt" | "updatedAt">>(() =>
     category
@@ -67,7 +68,7 @@ export function AddEditCategoryModal({ category, parentId, tree, onSave, onClose
   useEffect(() => {
     if (!isEdit || !category?.id) return;
     setEffectiveTypeLoading(true);
-    CategoryService.getEffectiveProductType(category.id)
+    CategoryService.getEffectiveProductType(category.id, orgId)
       .then(setEffectiveType)
       .catch(() => {/* non-fatal */})
       .finally(() => setEffectiveTypeLoading(false));

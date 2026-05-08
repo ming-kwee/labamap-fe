@@ -1,0 +1,310 @@
+# `channel_category_api_config` — Reference
+
+## What it is
+
+`channel_category_api_config` is a MongoDB collection with **one document per channel type**.
+It is the single source of truth for how the backend communicates with each channel's category
+API. Instead of writing per-channel Java code every time a new channel is added, all HTTP
+parameters, authentication, response parsing rules, and feature flags are stored here and
+read at runtime.
+
+There is **no frontend-facing API** for this collection. It is managed by the backend
+startup loader (`CategoryApiConfigDataLoader` @Order 140) which upserts all documents on
+every application start.
+
+---
+
+## Who reads it and why
+
+| Consumer | What it reads | What it does with it |
+|---|---|---|
+| `GenericCategoryService` | Connection, auth, response mapping | Builds and executes HTTP requests to fetch category nodes from channel APIs |
+| `CategorySyncJob` | `enabled`, `fullTreeStrategy` | Decides which channels to pre-warm and which tree-traversal strategy to use |
+| `ChannelCategoryImportService` | `importCapable`, node field mappings | Drives the import wizard — fetches and maps merchant-created collections |
+| `ChannelTaxonomyService` | `taxonomyEnabled`, `importCapable`, `taxonomyFetchConfig` | `getCategoryFlags()` returns both UI flags; `taxonomyFetchConfig` drives the full taxonomy cache fetch into `channel_taxonomy_cache` |
+| `ChannelStoreController` (GET list) | *(via `ChannelTaxonomyService.getCategoryFlags()`)* | Sets `taxonomyEnabled` + `importCapable` flags in store API responses |
+
+---
+
+## Full field reference
+
+### Identity
+
+| Field | Type | Description |
+|---|---|---|
+| `channelType` | String | Channel identifier, e.g. `"shopify"`, `"wix"`, `"lazada"`. Unique index. |
+| `label` | String | Human-readable name for logging and admin display. |
+| `enabled` | Boolean | If `false`, `GenericCategoryService` and `CategorySyncJob` skip this channel. |
+| `taxonomyEnabled` | Boolean | `true` = channel has a fixed, channel-owned global taxonomy tree (e.g. Shopify Product Taxonomy). Read by `ChannelTaxonomyService` — replaces `channel_configurations.taxonomyConfig.enabled`. Independent of `importCapable`; Shopify is both. |
+
+---
+
+### Connection
+
+| Field | Type | Description |
+|---|---|---|
+| `baseUrl` | String | Base URL for all API calls. Supports `{storeId}` placeholder, e.g. `"https://{storeId}"` for Shopify (substituted with `store.storeUrl` at runtime). |
+| `httpMethod` | String | `"GET"` or `"POST"`. |
+| `childrenUrlPath` | String | URL path appended to `baseUrl`. Used by `GenericCategoryService` for tree drill-down and by `ChannelCategoryImportService` as the primary import endpoint. |
+| `parentIdQueryParam` | String | Query param name for the parent node ID when drilling down (e.g. `"parent_id"`, `"parent_category_id"`). Null = channel does not use a parent param. |
+| `omitParentParamForRoot` | Boolean | If `true`, omit `parentIdQueryParam` entirely when fetching the root level. If `false`, send `parentIdQueryParam=0`. |
+| `requestBodyTemplate` | Map | JSON body sent for POST requests (e.g. Wix paging body). Serialized as `application/json`. Null for GET channels. |
+
+---
+
+### Authentication
+
+| Field | Type | Description |
+|---|---|---|
+| `authStrategy` | Enum | How auth is applied to every request. See strategies below. |
+| `authCredentialKey` | String | Key in `channel_store_connections.credentials` whose value is the auth secret. |
+| `authHeaderName` | String | Header name for `API_KEY_HEADER` strategy (e.g. `"X-Shopify-Access-Token"`). |
+| `authQueryParam` | String | Query param name for `API_KEY_QUERY` strategy (e.g. `"access_token"`). |
+| `credentialHeaders` | Map | Maps HTTP header name → credential key. Applied to every request. Used by Wix to inject `"wix-site-id"` from stored credentials alongside Bearer auth. |
+| `credentialQueryParams` | Map | Maps query param name → credential key. Used when multiple credential values are passed as query params (e.g. WooCommerce `consumer_key` + `consumer_secret`, TikTok `app_key`). |
+| `fixedQueryParams` | Map | Static key → value query params always appended (e.g. `per_page=100` for WooCommerce). |
+
+#### `authStrategy` values
+
+| Value | What it does |
+|---|---|
+| `BEARER_TOKEN` | Adds `Authorization: Bearer {credentialValue}` header |
+| `API_KEY_HEADER` | Adds `{authHeaderName}: {credentialValue}` header |
+| `API_KEY_QUERY` | Adds `{authQueryParam}={credentialValue}` query param |
+| `HMAC_SHA256` | Auth injected entirely via `credentialQueryParams` (used by Shopee) |
+| `NO_AUTH` | No auth header or param — credentials go entirely through `credentialQueryParams` (used by WooCommerce) |
+
+---
+
+### Response parsing
+
+| Field | Type | Description |
+|---|---|---|
+| `responseIsArray` | Boolean | `true` when the channel API returns a bare JSON array rather than an object (e.g. WooCommerce). The array is wrapped in a synthetic `{ itemsJsonPath: [...] }` map so the generic extractor works uniformly. |
+| `itemsJsonPath` | String | Dot-notation path to the array of category nodes in the response (e.g. `"data.category_list"`, `"categories"`, `"items"` for WooCommerce synthetic wrapper). |
+| `nodeIdField` | String | Field name within each node for the category ID (e.g. `"id"`, `"category_id"`). Supports dot-notation for nested fields. |
+| `nodeNameField` | String | Field name for the display name (e.g. `"name"`, `"local_name"`, `"title"`). |
+| `nodeHasChildrenField` | String | Field indicating whether this node has children. Null = always `false` (leaf-only or flat list). |
+| `nodeHasChildrenInvert` | Boolean | If `true`, the field is a "leaf" flag — its value is inverted to derive `hasChildren` (used by TikTok `is_leaf`, Lazada `leaf`). |
+| `nodeParentIdField` | String | Field for the parent node ID. Required for `FLAT_WITH_PARENT_ID` tree structure. Supports dot-notation (e.g. Wix `"parentCategory.id"`). Null for `CHILDREN_PER_REQUEST`. |
+
+---
+
+### Tree structure
+
+| Field | Type | Description |
+|---|---|---|
+| `treeStructure` | Enum | How the API returns nodes. See below. |
+| `nestedChildrenField` | String | For `NESTED` only: the field within each node containing its sub-nodes array (e.g. `"children"`, `"childCategoryTreeNodes"`). |
+| `fullTreeStrategy` | Enum | Strategy used by `CategorySyncJob` to warm the full tree cache. See below. |
+
+#### `treeStructure` values
+
+| Value | Meaning |
+|---|---|
+| `CHILDREN_PER_REQUEST` | Each API call returns the direct children of a given parent. Standard drill-down. |
+| `FLAT_WITH_PARENT_ID` | One API call returns all nodes; each node has a `nodeParentIdField` that identifies its parent. |
+| `NESTED` | Response is a recursive tree JSON; `GenericCategoryService` flattens it using `nestedChildrenField`. |
+
+#### `fullTreeStrategy` values
+
+| Value | Meaning |
+|---|---|
+| `RECURSIVE` | `CategorySyncJob` runs BFS from root, calling the API repeatedly level by level. Works with `CHILDREN_PER_REQUEST`. |
+| `SINGLE_CALL` | One HTTP call returns the entire tree. Works with `FLAT_WITH_PARENT_ID` or `NESTED`. |
+| `ROOT_ONLY` | Only root-level nodes are fetched. Channel has no full-tree API. Tree cache is populated lazily on user demand. |
+
+---
+
+### Pagination
+
+| Field | Type | Description |
+|---|---|---|
+| `paginationStrategy` | Enum | `NONE`, `OFFSET`, `PAGE_NUMBER`, or `CURSOR`. |
+| `pageParam` | String | Query param name for page number or offset. |
+| `pageSizeParam` | String | Query param name for page size. |
+| `pageSizeValue` | Integer | Page size value to request. |
+| `totalPagesJsonPath` | String | Dot-notation path to total page count in the response. |
+| `cursorJsonPath` | String | Dot-notation path to next-page cursor in the response. |
+| `cursorParam` | String | Query param name for the cursor value. |
+
+---
+
+### Import wizard fields
+
+These fields are only relevant when `importCapable = true`. They tell `ChannelCategoryImportService`
+how to map raw API response items to `ImportPreviewItem` and `ImportableCollectionDto`.
+
+| Field | Type | Description |
+|---|---|---|
+| `importCapable` | Boolean | `true` = this channel has merchant-created collections (Shopify, WooCommerce, Wix). `ChannelCategoryImportService` will use this config to drive the import wizard. `false` = import wizard not applicable (Amazon, TikTok, eBay use fixed taxonomies). |
+| `nodeSlugField` | String | Field in each item for the URL slug (e.g. `"handle"` for Shopify, `"slug"` for Wix/WooCommerce). Null = slug derived from name via slugify. |
+| `nodeProductCountField` | String | Field for the number of products in the collection (e.g. `"products_count"` for Shopify, `"count"` for WooCommerce, `"numberOfProducts"` for Wix). Null = no product count available. |
+| `collectionType` | String | Default collection type label for items from the primary endpoint (e.g. `"manual"`). Appears in `ImportableCollectionDto.collectionType`. |
+| `additionalCollectionEndpoints` | List | Extra endpoints to call and merge into import results. Each entry has `urlPath`, `itemsJsonPath`, and `collectionType`. Used by Shopify to fetch `smart_collections` alongside `custom_collections`. |
+
+---
+
+### UI metadata
+
+| Field | Type | Description |
+|---|---|---|
+| `maxDepth` | Integer | Maximum tree depth. Read by `ChannelStepSchemaService` to set `categoryTreeConfig.maxDepth` on the Step 2 category select field. Default `5`. |
+| `requireLeafNode` | Boolean | If `true`, merchants must select a leaf node (no children). Read by `ChannelStepSchemaService` to set `categoryTreeConfig.requireLeafNode`. Default `true`. |
+
+---
+
+### Taxonomy fetch config (`taxonomyFetchConfig`)
+
+Only populated when `taxonomyEnabled = true`. Tells `ChannelTaxonomyService` how to fetch
+and cache the channel's global taxonomy tree into `channel_taxonomy_cache`.
+`null` for all REST-based channels (Lazada, TikTok, Shopee, etc.) — they use `GenericCategoryService` instead.
+
+| Field | Type | Description |
+|---|---|---|
+| `fetchStrategy` | String | `"GRAPHQL"` or `"REST"`. Only `GRAPHQL` is implemented; `REST` reserved for future channels. |
+| `graphqlQuery` | String | Full GraphQL query string. Must use `$cursor: String` variable for cursor pagination. |
+| `apiVersion` | String | API version string substituted into `apiPath` as `{apiVersion}`. |
+| `apiPath` | String | URL path template, e.g. `"/admin/api/{apiVersion}/graphql.json"`. |
+| `dataPath` | String | Dot-notation to the paginated container in the response. The container must have `nodes[]` and `pageInfo.hasNextPage` + `pageInfo.endCursor`. |
+| `minCacheSize` | Long | Minimum node count to consider the cache complete. A partial cache (below this threshold) triggers a full re-fetch. Default `500` when null. Shopify has ~10,000 nodes. |
+
+---
+
+## How `taxonomyEnabled` and `importCapable` flow to the frontend
+
+Both flags are stored in `channel_category_api_config` and read independently — they are
+**not** inverses of each other. Shopify is both taxonomy-enabled (global Product Taxonomy)
+and import-capable (merchant custom/smart collections).
+
+```
+channel_category_api_config.taxonomyEnabled
+channel_category_api_config.importCapable
+        ↓ read at request time (not startup)
+
+ChannelStoreController GET /channel-stores
+  → ChannelTaxonomyService.getCategoryFlags(channelType)
+        ↓ single DB call → ChannelCategoryFlags(taxonomyEnabled, importCapable)
+  → ChannelStoreConnectionResponse.from(entity, taxonomyEnabled, importCapable)
+        ↓ sets both flags directly (no derivation)
+
+API response: { taxonomyEnabled: true/false, importCapable: true/false }
+        ↓
+Frontend: if taxonomyEnabled → TaxonomyMapperModal (channel-owned fixed tree)
+          if importCapable   → ImportWizardModal (merchant-created collections)
+          if neither         → "No mapping flow configured"
+```
+
+Previously `importCapable` was derived as `!taxonomyEnabled` in the DTO. This was wrong
+for channels like Amazon/Lazada/TikTok (neither flag true) and limited Shopify to one mode.
+Both flags now come directly from `channel_category_api_config`.
+
+---
+
+## How the three runtime consumers use this collection
+
+### 1. `GenericCategoryService` — category tree drill-down
+
+Called from the Step 2 form schema and the category picker UI when a merchant navigates the
+channel's category tree.
+
+```
+GET /channel-categories?channelType=lazada&storeId=xxx&parentId=yyy
+  → GenericCategoryService.fetchChildrenFromApi(channelType, storeId, parentId, orgId)
+    → configRepository.findByChannelTypeAndEnabledTrue(channelType)
+    → builds HTTP request using connection + auth + pagination fields
+    → parses response using itemsJsonPath + nodeIdField + nodeNameField + nodeHasChildrenField
+    → returns List<CategoryNode>
+```
+
+### 2. `CategorySyncJob` — nightly full-tree cache warm-up
+
+Runs at 02:00 daily. Pre-fetches every enabled channel's full category tree and stores it
+in `channel_category_cache` so UI interactions are served from cache, not live API calls.
+
+```
+@Scheduled(cron "0 0 2 * * *")
+  → configRepository.findByEnabledTrue()         ← which channels to sync
+  → for each active store in enabled channels:
+      GenericCategoryService.fetchFullTreeFromApi()
+        uses fullTreeStrategy:
+          SINGLE_CALL → one HTTP call (Shopee, Wix, eBay)
+          RECURSIVE   → BFS from root (Lazada, TikTok)
+          ROOT_ONLY   → root level only (Shopify, Amazon)
+      → saves to channel_category_cache with 24h TTL
+```
+
+### 3. `ChannelCategoryImportService` — import wizard
+
+Called when a merchant clicks the Import Wizard for a merchant-collection channel (Shopify,
+WooCommerce, Wix).
+
+```
+GET /import/preview?storeId=xxx
+  → configRepository.findByChannelType(channelType)
+    .filter(ChannelCategoryApiConfig::isImportCapable)   ← guard
+  → builds HTTP request using same connection + auth fields as GenericCategoryService
+  → also calls additionalCollectionEndpoints (e.g. Shopify smart_collections)
+  → maps items using nodeIdField, nodeNameField, nodeSlugField, nodeParentIdField
+  → returns List<ImportableCollectionDto> or List<ImportPreviewItem>
+```
+
+---
+
+## Current documents (8 channels)
+
+| `channelType` | `taxonomyEnabled` | `importCapable` | `taxonomyFetchConfig` | `fullTreeStrategy` | Auth strategy |
+|---|---|---|---|---|---|
+| `lazada` | false | false | null | `RECURSIVE` | `API_KEY_QUERY` |
+| `tiktokshop` | false | false | null | `RECURSIVE` | `API_KEY_QUERY` + `credentialQueryParams` |
+| `shopee` | false | false | null | `SINGLE_CALL` | `HMAC_SHA256` via `credentialQueryParams` |
+| `amazon` | false | false | null | `ROOT_ONLY` | `BEARER_TOKEN` |
+| `ebay` | false | false | null | `SINGLE_CALL` | `BEARER_TOKEN` |
+| `wix` | false | **true** | null | `SINGLE_CALL` | `BEARER_TOKEN` + `credentialHeaders` (wix-site-id) |
+| `shopify` | **true** | **true** | **GRAPHQL** (10k nodes) | `ROOT_ONLY` | `API_KEY_HEADER` (X-Shopify-Access-Token) |
+| `woocommerce` | false | **true** | null | `ROOT_ONLY` | `NO_AUTH` + `credentialQueryParams` (consumer_key/secret) |
+
+---
+
+## Adding a new channel
+
+No Java code changes are required. Insert a document in `channel_category_api_config`:
+
+```json
+{
+  "channelType": "etsy",
+  "label": "Etsy Taxonomy",
+  "baseUrl": "https://openapi.etsy.com",
+  "httpMethod": "GET",
+  "childrenUrlPath": "/v3/application/seller-taxonomy/nodes",
+  "omitParentParamForRoot": true,
+  "authStrategy": "API_KEY_HEADER",
+  "authHeaderName": "x-api-key",
+  "authCredentialKey": "accessToken",
+  "itemsJsonPath": "results",
+  "nodeIdField": "id",
+  "nodeNameField": "name",
+  "nodeHasChildrenField": "children_count",
+  "nodeHasChildrenInvert": false,
+  "treeStructure": "CHILDREN_PER_REQUEST",
+  "fullTreeStrategy": "RECURSIVE",
+  "maxDepth": 4,
+  "requireLeafNode": true,
+  "importCapable": false,
+  "enabled": true
+}
+```
+
+For an import-capable channel (merchant creates own collections), additionally set:
+```json
+{
+  "importCapable": true,
+  "nodeSlugField": "slug",
+  "nodeProductCountField": "listing_count",
+  "collectionType": "manual"
+}
+```
+
+Then restart the application. `CategoryApiConfigDataLoader` will upsert the document on
+next startup and all three consumers (`GenericCategoryService`, `CategorySyncJob`,
+`ChannelCategoryImportService`) will begin using the new channel automatically.

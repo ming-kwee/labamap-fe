@@ -2,13 +2,25 @@
 
 ## What Is Channel Category Mapping?
 
-Each platform ProductCategory can be **linked** to corresponding categories on one or
-more sales channels. Each link is an independent document in `channel_category_mappings`.
+Each platform ProductCategory — scoped to an organisation — can be **linked** to
+corresponding categories on one or more sales channels. Each link is an independent
+document in `channel_category_mappings`.
 
 One platform category → N mapping documents (one per connected store).
 
 A LINK is persistent data. A SYNC is an operation that uses a link.
 Deleting a link does NOT delete the platform category.
+
+### Organisation scoping
+
+Both `product_categories` and `channel_category_mappings` carry an `organizationId`.
+The `categoryId` field in a mapping document is a MongoDB ObjectId that references a
+`product_categories` document belonging to the **same organisation**. A `categoryId` from
+org A is meaningless in the context of org B.
+
+All category mapping queries must include `organizationId` as the first filter. The
+compound indexes `idx_org_category` and `idx_org_store` on `channel_category_mappings`
+are designed for this pattern.
 
 ---
 
