@@ -243,3 +243,47 @@ Simulates a full publish transformation (JOLT + wrapper apply) without calling t
 ```
 
 **Response:** The channel-formatted output after JOLT transformation and payload wrapping.
+
+---
+
+## apiSchema — Current State and Category Gap
+
+`ChannelConfiguration.apiSchema` (`Map<String, Object>`) is the target schema used by APM when building `AdaptivePatternMatchingRequest.targetSchema`. It is seeded by `ChannelConfigurationDataLoader` and returned by `GET /channels/{channelId}/schema/complex`.
+
+### Channels where a single schema is correct
+
+| Channel | Reason |
+|---------|--------|
+| Shopify | Product structure is uniform — `product.title`, `product.variants[]`, `product.options[]` apply to all categories |
+| WIX | Same uniform structure — `name`, `priceData`, `productOptions[]` apply to all categories |
+
+### Channels where a single schema is an oversimplification
+
+| Channel | Problem |
+|---------|---------|
+| Amazon | Seeded schema covers `Item.DescriptionData.*` and `Item.StandardProductID` only. Category-specific attributes (`ClothingSize`, `Color`, `ModelNumber`, `BatteryType`, etc.) are missing entirely. APM cannot suggest mappings for these fields because they are absent from the target schema. |
+| eBay | Similar — category determines which item specifics are required (`Brand`, `Type`, `Compatible With`). None are in the current schema. |
+| Walmart | Category determines required feed fields (`color`, `size`, `material`). Not present in current schema. |
+| TikTok Shop | Partially handled — schema includes `product_attributes[]` with a comment noting category-specificity. The stub is correct in shape but values are static placeholders. |
+
+### Planned fix: `categoryApiSchemas`
+
+Add `categoryApiSchemas: Map<String, Map<String, Object>>` to `ChannelConfiguration`. At APM request time, merge the category-specific schema on top of the base `apiSchema` before passing to `AdaptivePatternMatchingRequest.targetSchema`:
+
+```
+targetSchema = merge(channelConfig.apiSchema, channelConfig.categoryApiSchemas[categoryId])
+```
+
+Seeding: extend `ChannelConfigurationDataLoader` with per-category schema maps for Amazon, eBay, Walmart. TikTok's `product_attributes[]` stub should be replaced with category-keyed entries.
+
+**Files to change:**
+- `ChannelConfiguration.java` — add `categoryApiSchemas` field
+- `ChannelConfigurationDataLoader.java` — seed category schemas for Amazon/eBay/Walmart/TikTok
+- `ChannelSchemaService.java` (or wherever `schema/complex` is built) — merge category schema when `categoryId` query param is present
+- APM request builder — pass `categoryId` through to schema fetch
+
+**Query param extension:**
+
+`GET /channels/{channelId}/schema/complex?format=nested&categoryId=clothing` returns the base schema merged with `categoryApiSchemas["clothing"]`. No `categoryId` → returns base schema unchanged (backward-compatible).
+
+See full planning context in `docs/product/02-ecommerce-wizard/01-guides/11-step2-category-required-fields.md` → `apiSchema` section.

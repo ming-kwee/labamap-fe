@@ -18,9 +18,9 @@ Step 2 lets sellers fill channel-specific product data for every connected store
 
 Two distinct types of fields appear in Step 2, driven by two flags on `EcommerceMasterAttributeDocument`:
 
-| Flag | What it means | Where the value goes |
-|------|--------------|----------------------|
-| `isChannelField: true` | Field exists only on this channel — no master product equivalent (e.g. Shopify `vendor`, TikTok `warehouse_id`) | `channelData` bucket → merged into masterProductData before JOLT |
+| Flag                         | What it means                                                                                                   | Where the value goes                                                       |
+|------------------------------|-----------------------------------------------------------------------------------------------------------------|----------------------------------------------------------------------------|
+| `isChannelField: true`       | Field exists only on this channel — no master product equivalent (e.g. Shopify `vendor`, TikTok `warehouse_id`) | `channelData` bucket → merged into masterProductData before JOLT           |
 | `isChannelOverridable: true` | Master product field that the seller can override per channel (e.g. shorten `name` for TikTok's 100-char limit) | `masterOverrides` bucket → merged before `channelData` in publish pipeline |
 
 Step 1's form schema endpoint explicitly excludes `isChannelField: true` attributes — they are never shown in the master product creation form.
@@ -67,11 +67,11 @@ Response is a `ChannelStepSchemaResponse` containing one `ChannelSchemaPerStore`
 
 Each `ChannelStoreTab` maintains three separate value buckets:
 
-| Bucket | Key | Purpose |
-|--------|-----|---------|
-| `channelData` | `Record<string, unknown>` | Channel-specific field values |
-| `masterOverrides` | `Record<string, unknown>` | Master product field overrides for this channel |
-| `variantOverrides` | `Record<sku, Record<fieldName, unknown>>` | Per-SKU field overrides |
+| Bucket             | Key                                       | Purpose                                         |
+|--------------------|-------------------------------------------|-------------------------------------------------|
+| `channelData`      | `Record<string, unknown>`                 | Channel-specific field values                   |
+| `masterOverrides`  | `Record<string, unknown>`                 | Master product field overrides for this channel |
+| `variantOverrides` | `Record<sku, Record<fieldName, unknown>>` | Per-SKU field overrides                         |
 
 ---
 
@@ -79,10 +79,10 @@ Each `ChannelStoreTab` maintains three separate value buckets:
 
 Two triggers flush values to `POST /channel-product-data/save`:
 
-| Trigger | Behaviour |
-|---------|-----------|
-| Debounced timer | 30-second idle timer, resets on every keystroke |
-| Tab change | Immediate save of the active tab before switching |
+| Trigger         | Behaviour                                         |
+|-----------------|---------------------------------------------------|
+| Debounced timer | 30-second idle timer, resets on every keystroke   |
+| Tab change      | Immediate save of the active tab before switching |
 
 Save payload (`ChannelStepSaveRequest`):
 ```typescript
@@ -100,13 +100,13 @@ Save payload (`ChannelStepSaveRequest`):
 
 ## Form Sections
 
-| `sectionName` | Rendered by | Description |
-|---|---|---|
-| `required` | `ChannelFieldInput` | Platform-required fields — must fill to publish |
-| `recommended` | `ChannelFieldInput` | Optional but strongly advised |
-| `optional` | `ChannelFieldInput` | Supplementary fields |
-| `master_overrides` | `MasterOverrideSection` | Override master product values per channel |
-| `variant_overrides` | `VariantOverridesTable` | Per-SKU overrides in a table layout |
+| `sectionName`       | Rendered by             | Description                                     |
+|---------------------|-------------------------|-------------------------------------------------|
+| `required`          | `ChannelFieldInput`     | Platform-required fields — must fill to publish |
+| `recommended`       | `ChannelFieldInput`     | Optional but strongly advised                   |
+| `optional`          | `ChannelFieldInput`     | Supplementary fields                            |
+| `master_overrides`  | `MasterOverrideSection` | Override master product values per channel      |
+| `variant_overrides` | `VariantOverridesTable` | Per-SKU overrides in a table layout             |
 
 ---
 
@@ -138,22 +138,22 @@ When the master product has variants, the `variant_overrides` section renders a 
 
 After every autosave, the backend returns updated completion statistics. The wizard shows a status dot per tab:
 
-| Status | Meaning |
-|--------|---------|
-| Grey (Empty) | No data entered yet |
-| Amber (Partial) | Some required fields filled |
-| Green (Complete) | All required fields filled |
+| Status            | Meaning                               |
+|-------------------|---------------------------------------|
+| Grey (Empty)      | No data entered yet                   |
+| Amber (Partial)   | Some required fields filled           |
+| Green (Complete)  | All required fields filled            |
 | Green (Published) | Store has been published successfully |
-| Red (Error) | Previous publish attempt failed |
+| Red (Error)       | Previous publish attempt failed       |
 
 `completionStats` in the schema response has four fields:
 
-| Field | Description |
-|-------|-------------|
-| `requiredTotal` | Number of required fields for this channel |
-| `requiredFilled` | How many required fields are non-empty |
-| `recommendedTotal` | Number of recommended fields |
-| `recommendedFilled` | How many recommended fields are non-empty |
+| Field               | Description                                |
+|---------------------|--------------------------------------------|
+| `requiredTotal`     | Number of required fields for this channel |
+| `requiredFilled`    | How many required fields are non-empty     |
+| `recommendedTotal`  | Number of recommended fields               |
+| `recommendedFilled` | How many recommended fields are non-empty  |
 
 **isFilled rules (backend `ChannelProductDataService.isFilled()`):**
 - `CHECKBOX` (Boolean): always counted as filled — a false checkbox is a valid answer
@@ -167,18 +167,18 @@ After every autosave, the backend returns updated completion statistics. The wiz
 
 `ChannelFieldInput.tsx` renders the correct input for each `ChannelFieldType`:
 
-| `ChannelFieldType` | Input |
-|---|---|
-| `TEXT` | `<input type="text">` |
-| `TEXTAREA` | `<textarea>` |
-| `NUMBER` | `<input type="number">` |
-| `SELECT` | `<select>` |
-| `MULTISELECT` | Multi-select `<select>` |
-| `CHECKBOX` | `<input type="checkbox">` |
-| `RADIO` | `<input type="radio">` group |
-| `DATE` | `<input type="date">` |
-| `URL`, `EMAIL`, `COLOR` | `<input>` with matching type |
-| `CATEGORY_TREE` | `CategoryTreePicker` (level-by-level browsing) |
+| `ChannelFieldType`      | Input                                          |
+|-------------------------|------------------------------------------------|
+| `TEXT`                  | `<input type="text">`                          |
+| `TEXTAREA`              | `<textarea>`                                   |
+| `NUMBER`                | `<input type="number">`                        |
+| `SELECT`                | `<select>`                                     |
+| `MULTISELECT`           | Multi-select `<select>`                        |
+| `CHECKBOX`              | `<input type="checkbox">`                      |
+| `RADIO`                 | `<input type="radio">` group                   |
+| `DATE`                  | `<input type="date">`                          |
+| `URL`, `EMAIL`, `COLOR` | `<input>` with matching type                   |
+| `CATEGORY_TREE`         | `CategoryTreePicker` (level-by-level browsing) |
 
 Advanced field types (lazy-loaded merchant options, value mapping banners) are covered in [09-step2-channel-data-sources.md](09-step2-channel-data-sources.md).
 
@@ -211,13 +211,13 @@ Injected as a violet-highlighted section below the optional fields. Required cat
 
 ## Codebase
 
-| File | Purpose |
-|------|---------|
-| `step2-channel-fields/components/wizard/ChannelFieldsWizard.tsx` | Top-level: tabs + autosave + navigation |
-| `step2-channel-fields/components/wizard/ChannelStoreTab.tsx` | One store's full form (all sections) |
-| `step2-channel-fields/components/wizard/ChannelFieldInput.tsx` | Dispatches `fieldType` → input element |
-| `step2-channel-fields/components/wizard/MasterOverrideSection.tsx` | Renders `master_overrides` section |
-| `step2-channel-fields/components/wizard/MasterOverrideField.tsx` | Single override field + reset button |
-| `step2-channel-fields/components/wizard/VariantOverridesTable.tsx` | Per-SKU override table |
-| `step2-channel-fields/types/channelStore.ts` | All Step 2 + Step 3 TypeScript types |
-| `step2-channel-fields/services/channelStore.service.ts` | `ChannelSchemaService`, `ChannelProductDataService` |
+| File                                                               | Purpose                                             |
+|--------------------------------------------------------------------|-----------------------------------------------------|
+| `step2-channel-fields/components/wizard/ChannelFieldsWizard.tsx`   | Top-level: tabs + autosave + navigation             |
+| `step2-channel-fields/components/wizard/ChannelStoreTab.tsx`       | One store's full form (all sections)                |
+| `step2-channel-fields/components/wizard/ChannelFieldInput.tsx`     | Dispatches `fieldType` → input element              |
+| `step2-channel-fields/components/wizard/MasterOverrideSection.tsx` | Renders `master_overrides` section                  |
+| `step2-channel-fields/components/wizard/MasterOverrideField.tsx`   | Single override field + reset button                |
+| `step2-channel-fields/components/wizard/VariantOverridesTable.tsx` | Per-SKU override table                              |
+| `step2-channel-fields/types/channelStore.ts`                       | All Step 2 + Step 3 TypeScript types                |
+| `step2-channel-fields/services/channelStore.service.ts`            | `ChannelSchemaService`, `ChannelProductDataService` |

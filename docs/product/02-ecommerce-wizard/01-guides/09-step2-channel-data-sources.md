@@ -8,19 +8,19 @@ The standard Step 2 implementation treats all field options as static data baked
 
 ## The Eleven Scenarios
 
-| # | Short name | Root cause |
-|---|-----------|------------|
-| A | Merchant-sourced options | Options come from the merchant's live account (warehouses, shipping templates) |
-| B | Master-to-channel value mapping | Master value is meaningful internally but maps to a channel-specific code |
-| C | Hierarchical category tree | Category selection is multi-level; leaf node unlocks further fields |
-| D | Category-dependent field injection | Selecting a category causes new required fields to appear |
-| E | Cross-field conditional dependencies | A channel field's visibility depends on another channel field |
-| F | Multi-language content | Channel/region requires content in multiple locales |
-| G | Channel pricing and currency | Channel requires a different currency with platform rounding rules |
-| H | Channel-specific media compliance | Channel image/video specs may reject master product's media |
-| I | Cross-store value inheritance | Org has sibling stores; copy values intelligently between tabs |
-| J | Channel-specific SEO and keywords | Platform search fields have unique structure incompatible with master tags |
-| K | Computed/derived fields | Channel field assembled from several master fields, not 1-to-1 |
+| # | Short name                           | Root cause                                                                     |
+|---|--------------------------------------|--------------------------------------------------------------------------------|
+| A | Merchant-sourced options             | Options come from the merchant's live account (warehouses, shipping templates) |
+| B | Master-to-channel value mapping      | Master value is meaningful internally but maps to a channel-specific code      |
+| C | Hierarchical category tree           | Category selection is multi-level; leaf node unlocks further fields            |
+| D | Category-dependent field injection   | Selecting a category causes new required fields to appear                      |
+| E | Cross-field conditional dependencies | A channel field's visibility depends on another channel field                  |
+| F | Multi-language content               | Channel/region requires content in multiple locales                            |
+| G | Channel pricing and currency         | Channel requires a different currency with platform rounding rules             |
+| H | Channel-specific media compliance    | Channel image/video specs may reject master product's media                    |
+| I | Cross-store value inheritance        | Org has sibling stores; copy values intelligently between tabs                 |
+| J | Channel-specific SEO and keywords    | Platform search fields have unique structure incompatible with master tags     |
+| K | Computed/derived fields              | Channel field assembled from several master fields, not 1-to-1                 |
 
 Phases 1–4 cover scenarios A–D. Scenarios E–K are planned.
 

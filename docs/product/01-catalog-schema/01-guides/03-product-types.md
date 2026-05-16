@@ -178,10 +178,10 @@ function useProductTypeVariants(productTypeId: string | null | undefined) {
 ### VariantConfigurator 4 states
 `src/modules/ecommerce-product-v2/step1-create/components/VariantConfigurator.tsx`
 
-| State | Condition | Message |
-|-------|-----------|---------|
-| Loading | `isLoadingVariantOptions` | Spinner |
-| No category | `!isTypeDriven` | "Select a product category to configure variants" |
-| No dimensions | `isTypeDriven && dimensions.length === 0` | Amber: "No variant dimensions configured" |
-| No options | `isTypeDriven && dimensions.length > 0 && options empty` | Amber: "No selectable options found" |
-| Ready | All resolved | Renders axis selectors + SKU matrix |
+| State         | Condition                                                | Message                                           |
+|---------------|----------------------------------------------------------|---------------------------------------------------|
+| Loading       | `isLoadingVariantOptions`                                | Spinner                                           |
+| No category   | `!isTypeDriven`                                          | "Select a product category to configure variants" |
+| No dimensions | `isTypeDriven && dimensions.length === 0`                | Amber: "No variant dimensions configured"         |
+| No options    | `isTypeDriven && dimensions.length > 0 && options empty` | Amber: "No selectable options found"              |
+| Ready         | All resolved                                             | Renders axis selectors + SKU matrix               |

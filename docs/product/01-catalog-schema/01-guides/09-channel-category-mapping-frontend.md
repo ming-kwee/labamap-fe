@@ -9,14 +9,14 @@ query issue is resolved (see Backend Fix Summary below).
 
 ## Files
 
-| File | Purpose |
-|------|---------|
-| `_types/channel-mapping.ts` | All TypeScript types |
-| `_services/channel-mapping.service.ts` | API calls |
-| `_components/ChannelCategoryMappingPage.tsx` | Main matrix page |
-| `_components/TaxonomyMapperModal.tsx` | Batch mapper for Type 2 channels |
-| `_components/ImportWizardModal.tsx` | Import wizard for WooCommerce / Etsy |
-| `_components/DriftResolutionModal.tsx` | Drift resolution for Type 1 channels |
+| File                                         | Purpose                              |
+|----------------------------------------------|--------------------------------------|
+| `_types/channel-mapping.ts`                  | All TypeScript types                 |
+| `_services/channel-mapping.service.ts`       | API calls                            |
+| `_components/ChannelCategoryMappingPage.tsx` | Main matrix page                     |
+| `_components/TaxonomyMapperModal.tsx`        | Batch mapper for Type 2 channels     |
+| `_components/ImportWizardModal.tsx`          | Import wizard for WooCommerce / Etsy |
+| `_components/DriftResolutionModal.tsx`       | Drift resolution for Type 1 channels |
 
 All under `src/app/omni-admin/channel-category-mapping/`.
 

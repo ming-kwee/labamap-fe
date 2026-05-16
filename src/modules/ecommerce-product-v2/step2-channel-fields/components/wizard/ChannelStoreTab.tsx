@@ -123,6 +123,12 @@ export default function ChannelStoreTab({ schema, values, onChange, isSaving, la
     ? ((values.channelData[mainCategoryField.fieldName] as string | undefined) ?? null)
     : null;
 
+  // True when the live categoryId matches what the schema was originally built with.
+  // In this case, category required/optional fields are already in sections — show only a context banner.
+  const categoryIsUnchangedFromSchema =
+    schema.categoryAttributeSection != null &&
+    categoryId === schema.categoryAttributeSection.categoryId;
+
   // Category attribute state — initialised from schema pre-fetch (if any)
   const [categoryAttrs, setCategoryAttrs] = useState<CategoryAttributeSection | null>(
     schema.categoryAttributeSection ?? null
@@ -164,13 +170,10 @@ export default function ChannelStoreTab({ schema, values, onChange, isSaving, la
   }, [categoryId]);
 
   function handleFieldChange(fieldName: string, value: unknown) {
+    const isCategoryField = mainCategoryField != null && fieldName === mainCategoryField.fieldName;
+
     // Scenario D: when the category field changes, clear stale category-specific values
-    if (
-      mainCategoryField &&
-      fieldName === mainCategoryField.fieldName &&
-      value !== values.channelData[fieldName] &&
-      categoryAttrs
-    ) {
+    if (isCategoryField && value !== values.channelData[fieldName] && categoryAttrs) {
       const staleKeys = new Set([
         ...(categoryAttrs.requiredFields ?? []).map((f) => f.fieldName),
         ...(categoryAttrs.optionalFields ?? []).map((f) => f.fieldName),
@@ -178,13 +181,19 @@ export default function ChannelStoreTab({ schema, values, onChange, isSaving, la
       const clearedData = Object.fromEntries(
         Object.entries(values.channelData).filter(([k]) => !staleKeys.has(k))
       );
-      onChange({ ...values, channelData: { ...clearedData, [fieldName]: value } });
+      const updatedData: Record<string, unknown> = { ...clearedData, [fieldName]: value };
+      // Persist categoryId explicitly so backend resolveCategorySlug() finds it (Path A)
+      if (fieldName !== "categoryId") updatedData.categoryId = value;
+      onChange({ ...values, channelData: updatedData });
       return;
     }
-    onChange({
-      ...values,
-      channelData: { ...values.channelData, [fieldName]: value },
-    });
+
+    const updatedChannelData: Record<string, unknown> = { ...values.channelData, [fieldName]: value };
+    // For CATEGORY_TREE fields, also store under the explicit "categoryId" key
+    if (isCategoryField && fieldName !== "categoryId") {
+      updatedChannelData.categoryId = value;
+    }
+    onChange({ ...values, channelData: updatedChannelData });
   }
 
   function handleVariantChange(sku: string, fieldName: string, value: unknown) {
@@ -357,7 +366,29 @@ export default function ChannelStoreTab({ schema, values, onChange, isSaving, la
     if (!categoryAttrs) return null;
 
     const { categoryName, categoryPath, requiredFields, optionalFields } = categoryAttrs;
-    const breadcrumb = [...categoryPath, categoryName].join(" › ");
+    const breadcrumb = [...categoryPath, categoryName].filter(Boolean).join(" › ");
+
+    // When the category is unchanged from schema load, required/optional fields are already
+    // rendered inside their respective form sections — show only an info banner to avoid duplication.
+    if (categoryIsUnchangedFromSchema) {
+      return (
+        <div className="flex items-start gap-3 px-4 py-3 rounded-xl border border-violet-200 dark:border-violet-500/30 bg-violet-50 dark:bg-violet-500/10">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-violet-500 dark:text-violet-400 flex-shrink-0 mt-0.5">
+            <circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/>
+          </svg>
+          <div className="min-w-0">
+            <p className="text-sm font-semibold text-violet-800 dark:text-violet-200">
+              Category-specific fields applied
+            </p>
+            <p className="text-xs text-violet-600 dark:text-violet-400 mt-0.5 truncate">
+              {breadcrumb} — {requiredFields.length} required, {optionalFields.length} optional
+            </p>
+          </div>
+        </div>
+      );
+    }
+
+    // Mid-session category change: inject the new category's fields as a separate section.
     const hasOptional = optionalFields.length > 0;
 
     return (
@@ -465,6 +496,18 @@ export default function ChannelStoreTab({ schema, values, onChange, isSaving, la
         </span>
         <span className="text-xs text-gray-400 dark:text-gray-500">
           {schema.completionStats.requiredFilled}/{schema.completionStats.requiredTotal} required
+          {(schema.completionStats.channelRequiredTotal > 0 || schema.completionStats.categoryRequiredTotal > 0) && (
+            <span className="ml-1 text-gray-300 dark:text-gray-600">
+              ({[
+                schema.completionStats.channelRequiredTotal > 0
+                  ? `Ch ${schema.completionStats.channelRequiredFilled}/${schema.completionStats.channelRequiredTotal}`
+                  : "",
+                schema.completionStats.categoryRequiredTotal > 0
+                  ? `Cat ${schema.completionStats.categoryRequiredFilled}/${schema.completionStats.categoryRequiredTotal}`
+                  : "",
+              ].filter(Boolean).join(" · ")})
+            </span>
+          )}
         </span>
         {/* Autosave indicator */}
         {isSaving && (

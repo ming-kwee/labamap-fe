@@ -196,9 +196,9 @@ The initial form never contains category-specific fields. This prevents empty ir
 
 ## Codebase
 
-| File | Purpose |
-|------|---------|
-| `src/modules/ecommerce-product-v2/step1-create/hooks/useFormSchema.ts` | `loadSchema()`, `loadCategoryFieldsSmooth()`, `unwrapSchema()`, `flattenSections()` |
-| `src/modules/ecommerce-product-v2/step1-create/hooks/useFieldHandler.ts` | Detects `fieldName === "category"` → calls `loadCategoryFieldsSmooth` |
-| `src/modules/ecommerce-product-v2/services/schema-api.service.ts` | `schemaApi.generateSchema()`, `schemaApi.refreshSchema()` |
-| `src/modules/ecommerce-product-v2/types/form-schema.ts` | `DynamicFormSchema`, `FormSchemaResponse`, `FormField`, `FormFieldType` |
+| File                                                                     | Purpose                                                                             |
+|--------------------------------------------------------------------------|-------------------------------------------------------------------------------------|
+| `src/modules/ecommerce-product-v2/step1-create/hooks/useFormSchema.ts`   | `loadSchema()`, `loadCategoryFieldsSmooth()`, `unwrapSchema()`, `flattenSections()` |
+| `src/modules/ecommerce-product-v2/step1-create/hooks/useFieldHandler.ts` | Detects `fieldName === "category"` → calls `loadCategoryFieldsSmooth`               |
+| `src/modules/ecommerce-product-v2/services/schema-api.service.ts`        | `schemaApi.generateSchema()`, `schemaApi.refreshSchema()`                           |
+| `src/modules/ecommerce-product-v2/types/form-schema.ts`                  | `DynamicFormSchema`, `FormSchemaResponse`, `FormField`, `FormFieldType`             |

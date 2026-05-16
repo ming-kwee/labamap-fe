@@ -275,6 +275,7 @@ export const ChannelProductDataService = {
           masterOverrides:  request.masterOverrides,
           channelData:      request.channelData,
           variantOverrides: request.variantOverrides,
+          ...(request.categoryId != null ? { categoryId: request.categoryId } : {}),
         }),
       }
     ).then((r) => handleResponse<ChannelProductData>(r));

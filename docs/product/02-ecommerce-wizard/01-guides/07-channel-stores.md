@@ -136,11 +136,11 @@ backend only overwrites credentials that are non-empty in the submission.
 
 ## OAuth Endpoint: Unified vs Legacy
 
-| Version | Frontend call | Backend path |
-|---------|--------------|-------------|
-| **Current (Phase B+)** | `GET /oauth/initiate?channelType=...` | Single generic handler |
-| Legacy (Phase A) | `GET /oauth/{channelType}/initiate` | Per-channel handler |
-| Legacy callback | `POST /oauth/{channelType}/callback` | Per-channel (deprecated) |
+| Version                | Frontend call                         | Backend path             |
+|------------------------|---------------------------------------|--------------------------|
+| **Current (Phase B+)** | `GET /oauth/initiate?channelType=...` | Single generic handler   |
+| Legacy (Phase A)       | `GET /oauth/{channelType}/initiate`   | Per-channel handler      |
+| Legacy callback        | `POST /oauth/{channelType}/callback`  | Per-channel (deprecated) |
 
 `ChannelOAuthService.completeOAuth()` calls the legacy POST callback — it is kept for
 backwards compatibility but is never called in the Phase B+ flow. The backend now handles
@@ -192,25 +192,25 @@ function deriveStatus(store: ChannelStoreConnection): ConnectionStatus {
 ```
 
 **Webhook disconnect reasons per channel:**
-| Channel | `disconnectReason` value |
-|---------|-------------------------|
-| Shopify | `"app_uninstalled"` |
-| TikTok Shop | `"deauthorize"` |
-| Wix | `"app_removed"` |
-| Amazon | `"app_deauthorized"` |
-| eBay | `"account_deletion"` |
-| Manual API | `"manual"` |
+| Channel       | `disconnectReason` value |
+|---------------|--------------------------|
+| Shopify       | `"app_uninstalled"`      |
+| TikTok Shop   | `"deauthorize"`          |
+| Wix           | `"app_removed"`          |
+| Amazon        | `"app_deauthorized"`     |
+| eBay          | `"account_deletion"`     |
+| Manual API    | `"manual"`               |
 
 ---
 
 ## StoreCard Action Buttons by Status
 
-| Status | OAuth channel | Manual channel |
-|--------|--------------|----------------|
-| ACTIVE | [Deactivate] | [Edit, Deactivate] |
-| RECONNECT_REQUIRED | [Reconnect (amber), Deactivate] | [Edit, Deactivate] |
-| DISCONNECTED | [Reconnect, Delete] | [Edit, Delete] |
-| INACTIVE | [Reactivate, Delete] | [Reactivate, Delete] |
+| Status             | OAuth channel                   | Manual channel       |
+|--------------------|---------------------------------|----------------------|
+| ACTIVE             | [Deactivate]                    | [Edit, Deactivate]   |
+| RECONNECT_REQUIRED | [Reconnect (amber), Deactivate] | [Edit, Deactivate]   |
+| DISCONNECTED       | [Reconnect, Delete]             | [Edit, Delete]       |
+| INACTIVE           | [Reactivate, Delete]            | [Reactivate, Delete] |
 
 OAuth channels never show an Edit button when ACTIVE because there are no credentials to
 edit — tokens are managed by the OAuth flow, not entered manually.
@@ -257,9 +257,9 @@ correctly regardless of which backend version it talks to.
 
 ## `listStores` vs `listAllStores`
 
-| Method | Endpoint | Use |
-|--------|----------|-----|
-| `listStores(orgId)` | `GET /channel-stores?organizationId=...` | Step 2 tabs, Step 3 publish targets — only active stores |
+| Method                 | Endpoint                                                      | Use                                                               |
+|------------------------|---------------------------------------------------------------|-------------------------------------------------------------------|
+| `listStores(orgId)`    | `GET /channel-stores?organizationId=...`                      | Step 2 tabs, Step 3 publish targets — only active stores          |
 | `listAllStores(orgId)` | `GET /channel-stores?organizationId=...&includeInactive=true` | Channel Stores Dashboard, Channel Category Mapping — all statuses |
 
 `ChannelStoresDashboard` and `ChannelCategoryMappingPage` call `listAllStores` so
@@ -297,20 +297,20 @@ Fields with empty values are omitted — in edit mode this means "keep existing 
 
 ## Routes
 
-| Route | Component |
-|-------|-----------|
-| `/channels/stores` | `ChannelStoresDashboard` (wrapped in `<Suspense>` for `useSearchParams`) |
-| `/channels/oauth/callback` | `ChannelOAuthCallbackPage` (legacy — not used in Phase B+ flow) |
+| Route                      | Component                                                                |
+|----------------------------|--------------------------------------------------------------------------|
+| `/channels/stores`         | `ChannelStoresDashboard` (wrapped in `<Suspense>` for `useSearchParams`) |
+| `/channels/oauth/callback` | `ChannelOAuthCallbackPage` (legacy — not used in Phase B+ flow)          |
 
 ---
 
 ## Codebase
 
-| File | Purpose |
-|------|---------|
-| `step2-channel-fields/components/stores/ChannelStoresDashboard.tsx` | Full store management UI; detects OAuth callback query params |
-| `step2-channel-fields/components/stores/ConnectStoreModal.tsx` | Add/edit/reconnect modal; branches on OAuth vs manual flow |
-| `step2-channel-fields/components/stores/ChannelTypeBadge.tsx` | Color-coded channel type chip; exports `getChannelMeta()` |
-| `step2-channel-fields/services/channelStore.service.ts` | `ChannelStoreService`, `ChannelCredentialSchemaService`, `mapStore` |
-| `step2-channel-fields/services/channelOAuth.service.ts` | `ChannelOAuthService` — `initiateOAuth` (Phase B+); `completeOAuth` (legacy, deprecated) |
-| `step2-channel-fields/types/channelStore.ts` | All TypeScript types |
+| File                                                                | Purpose                                                                                  |
+|---------------------------------------------------------------------|------------------------------------------------------------------------------------------|
+| `step2-channel-fields/components/stores/ChannelStoresDashboard.tsx` | Full store management UI; detects OAuth callback query params                            |
+| `step2-channel-fields/components/stores/ConnectStoreModal.tsx`      | Add/edit/reconnect modal; branches on OAuth vs manual flow                               |
+| `step2-channel-fields/components/stores/ChannelTypeBadge.tsx`       | Color-coded channel type chip; exports `getChannelMeta()`                                |
+| `step2-channel-fields/services/channelStore.service.ts`             | `ChannelStoreService`, `ChannelCredentialSchemaService`, `mapStore`                      |
+| `step2-channel-fields/services/channelOAuth.service.ts`             | `ChannelOAuthService` — `initiateOAuth` (Phase B+); `completeOAuth` (legacy, deprecated) |
+| `step2-channel-fields/types/channelStore.ts`                        | All TypeScript types                                                                     |

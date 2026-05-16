@@ -352,8 +352,14 @@ export interface ChannelFormSection {
 }
 
 export interface CompletionStats {
-  requiredTotal: number;
-  requiredFilled: number;
+  requiredTotal:          number;  // channel + category combined
+  requiredFilled:         number;  // channel + category combined
+  channelRequiredTotal:   number;  // from channelConfig.requiredFieldObjects + Path A overrides
+  channelRequiredFilled:  number;
+  categoryRequiredTotal:  number;  // from live category attribute API (Path B); 0 when no category
+  categoryRequiredFilled: number;
+  recommendedTotal:       number;
+  recommendedFilled:      number;
 }
 
 export interface ChannelSchemaPerStore {

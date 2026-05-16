@@ -113,6 +113,27 @@ This is the fallback tier. High usage of Tier 5 in practice indicates gaps in th
 
 After the best tier match is selected, confidence scores are adjusted by channel-specific boosts defined in `ChannelConfiguration.fieldBoosts`. For example, a Shopify boost for `title` adds +5% to any match targeting that field. This is how `BOOST` confidence adjustments happen — it's not a separate tier but a post-match step.
 
+### Current implementation
+
+`getChannelSpecificBoostReactive()` in `KnowledgeBasedFieldMatchingService` matches `sourcePattern` and `targetPattern` from the `fieldBoosts` list. The `FieldBoost.condition` field exists on the class and is stored in MongoDB but is **never evaluated** — the service ignores it.
+
+All boosts seeded by `ChannelFieldBoostsMigration` are naming-convention boosts that apply to every product on the channel (e.g. Shopify `brand→vendor`, `category→product_type`). These are correctly channel-level and require no category context.
+
+### Planned: category-specific boosts
+
+Some channels require category-aware boosting — e.g. Amazon `clothing` should boost `color→color` and `size→size` more aggressively than `electronics`. Two implementation options:
+
+| Option | Approach | Change required |
+|--------|----------|-----------------|
+| A | Evaluate `condition` field as category slug expression in `getChannelSpecificBoostReactive()` | Wire `categoryId` into the boost lookup call; evaluate `condition` in service |
+| B | Store per-category boosts inside `CategoryFieldOverride` (see `11-step2-category-required-fields.md`) | Merge category boosts at APM request time before calling boost service |
+
+Option A is minimal — `condition` was designed for this. Option B co-locates category config but requires passing boost context through more layers.
+
+**Prerequisites:** neither option can be tested until the `fetchAndCacheAttributes()` stub in `CategoryCacheServiceImpl` is implemented (collection `channel_category_attributes_cache` is absent from MongoDB until first save).
+
+See full planning detail in `docs/product/02-ecommerce-wizard/01-guides/11-step2-category-required-fields.md` → `fieldBoosts` section.
+
 ---
 
 ## Organization-Aware Matching

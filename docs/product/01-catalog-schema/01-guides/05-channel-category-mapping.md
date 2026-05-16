@@ -27,21 +27,21 @@ are designed for this pattern.
 ## Two Fundamentally Different Channel Types
 
 ### Type 1: Import-capable (merchant-created collections)
-| Channel | Import support |
-|---------|---------------|
-| WooCommerce | ✅ Import wizard |
-| Etsy | ✅ Import wizard |
+| Channel     | Import support   |
+|-------------|------------------|
+| WooCommerce | ✅ Import wizard  |
+| Etsy        | ✅ Import wizard  |
 
 Direction: **Channel → import → Platform** (one-time onboarding)
 Then: **Platform → push → Channel** (ongoing, platform is master)
 
 ### Type 2: Fixed-taxonomy (channel-owned, read-only)
-| Channel | What can be done |
-|---------|-----------------|
-| Shopify | Map platform → Taxonomy category only |
-| Amazon | Map platform → Browse Node only |
-| TikTok Shop | Map platform → TikTok category only |
-| eBay | Map platform → eBay category only |
+| Channel     | What can be done                      |
+|-------------|---------------------------------------|
+| Shopify     | Map platform → Taxonomy category only |
+| Amazon      | Map platform → Browse Node only       |
+| TikTok Shop | Map platform → TikTok category only   |
+| eBay        | Map platform → eBay category only     |
 
 Never import Type 2 channels as platform categories. Their taxonomy IDs are meaningless
 outside the channel and the trees are fully owned by the channel — merchants cannot
@@ -57,10 +57,10 @@ the Shopify Product Taxonomy. See [Shopify: Collections vs Taxonomy](#shopify-co
 
 Shopify has two completely separate concepts that are easily confused:
 
-| Concept | Owner | What it is | Used for |
-|---------|-------|-----------|----------|
-| **Collections** | Merchant | Freely-created storefront groupings ("New Arrivals", "Sale Items") | Storefront display and navigation |
-| **Product Taxonomy** | Shopify | Standardized global category tree (~10,000 nodes) | Product classification, Google Shopping sync, Meta integration |
+| Concept              | Owner    | What it is                                                         | Used for                                                       |
+|----------------------|----------|--------------------------------------------------------------------|----------------------------------------------------------------|
+| **Collections**      | Merchant | Freely-created storefront groupings ("New Arrivals", "Sale Items") | Storefront display and navigation                              |
+| **Product Taxonomy** | Shopify  | Standardized global category tree (~10,000 nodes)                  | Product classification, Google Shopping sync, Meta integration |
 
 **`channel_category_mappings` uses Product Taxonomy exclusively.**
 

@@ -158,8 +158,14 @@ For each `storeId`-aware publish request the backend runs:
     Channel-specific variant fields (barcode, inventory_policy, etc.) that are not in the
     JOLT spec reach the channel API through this step.
 10. Wrap payload if not already nested under root key (apiWrapperConfig.rootKey)
-11. Convert to SyncChannelProductRequest via ChannelAttributeConverterService
-    (builds channelAttributes, variantGroups, optionGroups, metadataGroups, channelCredentials)
+11. Convert to SyncChannelProductRequest (ChannelAttributeConverterService):
+    - commonFields: injected from request context (id, product_id, location_id, etc.)
+    - channelAttributes: auto-enumerated from every key in the JOLT product output;
+      attributeMappings.productFields is a sparse override for non-default attrId or
+      isSupportField:true — unregistered fields are auto-included with field name as attrId
+    - variantGroups: Pass 1 (registered variant fields) + Pass 2 passthrough (any others)
+    - optionGroups: from options/productOptions container key in JOLT output
+    - channelCredentials: credentialMapping-driven (see 05-credential-schema-and-publish-flow.md)
 12. Call Sync API: POST localhost:9000/sync_channel_product_impl
 13. Update channel_product_data.status = PUBLISHED / FAILED
 ```

@@ -73,8 +73,12 @@ Generates the Step 2 schema — one `ChannelSchemaPerStore` per active connected
         }
       },
       "completionStats": {
-        "required": 3, "total": 3, "percentage": 100
+        "requiredTotal": 9, "requiredFilled": 4,
+        "channelRequiredTotal": 5,  "channelRequiredFilled": 3,
+        "categoryRequiredTotal": 4, "categoryRequiredFilled": 1,
+        "recommendedTotal": 8, "recommendedFilled": 5
       }
+      // categoryAttributeSection: omitted when no category saved; see 06-step2-category-attributes.md
     }
   ]
 }
@@ -262,7 +266,7 @@ interface ChannelProductData {
   channelData:      Record<string, unknown>;
   masterOverrides:  Record<string, unknown>;
   variantOverrides: Record<string, Record<string, unknown>>;  // sku → fieldName → value
-  completionStats?: { required: number; total: number; percentage: number };
+  completionStats?: CompletionStats;  // see 06-step2-category-attributes.md for full shape
   updatedAt?:       string;
 }
 
@@ -392,21 +396,32 @@ These endpoints let the ops team update translations without a redeploy. Mapping
 
 ## Phase 3 — Hierarchical Category Tree
 
-**Backend planned.**
+**Implemented.**
 
-### GET `/merchant-data/{channelType}/{storeId}/categories`
+### GET `/categories/{channelType}/{storeId}/root`
 
-Returns direct children of a category node.
+Returns top-level category nodes for the channel store.
 
-**Query params:** `organizationId` (required), `parentId` (optional — omit for root level, or pass `root`)
+**Query params:** `organizationId` (required)
 
-**Response:** `CategoryTreeNode[]`
+**Response:** `CategoryNodesResponse`
 ```json
-[
-  { "id": "100", "label": "Mobile Phones",  "hasChildren": true },
-  { "id": "101", "label": "Smartwatches",   "hasChildren": false }
-]
+{
+  "channelType": "tiktokshop",
+  "storeId":     "store-sg-01",
+  "parentId":    null,
+  "nodes": [
+    { "id": "100", "name": "Electronics",  "hasChildren": true },
+    { "id": "101", "name": "Fashion",      "hasChildren": true }
+  ]
+}
 ```
+
+### GET `/categories/{channelType}/{storeId}/children/{parentId}`
+
+Returns direct children of the given parent node.
+
+**Query params:** `organizationId` (required)
 
 Backend caches responses in `channel_category_cache` (TTL 24h, indexed by `(channelType, storeId, parentId)`), warmed nightly by `CategorySyncJob`.
 
@@ -414,21 +429,24 @@ Backend caches responses in `channel_category_cache` (TTL 24h, indexed by `(chan
 
 ## Phase 4 — Category-Dependent Field Injection
 
-**Backend planned.**
+**Implemented.** Full spec: [`06-step2-category-attributes.md`](06-step2-category-attributes.md)
 
 ### GET `/merchant-data/{channelType}/{storeId}/category-attributes`
 
 **Query params:** `categoryId` (required), `organizationId` (required)
 
-**Response:**
+**Response:** `CategoryAttributesResponse`
 ```json
 {
-  "categoryId":   "10001234",
-  "categoryName": "Smartphones",
-  "categoryPath": ["Electronics", "Mobile Phones", "Smartphones"],
-  "requiredFields": [ "...ChannelFormField..." ],
-  "optionalFields": [ "...ChannelFormField..." ]
+  "categoryId":   "123456",
+  "categoryName": "Women's T-Shirts",
+  "categoryPath": ["Clothing", "Women's", "T-Shirts"],
+  "requiredFields": [ { "fieldName": "100001", "fieldType": "SELECT", "label": "Color", "required": true, "options": [...] } ],
+  "optionalFields": [ { "fieldName": "100010", "fieldType": "SELECT", "label": "Pattern", "required": false } ]
 }
 ```
 
-`ChannelStepSchemaService` will fetch this during schema generation when a `categoryId` is already saved, embedding the result in `ChannelSchemaPerStore.categoryAttributeSection` to avoid a round-trip on form load.
+`ChannelStepSchemaService` pre-fetches this during schema generation when a `categoryId` is already
+saved, embedding the result in `ChannelSchemaPerStore.categoryAttributeSection`. The `required`
+section in the schema response also has these fields appended directly. Call this endpoint directly
+only when the user changes category after initial schema load (see frontend contract).

@@ -54,13 +54,23 @@ One document per channel type (Shopify, Amazon, TikTok, etc.). Shared across all
   "joltSpec":      [...],
   "postProcessingRules": [...],
   "apiSchema":     { "product": { "title": { "required": true } } },
+  "categoryApiSchemas": {
+    "clothing": { "product": { "color": {}, "size": {} } }
+  },
   "requiredFieldObjects": ["title", "body_html", "vendor"],
   "apiWrapperConfig": { "product": {} },
-  "attributeMappings": [...]
+  "attributeMappings": [...],
+  "fieldBoosts": [...]
 }
 ```
 
 This collection is managed by the platform team — never by merchants. Do not add per-store fields here.
+
+**`apiSchema`** is the base channel target schema used by APM. It is a single schema per channel and is correct for Shopify/WIX (uniform structure). For Amazon, eBay, and Walmart it is an oversimplification — category-specific fields are absent, so APM cannot suggest mappings for them.
+
+**`categoryApiSchemas`** (planned) — per-category schema extensions merged on top of `apiSchema` at APM request time. Keyed by category slug. When `GET /channels/{channelId}/schema/complex?categoryId=clothing` is called, the response merges `categoryApiSchemas["clothing"]` over `apiSchema`. Not yet implemented. See `docs/product/06-adaptive-pattern-matching/02-api-reference/02-channel-schema.md` → `apiSchema — Current State and Category Gap`.
+
+**`fieldBoosts`** — channel-level confidence boosts applied after tier matching (e.g. Shopify `brand→vendor`). Seeded by `ChannelFieldBoostsMigration`. The `FieldBoost.condition` field exists in the schema but is never evaluated — planned for category-specific boosting. See `docs/product/06-adaptive-pattern-matching/01-guides/02-matching-tiers.md` → `Channel Boost`.
 
 ---
 

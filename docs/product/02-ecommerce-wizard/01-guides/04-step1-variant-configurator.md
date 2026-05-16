@@ -110,12 +110,12 @@ selectedOptions = { color: ["Black","Silver"], storage: ["64GB","128GB"] }
 
 ## Variant Table Rendering
 
-| Column type | Rendered as |
-|---|---|
-| `select` (dimension) | Read-only span — the dimension value |
-| `images` | `VariantMultiImageUpload` — compact image grid per cell (up to 5 images) |
-| `number` | `<input type="number">` with step |
-| `text` | `<input type="text">` |
+| Column type          | Rendered as                                                              |
+|----------------------|--------------------------------------------------------------------------|
+| `select` (dimension) | Read-only span — the dimension value                                     |
+| `images`             | `VariantMultiImageUpload` — compact image grid per cell (up to 5 images) |
+| `number`             | `<input type="number">` with step                                        |
+| `text`               | `<input type="text">`                                                    |
 
 Color swatch: if a column name includes "color" and the value is a string, a colored square is shown alongside the text.
 
@@ -223,10 +223,10 @@ On submit: generateMasterProduct() → product.variants = parsed.variants
 
 ## Codebase
 
-| File | Purpose |
-|------|---------|
+| File                                                   | Purpose                                                                     |
+|--------------------------------------------------------|-----------------------------------------------------------------------------|
 | `step1-create/components/sections/VariantsSection.tsx` | `hasVariants` toggle + dual-scope migration + renders `VariantConfigurator` |
-| `step1-create/components/VariantConfigurator.tsx` | Dimension detection, checkbox pickers, cartesian generation, variant table |
-| `step1-create/components/SkuMatrixPreview.tsx` | Visual grid preview — cartesian product of selected values |
-| `step1-create/components/VariantMultiImageUpload.tsx` | Per-variant image upload (compact grid, up to 5 images) |
-| `utils/variant-scope.ts` | `onVariantsEnabled`, `onVariantsDisabled`, `classifyFieldsByScope` |
+| `step1-create/components/VariantConfigurator.tsx`      | Dimension detection, checkbox pickers, cartesian generation, variant table  |
+| `step1-create/components/SkuMatrixPreview.tsx`         | Visual grid preview — cartesian product of selected values                  |
+| `step1-create/components/VariantMultiImageUpload.tsx`  | Per-variant image upload (compact grid, up to 5 images)                     |
+| `utils/variant-scope.ts`                               | `onVariantsEnabled`, `onVariantsDisabled`, `classifyFieldsByScope`          |

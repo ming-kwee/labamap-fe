@@ -37,11 +37,11 @@ Step 3 (frontend)
 
 ## Collections
 
-| Collection | Purpose |
-|-----------|---------|
-| `channel_jolt_specs` | Category-aware JOLT specs — one per (channelId × categoryId × organizationId). Stored so subsequent publish calls skip re-analysis (~20ms vs ~1000ms) |
+| Collection                 | Purpose                                                                                                                                                                   |
+|----------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `channel_jolt_specs`       | Category-aware JOLT specs — one per (channelId × categoryId × organizationId). Stored so subsequent publish calls skip re-analysis (~20ms vs ~1000ms)                     |
 | `field_semantic_knowledge` | Knowledge base of field semantic types. `fieldName` is unique; `semanticType` is NOT unique (multiple fields can share the same type). Used by Tier 2 and Tier 3 matching |
-| `channel_field_mappings` | Pre-configured or learned field mappings per channel. Used by Tier 1 (CHANNEL_SPECIFIC). Highest priority — represents verified relationships |
+| `channel_field_mappings`   | Pre-configured or learned field mappings per channel. Used by Tier 1 (CHANNEL_SPECIFIC). Highest priority — represents verified relationships                             |
 
 ---
 

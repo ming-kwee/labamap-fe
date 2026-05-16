@@ -72,13 +72,13 @@ Response (`PublishAnalysisResponse`) includes:
 
 The dashboard uses pattern matching to analyze how master product fields map to the channel's schema:
 
-| Tier | Method | Description |
-|------|--------|-------------|
-| 1 | Knowledge-Based | Hard-coded platform rules (e.g. Shopify `title` ← `name`) |
-| 2 | Semantic | Embedding similarity between field labels |
-| 3 | Similarity | Fuzzy string matching on field names |
-| 4 | Pattern | Regex / structural pattern rules |
-| 5 | Boost | Confidence boosts from historical publish data |
+| Tier  | Method          | Description                                               |
+|-------|-----------------|-----------------------------------------------------------|
+| 1     | Knowledge-Based | Hard-coded platform rules (e.g. Shopify `title` ← `name`) |
+| 2     | Semantic        | Embedding similarity between field labels                 |
+| 3     | Similarity      | Fuzzy string matching on field names                      |
+| 4     | Pattern         | Regex / structural pattern rules                          |
+| 5     | Boost           | Confidence boosts from historical publish data            |
 
 ```typescript
 import { analyzePatternMatching, generateMappingRequest } from '@/modules/ecommerce-product-v2/services/pattern-matching.service';
@@ -117,8 +117,16 @@ When `storeId` is present, the backend runs the following steps:
    For each SKU in variantOverrides, inject remaining channel-specific variant
    fields (barcode, inventory_policy, etc.) directly onto the output variant nodes
 10. Wrap payload if not already nested (apiWrapperConfig)
-11. Call Sync API (localhost:9000/sync_channel_product_impl)
-12. Update channel_product_data.status = PUBLISHED / FAILED
+11. Convert to SyncChannelProductRequest (ChannelAttributeConverterService):
+    - commonFields: injected from request context (id, product_id, location_id, etc.)
+    - channelAttributes: auto-enumerated from every key in the JOLT product output;
+      attributeMappings.productFields is a sparse override for non-default attrId or
+      isSupportField:true — unregistered fields are auto-included with field name as attrId
+    - variantGroups: Pass 1 (registered variant fields) + Pass 2 passthrough (any others)
+    - optionGroups: from options/productOptions container key in JOLT output
+    - channelCredentials: credentialMapping-driven (see 05-credential-schema-and-publish-flow.md)
+12. Call Sync API (localhost:9000/sync_channel_product_impl)
+13. Update channel_product_data.status = PUBLISHED / FAILED
 ```
 
 **Merge priority (lowest → highest):**
@@ -165,13 +173,13 @@ POST /api/v1/channels/publish/batch
 
 Fields entered in the Step 2 variant table (barcode, inventory_policy, per-SKU price) were historically dropped during publish due to a 4-layer failure chain. The backend was fixed (layers 1–3 below); the frontend fixes are still pending:
 
-| Layer | Location | Status |
-|-------|----------|--------|
-| 1 | `channelStore.ts` — `PublishSingleRequest` missing `variantOverrides` field | ⚠️ Frontend pending |
-| 2 | `PublishDashboard.tsx` — `handlePublishSingle` never reads `store.variantOverrides` | ⚠️ Frontend pending |
-| 3 | `PublishDashboard.tsx` — `handleAnalyze` missing `variantOverrides` in sourceSchema | ⚠️ Frontend pending |
-| 4 | `product-mapper.ts` — `transformMasterProductToSourceSchema` reduces variants to a count | ⚠️ Frontend pending |
-| 5 | `ChannelAttributeConverterService.java` — variant node fields not in pre-registered mapping silently dropped | ✅ Backend fixed |
+| Layer   | Location                                                                                                     | Status              |
+|---------|--------------------------------------------------------------------------------------------------------------|---------------------|
+| 1       | `channelStore.ts` — `PublishSingleRequest` missing `variantOverrides` field                                  | ⚠️ Frontend pending |
+| 2       | `PublishDashboard.tsx` — `handlePublishSingle` never reads `store.variantOverrides`                          | ⚠️ Frontend pending |
+| 3       | `PublishDashboard.tsx` — `handleAnalyze` missing `variantOverrides` in sourceSchema                          | ⚠️ Frontend pending |
+| 4       | `product-mapper.ts` — `transformMasterProductToSourceSchema` reduces variants to a count                     | ⚠️ Frontend pending |
+| 5       | `ChannelAttributeConverterService.java` — variant node fields not in pre-registered mapping silently dropped | ✅ Backend fixed     |
 
 Backend additionally added:
 - `variantOverrides` to `PublishProductRequest` Java type (BE-PUBLISH-1)
@@ -184,15 +192,15 @@ Backend additionally added:
 
 ## UI States
 
-| State | User sees |
-|-------|-----------|
-| Loading | Skeleton cards with spinner |
-| Empty | "No channel data found" + link back to Step 2 |
-| Ready | Preview cards with publish buttons |
+| State               | User sees                                                   |
+|---------------------|-------------------------------------------------------------|
+| Loading             | Skeleton cards with spinner                                 |
+| Empty               | "No channel data found" + link back to Step 2               |
+| Ready               | Preview cards with publish buttons                          |
 | Publishing (single) | Spinner on that store's button; other buttons remain active |
-| Publishing (batch) | "Publishing All…" spinner; all buttons disabled |
-| Published | Card changes to PUBLISHED status (green badge) |
-| Failed | Error message on card; red status badge |
+| Publishing (batch)  | "Publishing All…" spinner; all buttons disabled             |
+| Published           | Card changes to PUBLISHED status (green badge)              |
+| Failed              | Error message on card; red status badge                     |
 
 ---
 
@@ -209,9 +217,9 @@ import { previewJoltTransformation } from '@/modules/ecommerce-product-v2/servic
 
 ## Codebase
 
-| File | Purpose |
-|------|---------|
-| `step3-publish/components/PublishDashboard.tsx` | Entire Step 3 UI — data loading, preview cards, publish actions |
-| `services/pattern-matching.service.ts` | `analyzePatternMatching`, `previewJoltTransformation`, `generateMappingRequest` |
+| File                                                    | Purpose                                                                                                                                      |
+|---------------------------------------------------------|----------------------------------------------------------------------------------------------------------------------------------------------|
+| `step3-publish/components/PublishDashboard.tsx`         | Entire Step 3 UI — data loading, preview cards, publish actions                                                                              |
+| `services/pattern-matching.service.ts`                  | `analyzePatternMatching`, `previewJoltTransformation`, `generateMappingRequest`                                                              |
 | `step2-channel-fields/services/channelStore.service.ts` | `ChannelProductDataService.getAllStoreData`, `PublishService.publishToStore`, `PublishService.publishBatch`, `PublishService.analyzePublish` |
-| `step2-channel-fields/types/channelStore.ts` | `PublishSingleRequest`, `BatchPublishRequest`, `StorePublishResult`, `PublishAnalysisResponse` |
+| `step2-channel-fields/types/channelStore.ts`            | `PublishSingleRequest`, `BatchPublishRequest`, `StorePublishResult`, `PublishAnalysisResponse`                                               |

@@ -52,15 +52,15 @@ interface ProductGenerationOptions {
 
 **Mapping algorithm** — walks `schema.fields` and maps each to the correct location:
 
-| Input pattern | Output location |
-|---|---|
-| `variantConfigurator` (JSON string) | `product.variants = parsed.variants` |
-| `images` | `product.images` as array |
-| `channelSettings` | `product.channelSettings` |
-| `field.backendFieldPath = "seo.metaTitle"` | `product.seo.metaTitle` (nested) |
-| `length / width / height / dimensionUnit` | collected → `product.dimensions = { length, width, height, unit }` |
-| Any other field | `product[fieldName] = convertValueByType(value, fieldType)` |
-| Form fields not in schema | `product.customAttributes[key] = value` (keys starting `_` skipped) |
+| Input pattern                              | Output location                                                     |
+|--------------------------------------------|---------------------------------------------------------------------|
+| `variantConfigurator` (JSON string)        | `product.variants = parsed.variants`                                |
+| `images`                                   | `product.images` as array                                           |
+| `channelSettings`                          | `product.channelSettings`                                           |
+| `field.backendFieldPath = "seo.metaTitle"` | `product.seo.metaTitle` (nested)                                    |
+| `length / width / height / dimensionUnit`  | collected → `product.dimensions = { length, width, height, unit }`  |
+| Any other field                            | `product[fieldName] = convertValueByType(value, fieldType)`         |
+| Form fields not in schema                  | `product.customAttributes[key] = value` (keys starting `_` skipped) |
 
 **Type coercion:**
 ```typescript
@@ -103,12 +103,12 @@ POST /api/v1/ecommerce/dynamic-products/validate
 
 The backend may return several response formats. `validateProductEnhanced` normalizes all of them to `EnhancedValidationResult`:
 
-| Format | How handled |
-|---|---|
-| Full enhanced result `{ valid, violations, warnings, validationScore, canSubmit }` | Returned as-is |
-| Nested `{ validation: { valid, errors[], warnings[] } }` | Errors → violations `severity: ERROR`; warnings → `ValidationWarning[]` |
-| Empty `{}` | Treated as valid (`validationScore: 100`, `canSubmit: true`) |
-| Network / 5xx error | Synthetic result: `valid: false`, error message as single `SCHEMA_VALIDATION` violation |
+| Format                                                                             | How handled                                                                             |
+|------------------------------------------------------------------------------------|-----------------------------------------------------------------------------------------|
+| Full enhanced result `{ valid, violations, warnings, validationScore, canSubmit }` | Returned as-is                                                                          |
+| Nested `{ validation: { valid, errors[], warnings[] } }`                           | Errors → violations `severity: ERROR`; warnings → `ValidationWarning[]`                 |
+| Empty `{}`                                                                         | Treated as valid (`validationScore: 100`, `canSubmit: true`)                            |
+| Network / 5xx error                                                                | Synthetic result: `valid: false`, error message as single `SCHEMA_VALIDATION` violation |
 
 **canSubmit vs valid:**
 - `canSubmit = false` only when there are `severity: "ERROR"` violations
@@ -187,24 +187,24 @@ validateProductCategory(
 )
 ```
 
-| Condition | Result |
-|---|---|
-| `formData.category` empty | Uses `organizationDefaultCategory`, no alert |
-| Category not in `assignedCategories` (when assignedCategories non-empty) | Blocks with `alert()` |
-| Category not in `KNOWN_CATEGORIES` | Warning toast, but submission allowed |
-| Otherwise | Valid |
+| Condition                                                                | Result                                       |
+|--------------------------------------------------------------------------|----------------------------------------------|
+| `formData.category` empty                                                | Uses `organizationDefaultCategory`, no alert |
+| Category not in `assignedCategories` (when assignedCategories non-empty) | Blocks with `alert()`                        |
+| Category not in `KNOWN_CATEGORIES`                                       | Warning toast, but submission allowed        |
+| Otherwise                                                                | Valid                                        |
 
 ---
 
 ## Error States
 
-| Error | Where shown | Recovery |
-|---|---|---|
-| Category access violation | `alert()` dialog | Select a permitted category |
-| Validation ERROR violations | `ValidationSummary` panel | Fix indicated fields, resubmit |
-| Network error during validation | `ValidationSummary` (synthetic violation) | Retry |
-| Network error during creation | `submitError` → Alert near form top | Retry |
-| Schema load failure | Full-page Alert | Refresh page |
+| Error                           | Where shown                               | Recovery                       |
+|---------------------------------|-------------------------------------------|--------------------------------|
+| Category access violation       | `alert()` dialog                          | Select a permitted category    |
+| Validation ERROR violations     | `ValidationSummary` panel                 | Fix indicated fields, resubmit |
+| Network error during validation | `ValidationSummary` (synthetic violation) | Retry                          |
+| Network error during creation   | `submitError` → Alert near form top       | Retry                          |
+| Schema load failure             | Full-page Alert                           | Refresh page                   |
 
 ---
 
@@ -214,22 +214,22 @@ validateProductCategory(
 
 Used by the publish pipeline (Step 3) to flatten the `MasterProduct` into a key-value map that the pattern-matching API can analyze:
 
-| Input | Output |
-|---|---|
-| `tags: ["tech","audio"]` | `{ tags: "tech, audio" }` (joined) |
-| `dimensions: { length: 10, width: 5 }` | `{ length: 10, width: 5, dimension_unit: "cm" }` (flattened) |
-| `variants: [...]` | `{ variant_count: N, variant_sku: "...", variants: [...] }` |
-| `customAttributes: { _key: "x", myField: "y" }` | `{ myField: "y" }` (keys starting `_` skipped) |
-| `id`, `channelMappings`, timestamps | *(skipped)* |
+| Input                                           | Output                                                       |
+|-------------------------------------------------|--------------------------------------------------------------|
+| `tags: ["tech","audio"]`                        | `{ tags: "tech, audio" }` (joined)                           |
+| `dimensions: { length: 10, width: 5 }`          | `{ length: 10, width: 5, dimension_unit: "cm" }` (flattened) |
+| `variants: [...]`                               | `{ variant_count: N, variant_sku: "...", variants: [...] }`  |
+| `customAttributes: { _key: "x", myField: "y" }` | `{ myField: "y" }` (keys starting `_` skipped)               |
+| `id`, `channelMappings`, timestamps             | *(skipped)*                                                  |
 
 ---
 
 ## Codebase
 
-| File | Purpose |
-|------|---------|
-| `step1-create/hooks/useProductSubmit.ts` | `submitProduct()` pipeline, `validateProduct()`, `showValidation` state |
-| `step1-create/components/ValidationSummary.tsx` | Renders `EnhancedValidationResult` |
-| `utils/product-mapper.ts` | `generateMasterProduct()`, `transformMasterProductToSourceSchema()` |
-| `services/schema-api.service.ts` | `createBackendContext()` |
-| `services/product-api.service.ts` | `ProductApiService.validateProductEnhanced()`, `.createProduct()` |
+| File                                            | Purpose                                                                 |
+|-------------------------------------------------|-------------------------------------------------------------------------|
+| `step1-create/hooks/useProductSubmit.ts`        | `submitProduct()` pipeline, `validateProduct()`, `showValidation` state |
+| `step1-create/components/ValidationSummary.tsx` | Renders `EnhancedValidationResult`                                      |
+| `utils/product-mapper.ts`                       | `generateMasterProduct()`, `transformMasterProductToSourceSchema()`     |
+| `services/schema-api.service.ts`                | `createBackendContext()`                                                |
+| `services/product-api.service.ts`               | `ProductApiService.validateProductEnhanced()`, `.createProduct()`       |
