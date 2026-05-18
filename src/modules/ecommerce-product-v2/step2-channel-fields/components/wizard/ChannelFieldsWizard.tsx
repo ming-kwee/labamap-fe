@@ -13,16 +13,6 @@ import ChannelStoreTab from "./ChannelStoreTab";
 
 const ORGANIZATION_ID = "org_123"; // from auth context in production
 
-// ─── Status helpers ───────────────────────────────────────────────────────────
-
-function statusDot(status: ChannelProductStatus | undefined, pct: number) {
-  if (status === "FAILED")     return { color: "bg-error-500",   label: "Error" };
-  if (status === "PUBLISHED")  return { color: "bg-success-500", label: "Published" };
-  if (pct === 100)             return { color: "bg-success-500", label: "Complete" };
-  if (pct > 0)                 return { color: "bg-warning-500", label: "Partial" };
-  return { color: "bg-gray-300 dark:bg-gray-600", label: "Empty" };
-}
-
 // ─── Tab store form values ────────────────────────────────────────────────────
 
 interface StoreFormValues {
@@ -463,6 +453,11 @@ export default function ChannelFieldsWizard({ masterProductId }: Props) {
   const activeValues = storeValues[activeStoreId] ?? { masterOverrides: {}, channelData: {}, variantOverrides: {} };
   const isLastTab = activeStoreIndex === channels.length - 1;
 
+  const doneCount = channels.filter((ch) => {
+    const comp = storeCompletion[ch.storeId] ?? { pct: ch.completionPercentage, status: ch.completionStatus };
+    return comp.status === "PUBLISHED" || comp.pct === 100;
+  }).length;
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -476,57 +471,40 @@ export default function ChannelFieldsWizard({ masterProductId }: Props) {
         </div>
         <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Channel-Specific Fields</h1>
         <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-          Fill channel-specific fields for each connected store. Data autosaves every 30 seconds.
+          {doneCount}/{channels.length} stores complete · autosaves every 30 s
         </p>
-      </div>
-
-      {/* Overall progress bar */}
-      <div className="bg-white dark:bg-white/[0.03] border border-gray-200 dark:border-gray-800 rounded-2xl px-6 py-4">
-        <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-3">
-          Overall Progress
-        </p>
-        <div className="space-y-2">
-          {channels.map((ch) => {
-            const comp = storeCompletion[ch.storeId] ?? { pct: ch.completionPercentage, status: ch.completionStatus };
-            const dot = statusDot(comp.status, comp.pct);
-            return (
-              <div key={ch.storeId} className="flex items-center gap-3">
-                <span className="text-xs text-gray-600 dark:text-gray-400 w-36 truncate">{ch.storeName}</span>
-                <div className="flex-1 bg-gray-200 dark:bg-gray-700 rounded-full h-1.5 overflow-hidden">
-                  <div
-                    className={`h-1.5 rounded-full transition-all duration-500 ${
-                      comp.pct === 100 ? "bg-success-500" : comp.pct > 0 ? "bg-warning-500" : "bg-gray-300 dark:bg-gray-600"
-                    }`}
-                    style={{ width: `${comp.pct}%` }}
-                  />
-                </div>
-                <span className={`h-2 w-2 rounded-full flex-shrink-0 ${dot.color}`} title={dot.label} />
-                <span className="text-xs text-gray-500 dark:text-gray-400 w-8 text-right">{comp.pct}%</span>
-              </div>
-            );
-          })}
-        </div>
       </div>
 
       {/* Tab bar */}
-      <div className="flex flex-wrap gap-2 border-b border-gray-200 dark:border-gray-800 pb-3">
+      <div className="flex flex-wrap gap-1.5 border-b border-gray-200 dark:border-gray-800 pb-3">
         {channels.map((ch, idx) => {
           const comp = storeCompletion[ch.storeId] ?? { pct: ch.completionPercentage, status: ch.completionStatus };
-          const dot = statusDot(comp.status, comp.pct);
           const isActive = idx === activeStoreIndex;
+          const hasNoRequired = (ch.completionStats?.requiredTotal ?? 0) === 0;
+          const isDone = comp.status === "PUBLISHED" || comp.pct === 100 || hasNoRequired;
+          const isPartial = !isDone && comp.pct > 0;
           return (
             <button
               key={ch.storeId}
               onClick={() => switchTab(idx)}
-              className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-colors ${
+              className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-medium transition-colors ${
                 isActive
                   ? "bg-brand-50 dark:bg-brand-500/10 text-brand-700 dark:text-brand-400 border border-brand-200 dark:border-brand-500/30"
                   : "text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 border border-transparent"
               }`}
             >
-              <span className={`h-2 w-2 rounded-full ${dot.color}`} title={dot.label} />
               <span>{ch.storeName}</span>
               <ChannelTypeBadge channelType={ch.channelType} size="sm" />
+              {/* Completion badge — replaces the tiny 2px dot */}
+              <span className={`text-[11px] font-semibold tabular-nums px-1.5 py-0.5 rounded-md flex-shrink-0 ${
+                isDone
+                  ? "bg-success-50 dark:bg-success-500/15 text-success-700 dark:text-success-400"
+                  : isPartial
+                  ? "bg-warning-50 dark:bg-warning-500/15 text-warning-700 dark:text-warning-400"
+                  : "bg-gray-100 dark:bg-gray-800 text-gray-400 dark:text-gray-500"
+              }`}>
+                {isDone ? "✓" : `${comp.pct}%`}
+              </span>
             </button>
           );
         })}
@@ -549,6 +527,7 @@ export default function ChannelFieldsWizard({ masterProductId }: Props) {
           lastSaved={lastSaved[activeStoreId]}
           masterProduct={masterProductSnapshot ?? undefined}
           fieldErrors={activeTabFieldErrors}
+          savedCompletionPct={storeCompletion[activeStoreId]?.pct}
         />
       </div>
 
