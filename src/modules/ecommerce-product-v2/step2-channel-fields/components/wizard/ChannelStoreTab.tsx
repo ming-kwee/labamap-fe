@@ -29,6 +29,8 @@ interface Props {
   fieldErrors?: Set<string>;
   /** Live completion % from the last save — overrides the frozen schema value. */
   savedCompletionPct?: number;
+  /** Real organization ID from auth context — required for merchant-data API calls. */
+  orgId?: string;
 }
 
 // ── SVG chevron — animated rotation via className ─────────────────────────────
@@ -197,7 +199,7 @@ function FieldsGrid({
 
 // ── Main component ────────────────────────────────────────────────────────────
 
-export default function ChannelStoreTab({ schema, values, onChange, isSaving, lastSaved, masterProduct, fieldErrors, savedCompletionPct }: Props) {
+export default function ChannelStoreTab({ schema, values, onChange, isSaving, lastSaved, masterProduct, fieldErrors, savedCompletionPct, orgId = "" }: Props) {
   const [optionalExpanded, setOptionalExpanded] = useState(false);
 
   // ── Scenario D: Category-Dependent Dynamic Field Injection ────────────────
@@ -235,7 +237,7 @@ export default function ChannelStoreTab({ schema, values, onChange, isSaving, la
     if (!categoryId) { setCategoryAttrs(null); return; }
     setCatAttrsLoading(true);
     setCatAttrsError(null);
-    const url = `${BASE}/merchant-data/${schema.channelType}/${encodeURIComponent(schema.storeId)}/category-attributes?categoryId=${encodeURIComponent(categoryId)}&organizationId=org_123`;
+    const url = `${BASE}/merchant-data/${schema.channelType}/${encodeURIComponent(schema.storeId)}/category-attributes?categoryId=${encodeURIComponent(categoryId)}&organizationId=${encodeURIComponent(orgId)}`;
     fetch(url)
       .then((res) => {
         if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);

@@ -111,6 +111,225 @@ accumulated this way.
 
 ---
 
+## Taxonomy Cache — Architecture and Performance
+
+`ChannelTaxonomyService` manages the `channel_taxonomy_cache` collection for fixed global
+taxonomy channels. Unlike `channel_category_cache` (per-store, 24h TTL, lazy-filled on
+demand), the taxonomy cache is:
+
+- **Global** — one shared copy per `channelType` (all Shopify stores share one Shopify taxonomy cache)
+- **Pre-seeded** — BFS runs in background on first request, not per-user-session
+- **Long-lived** — 7-day TTL (taxonomy changes only on quarterly Shopify releases)
+- **Large** — Shopify: 12,378 nodes across 7 levels
+
+### Cache flow
+
+```
+Request arrives → ensureCache(channelType)
+                         │
+         ┌───────────────┼───────────────┐
+         │               │               │
+     count = 0       0 < count < 500   count ≥ 500
+     (empty)         (partial)          (warm)
+         │               │               │
+  Phase 1: fetch      serve stale      return
+  26 roots sync       return fast      immediately
+  return response     BFS in bg
+         │               │
+         └───────────────┘
+              Phase 2: BFS
+              level by level
+              write each level to MongoDB
+              before recursing to next level
+```
+
+### Two-phase `fetchAndCacheAll`
+
+**Phase 1** (synchronous — blocks until complete, then returns HTTP response):
+```
+POST /graphql (taxonomy.categories first: 26)
+→ write 26 roots to channel_taxonomy_cache
+→ return HTTP response (caller sees root nodes immediately)
+```
+
+**Phase 2** (fire-and-forget via `subscribe()` — runs in background):
+```
+Level 1: batch childrenIds of 26 roots  → fetch → write 213 nodes  → recurse
+Level 2: batch childrenIds of 213 nodes → fetch → write 1551 nodes → recurse
+Level 3:                                → fetch → write 4265 nodes → recurse
+Level 4:                                → fetch → write 4204 nodes → recurse
+Level 5:                                → fetch → write 1628 nodes → recurse
+Level 6:                                → fetch → write 438 nodes  → done
+Total: 12,378 nodes written in ~5 minutes
+```
+
+**Critical:** each BFS level is flushed to MongoDB immediately after fetch via
+`bulkUpsert(channelType, newNodes)` **before** recursing to the next level.
+This eliminates the former 190-second connection-pool saturation window that occurred
+when all 12,378 nodes were accumulated in memory and written as a single `saveAll()` call.
+
+### `refetchInFlight` guard
+
+`ConcurrentHashMap.newKeySet()` used as a concurrent set. Prevents BFS storms when
+multiple requests hit an empty or partial cache simultaneously:
+
+```java
+// count = 0 path (empty cache) — only one thread blocks on Phase 1:
+if (refetchInFlight.add(channelType)) {
+    return fetchAndCacheAll(channelType, storeId, organizationId, config);
+}
+return Mono.empty();  // concurrent callers get empty nodes immediately
+
+// count > 0 path (partial/stale cache) — serve stale, one BFS in background:
+if (refetchInFlight.add(channelType)) {
+    cacheRepository.deleteByChannelType(channelType)
+            .then(fetchAndCacheAll(channelType, storeId, organizationId, config))
+            .doOnError(e -> refetchInFlight.remove(channelType))
+            .subscribe();  // fire-and-forget
+}
+return Mono.empty();  // serve partial cache without blocking
+```
+
+**Ownership rule:** `refetchInFlight.remove(channelType)` is called **exclusively** inside
+Phase 2 BFS `doOnSuccess`/`doOnError`. It is never removed after Phase 1 completes.
+This prevents a new BFS from starting while Phase 2 is still running.
+
+```java
+// Inside fetchAndCacheAll — Phase 2 owns the remove:
+return bulkUpsert(channelType, roots)
+        .doOnSuccess(v -> {
+            fetchMissingChildrenBFS(channelType, wc, baseUrl, resolvedPath, rootsCopy)
+                    .doOnSuccess(ignored -> refetchInFlight.remove(channelType))  // ← here
+                    .doOnError(e -> {
+                        refetchInFlight.remove(channelType);                      // ← and here
+                        log.error("[taxonomy] Phase 2 BFS failed for {}: {}", channelType, e.getMessage());
+                    })
+                    .subscribe();
+        });
+```
+
+### `ensureCache` three-state logic
+
+| Cache state         | Condition        | Action                                                  |
+|---------------------|------------------|---------------------------------------------------------|
+| **Warm**            | count ≥ 500      | Return immediately — sub-100ms fast path                |
+| **Partial** (stale) | 0 < count < 500  | Serve stale, trigger one background BFS re-seed         |
+| **Empty** (cold)    | count = 0        | First requester blocks on Phase 1; others return empty  |
+
+The 500-node threshold distinguishes "roots only" (26 nodes) from a usefully partial cache.
+
+### In-memory config caches
+
+`taxonomyEnabledCache` and `fetchConfigCache` are `ConcurrentHashMap` instances that cache
+the result of reading `channel_category_api_config` after the first hit. This eliminates
+repeated MongoDB reads for static configuration on every request. `queryChildrenIfTaxonomy()`
+uses these to perform the taxonomy-check and children-query in a single DB read pipeline
+instead of the previous two-read pattern (`isTaxonomyChannel` then `getChildren`).
+
+### URL encoding for GID path variables
+
+Shopify taxonomy node IDs contain `://` (e.g. `gid://shopify/TaxonomyCategory/aa`).
+This breaks Spring MVC path routing if the GID is passed raw in a `@PathVariable` because
+`//` is treated as a path separator by the Servlet container.
+
+**Frontend** must URL-encode the GID before embedding it in the URL:
+```typescript
+// CategoryTreePicker.tsx
+const encoded = encodeURIComponent(parentId);  // "gid%3A%2F%2Fshopify%2F..."
+fetch(`/api/v1/categories/${channelType}/${storeId}/children/${encoded}?...`)
+```
+
+**Backend** `@PathVariable` auto-decodes — no special handling needed on the Spring side.
+This is a test-only pitfall: raw `curl` will 404; curl with `--path-as-is` and encoded GID works.
+
+---
+
+## Taxonomy Cache — Bugs Fixed (2026-05-28)
+
+### Bug 1 — TaxonomyMapperModal showing blank suggestions
+
+**Symptom:** `previewSecondChannel` returns an empty suggestion list even though the
+taxonomy cache is populated with thousands of nodes.
+
+**Root causes (3 fixed simultaneously):**
+
+**1. Reversed loop iteration in `buildFuzzyMatchesFromTaxonomy`**
+
+Was: `for (taxonomyLeaf : allLeaves) { for (platformCategory : platformCategories) }`
+→ Result map keyed by `platformCategoryId`, overwritten by each taxonomy leaf.
+Last write wins — virtually all suggestions were silently dropped.
+
+Fix: `for (platformCategory : platformCategories) { for (taxonomyLeaf : allLeaves) }`
+→ One best-match result per platform category — correct for the frontend's
+`bestSuggestion` map keyed by `suggestedCategoryId`.
+
+**2. `ensureCache` triggered inside `getLeafNodesFromCacheOnly`**
+
+Calling `ensureCache` inside `previewSecondChannel` launched a full BFS on every modal
+open, which blocked the reactive pipeline and caused the blank result.
+
+Fix: `getLeafNodesFromCacheOnly()` reads from cache without calling `ensureCache`.
+If cache is empty it returns an empty list immediately.
+
+**3. Missing `organizationId` filter**
+
+Taxonomy cache queries were missing the `organizationId` predicate, potentially returning
+cross-org taxonomy data in multi-tenant setups.
+
+Fix: `organizationId` added to all taxonomy cache queries.
+
+---
+
+### Bug 2 — CategoryTreePicker hanging 7–10 seconds on every open
+
+**Symptom:** Opening the CategoryTreePicker in Step 2 Phase 3 causes a 7–10 second wait
+before root nodes appear. Closing and reopening hangs again each time.
+
+**Root cause — circular blocking loop:**
+
+```
+Request → ensureCache
+  count = 26  →  partial (< 500 threshold)
+  → deleteByChannelType (erase 26 nodes)
+  → fetchAndCacheAll() called SYNCHRONOUSLY (blocks HTTP response)
+     Phase 1: save 26 root nodes ✓
+     Phase 2 BFS: silently errors (onErrorResume suppressed exception)
+               → writes 0 children
+  → count = 26 again (same state as before)
+  → HTTP response finally returns after 7s blocking wait
+
+Next request:
+  → count = 26 → same cycle repeats indefinitely
+```
+
+The hang was **synchronous BFS on every request** combined with **silent BFS failure**
+leaving the cache permanently at 26 nodes.
+
+**Four-part fix:**
+
+| # | Fix | What changed |
+|---|-----|-------------|
+| 1 | **Non-blocking partial cache** | count>0 path serves stale immediately, triggers background BFS without blocking |
+| 2 | **Two-phase `fetchAndCacheAll`** | Phase 1 saves roots and returns; Phase 2 BFS runs via `subscribe()` fire-and-forget |
+| 3 | **`refetchInFlight` on count=0** | Only the first concurrent thread does Phase 1 blocking; all others return empty |
+| 4 | **Level-by-level BFS flush** | Each BFS level written to MongoDB before recursing — eliminates 190s `saveAll` saturation |
+
+### Performance benchmark (cold start → warm cache)
+
+| Event                                   | Time from first request |
+|-----------------------------------------|-------------------------|
+| Root nodes visible (26 nodes)           | ~1.5 s                  |
+| Level 1 children available (213 nodes)  | ~25 s                   |
+| Level 2 available (1,551 nodes)         | ~65 s                   |
+| Level 3 available (4,265 nodes)         | ~120 s                  |
+| Full tree complete (12,378 nodes)       | ~5 min                  |
+| **Subsequent requests (warm cache)**    | **< 100 ms**            |
+
+The first user sees root nodes in ~1.5 s. BFS completes silently in the background.
+All subsequent users get sub-100 ms responses from the warm cache.
+
+---
+
 ## The Three Sync Operations
 
 ### ① IMPORT (Channel → Platform, one-time)
@@ -189,11 +408,11 @@ No drift, no push-out failures, no `PENDING_IMPORT` intermediate step.
 
 Applies to Type 1 channels (WooCommerce, Etsy) only.
 
-| Option | What happens |
-|--------|-------------|
+| Option            | What happens                                                                           |
+|-------------------|----------------------------------------------------------------------------------------|
 | `RENAME_PLATFORM` | Platform category renamed to match channel; triggers push to all other Type 1 channels |
-| `RENAME_CHANNEL` | Platform calls channel API to revert the rename |
-| `KEEP_BOTH` | Dismiss alert; names diverge permanently; sync still works (uses externalId, not name) |
+| `RENAME_CHANNEL`  | Platform calls channel API to revert the rename                                        |
+| `KEEP_BOTH`       | Dismiss alert; names diverge permanently; sync still works (uses externalId, not name) |
 
 ---
 

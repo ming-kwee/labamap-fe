@@ -1,8 +1,8 @@
 'use client';
 
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { CategoryService } from '@/app/omni-admin/product-categories/_services/category.service';
-import type { CategorySlugItem } from '@/app/omni-admin/product-categories/_types/category';
+import { CategoryService } from '@/app/(admin)/omni-admin/product-categories/_services/category.service';
+import type { CategorySlugItem } from '@/app/(admin)/omni-admin/product-categories/_types/category';
 import { Search, ChevronDown, X } from '@/shared/ui/icons/Icons';
 
 interface CategorySelectFieldProps {

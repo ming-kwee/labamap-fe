@@ -8,6 +8,7 @@ import { CategoryService } from "../../product-categories/_services/category.ser
 import { ProductTypeService } from "../../product-types/_services/product-type.service";
 import type { ProductType } from "../../product-types/_types/product-type";
 import { AddEditAttributeModal } from "./AddEditAttributeModal";
+import { useAuth } from "@/shared/contexts/AuthContext";
 
 // ─── Inline SVG icon helpers ──────────────────────────────────────────────────
 
@@ -850,6 +851,9 @@ function AttributeListItem({
 // ─── Main Page ─────────────────────────────────────────────────────────────────
 
 export default function MasterAttributesPage() {
+  const { organization } = useAuth();
+  const orgId = organization?.organizationId ?? "";
+
   const [attributes, setAttributes] = useState<MasterAttribute[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -902,7 +906,7 @@ export default function MasterAttributesPage() {
   const loadCats = useCallback(() => {
     setCatsLoading(true);
     setCatsError(false);
-    CategoryService.getSlugs()
+    CategoryService.getSlugs(orgId)
       .then(slugs => {
         setCategories(
           slugs

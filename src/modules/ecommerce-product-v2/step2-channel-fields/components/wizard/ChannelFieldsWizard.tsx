@@ -8,10 +8,9 @@ import type {
   MasterProductSnapshot,
 } from "../../types/channelStore";
 import { ChannelSchemaService, ChannelProductDataService } from "../../services/channelStore.service";
+import { useAuth } from "@/shared/contexts/AuthContext";
 import ChannelTypeBadge from "../stores/ChannelTypeBadge";
 import ChannelStoreTab from "./ChannelStoreTab";
-
-const ORGANIZATION_ID = "org_123"; // from auth context in production
 
 // ─── Tab store form values ────────────────────────────────────────────────────
 
@@ -157,6 +156,8 @@ interface Props {
 
 export default function ChannelFieldsWizard({ masterProductId }: Props) {
   const router = useRouter();
+  const { organization } = useAuth();
+  const orgId = organization?.organizationId ?? "";
 
   // Schema state
   const [schemaResponse, setSchemaResponse] = useState<ChannelStepSchemaResponse | null>(null);
@@ -193,13 +194,14 @@ export default function ChannelFieldsWizard({ masterProductId }: Props) {
 
   // Load schema
   const loadSchema = useCallback(async () => {
+    if (!orgId) return;
     setLoading(true);
     setLoadError(null);
     try {
       const masterVariants = getMasterVariantsFromSession(masterProductId);
       const resp = await ChannelSchemaService.generateChannelStepSchema({
         masterProductId,
-        organizationId: ORGANIZATION_ID,
+        organizationId: orgId,
         ...(masterVariants.length > 0 && { masterVariants }),
       });
       setSchemaResponse(resp);
@@ -237,7 +239,7 @@ export default function ChannelFieldsWizard({ masterProductId }: Props) {
     } finally {
       setLoading(false);
     }
-  }, [masterProductId]);
+  }, [masterProductId, orgId]);
 
   useEffect(() => { loadSchema(); }, [loadSchema]);
 
@@ -256,7 +258,7 @@ export default function ChannelFieldsWizard({ masterProductId }: Props) {
     setSavingStoreId(storeId);
     try {
       const categoryId = values.channelData["categoryId"] as string | undefined;
-      const result = await ChannelProductDataService.saveChannelData(ORGANIZATION_ID, {
+      const result = await ChannelProductDataService.saveChannelData(orgId, {
         masterProductId,
         storeId,
         channelType: channel.channelType,
@@ -275,7 +277,7 @@ export default function ChannelFieldsWizard({ masterProductId }: Props) {
     } finally {
       setSavingStoreId(null);
     }
-  }, [masterProductId, storeValues]);
+  }, [masterProductId, orgId, storeValues]);
 
   function scheduleAutosave(storeId: string, channel: ChannelSchemaPerStore) {
     dirtyStores.current.add(storeId);
@@ -528,6 +530,7 @@ export default function ChannelFieldsWizard({ masterProductId }: Props) {
           masterProduct={masterProductSnapshot ?? undefined}
           fieldErrors={activeTabFieldErrors}
           savedCompletionPct={storeCompletion[activeStoreId]?.pct}
+          orgId={orgId}
         />
       </div>
 

@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { ProductType, VariantDimension } from "../_types/product-type";
 import { ProductTypeService } from "../_services/product-type.service";
-import SkuMatrixPreview from "../../../../modules/ecommerce-product-v2/step1-create/components/SkuMatrixPreview";
+import SkuMatrixPreview from "@/modules/ecommerce-product-v2/step1-create/components/SkuMatrixPreview";
 
 // ─── Icons ──────────────────────────────────────────────────────────────────────
 

@@ -10,7 +10,7 @@
 import React, { useState, useMemo } from 'react';
 import VariantMultiImageUpload from './VariantMultiImageUpload';
 import SkuMatrixPreview from './SkuMatrixPreview';
-import type { VariantDimension as ProductTypeVariantDimension } from '@/app/omni-admin/product-types/_types/product-type';
+import type { VariantDimension as ProductTypeVariantDimension } from '@/app/(admin)/omni-admin/product-types/_types/product-type';
 
 interface VariantOption {
   id: string;

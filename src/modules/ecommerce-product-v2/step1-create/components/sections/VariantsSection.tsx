@@ -4,7 +4,7 @@ import React from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/shared/ui/card/Card';
 import VariantConfigurator from '../VariantConfigurator';
 import { onVariantsEnabled, onVariantsDisabled } from '../../../utils/variant-scope';
-import type { VariantDimension } from '@/app/omni-admin/product-types/_types/product-type';
+import type { VariantDimension } from '@/app/(admin)/omni-admin/product-types/_types/product-type';
 
 interface VariantsSectionProps {
   schema: any;

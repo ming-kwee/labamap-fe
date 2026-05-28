@@ -7,10 +7,9 @@ import type {
   ConnectionStatus,
 } from "../../types/channelStore";
 import { ChannelStoreService } from "../../services/channelStore.service";
+import { useAuth } from "@/shared/contexts/AuthContext";
 import ChannelTypeBadge from "./ChannelTypeBadge";
 import ConnectStoreModal from "./ConnectStoreModal";
-
-const ORGANIZATION_ID = "org_123"; // pulled from auth context in production
 
 /** OAuth-capable channels — these use the reconnect button, not the edit button */
 const OAUTH_CHANNELS = new Set<string>(["shopify", "wix", "tiktok", "amazon", "ebay"]);
@@ -81,6 +80,7 @@ function Toast({ message, type, onDismiss }: ToastProps) {
 // ── StoreCard ─────────────────────────────────────────────────────────────────
 interface StoreCardProps {
   store: ChannelStoreConnection;
+  orgId: string;
   onEdit:        (store: ChannelStoreConnection) => void;
   onReconnect:   (store: ChannelStoreConnection) => void;
   onDeactivate:  (id: string) => void;
@@ -88,7 +88,7 @@ interface StoreCardProps {
   onDelete:      (id: string) => void;
 }
 
-function StoreCard({ store, onEdit, onReconnect, onDeactivate, onReactivate, onDelete }: StoreCardProps) {
+function StoreCard({ store, orgId, onEdit, onReconnect, onDeactivate, onReactivate, onDelete }: StoreCardProps) {
   const [confirming,   setConfirming]   = useState<"deactivate" | "delete" | null>(null);
   const [loading,      setLoading]      = useState(false);
   const [actionError,  setActionError]  = useState<string | null>(null);
@@ -100,7 +100,7 @@ function StoreCard({ store, onEdit, onReconnect, onDeactivate, onReactivate, onD
   async function handleDeactivate() {
     setLoading(true); setActionError(null);
     try {
-      await ChannelStoreService.deactivateStore(store.storeId, ORGANIZATION_ID);
+      await ChannelStoreService.deactivateStore(store.storeId, orgId);
       onDeactivate(store.storeId);
     } catch (err) {
       setActionError(err instanceof Error ? err.message : "Failed to deactivate");
@@ -111,7 +111,7 @@ function StoreCard({ store, onEdit, onReconnect, onDeactivate, onReactivate, onD
   async function handleReactivate() {
     setLoading(true); setActionError(null);
     try {
-      const updated = await ChannelStoreService.reactivateStore(store.storeId, ORGANIZATION_ID);
+      const updated = await ChannelStoreService.reactivateStore(store.storeId, orgId);
       onReactivate(updated);
     } catch (err) {
       setActionError(err instanceof Error ? err.message : "Failed to reactivate");
@@ -122,7 +122,7 @@ function StoreCard({ store, onEdit, onReconnect, onDeactivate, onReactivate, onD
   async function handleDelete() {
     setLoading(true); setActionError(null);
     try {
-      await ChannelStoreService.deleteStore(store.storeId, ORGANIZATION_ID);
+      await ChannelStoreService.deleteStore(store.storeId, orgId);
       onDelete(store.storeId);
     } catch (err) {
       setActionError(err instanceof Error ? err.message : "Failed to delete");
@@ -287,6 +287,9 @@ function KpiTiles({ stores, loading }: KpiTilesProps) {
 
 // ── Main dashboard ────────────────────────────────────────────────────────────
 function ChannelStoresDashboardInner() {
+  const { organization } = useAuth();
+  const orgId = organization?.organizationId ?? "";
+
   const searchParams = useSearchParams();
   const [stores,      setStores]      = useState<ChannelStoreConnection[]>([]);
   const [loading,     setLoading]     = useState(true);
@@ -296,17 +299,18 @@ function ChannelStoresDashboardInner() {
   const [toast,       setToast]       = useState<{ message: string; type: "success" | "error" } | null>(null);
 
   const loadStores = useCallback(async () => {
+    if (!orgId) return;
     setLoading(true); setError(null);
     try {
       // listAllStores includes active + inactive + disconnected (includeInactive=true)
-      const data = await ChannelStoreService.listAllStores(ORGANIZATION_ID);
+      const data = await ChannelStoreService.listAllStores(orgId);
       setStores(data);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load stores");
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [orgId]);
 
   useEffect(() => { loadStores(); }, [loadStores]);
 
@@ -335,13 +339,13 @@ function ChannelStoresDashboardInner() {
   // ── Handlers ─────────────────────────────────────────────────────────────
   async function handleConnect(request: StoreConnectionRequest) {
     if (request.storeId) {
-      const updated = await ChannelStoreService.updateStore(request.storeId, ORGANIZATION_ID, request);
+      const updated = await ChannelStoreService.updateStore(request.storeId, orgId, request);
       setStores((prev) =>
         prev.map((s) => (s.storeId === updated.storeId ? updated : s))
           .sort((a, b) => a.displayOrder - b.displayOrder)
       );
     } else {
-      const newStore = await ChannelStoreService.connectStore(ORGANIZATION_ID, request);
+      const newStore = await ChannelStoreService.connectStore(orgId, request);
       setStores((prev) => [...prev, newStore].sort((a, b) => a.displayOrder - b.displayOrder));
     }
   }
@@ -465,7 +469,7 @@ function ChannelStoresDashboardInner() {
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {attentionStores.map((store) => (
-              <StoreCard key={store.storeId} store={store}
+              <StoreCard key={store.storeId} store={store} orgId={orgId}
                 onEdit={openEdit} onReconnect={openReconnect}
                 onDeactivate={handleDeactivated} onReactivate={handleReactivated} onDelete={handleDeleted} />
             ))}
@@ -481,7 +485,7 @@ function ChannelStoresDashboardInner() {
           </p>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {activeStores.map((store) => (
-              <StoreCard key={store.storeId} store={store}
+              <StoreCard key={store.storeId} store={store} orgId={orgId}
                 onEdit={openEdit} onReconnect={openReconnect}
                 onDeactivate={handleDeactivated} onReactivate={handleReactivated} onDelete={handleDeleted} />
             ))}
@@ -497,7 +501,7 @@ function ChannelStoresDashboardInner() {
           </p>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {inactiveStores.map((store) => (
-              <StoreCard key={store.storeId} store={store}
+              <StoreCard key={store.storeId} store={store} orgId={orgId}
                 onEdit={openEdit} onReconnect={openReconnect}
                 onDeactivate={handleDeactivated} onReactivate={handleReactivated} onDelete={handleDeleted} />
             ))}
@@ -508,7 +512,7 @@ function ChannelStoresDashboardInner() {
       {/* Connect / Edit / Reconnect modal */}
       {showModal && (
         <ConnectStoreModal
-          organizationId={ORGANIZATION_ID}
+          organizationId={orgId}
           onClose={closeModal}
           onConnect={handleConnect}
           existingStore={editingStore ?? undefined}

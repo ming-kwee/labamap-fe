@@ -86,6 +86,7 @@ import {
   ChannelProductDataService,
   PublishService,
 } from "../../step2-channel-fields/services/channelStore.service";
+import { useAuth } from "@/shared/contexts/AuthContext";
 import ChannelTypeBadge from "../../step2-channel-fields/components/stores/ChannelTypeBadge";
 import type { MasterProduct } from "@/modules/ecommerce-product-v2/types/product";
 import type {
@@ -100,8 +101,6 @@ import {
   generateMappingRequest,
   transformMasterProductToSourceSchema,
 } from "@/modules/ecommerce-product-v2/utils/product-mapper";
-
-const ORGANIZATION_ID = "org_123";
 
 // ─── Status Badge ─────────────────────────────────────────────────────────────
 
@@ -365,6 +364,8 @@ interface Props {
 
 export default function PublishDashboard({ masterProductId }: Props) {
   const router = useRouter();
+  const { organization } = useAuth();
+  const orgId = organization?.organizationId ?? "";
 
   // Store data
   const [storeData, setStoreData] = useState<ChannelProductData[]>([]);
@@ -433,7 +434,7 @@ export default function PublishDashboard({ masterProductId }: Props) {
     try {
       const request = await generateMappingRequest(product, store.channelType, {
         confidenceThreshold: 70,
-        organizationId: (product.customAttributes as Record<string, unknown>)?._organizationId as string ?? ORGANIZATION_ID,
+        organizationId: (product.customAttributes as Record<string, unknown>)?._organizationId as string ?? orgId,
         userId: (product.customAttributes as Record<string, unknown>)?._createdBy as string,
         categoryId: product.category ?? "default",
         persistJolt,
@@ -536,7 +537,7 @@ export default function PublishDashboard({ masterProductId }: Props) {
       const result = await PublishService.publishToStore({
         masterProductId,
         storeId,
-        organizationId: ORGANIZATION_ID,
+        organizationId: orgId,
         masterProductData,
         channelId: store?.channelType,
         fieldMappings: priorAnalysis?.fieldMappings ?? [],
@@ -588,7 +589,7 @@ export default function PublishDashboard({ masterProductId }: Props) {
     try {
       const resp = await PublishService.publishBatch({
         masterProductId,
-        organizationId: ORGANIZATION_ID,
+        organizationId: orgId,
         storeIds: readyStores,
       });
       const resultsMap: Record<string, StorePublishResult> = {};

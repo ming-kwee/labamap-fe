@@ -4,10 +4,10 @@
 
 The category system uses two distinct layers:
 
-| Layer | Collection | Owner | Purpose |
-|---|---|---|---|
-| **Platform template** | `platform_category_templates` | Platform admin | Canonical taxonomy seeded at startup; never org-specific |
-| **Merchant tree** | `product_categories` | Organisation | Each org gets its own copy; fully customisable after provisioning |
+| Layer                 | Collection                    | Owner          | Purpose                                                           |
+|-----------------------|-------------------------------|----------------|-------------------------------------------------------------------|
+| **Platform template** | `platform_category_templates` | Platform admin | Canonical taxonomy seeded at startup; never org-specific          |
+| **Merchant tree**     | `product_categories`          | Organisation   | Each org gets its own copy; fully customisable after provisioning |
 
 When a new organisation is provisioned, all documents from `platform_category_templates`
 are copied into `product_categories` with that org's `organizationId`. After that point
@@ -206,16 +206,16 @@ Eventual consistency is acceptable here.
 
 ## What Merchants Can and Cannot Customise
 
-| Action | Allowed | Notes |
-|---|---|---|
-| Rename a category | ✅ | Triggers push-out to MAPPED channel stores |
-| Add a child category | ✅ | — |
-| Reparent a category | ✅ | Cascades `path` update to all descendants |
-| Deactivate a category | ✅ | Hidden from pickers; existing products retain the slug |
-| Delete a leaf category | ✅ | Blocked if products are assigned |
-| Create a root category | ✅ | — |
-| See another org's categories | ❌ | Hard-blocked by `organizationId` filter |
-| Edit the platform template | ❌ | Platform-admin endpoint only |
+| Action                       | Allowed  | Notes                                                  |
+|------------------------------|----------|--------------------------------------------------------|
+| Rename a category            | ✅        | Triggers push-out to MAPPED channel stores             |
+| Add a child category         | ✅        | —                                                      |
+| Reparent a category          | ✅        | Cascades `path` update to all descendants              |
+| Deactivate a category        | ✅        | Hidden from pickers; existing products retain the slug |
+| Delete a leaf category       | ✅        | Blocked if products are assigned                       |
+| Create a root category       | ✅        | —                                                      |
+| See another org's categories | ❌        | Hard-blocked by `organizationId` filter                |
+| Edit the platform template   | ❌        | Platform-admin endpoint only                           |
 
 ---
 

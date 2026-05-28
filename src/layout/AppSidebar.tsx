@@ -114,7 +114,14 @@ const navItems: NavItem[] = [
 // ];
 
 const AppSidebar: React.FC = () => {
-  const { isExpanded, isMobileOpen, isHovered, setIsHovered } = useSidebar();
+  const {
+    isExpanded,
+    isMobileOpen,
+    isHovered,
+    setIsHovered,
+    toggleSidebar,
+    toggleMobileSidebar,
+  } = useSidebar();
   const pathname = usePathname();
 
    const renderMenuItems = (
@@ -164,6 +171,7 @@ const AppSidebar: React.FC = () => {
             nav.path && (
               <Link
                 href={nav.path}
+                onClick={handleNavLinkClick}
                 className={`menu-item group ${
                   isActive(nav.path) ? "menu-item-active" : "menu-item-inactive"
                 }`}
@@ -201,6 +209,7 @@ const AppSidebar: React.FC = () => {
                   <li key={subItem.name}>
                     <Link
                       href={subItem.path}
+                      onClick={handleNavLinkClick}
                       className={`menu-dropdown-item ${
                         isActive(subItem.path)
                           ? "menu-dropdown-item-active"
@@ -252,47 +261,84 @@ const AppSidebar: React.FC = () => {
   );
   const subMenuRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
+  // Bug 3 fix: debounce the hover-collapse so that clicking a menu item while
+  // the sidebar is hover-expanded doesn't immediately shrink it.  Without this,
+  // the natural mouse movement after a click fires onMouseLeave → setIsHovered(false)
+  // before the navigation completes, making the sidebar snap to 90 px.
+  const hoverLeaveTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+
+  const handleMouseEnter = useCallback(() => {
+    if (hoverLeaveTimerRef.current) clearTimeout(hoverLeaveTimerRef.current);
+    if (!isExpanded) setIsHovered(true);
+  }, [isExpanded, setIsHovered]);
+
+  const handleMouseLeave = useCallback(() => {
+    hoverLeaveTimerRef.current = setTimeout(() => setIsHovered(false), 300);
+  }, [setIsHovered]);
+
+  /**
+   * Called by every navigation Link inside the sidebar.
+   *
+   * Mobile  → close the drawer immediately so the user returns to the page.
+   * Desktop (hover-expand mode, isExpanded=false) → pin the sidebar to fully
+   *   expanded so it doesn't auto-collapse after the mouse drifts away post-click.
+   * Desktop (already pinned, isExpanded=true) → nothing to do.
+   */
+  const handleNavLinkClick = useCallback(() => {
+    if (isMobileOpen) {
+      toggleMobileSidebar();
+    } else if (!isExpanded && isHovered) {
+      // Cancel the pending hover-leave timer so the width transition is clean
+      if (hoverLeaveTimerRef.current) clearTimeout(hoverLeaveTimerRef.current);
+      toggleSidebar();   // isExpanded → true
+      setIsHovered(false);
+    }
+  }, [isMobileOpen, isExpanded, isHovered, toggleMobileSidebar, toggleSidebar, setIsHovered]);
+
   // const isActive = (path: string) => path === pathname;
    const isActive = useCallback((path: string) => path === pathname, [pathname]);
 
   useEffect(() => {
-    // Check if the current path matches any submenu item
-    let submenuMatched = false;
-    ["main", "others"].forEach((menuType) => {
-      const items = navItems; //menuType === "main" ? navItems : othersItems;
-      items.forEach((nav, index) => {
-        if (nav.subItems) {
-          nav.subItems.forEach((subItem) => {
-            if (isActive(subItem.path)) {
-              setOpenSubmenu({
-                type: menuType as "main", //| "others",
-                index,
-              });
-              submenuMatched = true;
-            }
-          });
-        }
-      });
+    // Open the correct submenu accordion when the pathname matches a sub-item.
+    // We deliberately do NOT close the accordion when navigating to a direct-link
+    // page (Business Rules, Profile, etc.) — that was causing the jarring
+    // "accordion collapses on click" behaviour. The user can still manually
+    // collapse any accordion by clicking its parent button.
+    //
+    // NOTE: previously this looped over ["main","others"] using the same navItems
+    // array for both passes. The "others" pass would overwrite the "main" result
+    // with type:"others", making every submenu appear closed on navigation.
+    // Fixed: single pass, always type "main".
+    navItems.forEach((nav, index) => {
+      if (nav.subItems) {
+        nav.subItems.forEach((subItem) => {
+          if (isActive(subItem.path)) {
+            setOpenSubmenu({ type: "main", index });
+          }
+        });
+      }
     });
-
-    // If no submenu item matches, close the open submenu
-    if (!submenuMatched) {
-      setOpenSubmenu(null);
-    }
-  }, [pathname,isActive]);
+  }, [pathname, isActive]);
 
   useEffect(() => {
-    // Set the height of the submenu items when the submenu is opened
+    // Recalculate submenu height whenever openSubmenu changes OR whenever the
+    // sidebar transitions between collapsed / hover-expanded / fully-expanded.
+    // The submenu <div> is conditionally rendered, so it may not exist in the
+    // DOM when openSubmenu first changes (e.g. on initial load while collapsed).
+    // The setTimeout(0) defers the read until after React has flushed the DOM.
     if (openSubmenu !== null) {
       const key = `${openSubmenu.type}-${openSubmenu.index}`;
-      if (subMenuRefs.current[key]) {
-        setSubMenuHeight((prevHeights) => ({
-          ...prevHeights,
-          [key]: subMenuRefs.current[key]?.scrollHeight || 0,
-        }));
-      }
+      const timer = setTimeout(() => {
+        if (subMenuRefs.current[key]) {
+          setSubMenuHeight((prevHeights) => ({
+            ...prevHeights,
+            [key]: subMenuRefs.current[key]?.scrollHeight || 0,
+          }));
+        }
+      }, 0);
+      return () => clearTimeout(timer);
     }
-  }, [openSubmenu]);
+  }, [openSubmenu, isExpanded, isHovered, isMobileOpen]);
 
   const handleSubmenuToggle = (index: number, menuType: "main") => {  //| "others") => {
     setOpenSubmenu((prevOpenSubmenu) => {
@@ -319,8 +365,8 @@ const AppSidebar: React.FC = () => {
         }
         ${isMobileOpen ? "translate-x-0" : "-translate-x-full"}
         lg:translate-x-0`}
-      onMouseEnter={() => !isExpanded && setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
+      onMouseEnter={handleMouseEnter}
+      onMouseLeave={handleMouseLeave}
     >
       <div
         className={`py-8 flex  ${

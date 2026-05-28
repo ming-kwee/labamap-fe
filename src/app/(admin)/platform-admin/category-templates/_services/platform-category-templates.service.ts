@@ -10,7 +10,7 @@ import {
   templateToPayload,
 } from "../_types/platform-category-template";
 
-const BASE = "http://localhost:8888/labamap/api/v1/platform-admin/category-templates";
+const BASE = "http://localhost:8888/labamap/api/v1/admin/platform-category-templates";
 const JSON_HEADERS = { "Content-Type": "application/json" };
 
 async function handleResponse<T>(res: Response): Promise<T | null> {
@@ -34,9 +34,15 @@ async function handleResponse<T>(res: Response): Promise<T | null> {
 
 export const PlatformCategoryTemplatesService = {
   async getTree(): Promise<PlatformCategoryTemplateTree[]> {
-    const res = await fetch(`${BASE}`, { method: "GET", headers: JSON_HEADERS });
+    const res = await fetch(`${BASE}/tree`, { method: "GET", headers: JSON_HEADERS });
+    // 404 = backend not deployed / collection not seeded yet — return empty tree so
+    // the page renders instead of showing a hard error.
+    if (res.status === 404) return [];
     const raw = await handleResponse<unknown>(res);
-    const arr = Array.isArray(raw) ? raw : [];
+    // Handle both plain array and Spring paginated { content: [...] } responses.
+    const arr = Array.isArray(raw)
+      ? raw
+      : ((raw as Record<string, unknown>)?.content as unknown[] ?? []);
     return (arr as PlatformCategoryTemplateDoc[]).map(docToTemplateTree);
   },
 
@@ -91,8 +97,12 @@ export const PlatformCategoryTemplatesService = {
 
   async listOrgProvisionStatus(): Promise<OrgProvisionStatus[]> {
     const res = await fetch(`${BASE}/provision-status`, { method: "GET", headers: JSON_HEADERS });
+    if (res.status === 404) return [];
     const raw = await handleResponse<unknown>(res);
-    return Array.isArray(raw) ? (raw as OrgProvisionStatus[]) : [];
+    const arr = Array.isArray(raw)
+      ? raw
+      : ((raw as Record<string, unknown>)?.content as unknown[] ?? []);
+    return arr as OrgProvisionStatus[];
   },
 
   async provision(orgId: string): Promise<ProvisionResult> {

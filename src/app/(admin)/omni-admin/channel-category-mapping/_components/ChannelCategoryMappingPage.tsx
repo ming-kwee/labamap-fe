@@ -9,11 +9,10 @@ import { ChannelMappingService } from "../_services/channel-mapping.service";
 import type { ChannelCategoryMapping, SyncStatus } from "../_types/channel-mapping";
 import { ChannelStoreService } from "@/modules/ecommerce-product-v2/step2-channel-fields/services/channelStore.service";
 import type { ChannelStoreConnection } from "@/modules/ecommerce-product-v2/step2-channel-fields/types/channelStore";
+import { useAuth } from "@/shared/contexts/AuthContext";
 import { DriftResolutionModal } from "./DriftResolutionModal";
 import { ImportWizardModal } from "./ImportWizardModal";
 import { TaxonomyMapperModal } from "./TaxonomyMapperModal";
-
-const ORG_ID = "org_123";
 
 // ─── Icons ─────────────────────────────────────────────────────────────────────
 
@@ -254,6 +253,9 @@ function CategoryRow({
 // ─── Main page ────────────────────────────────────────────────────────────────
 
 export default function ChannelCategoryMappingPage() {
+  const { organization } = useAuth();
+  const orgId = organization?.organizationId ?? "";
+
   const [tree, setTree] = useState<ProductCategoryTree[]>([]);
   const [stores, setStores] = useState<ChannelStoreConnection[]>([]);
   const [mappings, setMappings] = useState<ChannelCategoryMapping[]>([]);
@@ -285,14 +287,15 @@ export default function ChannelCategoryMappingPage() {
   }, []);
 
   const loadAll = useCallback(async () => {
+    if (!orgId) return;
     setLoadError(null);
     try {
       const [treeData, storeData, mappingData] = await Promise.all([
-        CategoryService.getTree().finally(() => setLoadingTree(false)),
-        ChannelStoreService.listAllStores(ORG_ID)
+        CategoryService.getTree(orgId).finally(() => setLoadingTree(false)),
+        ChannelStoreService.listAllStores(orgId)
           .then(all => all.filter(s => s.isActive && s.connectionStatus !== "INACTIVE"))
           .finally(() => setLoadingStores(false)),
-        ChannelMappingService.listAll(ORG_ID).finally(() => setLoadingMappings(false)),
+        ChannelMappingService.listAll(orgId).finally(() => setLoadingMappings(false)),
       ]);
       setTree(treeData);
       setStores(storeData);
@@ -305,7 +308,7 @@ export default function ChannelCategoryMappingPage() {
       setLoadingStores(false);
       setLoadingMappings(false);
     }
-  }, []);
+  }, [orgId]);
 
   useEffect(() => { loadAll(); }, [loadAll]);
 
@@ -338,9 +341,9 @@ export default function ChannelCategoryMappingPage() {
   const handleSyncAll = async () => {
     setSyncing(true);
     try {
-      const result = await ChannelMappingService.syncAll(ORG_ID);
+      const result = await ChannelMappingService.syncAll(orgId);
       showToast(`Synced ${result.syncedCount} categories`);
-      await ChannelMappingService.listAll(ORG_ID).then(setMappings);
+      await ChannelMappingService.listAll(orgId).then(setMappings);
     } catch (err) {
       showToast((err as Error).message, "err");
     } finally {
@@ -662,7 +665,7 @@ export default function ChannelCategoryMappingPage() {
       {/* Import wizard modal — WooCommerce / Etsy only */}
       {importModal && (
         <ImportWizardModal
-          organizationId={ORG_ID}
+          organizationId={orgId}
           importableStores={importableStores}
           onDone={() => { loadAll(); }}
           onClose={() => setImportModal(false)}
@@ -672,12 +675,12 @@ export default function ChannelCategoryMappingPage() {
       {/* Taxonomy mapper modal — Shopify / Amazon / TikTok / eBay (batch) */}
       {taxonomyModal && (
         <TaxonomyMapperModal
-          organizationId={ORG_ID}
+          organizationId={orgId}
           store={taxonomyModal.store}
           unmappedCategories={taxonomyModal.unmappedCategories}
           initialCategoryId={taxonomyModal.initialCategoryId}
           onMapped={() => {
-            ChannelMappingService.listAll(ORG_ID).then(setMappings);
+            ChannelMappingService.listAll(orgId).then(setMappings);
           }}
           onClose={() => setTaxonomyModal(null)}
         />

@@ -47,9 +47,21 @@ export default function CategoryTreePicker({ field, value, onChange, disabled }:
       fetch(url)
         .then((res) => {
           if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
-          return res.json() as Promise<CategoryTreeNode[]>;
+          return res.json() as Promise<unknown>;
         })
-        .then(setCurrentNodes)
+        .then((raw) => {
+          // Normalise: accept plain array, CategoryNodesResponse { nodes: [...] },
+          // or Spring paginated { content: [...] }
+          const r = raw as Record<string, unknown>;
+          const arr = Array.isArray(raw)
+            ? (raw as CategoryTreeNode[])
+            : Array.isArray(r?.nodes)
+            ? (r.nodes as CategoryTreeNode[])
+            : Array.isArray(r?.content)
+            ? (r.content as CategoryTreeNode[])
+            : [];
+          setCurrentNodes(arr);
+        })
         .catch((err: unknown) =>
           setLevelError(err instanceof Error ? err.message : "Failed to load categories")
         )

@@ -12,9 +12,9 @@
  * productTypeId is supplied by useFormSchema (read from schema response metadata).
  */
 import { useState, useEffect } from 'react';
-import type { VariantDimension } from '@/app/omni-admin/product-types/_types/product-type';
-import { ProductTypeService } from '@/app/omni-admin/product-types/_services/product-type.service';
-import { AttributeService } from '@/app/omni-admin/master-attributes/_services/attribute.service';
+import type { VariantDimension } from '@/app/(admin)/omni-admin/product-types/_types/product-type';
+import { ProductTypeService } from '@/app/(admin)/omni-admin/product-types/_services/product-type.service';
+import { AttributeService } from '@/app/(admin)/omni-admin/master-attributes/_services/attribute.service';
 
 export interface UseProductTypeVariantsResult {
   /** Ordered variant dimensions from the ProductType (axes only, no options). */
