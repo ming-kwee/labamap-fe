@@ -22,7 +22,11 @@ const AlertIcon = () => (
 );
 
 const CHANNEL_LABEL: Record<string, string> = {
-  shopify: "Shopify", woocommerce: "WooCommerce", etsy: "Etsy",
+  shopify: "Shopify", woocommerce: "WooCommerce", etsy: "Etsy", wix: "Wix",
+};
+
+const CHANNEL_EMOJI: Record<string, string> = {
+  shopify: "🛍", woocommerce: "🟣", etsy: "🎨", wix: "⬛",
 };
 
 type Step = "pick-store" | "review" | "confirming" | "done";
@@ -133,7 +137,7 @@ export function ImportWizardModal({ organizationId, importableStores, onDone, on
                 className="w-full flex items-center gap-3 px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-700 hover:border-brand-300 dark:hover:border-brand-500/40 hover:bg-brand-50 dark:hover:bg-brand-500/10 transition-all text-left"
               >
                 <div className="w-10 h-10 rounded-xl bg-gray-100 dark:bg-gray-800 flex items-center justify-center text-lg flex-shrink-0">
-                  {(store.channelType as string) === "shopify" ? "🛍" : (store.channelType as string) === "woocommerce" ? "🟣" : "🏪"}
+                  {CHANNEL_EMOJI[store.channelType] ?? "🏪"}
                 </div>
                 <div className="min-w-0">
                   <p className="text-sm font-semibold text-gray-900 dark:text-white">{store.storeName}</p>

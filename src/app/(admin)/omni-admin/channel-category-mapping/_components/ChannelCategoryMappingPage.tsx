@@ -7,6 +7,7 @@ import type { ProductCategoryTree } from "../../product-categories/_types/catego
 import { flattenTree } from "../../product-categories/_types/category";
 import { ChannelMappingService } from "../_services/channel-mapping.service";
 import type { ChannelCategoryMapping, SyncStatus } from "../_types/channel-mapping";
+import { isImportCapable } from "../_types/channel-mapping";
 import { ChannelStoreService } from "@/modules/ecommerce-product-v2/step2-channel-fields/services/channelStore.service";
 import type { ChannelStoreConnection } from "@/modules/ecommerce-product-v2/step2-channel-fields/types/channelStore";
 import { useAuth } from "@/shared/contexts/AuthContext";
@@ -55,12 +56,13 @@ const CHANNEL_LABEL: Record<string, string> = {
   shopify: "Shopify", woocommerce: "WooCommerce", amazon: "Amazon",
   tiktok: "TikTok", ebay: "eBay", etsy: "Etsy", lazada: "Lazada",
   tokopedia: "Tokopedia", facebook: "Facebook", shopee: "Shopee", walmart: "Walmart",
+  wix: "Wix",
 };
 
 const CHANNEL_EMOJI: Record<string, string> = {
   shopify: "🛍", woocommerce: "🟣", amazon: "📦", tiktok: "🎵",
   ebay: "🔨", etsy: "🎨", lazada: "🛒", tokopedia: "🟢",
-  facebook: "📘", shopee: "🧡", walmart: "🔵",
+  facebook: "📘", shopee: "🧡", walmart: "🔵", wix: "⬛",
 };
 
 // ─── Status cell ──────────────────────────────────────────────────────────────
@@ -177,13 +179,29 @@ function CategoryRow({
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const summary = (node as any).channelSyncSummary as { totalMapped: number; totalDrifted: number; totalUnmapped: number } | undefined;
 
-  const visibleStores = storeFilter === "all" ? stores : stores.filter(s => s.storeId === storeFilter);
+  const isRoot = node.level === 0;
+
+  // Borders must be on <td> — <tr> borders are ignored with border-separate tables
+  const nameTdCls = isRoot
+    ? "border-t border-t-gray-200 dark:border-t-gray-700 border-b border-b-gray-200 dark:border-b-gray-700 border-r border-r-gray-100 dark:border-r-gray-800 border-l-[3px] border-l-indigo-300 dark:border-l-indigo-600 bg-white dark:bg-gray-800"
+    : "border-b border-b-gray-100 dark:border-b-gray-800 border-r border-r-gray-100 dark:border-r-gray-800 bg-white dark:bg-gray-900";
+
+  const storeTdCls = isRoot
+    ? "border-t border-t-gray-200 dark:border-t-gray-700 border-b border-b-gray-200 dark:border-b-gray-700 bg-white dark:bg-gray-800"
+    : "border-b border-b-gray-100 dark:border-b-gray-800 bg-white dark:bg-gray-900";
 
   return (
     <>
-      <tr className={`border-b border-gray-100 dark:border-gray-800 hover:bg-gray-50/50 dark:hover:bg-gray-800/20 transition-colors ${!node.active ? "opacity-60" : ""}`}>
+      <tr className={[
+        "transition-colors",
+        isRoot ? "hover:bg-indigo-50/40 dark:hover:bg-indigo-900/10" : "hover:bg-gray-50/60 dark:hover:bg-gray-800/20",
+        !node.active ? "opacity-60" : "",
+      ].join(" ")}>
         {/* Category name cell */}
-        <td className="py-2.5 pl-4 pr-2" style={{ paddingLeft: `${16 + LEVEL_INDENT}px` }}>
+        <td
+          className={`${nameTdCls} pr-3 ${isRoot ? "py-3" : "py-2"}`}
+          style={{ paddingLeft: `${isRoot ? 13 : 16 + LEVEL_INDENT}px` }}
+        >
           <div className="flex items-center gap-2 min-w-0">
             {hasChildren ? (
               <button
@@ -195,10 +213,9 @@ function CategoryRow({
             ) : (
               <span className="w-3 flex-shrink-0" />
             )}
-            <span className={`text-sm font-medium truncate ${node.level === 0 ? "text-gray-900 dark:text-white" : "text-gray-700 dark:text-gray-300"}`}>
+            <span className={`text-sm truncate ${isRoot ? "font-semibold text-gray-900 dark:text-white" : "font-medium text-gray-600 dark:text-gray-300"}`}>
               {node.name}
             </span>
-            {/* Drift badge if any */}
             {summary && summary.totalDrifted > 0 && (
               <span className="flex-shrink-0 text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-400">
                 {summary.totalDrifted} drifted
@@ -217,7 +234,7 @@ function CategoryRow({
           const show = storeFilter === "all" || storeFilter === store.storeId;
           if (!show) return null;
           return (
-            <td key={store.storeId} className="py-2.5 px-3 text-center">
+            <td key={store.storeId} className={`${storeTdCls} px-3 text-center ${isRoot ? "py-3" : "py-2"}`}>
               <StatusCell
                 mapping={mapping}
                 categoryName={node.name}
@@ -327,8 +344,11 @@ export default function ChannelCategoryMappingPage() {
   // Drift count for attention banner
   const driftedCount = useMemo(() => mappings.filter(m => m.syncStatus === "DRIFTED").length, [mappings]);
 
-  // Import-capable stores — WooCommerce, Etsy (backend-driven via store.importCapable)
-  const importableStores = useMemo(() => stores.filter(s => s.importCapable === true), [stores]);
+  // Import-capable stores — WooCommerce, Etsy, Wix (backend-driven via store.importCapable; falls back to channel type)
+  const importableStores = useMemo(
+    () => stores.filter(s => s.importCapable === true || (s.importCapable == null && isImportCapable(s.channelType))),
+    [stores],
+  );
 
   const toggleExpand = useCallback((id: string) => {
     setExpandedIds(prev => {
@@ -455,7 +475,7 @@ export default function ChannelCategoryMappingPage() {
               )}
               {importableStores.length === 0 && stores.length > 0 && (
                 <p className="text-[11px] text-gray-400 dark:text-gray-500 mt-1">
-                  No import-capable stores (WooCommerce, Etsy)
+                  No import-capable stores (WooCommerce, Etsy, Wix)
                 </p>
               )}
             </div>
@@ -557,17 +577,18 @@ export default function ChannelCategoryMappingPage() {
       {/* Mapping table */}
       {!loadError && (stores.length > 0 || isLoading) && (
         <div className="px-6 py-4 overflow-x-auto">
+          <div className="rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
           <table className="w-full text-left border-separate border-spacing-0">
             <thead>
               <tr className="bg-gray-50 dark:bg-gray-800/60">
-                <th className="sticky left-0 z-10 bg-gray-50 dark:bg-gray-800/60 px-4 py-2.5 text-[11px] font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide border-b border-r border-gray-200 dark:border-gray-700 min-w-[220px]">
+                <th className="sticky left-0 z-10 bg-gray-50 dark:bg-gray-800/60 px-4 py-2.5 text-[11px] font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide border-b border-b-gray-200 dark:border-b-gray-700 border-r border-r-gray-200 dark:border-r-gray-700 min-w-[220px]">
                   Platform Category
                 </th>
                 {stores.map(store => {
                   const show = storeFilter === "all" || storeFilter === store.storeId;
                   if (!show) return null;
                   return (
-                    <th key={store.storeId} className="px-3 py-2.5 text-center border-b border-gray-200 dark:border-gray-700 min-w-[120px]">
+                    <th key={store.storeId} className="px-3 py-2.5 text-center border-b border-b-gray-200 dark:border-b-gray-700 min-w-[120px]">
                       <div className="flex flex-col items-center gap-0.5">
                         <span className="text-base leading-none">{CHANNEL_EMOJI[store.channelType] ?? "🏪"}</span>
                         <span className="text-[10px] font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wide">
@@ -628,6 +649,7 @@ export default function ChannelCategoryMappingPage() {
               )}
             </tbody>
           </table>
+          </div>
 
           {/* Legend */}
           {!isLoading && (

@@ -87,7 +87,7 @@ export interface ResolveDriftRequest {
 }
 
 // ─── Type 1: merchant-owned collections — import wizard creates platform categories ──
-export const IMPORT_CAPABLE_CHANNELS = ["woocommerce", "etsy"] as const;
+export const IMPORT_CAPABLE_CHANNELS = ["woocommerce", "etsy", "wix"] as const;
 export type ImportCapableChannel = typeof IMPORT_CAPABLE_CHANNELS[number];
 
 export function isImportCapable(channelType: string): boolean {
