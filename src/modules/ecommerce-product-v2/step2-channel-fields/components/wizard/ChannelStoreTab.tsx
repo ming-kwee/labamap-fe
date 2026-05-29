@@ -1,5 +1,5 @@
 "use client";
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import type {
   ChannelSchemaPerStore,
   ChannelFormSection,
@@ -7,6 +7,10 @@ import type {
   CategoryAttributeSection,
   ChannelFormField,
 } from "../../types/channelStore";
+import {
+  useChannelFieldVisibility,
+  type VisibilityHelpers,
+} from "../../hooks/useChannelFieldVisibility";
 import ChannelFieldInput from "./ChannelFieldInput";
 import VariantOverridesTable from "./VariantOverridesTable";
 import MasterOverrideSection from "./MasterOverrideSection";
@@ -131,16 +135,24 @@ function FieldRow({
   value,
   onChange,
   hasError,
+  isRequired: isRequiredProp,
+  validationRules: validationRulesProp,
 }: {
   field: ChannelFormField;
   value: unknown;
   onChange: (name: string, val: unknown) => void;
   hasError?: boolean;
+  /** Scenario E: dynamic required override from useChannelFieldVisibility */
+  isRequired?: boolean;
+  /** Scenario E: SET_VALIDATION override from useChannelFieldVisibility */
+  validationRules?: ChannelFormField["validationRules"];
 }) {
+  const required = isRequiredProp ?? Boolean(field.required);
+
   if (field.fieldType === "CHECKBOX") {
     return (
       <div className="py-2">
-        <ChannelFieldInput field={field} value={value} onChange={onChange} />
+        <ChannelFieldInput field={field} value={value} onChange={onChange} validationRules={validationRulesProp} />
         {field.helpText && (
           <p className="text-xs text-gray-400 dark:text-gray-500 mt-1 ml-6">{field.helpText}</p>
         )}
@@ -151,10 +163,10 @@ function FieldRow({
     <div>
       <label className={`block text-sm font-medium mb-1 ${hasError ? "text-red-500" : "text-gray-700 dark:text-gray-300"}`}>
         {field.label}
-        {field.required && <span className="text-red-500 ml-0.5">*</span>}
+        {required && <span className="text-red-500 ml-0.5">*</span>}
       </label>
       <div className={hasError ? "ring-1 ring-red-500 rounded-xl" : undefined}>
-        <ChannelFieldInput field={field} value={value} onChange={onChange} />
+        <ChannelFieldInput field={field} value={value} onChange={onChange} validationRules={validationRulesProp} />
       </div>
       {hasError && (
         <p className="text-xs text-red-500 mt-1">This field is required</p>
@@ -172,27 +184,34 @@ function FieldsGrid({
   channelData,
   onChange,
   fieldErrors,
+  visibility,
 }: {
   fields: ChannelFormField[];
   channelData: Record<string, unknown>;
   onChange: (name: string, val: unknown) => void;
   fieldErrors?: Set<string>;
+  /** Scenario E: visibility helpers from useChannelFieldVisibility */
+  visibility?: VisibilityHelpers;
 }) {
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 px-1">
-      {fields.map((field) => (
-        <div
-          key={field.fieldName}
-          className={field.fieldType === "TEXTAREA" || field.fieldType === "CATEGORY_TREE" ? "md:col-span-2" : ""}
-        >
-          <FieldRow
-            field={field}
-            value={channelData[field.fieldName]}
-            onChange={onChange}
-            hasError={fieldErrors?.has(field.fieldName)}
-          />
-        </div>
-      ))}
+      {fields
+        .filter((field) => !visibility || visibility.isVisible(field.fieldName))
+        .map((field) => (
+          <div
+            key={field.fieldName}
+            className={field.fieldType === "TEXTAREA" || field.fieldType === "CATEGORY_TREE" ? "md:col-span-2" : ""}
+          >
+            <FieldRow
+              field={field}
+              value={channelData[field.fieldName]}
+              onChange={onChange}
+              hasError={fieldErrors?.has(field.fieldName)}
+              isRequired={visibility?.isRequired(field.fieldName)}
+              validationRules={visibility?.getValidation(field.fieldName)}
+            />
+          </div>
+        ))}
     </div>
   );
 }
@@ -294,6 +313,21 @@ export default function ChannelStoreTab({ schema, values, onChange, isSaving, la
     onChange({ ...values, masterOverrides: next });
   }
 
+  // ── Scenario E: collect all fields and evaluate conditional rules ─────────
+  const allFields = useMemo(() => {
+    const collected: ChannelFormField[] = [];
+    for (const section of schema.sections) {
+      if (section.fields) collected.push(...section.fields);
+    }
+    if (categoryAttrs) {
+      collected.push(...categoryAttrs.requiredFields);
+      collected.push(...categoryAttrs.optionalFields);
+    }
+    return collected;
+  }, [schema.sections, categoryAttrs]);
+
+  const visibility = useChannelFieldVisibility(allFields, values.channelData);
+
   const sections = [...schema.sections].sort((a, b) => a.priority - b.priority);
 
   // ── Section renderer ────────────────────────────────────────────────────────
@@ -368,6 +402,7 @@ export default function ChannelStoreTab({ schema, values, onChange, isSaving, la
             channelData={values.channelData}
             onChange={handleFieldChange}
             fieldErrors={fieldErrors}
+            visibility={visibility}
           />
         </div>
       );
@@ -396,6 +431,7 @@ export default function ChannelStoreTab({ schema, values, onChange, isSaving, la
             channelData={values.channelData}
             onChange={handleFieldChange}
             fieldErrors={fieldErrors}
+            visibility={visibility}
           />
         )}
       </div>
@@ -480,6 +516,7 @@ export default function ChannelStoreTab({ schema, values, onChange, isSaving, la
             channelData={values.channelData}
             onChange={handleFieldChange}
             fieldErrors={fieldErrors}
+            visibility={visibility}
           />
         )}
 
@@ -513,6 +550,7 @@ export default function ChannelStoreTab({ schema, values, onChange, isSaving, la
                 channelData={values.channelData}
                 onChange={handleFieldChange}
                 fieldErrors={fieldErrors}
+                visibility={visibility}
               />
             )}
           </div>

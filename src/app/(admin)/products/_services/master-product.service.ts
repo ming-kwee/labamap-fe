@@ -1,10 +1,14 @@
 import type {
   MasterProduct,
+  MasterProductDetail,
+  ChannelDistributionCard,
   MasterProductListParams,
   MasterProductListResponse,
+  ChannelSyncStatus,
 } from "../_types/master-product";
 
-const BASE = "http://localhost:8888/labamap/api/v1/admin/master-products";
+const BASE      = "http://localhost:8888/labamap/api/v1/admin/master-products";
+const BASE_API  = "http://localhost:8888/labamap/api/v1";
 const JSON_HEADERS = { "Content-Type": "application/json" };
 
 function mapProduct(r: Record<string, unknown>): MasterProduct {
@@ -39,6 +43,99 @@ const EMPTY_PAGE: MasterProductListResponse = {
 };
 
 export const MasterProductService = {
+  /** GET /admin/master-products/{id} — product detail + channel distribution cards */
+  async getById(productId: string, organizationId: string): Promise<MasterProductDetail> {
+    const [masterRes, channelRes] = await Promise.allSettled([
+      fetch(`${BASE}/${encodeURIComponent(productId)}?organizationId=${encodeURIComponent(organizationId)}`, { headers: JSON_HEADERS }),
+      fetch(`${BASE_API}/ecommerce/channel-product-data/${encodeURIComponent(productId)}`, { headers: JSON_HEADERS }),
+    ]);
+
+    // Master product — required, throw on error
+    if (masterRes.status === "rejected") throw new Error(masterRes.reason as string);
+    const mRes = masterRes.value;
+    if (!mRes.ok) {
+      let msg = mRes.statusText;
+      try { const b = await mRes.json(); msg = b.message ?? b.error ?? msg; } catch { /**/ }
+      throw new Error(`[MasterProductService] ${mRes.status} ${msg}`);
+    }
+    const raw = await mRes.json() as Record<string, unknown>;
+
+    // Channel product data — optional, degrade gracefully
+    let channelDataArr: Record<string, unknown>[] = [];
+    if (channelRes.status === "fulfilled" && channelRes.value.ok) {
+      try { channelDataArr = await channelRes.value.json() as Record<string, unknown>[]; } catch { /**/ }
+    }
+
+    // Build a storeId → channel data map for merging
+    const channelDataMap = new Map<string, Record<string, unknown>>();
+    for (const cd of channelDataArr) {
+      if (typeof cd.storeId === "string") channelDataMap.set(cd.storeId, cd);
+    }
+
+    // Merge channelSummary (sync status) + channelProductData (price/sku/completion)
+    const channelSummary = Array.isArray(raw.channelSummary)
+      ? (raw.channelSummary as Record<string, unknown>[])
+      : [];
+
+    const channelDistribution: ChannelDistributionCard[] = channelSummary.map((s) => {
+      const storeId = String(s.storeId ?? "");
+      const cd = channelDataMap.get(storeId);
+      const channelData = (cd?.channelData ?? {}) as Record<string, unknown>;
+      const masterOverrides = (cd?.masterOverrides ?? {}) as Record<string, unknown>;
+      const channelPrice = channelData.price ?? masterOverrides.price;
+      const channelSku   = channelData.sku   ?? masterOverrides.sku;
+      return {
+        storeId,
+        storeName:           String(s.storeName ?? ""),
+        channelType:         String(s.channelType ?? ""),
+        syncStatus:          (s.syncStatus as ChannelSyncStatus) ?? "DRAFT",
+        lastSyncedAt:        s.lastSyncedAt != null ? String(s.lastSyncedAt) : null,
+        errorMessage:        s.errorMessage != null ? String(s.errorMessage) : null,
+        channelPrice:        channelPrice != null ? Number(channelPrice) : null,
+        channelSku:          channelSku   != null ? String(channelSku)   : null,
+        completionPercentage: Number(cd?.completionPercentage ?? 0),
+      };
+    });
+
+    // Extract attributes
+    const attrs = (raw.productAttributes ?? {}) as Record<string, unknown>;
+    const rawTags = attrs.tags ?? attrs.tag;
+    const tags: string[] = Array.isArray(rawTags)
+      ? rawTags.map(String)
+      : typeof rawTags === "string" && rawTags
+        ? rawTags.split(/[,;]+/).map(t => t.trim()).filter(Boolean)
+        : [];
+
+    const rawImages = attrs.images ?? attrs.gallery;
+    const images: string[] = Array.isArray(rawImages)
+      ? rawImages.filter((u): u is string => typeof u === "string")
+      : [];
+    if (raw.imageUrl && !images.includes(String(raw.imageUrl))) {
+      images.unshift(String(raw.imageUrl));
+    }
+
+    return {
+      id:            String(raw.productId ?? raw.id ?? raw._id ?? ""),
+      organizationId: String(raw.organizationId ?? ""),
+      name:          String(raw.name ?? ""),
+      sku:           raw.sku   != null ? String(raw.sku)   : null,
+      categoryId:    raw.categoryId   != null ? String(raw.categoryId)   : null,
+      categoryName:  raw.categoryName != null ? String(raw.categoryName) : null,
+      basePrice:     raw.basePrice    != null ? Number(raw.basePrice)    : null,
+      currency:      raw.currency     != null ? String(raw.currency)     : null,
+      imageUrl:      raw.imageUrl     != null ? String(raw.imageUrl)     : null,
+      description:   attrs.description != null ? String(attrs.description) : null,
+      tags:          tags.length > 0 ? tags : null,
+      images:        images.length > 0 ? images : null,
+      variantCount:  Number(raw.variantCount ?? 0),
+      variants:      Array.isArray(raw.variants) ? raw.variants as Record<string, unknown>[] : [],
+      status:        (raw.status as MasterProductDetail["status"]) ?? "ACTIVE",
+      createdAt:     String(raw.createdAt ?? ""),
+      updatedAt:     String(raw.updatedAt ?? ""),
+      channelDistribution,
+    };
+  },
+
   async list(params: MasterProductListParams): Promise<MasterProductListResponse> {
     const qs = new URLSearchParams({
       organizationId: params.organizationId,

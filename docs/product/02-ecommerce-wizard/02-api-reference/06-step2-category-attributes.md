@@ -184,6 +184,7 @@ Created automatically on first cache write (MongoDB deferred collection creation
   "storeId":       "store-sg-01",
   "categoryId":    "123456",
   "categoryName":  "Women's T-Shirts",
+  "categoryPath":  ["Clothing", "Women's", "T-Shirts"],
   "requiredFields": [
     {
       "fieldName": "100001",
@@ -198,6 +199,20 @@ Created automatically on first cache write (MongoDB deferred collection creation
   "expireAt":  "2026-05-16T10:00:00Z"
 }
 ```
+
+**`categoryPath` vs `categoryName`:**  
+`categoryPath` contains the **ancestor** label names only (root → direct parent, NOT including the leaf).  
+`categoryName` is the leaf node's display name.  
+The frontend breadcrumb is built as `[...categoryPath, categoryName].join(" › ")`:
+
+```
+categoryPath  = ["Clothing", "Women's", "T-Shirts"]
+categoryName  = "Women's T-Shirts"
+breadcrumb    = "Clothing › Women's › T-Shirts › Women's T-Shirts"
+```
+
+Both fields are resolved from `channel_category_cache` via `CategoryCacheService.getPathToNode()`
+during the attribute fetch-and-cache path in `CategoryCacheServiceImpl.fetchAndCacheAttributes()`.
 
 Index: `{ channelType: 1, storeId: 1, categoryId: 1 }` (unique)  
 TTL: `expireAt` field — MongoDB deletes document automatically after 24 h

@@ -10,6 +10,8 @@ interface Props {
   value: unknown;
   onChange: (fieldName: string, value: unknown) => void;
   disabled?: boolean;
+  /** Scenario E: SET_VALIDATION override from useChannelFieldVisibility — merged on top of field.validationRules */
+  validationRules?: ChannelFormField["validationRules"];
 }
 
 // ── Scenario A: lazy-load merchant options ────────────────────────────────────
@@ -155,7 +157,9 @@ function MappingSuggestionBanner({ suggestion, onAccept, onDismiss }: MappingSug
 
 // ─────────────────────────────────────────────────────────────────────────────
 
-export default function ChannelFieldInput({ field, value, onChange, disabled }: Props) {
+export default function ChannelFieldInput({ field, value, onChange, disabled, validationRules: validationRulesOverride }: Props) {
+  // Scenario E: use override when provided, otherwise fall back to field definition
+  const effectiveValidation = validationRulesOverride ?? field.validationRules;
   // Always call hook at top level — React rules
   const { options, loading, error } = useMerchantOptions(field);
 
@@ -290,8 +294,8 @@ export default function ChannelFieldInput({ field, value, onChange, disabled }: 
           onChange={(e) => onChange(field.fieldName, e.target.valueAsNumber)}
           placeholder={field.placeholder ?? ""}
           disabled={disabled}
-          min={field.validationRules?.min}
-          max={field.validationRules?.max}
+          min={effectiveValidation?.min}
+          max={effectiveValidation?.max}
           className={baseClass}
         />
       );
@@ -339,7 +343,7 @@ export default function ChannelFieldInput({ field, value, onChange, disabled }: 
           onChange={(e) => onChange(field.fieldName, e.target.value)}
           placeholder={field.placeholder ?? ""}
           disabled={disabled}
-          maxLength={field.validationRules?.maxLength}
+          maxLength={effectiveValidation?.maxLength}
           className={baseClass}
         />
       );

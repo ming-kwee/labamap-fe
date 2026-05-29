@@ -472,7 +472,7 @@ Phased delivery prioritised by merchant impact and backend dependency.
 with an update flag)
 
 **Frontend:**
-- New route: `src/app/(admin)/products/[masterProductId]/edit/page.tsx`
+- New route:  `src/app/(admin)/products/[masterProductId]/edit/page.tsx`
 - Reuses `ProductCreatePage` (Step 1 component) with `mode="edit"` and pre-filled data
 - After save → redirect to Product Detail → all channel cards show "◌ Pending re-sync"
 - Backend automatically queues re-sync for all mapped channel stores on master update

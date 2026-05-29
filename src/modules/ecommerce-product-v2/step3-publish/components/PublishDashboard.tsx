@@ -889,7 +889,7 @@ export default function PublishDashboard({ masterProductId }: Props) {
                   <div className="space-y-2">
                     <Button
                       className="w-full"
-                      onClick={() => router.push(`/products`)}
+                      onClick={() => router.push(`/products/${masterProductId}`)}
                     >
                       View product
                     </Button>

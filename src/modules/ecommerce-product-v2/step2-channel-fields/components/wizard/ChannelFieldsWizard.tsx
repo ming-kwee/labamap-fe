@@ -8,6 +8,7 @@ import type {
   MasterProductSnapshot,
 } from "../../types/channelStore";
 import { ChannelSchemaService, ChannelProductDataService } from "../../services/channelStore.service";
+import { isFieldVisible, isFieldRequired } from "../../hooks/useChannelFieldVisibility";
 import { useAuth } from "@/shared/contexts/AuthContext";
 import ChannelTypeBadge from "../stores/ChannelTypeBadge";
 import ChannelStoreTab from "./ChannelStoreTab";
@@ -339,12 +340,15 @@ export default function ChannelFieldsWizard({ masterProductId }: Props) {
       const vals = storeValues[ch.storeId];
       const missingLabels: string[] = [];
       const missingNames: string[] = [];
+      const channelData = vals?.channelData ?? {};
       for (const section of ch.sections) {
         if (section.sectionName === "variant_overrides") continue;
         if (section.sectionName === "master_overrides") continue;
         for (const field of section.fields ?? []) {
-          if (!field.required) continue;
-          const v = vals?.channelData[field.fieldName];
+          // Scenario E: skip fields that are hidden or not required given current values
+          if (!isFieldVisible(field, channelData)) continue;
+          if (!isFieldRequired(field, channelData)) continue;
+          const v = channelData[field.fieldName];
           if (v === undefined || v === null || v === "") {
             missingLabels.push(field.label);
             missingNames.push(field.fieldName);

@@ -182,6 +182,31 @@ export type ChannelFieldType =
   /** Scenario C: multi-level hierarchical category tree picker */
   | "CATEGORY_TREE";
 
+// ─── Scenario E: Conditional Rule Types ──────────────────────────────────────
+
+/**
+ * One rule in a field's conditionalRules array.
+ * The rule fires when triggerField's current value is in triggerValues.
+ *
+ * SHOW     — field is visible only while this rule (or another SHOW rule) matches.
+ * HIDE     — field is hidden while this rule matches.
+ * REQUIRE  — field becomes required while this rule matches.
+ * OPTIONAL — field becomes optional while this rule matches.
+ * SET_VALIDATION — validationOverride merges on top of base validationRules.
+ */
+export interface ChannelFieldConditionalRule {
+  triggerField: string;
+  triggerValues: unknown[];
+  effect: "SHOW" | "HIDE" | "REQUIRE" | "OPTIONAL" | "SET_VALIDATION";
+  validationOverride?: {
+    min?: number;
+    max?: number;
+    minLength?: number;
+    maxLength?: number;
+    pattern?: string;
+  };
+}
+
 // ─── Scenario C: Category Tree Types ─────────────────────────────────────────
 
 /** One node returned by GET /merchant-data/{channelType}/{storeId}/categories */
@@ -276,6 +301,13 @@ export interface ChannelFormField {
    *   NONE  — no mapping found; seller must manually pick from options[].
    */
   masterMappedSuggestion?: MasterMappedSuggestion;
+  // ── Scenario E: Cross-field conditional dependencies ─────────────────────
+  /**
+   * Rules evaluated against the current form values to dynamically control
+   * visibility, required-ness, and validation of this field.
+   * Backend also evaluates these rules in completionPercentage calculation.
+   */
+  conditionalRules?: ChannelFieldConditionalRule[];
 }
 
 /** Scenario B: suggestion produced by ChannelValueMappingService on the backend */
