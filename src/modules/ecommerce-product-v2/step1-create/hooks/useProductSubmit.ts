@@ -37,6 +37,10 @@ export interface UseProductSubmitOptions {
   targetChannels: string[];
   category: string;
   permissions?: string[];
+  /** Phase 4: "edit" routes submitProduct through updateProduct instead of createProduct */
+  mode?: 'create' | 'edit';
+  /** Phase 4: required when mode === "edit" */
+  productId?: string;
 }
 
 export interface UseProductSubmitReturn {
@@ -51,7 +55,7 @@ export interface UseProductSubmitReturn {
 }
 
 export function useProductSubmit(options: UseProductSubmitOptions): UseProductSubmitReturn {
-  const { userId, organizationId, userRole, targetChannels, category, permissions = [] } = options;
+  const { userId, organizationId, userRole, targetChannels, category, permissions = [], mode = 'create', productId } = options;
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -102,12 +106,14 @@ export function useProductSubmit(options: UseProductSubmitOptions): UseProductSu
         return null;
       }
 
-      const createdProduct = await ProductApiService.createProduct(product, context);
+      const createdProduct = mode === 'edit' && productId
+        ? await ProductApiService.updateProduct(productId, product, context)
+        : await ProductApiService.createProduct(product, context);
       setIsSubmitting(false);
       return createdProduct;
 
     } catch (error) {
-      const msg = error instanceof Error ? error.message : 'Failed to create product';
+      const msg = error instanceof Error ? error.message : (mode === 'edit' ? 'Failed to update product' : 'Failed to create product');
       setSubmitError(msg);
       setIsSubmitting(false);
       return null;

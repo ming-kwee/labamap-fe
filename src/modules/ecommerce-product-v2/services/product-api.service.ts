@@ -60,6 +60,37 @@ export class ProductApiService {
     return transformedProduct;
   }
 
+  // PUT /api/v1/admin/master-products/{productId} — Phase 4 edit
+  static async updateProduct(productId: string, productData: DynamicFormData, context: BackendContext): Promise<MasterProduct> {
+    const response = await fetch(
+      `http://localhost:8888/labamap/api/v1/admin/master-products/${encodeURIComponent(productId)}?organizationId=${encodeURIComponent(context.organizationId)}`,
+      {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ productData, context }),
+      }
+    );
+
+    if (!response.ok) {
+      let msg = response.statusText;
+      try { const b = await response.json(); msg = b.message ?? b.error ?? msg; } catch { /**/ }
+      throw new Error(`Failed to update product: ${msg}`);
+    }
+
+    // Backend returns MasterProductData shape
+    const r = await response.json() as Record<string, unknown>;
+    const attrs = (r.productAttributes ?? {}) as Record<string, unknown>;
+    return {
+      id:          String(r.productId ?? r.id ?? productId),
+      sku:         String(attrs.sku   ?? r.sku   ?? ''),
+      name:        String(attrs.name  ?? r.name  ?? ''),
+      description: attrs.description != null ? String(attrs.description) : undefined,
+      price:       Number(attrs.price ?? r.basePrice ?? 0),
+      category:    attrs.category != null ? String(attrs.category) : undefined,
+      ...attrs,
+    } as MasterProduct;
+  }
+
   // POST /api/v1/ecommerce/dynamic-products/validate (enhanced)
   static async validateProductEnhanced(
     productData: DynamicFormData,

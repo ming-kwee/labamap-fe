@@ -11,6 +11,8 @@ export type ViewLevel = 'essential' | 'standard' | 'full';
 export interface UseFormStateOptions {
   initialData?: Partial<DynamicFormData>;
   organizationDefaultCategory?: string;
+  /** Phase 4: start at a wider view level for edit mode so pre-filled fields are immediately visible */
+  initialViewLevel?: ViewLevel;
 }
 
 export interface UseFormStateReturn {
@@ -31,7 +33,7 @@ export interface UseFormStateReturn {
 }
 
 export function useFormState(options: UseFormStateOptions = {}): UseFormStateReturn {
-  const { initialData = {}, organizationDefaultCategory = 'general' } = options;
+  const { initialData = {}, organizationDefaultCategory = 'general', initialViewLevel = 'essential' } = options;
 
   const [formData, setFormData] = useState<DynamicFormData>(() => ({
     category: initialData.category || organizationDefaultCategory,
@@ -42,7 +44,7 @@ export function useFormState(options: UseFormStateOptions = {}): UseFormStateRet
     new Set(['product-info'])
   );
   const [showJsonPreview, setShowJsonPreview] = useState(false);
-  const [viewLevel, setViewLevel] = useState<ViewLevel>('essential');
+  const [viewLevel, setViewLevel] = useState<ViewLevel>(initialViewLevel);
 
   const toggleSection = useCallback((sectionKey: string) => {
     setExpandedSections(prev => {

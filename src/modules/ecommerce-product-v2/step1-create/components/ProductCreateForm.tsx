@@ -47,6 +47,12 @@ interface ProductCreateFormProps {
   organizationDefaultCategory: string;
   onProductCreated?: (product: MasterProduct, availableChannels: string[]) => void;
   initialData?: Record<string, any>;
+  /** Phase 4: "edit" shows "Save Changes" and routes submit through updateProduct */
+  mode?: 'create' | 'edit';
+  /** Phase 4: the existing product ID when mode === "edit" */
+  initialProductId?: string;
+  /** Phase 4: called after a successful update (replaces onProductCreated for edit mode) */
+  onProductSaved?: (product: MasterProduct) => void;
 }
 
 // ============================================================================
@@ -92,6 +98,9 @@ export default function ProductCreateForm({
   organizationDefaultCategory,
   onProductCreated,
   initialData = {},
+  mode = 'create',
+  initialProductId,
+  onProductSaved,
 }: ProductCreateFormProps) {
   // Stable temp product ID for image uploads before product is saved
   const tempProductIdRef = useRef(`temp_${Date.now()}`);
@@ -113,7 +122,12 @@ export default function ProductCreateForm({
     viewLevel,
     setViewLevel,
     promoteToStandard,
-  } = useFormState({ initialData, organizationDefaultCategory });
+  } = useFormState({
+    initialData,
+    organizationDefaultCategory,
+    // Edit mode: start at 'full' so all pre-filled fields are immediately visible
+    initialViewLevel: mode === 'edit' ? 'full' : 'essential',
+  });
 
   const {
     schema,
@@ -145,6 +159,8 @@ export default function ProductCreateForm({
     userRole,
     targetChannels,
     category: formData.category || organizationDefaultCategory,
+    mode,
+    productId: initialProductId,
   });
 
   const handleCategoryChange = useCallback(
@@ -272,8 +288,12 @@ export default function ProductCreateForm({
       const product = generateMasterProduct({ formData, schema, organizationId, userId });
       const createdProduct = await submitProduct(product);
 
-      if (createdProduct && onProductCreated) {
-        onProductCreated(createdProduct, targetChannels);
+      if (createdProduct) {
+        if (mode === 'edit' && onProductSaved) {
+          onProductSaved(createdProduct);
+        } else if (onProductCreated) {
+          onProductCreated(createdProduct, targetChannels);
+        }
       }
     },
     [
@@ -332,6 +352,18 @@ export default function ProductCreateForm({
     setExpandedSections(new Set(['product-info']));
   }, [sortedSections, setExpandedSections]);
 
+  // Phase 4 — edit mode: trigger category field loading once base schema is ready.
+  // The pre-filled category value won't fire handleCategoryChange automatically,
+  // so we call loadCategoryFieldsSmooth explicitly after the base schema loads.
+  const editCategoryLoadedRef = useRef(false);
+  useEffect(() => {
+    if (mode !== 'edit' || editCategoryLoadedRef.current) return;
+    if (!schema || !formData.category) return;
+    editCategoryLoadedRef.current = true;
+    loadCategoryFieldsSmooth(formData.category);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode, schema, formData.category]);
+
   // Fix 5: Auto-expand sections that received category-specific fields when category schema loads.
   // Runs every time the schema changes while in category-specific stage so switching categories
   // also reveals the sections for the new category's fields.
@@ -356,7 +388,7 @@ export default function ProductCreateForm({
     }
   }, [schema, formStage, setExpandedSections]);
 
-  const productId = formData.id || tempProductIdRef.current;
+  const productId = (mode === 'edit' && initialProductId) ? initialProductId : (formData.id || tempProductIdRef.current);
 
   // ── Loading / error states ─────────────────────────────────────────────────
 
@@ -400,7 +432,9 @@ export default function ProductCreateForm({
       {/* Header */}
       <div className="flex justify-between items-center">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Create Product</h1>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
+            {mode === 'edit' ? 'Edit Product' : 'Create Product'}
+          </h1>
           <p className="text-gray-600 dark:text-gray-400 mt-1">
             {formStage === 'essential'
               ? 'Fill in the basics, then select a category to unlock product-type fields'
@@ -408,7 +442,7 @@ export default function ProductCreateForm({
                 ? `Fields shown for: ${productTypeName}`
                 : selectedCategory && !productTypeId
                   ? 'Category-specific fields loaded — no product type assigned yet'
-                  : 'Complete product information'}
+                  : mode === 'edit' ? 'Edit product information' : 'Complete product information'}
           </p>
         </div>
         <Button
@@ -563,7 +597,7 @@ export default function ProductCreateForm({
           {isSubmitting ? (
             <>
               <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-              Creating Product...
+              {mode === 'edit' ? 'Saving Changes...' : 'Creating Product...'}
             </>
           ) : isAddingCategoryFields ? (
             <>
@@ -571,7 +605,7 @@ export default function ProductCreateForm({
               Loading category fields...
             </>
           ) : (
-            'Create Product'
+            mode === 'edit' ? 'Save Changes' : 'Create Product'
           )}
         </Button>
       </div>

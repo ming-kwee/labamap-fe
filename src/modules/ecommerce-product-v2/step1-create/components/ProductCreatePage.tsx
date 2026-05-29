@@ -17,10 +17,24 @@ import { mapUserRole } from '../../utils/form-utils';
 import ProductCreateForm from './ProductCreateForm';
 
 interface ProductCreatePageProps {
-  onProductCreated: (product: MasterProduct, availableChannels: string[]) => void;
+  onProductCreated?: (product: MasterProduct, availableChannels: string[]) => void;
+  /** Phase 4: "edit" mode — pre-fills the form and routes submit through updateProduct */
+  mode?: 'create' | 'edit';
+  /** Phase 4: the existing product ID (required when mode === "edit") */
+  masterProductId?: string;
+  /** Phase 4: pre-filled form values from productAttributes */
+  initialData?: Record<string, unknown>;
+  /** Phase 4: called on successful update */
+  onProductSaved?: (product: MasterProduct) => void;
 }
 
-export default function ProductCreatePage({ onProductCreated }: ProductCreatePageProps) {
+export default function ProductCreatePage({
+  onProductCreated,
+  mode = 'create',
+  masterProductId,
+  initialData,
+  onProductSaved,
+}: ProductCreatePageProps) {
   const { user, organization, isAuthenticated, isLoading: authLoading } = useAuth();
   const {
     organizationConfig,
@@ -135,6 +149,10 @@ export default function ProductCreatePage({ onProductCreated }: ProductCreatePag
         assignedCategories={getAssignedCategories()}
         organizationDefaultCategory={organizationDefaultCategory}
         onProductCreated={onProductCreated}
+        mode={mode}
+        initialProductId={masterProductId}
+        initialData={initialData}
+        onProductSaved={onProductSaved}
       />
     </div>
   );
