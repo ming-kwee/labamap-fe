@@ -338,7 +338,7 @@ export default function PublishToChannelPage() {
           message={error || 'Loading product data...'}
         />
         <div className="mt-4">
-          <Button onClick={() => router.push('/products/create')}>
+          <Button onClick={() => router.push('/products/v2/create')}>
             Go to Product Creation
           </Button>
         </div>

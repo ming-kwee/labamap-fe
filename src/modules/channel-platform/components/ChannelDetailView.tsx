@@ -239,7 +239,7 @@ export const ChannelDetailView: React.FC<Props> = ({ channelId }) => {
                       <td className="px-4 py-3 text-right">
                         <div className="flex items-center justify-end gap-2" onClick={(e) => e.stopPropagation()}>
                           <button className="text-xs text-brand-600 dark:text-brand-400 hover:underline font-medium">Sync</button>
-                          <Link href={`/products/create`} className="text-xs text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 font-medium">
+                          <Link href={`/products/v2/create`} className="text-xs text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 font-medium">
                             Master
                           </Link>
                         </div>
@@ -285,7 +285,7 @@ export const ChannelDetailView: React.FC<Props> = ({ channelId }) => {
                                   Skip
                                 </button>
                                 <Link
-                                  href="/products/create"
+                                  href="/products/v2/create"
                                   className="px-3 py-1.5 text-xs font-medium rounded-lg border border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:bg-white dark:hover:bg-gray-700 transition-colors"
                                 >
                                   View Master

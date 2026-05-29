@@ -316,7 +316,7 @@ export default function ChannelFieldsWizard({ masterProductId }: Props) {
 
   async function handlePreviousStep() {
     await flushDirtyStores();
-    router.push(`/products/create`);
+    router.push(`/products/v2/create`);
   }
 
   async function handleNext() {
@@ -465,7 +465,7 @@ export default function ChannelFieldsWizard({ masterProductId }: Props) {
       {/* Header */}
       <div>
         <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400 mb-1">
-          <a href="/products/create" className="hover:text-brand-500 transition-colors">Step 1: Master Product</a>
+          <a href="/products/v2/create" className="hover:text-brand-500 transition-colors">Step 1: Master Product</a>
           <span>›</span>
           <span className="font-medium text-gray-900 dark:text-white">Step 2: Channel Fields</span>
           <span>›</span>

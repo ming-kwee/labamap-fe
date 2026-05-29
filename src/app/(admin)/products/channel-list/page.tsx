@@ -255,7 +255,7 @@ export default function ChannelProductListPage() {
             This page shows {mockMasterProducts.length} mock products.
           </p>
           <a 
-            href="/products/create" 
+            href="/products/v2/create"
             className="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
           >
             Create New Product

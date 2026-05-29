@@ -653,7 +653,7 @@ export default function PublishDashboard({ masterProductId }: Props) {
 
       {/* Breadcrumb */}
       <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
-        <a href="/products/create" className="hover:text-brand-500 transition-colors">Step 1: Master Product</a>
+        <a href="/products/v2/create" className="hover:text-brand-500 transition-colors">Step 1: Master Product</a>
         <span>›</span>
         <a href={`/products/${masterProductId}/channel-fields`} className="hover:text-brand-500 transition-colors">
           Step 2: Channel Fields
@@ -937,7 +937,7 @@ export default function PublishDashboard({ masterProductId }: Props) {
                     </p>
                     <p className="text-sm text-warning-600 dark:text-warning-300 mt-1">
                       Pattern matching analysis requires the full product data. Please navigate from the{" "}
-                      <a href="/products/create" className="underline">product creation page</a> to use this feature.
+                      <a href="/products/v2/create" className="underline">product creation page</a> to use this feature.
                     </p>
                   </div>
                 )}

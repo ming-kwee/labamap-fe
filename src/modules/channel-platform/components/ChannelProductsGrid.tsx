@@ -85,7 +85,7 @@ export const ChannelProductsGrid: React.FC = () => {
             ↓ Export
           </button>
           <Link
-            href="/products/create"
+            href="/products/v2/create"
             className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium bg-brand-500 text-white hover:bg-brand-600 transition-colors"
           >
             + Publish Product
