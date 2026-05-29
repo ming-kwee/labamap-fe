@@ -865,6 +865,44 @@ export default function PublishDashboard({ masterProductId }: Props) {
                 </Button>
               </CardContent>
             </Card>
+
+            {/* What's next — appears once at least one channel is published */}
+            {publishedCount > 0 && (
+              <Card className="border-success-200 dark:border-success-500/30 bg-success-50/50 dark:bg-success-500/5">
+                <CardContent className="p-5 space-y-4">
+                  <div className="flex items-center gap-2">
+                    <CheckCircle2 className="h-5 w-5 text-success-600 dark:text-success-400 flex-shrink-0" />
+                    <div>
+                      <p className="text-sm font-semibold text-success-800 dark:text-success-300">
+                        {publishedCount === storeData.length
+                          ? "All channels published!"
+                          : `${publishedCount} of ${storeData.length} channels published`}
+                      </p>
+                      {failedCount > 0 && (
+                        <p className="text-xs text-error-600 dark:text-error-400 mt-0.5">
+                          {failedCount} channel{failedCount !== 1 ? "s" : ""} failed — fix above and retry
+                        </p>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Button
+                      className="w-full"
+                      onClick={() => router.push(`/products`)}
+                    >
+                      View product
+                    </Button>
+                    <button
+                      onClick={() => router.push("/products/v2/create")}
+                      className="w-full text-sm text-center text-gray-500 dark:text-gray-400 hover:text-brand-600 dark:hover:text-brand-400 transition-colors py-1"
+                    >
+                      + Create another product
+                    </button>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
           </div>
 
           {/* ─── Right: Analysis + Publish Panel (2/3 width) ──────────────── */}
