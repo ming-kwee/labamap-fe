@@ -181,7 +181,13 @@ class AuthService {
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
-      throw new Error(errorData.message || `Login failed: ${response.statusText}`);
+      // Try common backend error field names (Spring Boot uses 'message', 'error', 'detail')
+      const serverMessage: string | undefined =
+        errorData.message || errorData.error || errorData.detail || errorData.description;
+      if (response.status === 401 || response.status === 403) {
+        throw new Error(serverMessage || 'Invalid email or password');
+      }
+      throw new Error(serverMessage || `Login failed (${response.status})`);
     }
 
     const data = await response.json();
@@ -202,7 +208,9 @@ class AuthService {
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
-      throw new Error(errorData.message || `Registration failed: ${response.statusText}`);
+      const serverMessage: string | undefined =
+        errorData.message || errorData.error || errorData.detail || errorData.description;
+      throw new Error(serverMessage || `Registration failed (${response.status})`);
     }
 
     const data = await response.json();

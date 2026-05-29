@@ -31,9 +31,15 @@ are designed for this pattern.
 |-------------|------------------|
 | WooCommerce | ✅ Import wizard  |
 | Etsy        | ✅ Import wizard  |
+| Wix         | ✅ Import wizard  |
 
 Direction: **Channel → import → Platform** (one-time onboarding)
 Then: **Platform → push → Channel** (ongoing, platform is master)
+
+> **Wix note:** Wix collections are merchant-created (same model as WooCommerce/Etsy).
+> The import wizard and the collection mapper (for linking existing platform categories
+> to Wix collections) both apply. `importCapable` must be `true` on the
+> `ChannelStoreConnection` returned by the stores API for Wix stores.
 
 ### Type 2: Fixed-taxonomy (channel-owned, read-only)
 | Channel     | What can be done                      |
@@ -496,14 +502,16 @@ Three reasons not to embed channelMappings inside product_categories:
 ```typescript
 ChannelMappingService.listAll(orgId)
 ChannelMappingService.previewImport(storeId, orgId)          // WooCommerce/Etsy only
-ChannelMappingService.startImport(request)                   // WooCommerce/Etsy only
-ChannelMappingService.confirmImport(request)                 // WooCommerce/Etsy only
+ChannelMappingService.startImport(request)                   // WooCommerce/Etsy/Wix only
+ChannelMappingService.confirmImport(request)                 // WooCommerce/Etsy/Wix only
 ChannelMappingService.browseTaxonomy(channelType, storeId, orgId, parentId?)  // Type 2 channels
 ChannelMappingService.previewSecondChannel(storeId, orgId)
 ChannelMappingService.mapSecondChannel(request)
 ChannelMappingService.resolveDrift(mappingId, { resolution })
 ChannelMappingService.syncAll(orgId)
-ChannelMappingService.deleteMapping(mappingId)
+ChannelMappingService.deleteMapping(mappingId)               // severs link only
+// CategoryService.delete(categoryId, orgId) called first when merchant chooses
+// "Remove link + delete category"; backend must cascade-delete mappings (see API ref §DELETE)
 ```
 
 `browseTaxonomy` throws on HTTP 404 with a descriptive message. A 404 from the backend
@@ -511,14 +519,26 @@ means the channel is not taxonomy-enabled or the `/taxonomy/{channelType}/childr
 is not yet deployed. It does NOT silently return an empty array.
 
 ### Modals
-- `ImportWizardModal.tsx` — steps: pick-store → review → confirming → done. Gated by
-  `store.importCapable === true`, shown only for WooCommerce and Etsy stores.
+- `ImportWizardModal.tsx` — steps: pick-store → review → confirming → done. Applies to
+  WooCommerce, Etsy, and **Wix** stores (`store.importCapable === true`). When opened from
+  the "Import from channel" dropdown the selected store is pre-loaded (skips pick-store step).
+- `CollectionMapperModal.tsx` — flat collection picker for Type 1 channels (WooCommerce,
+  Etsy, Wix). Used when the merchant wants to link an *existing* platform category to a
+  channel collection (rather than creating a new platform category via import). Calls
+  `previewImport` for the collection list + `previewSecondChannel` for fuzzy suggestions,
+  then `mapSecondChannel` on confirm.
 - `TaxonomyMapperModal.tsx` — tree picker for Shopify/Amazon/TikTok/eBay. Batch design:
   opens with all unmapped categories for the store, scrolls to the one the merchant clicked
   (`initialCategoryId`). Calls `previewSecondChannel` for fuzzy suggestions, then
   `mapSecondChannel` on confirm. Shows a descriptive error if taxonomy browsing fails.
 - `DriftResolutionModal.tsx` — shows name diff, 3 radio options, calls `resolveDrift`.
   Only reachable for Type 1 channel mappings.
+- `UnmapChoiceModal.tsx` — shown for **every** unlink action on a MAPPED cell (regardless
+  of `importedFrom`). Two options:
+  - **Remove link only** → calls `deleteMapping(mappingId)`
+  - **Remove link + delete category** → calls `CategoryService.delete(categoryId)` first
+    (backend rejects with 409 if active children exist), then `deleteMapping(mappingId)`
+    (ignores 404 in case backend already cascade-deleted it).
 
 ### TypeScript Types
 `src/app/omni-admin/channel-category-mapping/_types/channel-mapping.ts`
@@ -527,7 +547,7 @@ export type SyncStatus = "MAPPED" | "DRIFTED" | "UNMAPPED" | "PENDING_IMPORT" | 
 export type DriftResolution = "RENAME_PLATFORM" | "RENAME_CHANNEL" | "KEEP_BOTH";
 
 // Type 1: merchant-owned collections — import wizard creates platform categories
-export const IMPORT_CAPABLE_CHANNELS = ["woocommerce", "etsy"] as const;
+export const IMPORT_CAPABLE_CHANNELS = ["woocommerce", "etsy", "wix"] as const;
 export type ImportCapableChannel = typeof IMPORT_CAPABLE_CHANNELS[number];
 
 // There is NO TAXONOMY_CHANNELS hardcoded constant.

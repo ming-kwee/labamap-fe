@@ -33,16 +33,24 @@ type Step = "pick-store" | "review" | "confirming" | "done";
 
 interface Props {
   organizationId: string;
-  /** Only stores whose channelType supports import (Shopify, WooCommerce, Etsy) */
+  /** Only stores whose channelType supports import (WooCommerce, Etsy, Wix) */
   importableStores: ChannelStoreConnection[];
+  /** Pre-select a specific store and skip the pick-store step */
+  initialStoreId?: string;
   onDone: () => void;
   onClose: () => void;
 }
 
-export function ImportWizardModal({ organizationId, importableStores, onDone, onClose }: Props) {
-  const [step, setStep] = useState<Step>(importableStores.length === 1 ? "review" : "pick-store");
+export function ImportWizardModal({ organizationId, importableStores, initialStoreId, onDone, onClose }: Props) {
+  const preselected = initialStoreId
+    ? (importableStores.find(s => s.storeId === initialStoreId) ?? null)
+    : null;
+
+  const [step, setStep] = useState<Step>(
+    (preselected || importableStores.length === 1) ? "review" : "pick-store"
+  );
   const [selectedStore, setSelectedStore] = useState<ChannelStoreConnection | null>(
-    importableStores.length === 1 ? importableStores[0] : null
+    preselected ?? (importableStores.length === 1 ? importableStores[0] : null)
   );
   const [collections, setCollections] = useState<ImportableCollection[]>([]);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());

@@ -139,7 +139,7 @@ export type DriftResolution =
   | "RENAME_PLATFORM" | "RENAME_CHANNEL" | "KEEP_BOTH";
 
 // Type 1: merchant-owned collections — import wizard creates platform categories from these
-export const IMPORT_CAPABLE_CHANNELS = ["woocommerce", "etsy"] as const;
+export const IMPORT_CAPABLE_CHANNELS = ["woocommerce", "etsy", "wix"] as const;
 export type ImportCapableChannel = typeof IMPORT_CAPABLE_CHANNELS[number];
 
 // NOTE: There is NO TAXONOMY_CHANNELS constant in the frontend.
@@ -411,7 +411,41 @@ counts only successful Type 1 channel pushes (WooCommerce, Etsy).
 
 ### DELETE `/admin/channel-category-mappings/{mappingId}`
 
-Removes the mapping link. Does NOT delete the platform category. Returns `204 No Content`.
+Removes the mapping link only. Does **not** delete the platform category. Returns `204 No Content`.
+
+**Do not gate on `importedFrom`.** The frontend shows a confirm modal for every unlink and
+calls this endpoint unconditionally — the backend must delete regardless of `importedFrom`.
+
+Update `channelSyncSummary` on the linked `ProductCategory` after deletion (decrement
+whichever status bucket the deleted mapping occupied).
+
+---
+
+### DELETE `/admin/product-categories/{categoryId}` — mapped-channel guard ⚠️ pending
+
+> **Context:** this is an existing endpoint. The guard described here is new (as of 2026-05-29).
+
+Category deletion from the Product Categories page is now blocked on the **frontend** when
+`channelSyncSummary.totalMapped > 0` — a toast tells the merchant to remove all channel links
+first. The backend must enforce the same rule as a safety net.
+
+**Return `409 Conflict` when any `channel_category_mappings` document exists for this
+`categoryId` with `syncStatus = MAPPED`.** This prevents deletion via direct API calls even
+if the frontend guard is bypassed.
+
+```json
+{
+  "error": "CATEGORY_HAS_ACTIVE_MAPPINGS",
+  "message": "This category is still linked to 2 channel store(s). Remove all channel mappings before deleting.",
+  "mappedCount": 2
+}
+```
+
+The frontend reads `error.message` from this body and surfaces it as an error toast.
+
+**Implementation note:** check the guard before the existing children check, so the merchant
+sees the most actionable error first (channel links must be cleared before children can
+even be considered).
 
 ---
 

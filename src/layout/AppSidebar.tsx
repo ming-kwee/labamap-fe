@@ -28,7 +28,9 @@ type NavItem = {
   subItems?: { name: string; path: string; pro?: boolean; new?: boolean }[];
 };
 
-const navItems: NavItem[] = [
+// ─── Merchant nav ─────────────────────────────────────────────────────────────
+
+const merchantNavItems: NavItem[] = [
   {
     icon: <GridIcon />,
     name: "Dashboard",
@@ -36,18 +38,12 @@ const navItems: NavItem[] = [
   },
   {
     icon: <ListIcon />,
-    name: "Product Management",
+    name: "Products",
     subItems: [
       { name: "Create Product", path: "/products/create", pro: false },
       { name: "Channel Product List", path: "/products/channel-list", pro: false },
-      { name: "Channel Mapping Templates", path: "/products/channel-templates", pro: false, new: true }
-    ],
-  },
-  {
-    icon: <BoxCubeIcon />,
-    name: "Ecommerce Product v2",
-    subItems: [
-      { name: "Create Product", path: "/products/v2/create", pro: false, new: true },
+      { name: "Channel Mapping Templates", path: "/products/channel-templates", pro: false, new: true },
+      { name: "Create Product v2", path: "/products/v2/create", pro: false, new: true },
     ],
   },
   {
@@ -55,11 +51,23 @@ const navItems: NavItem[] = [
     name: "Channel Platform",
     subItems: [
       { name: "Channel Stores", path: "/channels/stores", pro: false, new: true },
+      { name: "My Categories", path: "/channels/categories", pro: false, new: true },
+      { name: "Channel Category Mapping", path: "/omni-admin/channel-category-mapping", pro: false, new: true },
       { name: "Channel Products", path: "/channels/products", pro: false },
       { name: "Sync Queue", path: "/channels/sync-queue", pro: false },
       { name: "Inventory Sync", path: "/channels/inventory", pro: false },
     ],
   },
+  {
+    icon: <UserCircleIcon />,
+    name: "User Profile",
+    path: "/profile",
+  },
+];
+
+// ─── Admin nav ────────────────────────────────────────────────────────────────
+
+const adminNavItems: NavItem[] = [
   {
     icon: <TableIcon />,
     name: "Catalog Setup",
@@ -67,7 +75,6 @@ const navItems: NavItem[] = [
       { name: "Product Types", path: "/omni-admin/product-types", pro: false, new: true },
       { name: "Master Attributes", path: "/omni-admin/master-attributes", pro: false, new: true },
       { name: "Product Categories", path: "/omni-admin/product-categories", pro: false, new: true },
-      { name: "Channel Category Mapping", path: "/omni-admin/channel-category-mapping", pro: false, new: true },
     ],
   },
   {
@@ -87,11 +94,6 @@ const navItems: NavItem[] = [
     name: "Conditional Logic",
     path: "/conditional-logic",
   },
-  {
-    icon: <UserCircleIcon />,
-    name: "User Profile",
-    path: "/profile",
-  }
 ];
 
 // const othersItems: NavItem[] = [
@@ -126,7 +128,7 @@ const AppSidebar: React.FC = () => {
 
    const renderMenuItems = (
     navItems: NavItem[],
-    menuType: "main" | "others"
+    menuType: "merchant" | "admin"
   ) => (
     <ul className="flex flex-col gap-4">
       {navItems.map((nav, index) => (
@@ -253,7 +255,7 @@ const AppSidebar: React.FC = () => {
   );
 
   const [openSubmenu, setOpenSubmenu] = useState<{
-    type: "main" | "others";
+    type: "merchant" | "admin";
     index: number;
   } | null>(null);
   const [subMenuHeight, setSubMenuHeight] = useState<Record<string, number>>(
@@ -309,11 +311,20 @@ const AppSidebar: React.FC = () => {
     // array for both passes. The "others" pass would overwrite the "main" result
     // with type:"others", making every submenu appear closed on navigation.
     // Fixed: single pass, always type "main".
-    navItems.forEach((nav, index) => {
+    merchantNavItems.forEach((nav, index) => {
       if (nav.subItems) {
         nav.subItems.forEach((subItem) => {
           if (isActive(subItem.path)) {
-            setOpenSubmenu({ type: "main", index });
+            setOpenSubmenu({ type: "merchant", index });
+          }
+        });
+      }
+    });
+    adminNavItems.forEach((nav, index) => {
+      if (nav.subItems) {
+        nav.subItems.forEach((subItem) => {
+          if (isActive(subItem.path)) {
+            setOpenSubmenu({ type: "admin", index });
           }
         });
       }
@@ -340,7 +351,7 @@ const AppSidebar: React.FC = () => {
     }
   }, [openSubmenu, isExpanded, isHovered, isMobileOpen]);
 
-  const handleSubmenuToggle = (index: number, menuType: "main") => {  //| "others") => {
+  const handleSubmenuToggle = (index: number, menuType: "merchant" | "admin") => {
     setOpenSubmenu((prevOpenSubmenu) => {
       if (
         prevOpenSubmenu &&
@@ -404,39 +415,36 @@ const AppSidebar: React.FC = () => {
       <div className="flex flex-col overflow-y-auto duration-300 ease-linear no-scrollbar">
         <nav className="mb-6">
           <div className="flex flex-col gap-4">
+
+            {/* ── Merchant section ── */}
             <div>
               <h2
                 className={`mb-4 text-xs uppercase flex leading-[20px] text-gray-400 ${
-                  !isExpanded && !isHovered
-                    ? "lg:justify-center"
-                    : "justify-start"
+                  !isExpanded && !isHovered ? "lg:justify-center" : "justify-start"
                 }`}
               >
-                {isExpanded || isHovered || isMobileOpen ? (
-                  "Menu"
-                ) : (
-                  <HorizontaLDots />
-                )}
+                {isExpanded || isHovered || isMobileOpen ? "My Store" : <HorizontaLDots />}
               </h2>
-              {renderMenuItems(navItems, "main")}
+              {renderMenuItems(merchantNavItems, "merchant")}
             </div>
 
-            {/* <div className="">
+            {/* ── Divider ── */}
+            {(isExpanded || isHovered || isMobileOpen) && (
+              <div className="border-t border-gray-200 dark:border-gray-700/60 my-1" />
+            )}
+
+            {/* ── Admin section ── */}
+            <div>
               <h2
                 className={`mb-4 text-xs uppercase flex leading-[20px] text-gray-400 ${
-                  !isExpanded && !isHovered
-                    ? "lg:justify-center"
-                    : "justify-start"
+                  !isExpanded && !isHovered ? "lg:justify-center" : "justify-start"
                 }`}
               >
-                {isExpanded || isHovered || isMobileOpen ? (
-                  "Others"
-                ) : (
-                  <HorizontaLDots />
-                )}
+                {isExpanded || isHovered || isMobileOpen ? "Admin" : <HorizontaLDots />}
               </h2>
-              {renderMenuItems(othersItems, "others")}
-            </div> */}
+              {renderMenuItems(adminNavItems, "admin")}
+            </div>
+
           </div>
         </nav>
         {/* {isExpanded || isHovered || isMobileOpen ? <SidebarWidget /> : null} */}

@@ -315,25 +315,63 @@ Response:
 
 ---
 
-### 2.10 Delete a mapping
+### 2.10 Delete a mapping (link-only)
 
 ```
 DELETE /{mappingId}
 ```
 
-Hard delete — severs the link without deleting the `ProductCategory`.
+Hard-deletes the mapping document and decrements `channelSyncSummary` on the linked
+`ProductCategory` — **does not delete the platform category itself**.
 
-If `importedFrom = true`, return **409 Conflict** with a warning body so the frontend can
-show a confirmation step before allowing deletion:
+> ⚠️ **Behaviour change (2026-05-29):** An earlier version of this spec required a 409
+> Conflict when `importedFrom = true`. That constraint has been **removed**. The frontend
+> now shows a choice modal for every unmap action (regardless of `importedFrom`), so the
+> backend should delete unconditionally. Do **not** implement the 409 gate.
 
-```json
-{
-  "error": "IMPORTED_CATEGORY",
-  "message": "This platform category was created by importing this channel collection. Deleting the mapping will not delete the category but it will no longer sync."
-}
+Response: `204 No Content`
+
+---
+
+### 2.11 Delete category + cascade mapping cleanup  ← **NEW**
+
+When the merchant chooses **"Remove link + delete category"** from the unmap modal, the
+frontend calls the existing product-categories endpoint first:
+
+```
+DELETE /labamap/api/v1/admin/product-categories/{categoryId}?organizationId={orgId}
 ```
 
-Response (on success): `204 No Content`
+**Backend must cascade-delete all `channel_category_mappings` documents whose
+`categoryId` matches the deleted category.** Without the cascade, stale mapping records
+accumulate in the collection and re-appear in the grid after page refresh.
+
+The frontend then calls `DELETE /channel-category-mappings/{mappingId}` as a second step
+to clean up state. If the backend has already cascade-deleted the mapping, return
+`404 Not Found` — **the frontend ignores 404 on this second call** (it is treated as
+already deleted).
+
+**Summary of the two-call flow:**
+
+```
+1. DELETE /admin/product-categories/{categoryId}          ← deletes category + cascades mappings
+   Response: 204 No Content  |  409 if active children exist
+
+2. DELETE /admin/channel-category-mappings/{mappingId}    ← frontend cleanup call (may 404 if cascaded)
+   Response: 204 No Content  |  404 No Content (both are acceptable, frontend ignores 404)
+```
+
+**Cascade implementation (Spring Boot / MongoDB):**
+
+```java
+// In ProductCategoryAdminController or service layer, after category deletion:
+channelCategoryMappingRepository
+    .deleteAllByCategoryId(deletedCategoryId)
+    .subscribe();  // reactive; fire-and-forget is acceptable here
+```
+
+Or via a `@DBRef` lifecycle event / application event published after the delete
+(`ProductCategoryDeletedEvent`) — whichever fits the existing architecture.
 
 ---
 
@@ -361,7 +399,8 @@ public record ChannelSyncSummary(
 - §2.5 confirm import → increment `totalMapped`, decrement `totalUnmapped`
 - §2.8 resolve drift → decrement `totalDrifted`, increment `totalMapped`
 - §2.9 sync-all → recompute from live counts after drift detection
-- §2.10 delete → decrement whichever status bucket the deleted mapping was in
+- §2.10 delete mapping → decrement whichever status bucket the deleted mapping was in
+- §2.11 delete category → zero out all buckets (all mappings for that category are cascade-deleted)
 
 Keep it denormalized — avoids a join on every category tree load.
 
@@ -447,12 +486,14 @@ Implement in this order to unblock the frontend incrementally:
 | 4 | `POST /sync-all` (§2.9) | Sync All button works |
 | 5 | `GET /import/preview` (§2.3) | Import wizard step 1 (channel collection list) |
 | 6 | `GET /second-channel/preview` (§2.6) + `POST /second-channel` (§2.7) | Second-channel connect flow |
-| 7 | `DELETE /{mappingId}` (§2.10) | Mapping deletion |
+| 7 | `DELETE /{mappingId}` (§2.10) — **remove old 409 gate** | Unmap button in mapping grid |
 | 8 | §3.1 `channelSyncSummary` on ProductCategory | Drift badge counts in category tree |
 | 9 | §4.1 Shopify webhook | Real-time drift detection |
 | 10 | §4.2 Polling job | WooCommerce/Etsy drift detection |
+| **11** | **Cascade delete on `DELETE /product-categories/{id}` (§2.11)** | **"Remove link + delete category" cleans up mapping records** |
 
-> **Status (2026-04-24):** All items above are implemented. ✅
+> **Status (2026-04-24):** Items 1–10 implemented. ✅
+> **Status (2026-05-29):** Item 11 (cascade delete) added — **pending backend implementation**. Item 7 behaviour changed — remove the 409 gate on `importedFrom`. ⚠️
 
 ---
 
@@ -469,5 +510,6 @@ Implement in this order to unblock the frontend incrementally:
 | POST | `/channel-category-mappings/second-channel` | Create MAPPED links for second channel |
 | PATCH | `/channel-category-mappings/{mappingId}/drift/resolve` | Resolve DRIFTED mapping |
 | POST | `/channel-category-mappings/sync-all` | Trigger full org sync + drift detection |
-| DELETE | `/channel-category-mappings/{mappingId}` | Delete mapping (409 if importedFrom=true) |
+| DELETE | `/channel-category-mappings/{mappingId}` | Delete mapping — no 409 gate (§2.10) |
+| DELETE | `/product-categories/{categoryId}` *(existing — cascade change)* | Delete category + **cascade-delete all its mappings** (§2.11) ⚠️ pending |
 | POST | `/webhooks/shopify/category-update` | Real-time Shopify drift webhook |

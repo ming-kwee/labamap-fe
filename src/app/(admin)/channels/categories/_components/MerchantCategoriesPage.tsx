@@ -1,12 +1,13 @@
 "use client";
 
 import React, { useState, useEffect, useCallback, useMemo } from "react";
-import { ProductCategory, ProductCategoryTree, flattenTree, countDescendants } from "../_types/category";
-import { CategoryService } from "../_services/category.service";
-import { AddEditCategoryModal } from "./AddEditCategoryModal";
+import Link from "next/link";
+import { ProductCategory, ProductCategoryTree, flattenTree, countDescendants } from "@/app/(admin)/omni-admin/product-categories/_types/category";
+import { CategoryService } from "@/app/(admin)/omni-admin/product-categories/_services/category.service";
+import { AddEditCategoryModal } from "@/app/(admin)/omni-admin/product-categories/_components/AddEditCategoryModal";
 import { useAuth } from "@/shared/contexts/AuthContext";
 
-// ─── Icons ─────────────────────────────────────────────────────────────────────
+// ─── Icons ────────────────────────────────────────────────────────────────────
 
 const ChevronRightIcon = ({ className = "" }: { className?: string }) => (
   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className={className}>
@@ -35,15 +36,21 @@ const SearchIcon = () => (
     <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
   </svg>
 );
-const FolderTreeIcon = () => (
-  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/>
-    <path d="M2 10h20"/>
-  </svg>
-);
 const AlertIcon = () => (
   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+  </svg>
+);
+const LinkIcon = () => (
+  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>
+    <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
+  </svg>
+);
+const FolderIcon = () => (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/>
+    <path d="M2 10h20"/>
   </svg>
 );
 const ExpandAllIcon = () => (
@@ -52,7 +59,7 @@ const ExpandAllIcon = () => (
   </svg>
 );
 
-// ─── Delete Confirm Modal ──────────────────────────────────────────────────────
+// ─── Delete confirm modal ─────────────────────────────────────────────────────
 
 function DeleteConfirmModal({
   category,
@@ -80,9 +87,9 @@ function DeleteConfirmModal({
         </div>
         <div className="px-6 py-5 space-y-4">
           <p className="text-sm text-gray-600 dark:text-gray-400 leading-relaxed">
-            You are about to permanently delete{" "}
-            <span className="font-semibold text-gray-900 dark:text-white">{category.name}</span>
-            {". "}Categories with active children cannot be deleted — deactivate or move them first.
+            Permanently delete{" "}
+            <span className="font-semibold text-gray-900 dark:text-white">{category.name}</span>.
+            Categories with active children cannot be deleted.
           </p>
           <div className="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700">
             <div className="min-w-0">
@@ -112,7 +119,7 @@ function DeleteConfirmModal({
             onClick={onConfirm}
             disabled={!confirmed}
             className={`flex items-center gap-1.5 px-4 py-2 text-sm font-medium rounded-lg transition-all ${
-              confirmed ? "bg-red-600 hover:bg-red-700 text-white shadow-sm shadow-red-600/20" : "bg-gray-100 dark:bg-gray-700 text-gray-400 dark:text-gray-500 cursor-not-allowed"
+              confirmed ? "bg-red-600 hover:bg-red-700 text-white shadow-sm" : "bg-gray-100 dark:bg-gray-700 text-gray-400 dark:text-gray-500 cursor-not-allowed"
             }`}
           >
             <TrashIcon /> Delete
@@ -123,13 +130,12 @@ function DeleteConfirmModal({
   );
 }
 
-// ─── Tree Node ─────────────────────────────────────────────────────────────────
+// ─── Tree node ────────────────────────────────────────────────────────────────
 
 interface TreeNodeProps {
   node: ProductCategoryTree;
   expandedIds: Set<string>;
   savingId: string | null;
-  searchQuery: string;
   onToggleExpand: (id: string) => void;
   onAddChild: (parentId: string) => void;
   onEdit: (cat: ProductCategory) => void;
@@ -137,35 +143,28 @@ interface TreeNodeProps {
   onDelete: (cat: ProductCategory) => void;
 }
 
-function TreeNode({
-  node, expandedIds, savingId, searchQuery,
-  onToggleExpand, onAddChild, onEdit, onToggleActive, onDelete,
-}: TreeNodeProps) {
+function TreeNode({ node, expandedIds, savingId, onToggleExpand, onAddChild, onEdit, onToggleActive, onDelete }: TreeNodeProps) {
   const isExpanded = expandedIds.has(node.id);
   const hasChildren = node.children.length > 0;
   const isSaving = savingId === node.id;
   const descendants = countDescendants(node);
 
+  const mapped  = node.channelSyncSummary?.totalMapped  ?? 0;
+  const drifted = node.channelSyncSummary?.totalDrifted ?? 0;
+
   const LEVEL_LABEL: Record<number, string> = { 0: "Root", 1: "L1", 2: "L2", 3: "L3" };
   const levelLabel = LEVEL_LABEL[node.level] ?? `L${node.level}`;
 
-  const sharedProps: TreeNodeProps = {
-    node, expandedIds, savingId, searchQuery,
-    onToggleExpand, onAddChild, onEdit, onToggleActive, onDelete,
-  };
-
   return (
     <div>
-      {/* Row card */}
-      <div
-        className={`group/node relative flex items-center gap-2.5 px-3 py-2.5 rounded-xl border transition-all duration-150 ${
-          isSaving ? "opacity-60 pointer-events-none" : ""
-        } ${
-          node.active
-            ? "bg-white dark:bg-gray-800/40 border-gray-200 dark:border-gray-700/60 hover:border-gray-300 dark:hover:border-gray-600 hover:shadow-sm"
-            : "bg-gray-50 dark:bg-gray-800/20 border-gray-200/70 dark:border-gray-700/40 opacity-70"
-        }`}
-      >
+      <div className={`group/node relative flex items-center gap-2.5 px-3 py-2.5 rounded-xl border transition-all duration-150 ${
+        isSaving ? "opacity-60 pointer-events-none" : ""
+      } ${
+        node.active
+          ? "bg-white dark:bg-gray-800/40 border-gray-200 dark:border-gray-700/60 hover:border-gray-300 dark:hover:border-gray-600 hover:shadow-sm"
+          : "bg-gray-50 dark:bg-gray-800/20 border-gray-200/70 dark:border-gray-700/40 opacity-70"
+      }`}>
+
         {/* Expand chevron */}
         <button
           onClick={() => hasChildren && onToggleExpand(node.id)}
@@ -176,7 +175,7 @@ function TreeNode({
           <ChevronRightIcon className={`transition-transform duration-200 ${isExpanded && hasChildren ? "rotate-90" : ""}`} />
         </button>
 
-        {/* Name + slug + path */}
+        {/* Name + path */}
         <div className="flex-1 min-w-0" onClick={() => hasChildren && onToggleExpand(node.id)} style={{ cursor: hasChildren ? "pointer" : "default" }}>
           <div className="flex items-center gap-2 flex-wrap">
             <span className={`font-semibold text-sm ${node.active ? "text-gray-900 dark:text-white" : "text-gray-500 dark:text-gray-400 line-through"}`}>
@@ -189,15 +188,13 @@ function TreeNode({
           )}
         </div>
 
-        {/* Meta badges */}
+        {/* Badges */}
         <div className="hidden sm:flex items-center gap-1.5 flex-shrink-0">
           <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-md ${
             node.level === 0 ? "bg-blue-50 text-blue-600 dark:bg-blue-500/10 dark:text-blue-400" :
             node.level === 1 ? "bg-purple-50 text-purple-600 dark:bg-purple-500/10 dark:text-purple-400" :
             "bg-gray-100 text-gray-500 dark:bg-gray-700 dark:text-gray-400"
-          }`}>
-            {levelLabel}
-          </span>
+          }`}>{levelLabel}</span>
           {descendants > 0 && (
             <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400">
               {descendants} sub
@@ -208,15 +205,26 @@ function TreeNode({
               {node.productTypeName}
             </span>
           )}
-          {node.channelSyncSummary && node.channelSyncSummary.totalMapped > 0 && (
-            <span title={`${node.channelSyncSummary.totalMapped} channel(s) mapped`} className="text-[10px] px-1.5 py-0.5 rounded-md bg-green-50 dark:bg-green-500/10 text-green-700 dark:text-green-400">
-              {node.channelSyncSummary.totalMapped} ch
-            </span>
+          {/* Channel sync badges */}
+          {mapped > 0 && (
+            <Link
+              href="/omni-admin/channel-category-mapping"
+              title={`${mapped} channel${mapped !== 1 ? "s" : ""} mapped — click to manage`}
+              onClick={e => e.stopPropagation()}
+              className="text-[10px] px-1.5 py-0.5 rounded-md bg-green-50 dark:bg-green-500/10 text-green-700 dark:text-green-400 hover:bg-green-100 dark:hover:bg-green-500/20 transition-colors"
+            >
+              {mapped} ch
+            </Link>
           )}
-          {node.channelSyncSummary && node.channelSyncSummary.totalDrifted > 0 && (
-            <span title={`${node.channelSyncSummary.totalDrifted} channel mapping(s) drifted`} className="text-[10px] px-1.5 py-0.5 rounded-md bg-amber-50 dark:bg-amber-500/10 text-amber-700 dark:text-amber-400">
-              {node.channelSyncSummary.totalDrifted} drift
-            </span>
+          {drifted > 0 && (
+            <Link
+              href="/omni-admin/channel-category-mapping"
+              title={`${drifted} channel mapping${drifted !== 1 ? "s" : ""} drifted — click to resolve`}
+              onClick={e => e.stopPropagation()}
+              className="text-[10px] px-1.5 py-0.5 rounded-md bg-amber-50 dark:bg-amber-500/10 text-amber-700 dark:text-amber-400 hover:bg-amber-100 dark:hover:bg-amber-500/20 transition-colors"
+            >
+              {drifted} drift
+            </Link>
           )}
         </div>
 
@@ -240,7 +248,7 @@ function TreeNode({
         <div className="flex-shrink-0 flex items-center gap-0.5">
           <button
             onClick={() => onAddChild(node.id)}
-            title="Add child category"
+            title="Add sub-category"
             className="p-1.5 rounded-lg text-gray-400 hover:text-brand-600 dark:hover:text-brand-400 hover:bg-brand-50 dark:hover:bg-brand-500/10 transition-colors"
           >
             <PlusIcon />
@@ -254,8 +262,12 @@ function TreeNode({
           </button>
           <button
             onClick={() => onDelete(node)}
-            title="Delete"
-            className="p-1.5 rounded-lg text-gray-400 hover:text-red-500 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-500/10 transition-colors"
+            title={mapped > 0 ? `Cannot delete — still linked to ${mapped} channel${mapped !== 1 ? "s" : ""}` : "Delete"}
+            className={`p-1.5 rounded-lg transition-colors ${
+              mapped > 0
+                ? "text-gray-200 dark:text-gray-700 cursor-not-allowed"
+                : "text-gray-400 hover:text-red-500 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-500/10"
+            }`}
           >
             <TrashIcon />
           </button>
@@ -266,7 +278,17 @@ function TreeNode({
       {isExpanded && hasChildren && (
         <div className="ml-5 mt-1.5 pl-4 border-l border-gray-200 dark:border-gray-700/50 space-y-1.5">
           {node.children.map(child => (
-            <TreeNode key={child.id} {...sharedProps} node={child} />
+            <TreeNode
+              key={child.id}
+              node={child}
+              expandedIds={expandedIds}
+              savingId={savingId}
+              onToggleExpand={onToggleExpand}
+              onAddChild={onAddChild}
+              onEdit={onEdit}
+              onToggleActive={onToggleActive}
+              onDelete={onDelete}
+            />
           ))}
         </div>
       )}
@@ -274,75 +296,28 @@ function TreeNode({
   );
 }
 
-// ─── Empty State ───────────────────────────────────────────────────────────────
+// ─── Main page ────────────────────────────────────────────────────────────────
 
-function EmptyState({ onAdd, onRetry }: { onAdd: () => void; onRetry: () => void }) {
-  return (
-    <div className="flex flex-col items-center justify-center py-24 px-6 text-center">
-      <div className="w-16 h-16 rounded-2xl bg-gray-100 dark:bg-gray-800 flex items-center justify-center mb-4 text-3xl">
-        📂
-      </div>
-      <h3 className="text-base font-semibold text-gray-900 dark:text-white mb-1">No categories yet</h3>
-      <p className="text-sm text-gray-500 dark:text-gray-400 max-w-sm leading-relaxed mb-1">
-        Your category tree is being set up. If it doesn&apos;t appear after a moment, try refreshing.
-      </p>
-      <p className="text-xs text-gray-400 dark:text-gray-500 mb-6">
-        If the problem persists, contact your platform admin.
-      </p>
-      <div className="flex items-center gap-3">
-        <button
-          onClick={onRetry}
-          className="inline-flex items-center gap-2 px-4 py-2.5 text-sm font-semibold bg-brand-500 hover:bg-brand-600 text-white rounded-xl transition-colors shadow-sm"
-        >
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/>
-            <path d="M21 3v5h-5"/>
-            <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/>
-            <path d="M8 16H3v5"/>
-          </svg>
-          Refresh
-        </button>
-        <button
-          onClick={onAdd}
-          className="px-4 py-2.5 text-sm font-medium text-gray-500 dark:text-gray-400 border border-gray-200 dark:border-gray-700 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
-        >
-          Create manually
-        </button>
-      </div>
-    </div>
-  );
-}
-
-// ─── Main Page ─────────────────────────────────────────────────────────────────
-
-export default function ProductCategoriesPage() {
+export default function MerchantCategoriesPage() {
   const { organization } = useAuth();
   const orgId = organization?.organizationId ?? "";
 
-  const emitCategoryTreeChanged = useCallback(() => {
-    if (!orgId) return;
-    window.dispatchEvent(new CustomEvent('categoryTreeChanged', { detail: { orgId } }));
-  }, [orgId]);
   const [tree, setTree] = useState<ProductCategoryTree[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [savingId, setSavingId] = useState<string | null>(null);
   const [toast, setToast] = useState<{ msg: string; type: "ok" | "err" } | null>(null);
 
-  // Modal state
   const [showModal, setShowModal] = useState(false);
   const [editingCategory, setEditingCategory] = useState<ProductCategory | null>(null);
   const [newParentId, setNewParentId] = useState<string | null>(null);
-
-  // Delete modal
   const [deleteTarget, setDeleteTarget] = useState<ProductCategory | null>(null);
 
-  // Tree UI
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   const [searchQuery, setSearchQuery] = useState("");
   const [activeFilter, setActiveFilter] = useState<"all" | "active" | "inactive">("all");
 
-  // ── Load tree ──────────────────────────────────────────────────────────────
+  // ── Load ───────────────────────────────────────────────────────────────────
 
   const loadTree = useCallback(async () => {
     if (!orgId) return;
@@ -353,7 +328,7 @@ export default function ProductCategoriesPage() {
       setTree(data);
       setExpandedIds(new Set(data.map(n => n.id)));
     } catch (err) {
-      setLoadError(String((err as Error).message ?? err));
+      setLoadError((err as Error).message);
     } finally {
       setIsLoading(false);
     }
@@ -361,14 +336,14 @@ export default function ProductCategoriesPage() {
 
   useEffect(() => { loadTree(); }, [loadTree]);
 
-  // ── Toast helper ───────────────────────────────────────────────────────────
+  // ── Toast ──────────────────────────────────────────────────────────────────
 
   const showToast = useCallback((msg: string, type: "ok" | "err" = "ok") => {
     setToast({ msg, type });
     setTimeout(() => setToast(null), 3500);
   }, []);
 
-  // ── Filter / search (operates on flat list, then rebuilds display) ─────────
+  // ── Filter / search ────────────────────────────────────────────────────────
 
   const allNodes = useMemo(() => flattenTree(tree), [tree]);
 
@@ -378,7 +353,6 @@ export default function ProductCategoriesPage() {
     roots: tree.length,
   }), [allNodes, tree]);
 
-  // When searching, we show a flat filtered list instead of the tree
   const isSearching = searchQuery.trim().length > 0 || activeFilter !== "all";
 
   const filteredFlat = useMemo<ProductCategoryTree[]>(() => {
@@ -388,11 +362,10 @@ export default function ProductCategoriesPage() {
       const matchesSearch = !q || n.name.toLowerCase().includes(q) || n.slug.includes(q) || n.path.includes(q);
       const matchesActive = activeFilter === "all" || (activeFilter === "active" ? n.active : !n.active);
       return matchesSearch && matchesActive;
-    // Cast to tree nodes without children for flat display
     }).map(n => ({ ...n, children: [] }));
   }, [allNodes, searchQuery, activeFilter, isSearching]);
 
-  // ── Expand helpers ─────────────────────────────────────────────────────────
+  // ── Tree UI ────────────────────────────────────────────────────────────────
 
   const toggleExpand = useCallback((id: string) => {
     setExpandedIds(prev => {
@@ -402,15 +375,8 @@ export default function ProductCategoriesPage() {
     });
   }, []);
 
-  const expandAll = useCallback(() => {
-    setExpandedIds(new Set(allNodes.map(n => n.id)));
-  }, [allNodes]);
-
-  const collapseAll = useCallback(() => {
-    setExpandedIds(new Set());
-  }, []);
-
-  const allExpanded = expandedIds.size >= allNodes.filter(n => n.children && n.children.length > 0).length && allNodes.filter(n => n.children && n.children.length > 0).length > 0;
+  const allExpanded = expandedIds.size >= allNodes.filter(n => n.children.length > 0).length
+    && allNodes.filter(n => n.children.length > 0).length > 0;
 
   // ── CRUD handlers ──────────────────────────────────────────────────────────
 
@@ -428,25 +394,19 @@ export default function ProductCategoriesPage() {
 
   const handleToggleActive = useCallback(async (cat: ProductCategory) => {
     setSavingId(cat.id);
-    // Optimistic update in tree
     const updateActive = (nodes: ProductCategoryTree[]): ProductCategoryTree[] =>
-      nodes.map(n => n.id === cat.id
-        ? { ...n, active: !n.active }
-        : { ...n, children: updateActive(n.children) }
-      );
+      nodes.map(n => n.id === cat.id ? { ...n, active: !n.active } : { ...n, children: updateActive(n.children) });
     setTree(prev => updateActive(prev));
     try {
       await CategoryService.setActive(cat.id, !cat.active, orgId);
       showToast(`${cat.name} ${cat.active ? "deactivated" : "activated"}`);
-      emitCategoryTreeChanged();
     } catch (err) {
-      // Rollback
-      setTree(prev => updateActive(prev));
+      setTree(prev => updateActive(prev)); // rollback
       showToast((err as Error).message, "err");
     } finally {
       setSavingId(null);
     }
-  }, [showToast]);
+  }, [orgId, showToast]);
 
   const handleModalSave = async (
     payload: Omit<ProductCategory, "id" | "path" | "level" | "createdAt" | "updatedAt">
@@ -461,15 +421,22 @@ export default function ProductCategoriesPage() {
         showToast(`"${payload.name}" created`);
       }
       await loadTree();
-      emitCategoryTreeChanged();
     } catch (err) {
       showToast((err as Error).message, "err");
     }
   };
 
   const handleDelete = useCallback((cat: ProductCategory) => {
+    const mapped = cat.channelSyncSummary?.totalMapped ?? 0;
+    if (mapped > 0) {
+      showToast(
+        `Cannot delete — still linked to ${mapped} channel${mapped !== 1 ? "s" : ""}. Remove all channel links first.`,
+        "err",
+      );
+      return;
+    }
     setDeleteTarget(cat);
-  }, []);
+  }, [showToast]);
 
   const confirmDelete = async () => {
     if (!deleteTarget) return;
@@ -480,7 +447,6 @@ export default function ProductCategoriesPage() {
       await CategoryService.delete(target.id, orgId);
       showToast(`"${target.name}" deleted`);
       await loadTree();
-      emitCategoryTreeChanged();
     } catch (err) {
       showToast((err as Error).message, "err");
     } finally {
@@ -491,7 +457,8 @@ export default function ProductCategoriesPage() {
   // ── Render ─────────────────────────────────────────────────────────────────
 
   const nodeProps = {
-    expandedIds, savingId, searchQuery,
+    expandedIds,
+    savingId,
     onToggleExpand: toggleExpand,
     onAddChild: (id: string) => handleOpenAdd(id),
     onEdit: handleOpenEdit,
@@ -501,36 +468,42 @@ export default function ProductCategoriesPage() {
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
-      {/* ── Page header ─────────────────────────────────────────────────────── */}
+
+      {/* Header */}
       <div className="bg-white dark:bg-gray-800/60 border-b border-gray-200 dark:border-gray-700/60 px-6 py-5">
-        <div className="flex items-center justify-between gap-4">
+        <div className="flex items-center justify-between gap-4 flex-wrap">
           <div className="flex items-center gap-3 min-w-0">
             <div className="w-10 h-10 rounded-xl bg-brand-50 dark:bg-brand-500/10 flex items-center justify-center flex-shrink-0 text-brand-600 dark:text-brand-400">
-              <FolderTreeIcon />
+              <FolderIcon />
             </div>
             <div className="min-w-0">
-              <h1 className="text-lg font-bold text-gray-900 dark:text-white leading-tight">Product Categories</h1>
+              <h1 className="text-lg font-bold text-gray-900 dark:text-white leading-tight">My Categories</h1>
               <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
                 {isLoading ? "Loading…" : `${stats.roots} root${stats.roots !== 1 ? "s" : ""} · ${stats.total} total · ${stats.active} active`}
               </p>
             </div>
           </div>
-          <button
-            onClick={() => handleOpenAdd(null)}
-            className="flex-shrink-0 inline-flex items-center gap-2 px-4 py-2.5 text-sm font-semibold bg-brand-500 hover:bg-brand-600 active:bg-brand-700 text-white rounded-xl transition-colors shadow-sm shadow-brand-500/20"
-          >
-            <PlusIcon /> New Root Category
-          </button>
+          <div className="flex items-center gap-2">
+            <Link
+              href="/omni-admin/channel-category-mapping"
+              className="inline-flex items-center gap-1.5 px-3 py-2 text-sm text-gray-500 dark:text-gray-400 border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+            >
+              <LinkIcon /> Map to channels
+            </Link>
+            <button
+              onClick={() => handleOpenAdd(null)}
+              className="inline-flex items-center gap-2 px-4 py-2.5 text-sm font-semibold bg-brand-500 hover:bg-brand-600 text-white rounded-xl transition-colors shadow-sm shadow-brand-500/20"
+            >
+              <PlusIcon /> New Category
+            </button>
+          </div>
         </div>
       </div>
 
-      {/* ── Toolbar ─────────────────────────────────────────────────────────── */}
+      {/* Toolbar */}
       <div className="bg-white dark:bg-gray-800/40 border-b border-gray-200 dark:border-gray-700/40 px-6 py-3 flex items-center gap-3 flex-wrap">
-        {/* Search */}
         <div className="relative flex-1 min-w-[200px] max-w-sm">
-          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none">
-            <SearchIcon />
-          </span>
+          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"><SearchIcon /></span>
           <input
             type="text"
             value={searchQuery}
@@ -540,16 +513,13 @@ export default function ProductCategoriesPage() {
           />
         </div>
 
-        {/* Active filter */}
         <div className="flex items-center rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
           {(["all", "active", "inactive"] as const).map(f => (
             <button
               key={f}
               onClick={() => setActiveFilter(f)}
               className={`px-3 py-1.5 text-xs font-medium capitalize transition-colors ${
-                activeFilter === f
-                  ? "bg-brand-500 text-white"
-                  : "text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700"
+                activeFilter === f ? "bg-brand-500 text-white" : "text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700"
               }`}
             >
               {f}
@@ -557,24 +527,22 @@ export default function ProductCategoriesPage() {
           ))}
         </div>
 
-        {/* Expand / collapse — only in tree mode */}
-        {!isSearching && allNodes.some(n => n.children && n.children.length > 0) && (
+        {!isSearching && allNodes.some(n => n.children.length > 0) && (
           <button
-            onClick={allExpanded ? collapseAll : expandAll}
+            onClick={() => allExpanded ? setExpandedIds(new Set()) : setExpandedIds(new Set(allNodes.map(n => n.id)))}
             className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-500 dark:text-gray-400 border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
           >
             <ExpandAllIcon /> {allExpanded ? "Collapse all" : "Expand all"}
           </button>
         )}
 
-        <span className="ml-auto text-xs text-gray-400 dark:text-gray-500 tabular-nums">
+        <span className="ml-auto text-xs text-gray-400 tabular-nums">
           {isSearching ? `${filteredFlat.length} result${filteredFlat.length !== 1 ? "s" : ""}` : `${stats.total} categor${stats.total !== 1 ? "ies" : "y"}`}
         </span>
       </div>
 
-      {/* ── Content ─────────────────────────────────────────────────────────── */}
+      {/* Content */}
       <main className="px-6 py-6 max-w-5xl mx-auto">
-        {/* Error banner */}
         {loadError && (
           <div className="mb-5 flex items-start gap-3 px-4 py-3.5 rounded-xl bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/30 text-sm text-red-700 dark:text-red-400">
             <AlertIcon />
@@ -586,54 +554,60 @@ export default function ProductCategoriesPage() {
           </div>
         )}
 
-        {/* Loading skeleton */}
         {isLoading && (
           <div className="space-y-2">
-            {[1,2,3,4].map(i => (
+            {[1, 2, 3, 4].map(i => (
               <div key={i} className="h-14 rounded-xl bg-gray-200 dark:bg-gray-700/50 animate-pulse" style={{ opacity: 1 - i * 0.15 }} />
             ))}
           </div>
         )}
 
-        {/* Empty state */}
         {!isLoading && !loadError && tree.length === 0 && (
-          <EmptyState
-            onAdd={() => handleOpenAdd(null)}
-            onRetry={loadTree}
-          />
-        )}
-
-        {/* Search results — flat list */}
-        {!isLoading && isSearching && filteredFlat.length > 0 && (
-          <div className="space-y-1.5">
-            {filteredFlat.map(node => (
-              <TreeNode key={node.id} {...nodeProps} node={node} />
-            ))}
+          <div className="flex flex-col items-center justify-center py-24 px-6 text-center">
+            <div className="w-16 h-16 rounded-2xl bg-gray-100 dark:bg-gray-800 flex items-center justify-center mb-4 text-3xl">📂</div>
+            <h3 className="text-base font-semibold text-gray-900 dark:text-white mb-1">No categories yet</h3>
+            <p className="text-sm text-gray-500 dark:text-gray-400 max-w-sm leading-relaxed mb-6">
+              Your platform admin will provision a category tree for your organisation,
+              or you can import categories from your channel store via{" "}
+              <Link href="/omni-admin/channel-category-mapping" className="text-brand-600 dark:text-brand-400 hover:underline">
+                Channel Category Mapping
+              </Link>.
+            </p>
+            <button
+              onClick={() => handleOpenAdd(null)}
+              className="inline-flex items-center gap-2 px-4 py-2.5 text-sm font-semibold bg-brand-500 hover:bg-brand-600 text-white rounded-xl transition-colors shadow-sm"
+            >
+              <PlusIcon /> Create manually
+            </button>
           </div>
         )}
 
-        {/* Search no results */}
+        {!isLoading && isSearching && filteredFlat.length > 0 && (
+          <div className="space-y-1.5">
+            {filteredFlat.map(node => <TreeNode key={node.id} {...nodeProps} node={node} />)}
+          </div>
+        )}
+
         {!isLoading && isSearching && filteredFlat.length === 0 && !loadError && (
           <div className="text-center py-16">
             <p className="text-2xl mb-3">🔍</p>
             <p className="text-sm font-medium text-gray-600 dark:text-gray-400">No categories match your search</p>
-            <button onClick={() => { setSearchQuery(""); setActiveFilter("all"); }} className="mt-3 text-xs text-brand-600 dark:text-brand-400 hover:underline">Clear filters</button>
+            <button onClick={() => { setSearchQuery(""); setActiveFilter("all"); }} className="mt-3 text-xs text-brand-600 dark:text-brand-400 hover:underline">
+              Clear filters
+            </button>
           </div>
         )}
 
-        {/* Tree view */}
         {!isLoading && !isSearching && tree.length > 0 && (
           <div className="space-y-1.5">
-            {tree.map(root => (
-              <TreeNode key={root.id} {...nodeProps} node={root} />
-            ))}
+            {tree.map(root => <TreeNode key={root.id} {...nodeProps} node={root} />)}
           </div>
         )}
       </main>
 
-      {/* ── Toast ───────────────────────────────────────────────────────────── */}
+      {/* Toast */}
       {toast && (
-        <div className={`fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2.5 px-4 py-3 rounded-xl shadow-lg border text-sm font-medium transition-all animate-in fade-in slide-in-from-bottom-2 ${
+        <div className={`fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2.5 px-4 py-3 rounded-xl shadow-lg border text-sm font-medium ${
           toast.type === "ok"
             ? "bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-800 dark:text-gray-200"
             : "bg-red-50 dark:bg-red-500/10 border-red-200 dark:border-red-500/30 text-red-700 dark:text-red-400"
@@ -643,7 +617,7 @@ export default function ProductCategoriesPage() {
         </div>
       )}
 
-      {/* ── Add/Edit Modal ───────────────────────────────────────────────────── */}
+      {/* Add/Edit modal */}
       {showModal && (
         <AddEditCategoryModal
           category={editingCategory}
@@ -655,7 +629,7 @@ export default function ProductCategoriesPage() {
         />
       )}
 
-      {/* ── Delete Confirm ───────────────────────────────────────────────────── */}
+      {/* Delete confirm */}
       {deleteTarget && (
         <DeleteConfirmModal
           category={deleteTarget}

@@ -14,6 +14,7 @@ import { useAuth } from "@/shared/contexts/AuthContext";
 import { DriftResolutionModal } from "./DriftResolutionModal";
 import { ImportWizardModal } from "./ImportWizardModal";
 import { TaxonomyMapperModal } from "./TaxonomyMapperModal";
+import { CollectionMapperModal } from "./CollectionMapperModal";
 
 // ─── Icons ─────────────────────────────────────────────────────────────────────
 
@@ -49,6 +50,88 @@ const ChevronRightIcon = ({ className = "" }: { className?: string }) => (
     <path d="m9 18 6-6-6-6"/>
   </svg>
 );
+const UnlinkIcon = () => (
+  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M18.84 12.25l1.72-1.71h-.02a5.004 5.004 0 0 0-.12-7.07 5.006 5.006 0 0 0-6.95 0l-1.72 1.71"/>
+    <path d="M5.17 11.75l-1.71 1.71a5.004 5.004 0 0 0 .12 7.07 5.006 5.006 0 0 0 6.95 0l1.71-1.71"/>
+    <line x1="8" y1="2" x2="8" y2="5"/><line x1="2" y1="8" x2="5" y2="8"/>
+    <line x1="16" y1="19" x2="16" y2="22"/><line x1="19" y1="16" x2="22" y2="16"/>
+  </svg>
+);
+
+// ─── Unmap modal ─────────────────────────────────────────────────────────────
+// importedFrom=true  → merchant accidentally imported this category; offer full undo
+// importedFrom=false → category pre-existed or was created by admin; only allow unlinking
+
+function UnmapModal({
+  mapping,
+  onUnlinkOnly,
+  onUnlinkAndDelete,
+  onCancel,
+  deleting,
+}: {
+  mapping: ChannelCategoryMapping;
+  onUnlinkOnly: () => void;
+  onUnlinkAndDelete: () => void;
+  onCancel: () => void;
+  deleting: boolean;
+}) {
+  return (
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-gray-900/60 backdrop-blur-sm" onClick={deleting ? undefined : onCancel} />
+      <div className="relative bg-white dark:bg-gray-900 rounded-2xl shadow-2xl w-full max-w-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
+        <div className="px-6 py-5">
+          <h2 className="text-sm font-bold text-gray-900 dark:text-white mb-1">
+            Remove channel link?
+          </h2>
+          <p className="text-xs text-gray-500 dark:text-gray-400 leading-relaxed mb-4">
+            Unlinking{" "}
+            <span className="font-medium text-gray-700 dark:text-gray-300">{mapping.categoryName}</span>
+            {" "}from{" "}
+            <span className="font-medium text-gray-700 dark:text-gray-300">{mapping.channelType}</span>.
+          </p>
+
+          <div className="space-y-2">
+            <button
+              onClick={onUnlinkOnly}
+              disabled={deleting}
+              className="w-full flex flex-col items-start gap-0.5 px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-700 hover:border-brand-400 hover:bg-brand-50 dark:hover:bg-brand-500/10 transition-all text-left disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <span className="text-sm font-semibold text-gray-800 dark:text-gray-200">Remove link only</span>
+              <span className="text-xs text-gray-400 dark:text-gray-500">
+                Keeps the internal category — just disconnects it from {mapping.channelType}.
+              </span>
+            </button>
+
+            {mapping.importedFrom && (
+              <button
+                onClick={onUnlinkAndDelete}
+                disabled={deleting}
+                className="w-full flex flex-col items-start gap-0.5 px-4 py-3 rounded-xl border border-red-200 dark:border-red-500/30 hover:border-red-400 hover:bg-red-50 dark:hover:bg-red-500/10 transition-all text-left disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <span className="text-sm font-semibold text-red-600 dark:text-red-400">
+                  {deleting ? "Deleting…" : "Remove link + delete category"}
+                </span>
+                <span className="text-xs text-gray-400 dark:text-gray-500">
+                  Fully undoes the import — deletes this category from your platform too.
+                </span>
+              </button>
+            )}
+          </div>
+        </div>
+        <div className="flex justify-end px-6 py-3 border-t border-gray-100 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-800/20">
+          <button
+            onClick={onCancel}
+            disabled={deleting}
+            className="px-4 py-2 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 transition-colors disabled:opacity-50"
+          >
+            Cancel
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 // ─── Channel helpers ──────────────────────────────────────────────────────────
 
@@ -71,37 +154,54 @@ function StatusCell({
   mapping,
   categoryName,
   channelType,
+  taxonomyEnabled,
+  importCapable,
   onOpenDrift,
   onOpenMap,
+  onUnmap,
 }: {
   mapping: ChannelCategoryMapping | undefined;
   categoryName: string;
   channelType: string;
+  taxonomyEnabled: boolean;
+  importCapable: boolean;
   onOpenDrift: (mapping: ChannelCategoryMapping) => void;
   onOpenMap: () => void;
+  onUnmap: (mapping: ChannelCategoryMapping) => void;
 }) {
   if (!mapping) {
-    // UNMAPPED — no document exists yet
-    return (
-      <button
-        onClick={onOpenMap}
-        className="inline-flex items-center gap-1 text-[11px] font-medium px-2 py-1 rounded-lg border border-dashed border-gray-300 dark:border-gray-600 text-gray-500 dark:text-gray-400 hover:border-brand-400 hover:text-brand-600 dark:hover:text-brand-400 transition-colors"
-      >
-        <LinkIcon /> Map
-      </button>
-    );
+    if (taxonomyEnabled || importCapable) {
+      return (
+        <button
+          onClick={onOpenMap}
+          className="inline-flex items-center gap-1 text-[11px] font-medium px-2 py-1 rounded-lg border border-dashed border-gray-300 dark:border-gray-600 text-gray-500 dark:text-gray-400 hover:border-brand-400 hover:text-brand-600 dark:hover:text-brand-400 transition-colors"
+        >
+          <LinkIcon /> Map
+        </button>
+      );
+    }
+    return <span className="text-[11px] text-gray-300 dark:text-gray-600">—</span>;
   }
 
   const status: SyncStatus = mapping.syncStatus;
 
   if (status === "MAPPED") {
     return (
-      <span
-        title={`${channelType}: ${mapping.externalName}\nID: ${mapping.externalId}\nLast synced: ${mapping.lastSyncedAt ?? "—"}`}
-        className="inline-flex items-center gap-1 text-[11px] font-medium px-2 py-1 rounded-lg bg-green-50 text-green-700 dark:bg-green-500/10 dark:text-green-400 cursor-default"
-      >
-        <span className="h-1.5 w-1.5 rounded-full bg-green-500 flex-shrink-0" />
-        MAPPED
+      <span className="inline-flex items-center gap-1 group/mapped">
+        <span
+          title={`${channelType}: ${mapping.externalName}\nID: ${mapping.externalId}\nLast synced: ${mapping.lastSyncedAt ?? "—"}`}
+          className="inline-flex items-center gap-1 text-[11px] font-medium px-2 py-1 rounded-lg bg-green-50 text-green-700 dark:bg-green-500/10 dark:text-green-400 cursor-default"
+        >
+          <span className="h-1.5 w-1.5 rounded-full bg-green-500 flex-shrink-0" />
+          MAPPED
+        </span>
+        <button
+          onClick={() => onUnmap(mapping)}
+          title={`Unmap from ${mapping.externalName}`}
+          className="opacity-0 group-hover/mapped:opacity-100 transition-opacity p-0.5 rounded text-gray-400 hover:text-red-500 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-500/10"
+        >
+          <UnlinkIcon />
+        </button>
       </span>
     );
   }
@@ -136,14 +236,17 @@ function StatusCell({
   }
 
   // UNMAPPED document exists but no link
-  return (
-    <button
-      onClick={onOpenMap}
-      className="inline-flex items-center gap-1 text-[11px] font-medium px-2 py-1 rounded-lg border border-dashed border-gray-300 dark:border-gray-600 text-gray-500 dark:text-gray-400 hover:border-brand-400 hover:text-brand-600 dark:hover:text-brand-400 transition-colors"
-    >
-      <LinkIcon /> Map
-    </button>
-  );
+  if (taxonomyEnabled || importCapable) {
+    return (
+      <button
+        onClick={onOpenMap}
+        className="inline-flex items-center gap-1 text-[11px] font-medium px-2 py-1 rounded-lg border border-dashed border-gray-300 dark:border-gray-600 text-gray-500 dark:text-gray-400 hover:border-brand-400 hover:text-brand-600 dark:hover:text-brand-400 transition-colors"
+      >
+        <LinkIcon /> Map
+      </button>
+    );
+  }
+  return <span className="text-[11px] text-gray-300 dark:text-gray-600">—</span>;
 }
 
 // ─── Category row ─────────────────────────────────────────────────────────────
@@ -159,6 +262,7 @@ function CategoryRow({
   onToggleExpand,
   onOpenDrift,
   onOpenMap,
+  onUnmap,
 }: {
   node: ProductCategoryTree;
   stores: ChannelStoreConnection[];
@@ -170,6 +274,7 @@ function CategoryRow({
   onToggleExpand: (id: string) => void;
   onOpenDrift: (mapping: ChannelCategoryMapping, categoryName: string) => void;
   onOpenMap: (categoryId: string, categoryName: string, storeId: string) => void;
+  onUnmap: (mapping: ChannelCategoryMapping) => void;
 }) {
   const isExpanded = expandedIds.has(node.id);
   const hasChildren = node.children.length > 0;
@@ -239,8 +344,11 @@ function CategoryRow({
                 mapping={mapping}
                 categoryName={node.name}
                 channelType={store.channelType}
+                taxonomyEnabled={store.taxonomyEnabled === true}
+                importCapable={store.importCapable === true || (store.importCapable == null && isImportCapable(store.channelType))}
                 onOpenDrift={m => onOpenDrift(m, node.name)}
                 onOpenMap={() => onOpenMap(node.id, node.name, store.storeId)}
+                onUnmap={onUnmap}
               />
             </td>
           );
@@ -261,6 +369,7 @@ function CategoryRow({
           onToggleExpand={onToggleExpand}
           onOpenDrift={onOpenDrift}
           onOpenMap={onOpenMap}
+          onUnmap={onUnmap}
         />
       ))}
     </>
@@ -291,8 +400,15 @@ export default function ChannelCategoryMappingPage() {
 
   // Modals
   const [driftModal, setDriftModal] = useState<{ mapping: ChannelCategoryMapping; categoryName: string } | null>(null);
-  const [importModal, setImportModal] = useState<boolean>(false);
+  const [unmapModal, setUnmapModal] = useState<ChannelCategoryMapping | null>(null);
+  const [deletingImport, setDeletingImport] = useState(false);
+  const [importModal, setImportModal] = useState<{ initialStoreId?: string } | null>(null);
   const [taxonomyModal, setTaxonomyModal] = useState<{
+    store: ChannelStoreConnection;
+    unmappedCategories: ProductCategoryTree[];
+    initialCategoryId?: string;
+  } | null>(null);
+  const [collectionModal, setCollectionModal] = useState<{
     store: ChannelStoreConnection;
     unmappedCategories: ProductCategoryTree[];
     initialCategoryId?: string;
@@ -377,18 +493,58 @@ export default function ChannelCategoryMappingPage() {
     showToast("Drift resolved");
   };
 
+  const handleUnmap = useCallback((mapping: ChannelCategoryMapping) => {
+    setUnmapModal(mapping);
+  }, []);
+
+  // Remove link only — keep the internal category
+  const handleUnlinkOnly = useCallback(async () => {
+    if (!unmapModal) return;
+    try {
+      await ChannelMappingService.deleteMapping(unmapModal.id);
+      setMappings(prev => prev.filter(m => m.id !== unmapModal.id));
+      setUnmapModal(null);
+      showToast("Channel link removed");
+    } catch (err) {
+      showToast((err as Error).message, "err");
+    }
+  }, [unmapModal, showToast]);
+
+  // Remove link + delete the category the merchant accidentally imported
+  const handleUnlinkAndDelete = useCallback(async () => {
+    if (!unmapModal) return;
+    setDeletingImport(true);
+    try {
+      await CategoryService.delete(unmapModal.categoryId, orgId);
+      await ChannelMappingService.deleteMapping(unmapModal.id).catch(() => {});
+      setUnmapModal(null);
+      showToast(`"${unmapModal.categoryName}" removed`);
+      // Reload everything so the category row disappears immediately from the grid
+      await loadAll();
+    } catch (err) {
+      showToast((err as Error).message, "err");
+    } finally {
+      setDeletingImport(false);
+    }
+  }, [unmapModal, orgId, showToast, loadAll]);
+
   const handleOpenMap = (categoryId: string, _categoryName: string, storeId: string) => {
     const store = stores.find(s => s.storeId === storeId);
     if (!store) return;
     if (store.taxonomyEnabled === true) {
-      // Compute all unmapped categories for this store to show in the batch mapper
+      // Taxonomy-enabled channels: batch mapper lets merchant link internal categories to taxonomy nodes
       const unmapped = flatNodes.filter(n => {
         const m = mappingIndex.get(`${n.id}-${storeId}`);
         return !m || m.syncStatus === "UNMAPPED";
       });
       setTaxonomyModal({ store, unmappedCategories: unmapped, initialCategoryId: categoryId });
-    } else if (store.importCapable === true) {
-      showToast(`Use "Import from channel" to create mappings for ${store.storeName}`);
+    } else if (store.importCapable === true || (store.importCapable == null && isImportCapable(store.channelType))) {
+      // Import-capable channels (Wix, WooCommerce, Etsy): link existing platform categories to channel collections
+      const unmapped = flatNodes.filter(n => {
+        const m = mappingIndex.get(`${n.id}-${storeId}`);
+        return !m || m.syncStatus === "UNMAPPED";
+      });
+      setCollectionModal({ store, unmappedCategories: unmapped, initialCategoryId: categoryId });
     } else {
       showToast(`No mapping flow configured for ${store.storeName}`);
     }
@@ -460,7 +616,7 @@ export default function ChannelCategoryMappingPage() {
                     {importableStores.map(store => (
                       <button
                         key={store.storeId}
-                        onClick={() => { setShowImportMenu(false); setImportModal(true); }}
+                        onClick={() => { setShowImportMenu(false); setImportModal({ initialStoreId: store.storeId }); }}
                         className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors text-left"
                       >
                         <span>{CHANNEL_EMOJI[store.channelType] ?? "🏪"}</span>
@@ -644,6 +800,7 @@ export default function ChannelCategoryMappingPage() {
                     onToggleExpand={toggleExpand}
                     onOpenDrift={(mapping, categoryName) => setDriftModal({ mapping, categoryName })}
                     onOpenMap={handleOpenMap}
+                    onUnmap={handleUnmap}
                   />
                 ))
               )}
@@ -656,7 +813,7 @@ export default function ChannelCategoryMappingPage() {
             <div className="mt-4 flex items-center gap-4 text-[11px] text-gray-400 dark:text-gray-500">
               <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-green-500" /> MAPPED — syncing normally</span>
               <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-amber-400" /> DRIFTED — name mismatch, click to resolve</span>
-              <span className="flex items-center gap-1.5"><span className="inline-block w-4 h-3 border border-dashed border-gray-400 rounded" /> Map → not yet linked</span>
+              <span className="flex items-center gap-1.5"><span className="inline-block w-4 h-3 border border-dashed border-gray-400 rounded" /> Map — not yet linked, click to map</span>
             </div>
           )}
         </div>
@@ -674,6 +831,17 @@ export default function ChannelCategoryMappingPage() {
         </div>
       )}
 
+      {/* Unmap modal */}
+      {unmapModal && (
+        <UnmapModal
+          mapping={unmapModal}
+          onUnlinkOnly={handleUnlinkOnly}
+          onUnlinkAndDelete={handleUnlinkAndDelete}
+          onCancel={() => !deletingImport && setUnmapModal(null)}
+          deleting={deletingImport}
+        />
+      )}
+
       {/* Drift resolution modal */}
       {driftModal && (
         <DriftResolutionModal
@@ -684,13 +852,28 @@ export default function ChannelCategoryMappingPage() {
         />
       )}
 
-      {/* Import wizard modal — WooCommerce / Etsy only */}
+      {/* Import wizard modal — WooCommerce / Etsy / Wix */}
       {importModal && (
         <ImportWizardModal
           organizationId={orgId}
           importableStores={importableStores}
+          initialStoreId={importModal.initialStoreId}
           onDone={() => { loadAll(); }}
-          onClose={() => setImportModal(false)}
+          onClose={() => setImportModal(null)}
+        />
+      )}
+
+      {/* Collection mapper modal — Wix / WooCommerce / Etsy: link existing platform categories to channel collections */}
+      {collectionModal && (
+        <CollectionMapperModal
+          organizationId={orgId}
+          store={collectionModal.store}
+          unmappedCategories={collectionModal.unmappedCategories}
+          initialCategoryId={collectionModal.initialCategoryId}
+          onMapped={() => {
+            ChannelMappingService.listAll(orgId).then(setMappings);
+          }}
+          onClose={() => setCollectionModal(null)}
         />
       )}
 
