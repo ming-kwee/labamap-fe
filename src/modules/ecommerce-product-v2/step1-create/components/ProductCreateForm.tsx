@@ -186,7 +186,10 @@ export default function ProductCreateForm({
 
   // ── Effects ────────────────────────────────────────────────────────────────
 
-  // Load schema once on mount
+  // Load schema once on mount — always without category.
+  // The essential (no-category) call returns all global fields (name, sku, price, …).
+  // The category-specific call returns ONLY category-specific fields and replaces the schema,
+  // so in edit mode we skip it (see editCategoryLoadedRef below) to keep all global fields.
   useEffect(() => {
     loadSchema();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -345,22 +348,41 @@ export default function ProductCreateForm({
     );
   }, [schema, formData, formStage, viewLevel, getVisibleFields]);
 
-  // Fix 4: Only expand the first section on initial load, not all sections with required fields
+  // On initial schema load: in edit mode expand only sections that have at least one
+  // pre-filled value so empty sections stay collapsed; in create mode open only the first.
   useEffect(() => {
     if (sortedSections.length === 0 || hasAutoExpandedRef.current) return;
     hasAutoExpandedRef.current = true;
-    setExpandedSections(new Set(['product-info']));
-  }, [sortedSections, setExpandedSections]);
+    if (mode === 'edit') {
+      const populated = sortedSections
+        .filter(([, fields]) =>
+          (fields as any[]).some((field: any) => {
+            if (field.required) return true;
+            const val = formData[field.name || field.fieldName];
+            return val !== undefined && val !== null && val !== '' &&
+              !(Array.isArray(val) && val.length === 0);
+          })
+        )
+        .map(([key]) => key);
+      // Always keep product-info open even if somehow empty
+      setExpandedSections(new Set(populated.length > 0 ? populated : ['product-info']));
+    } else {
+      setExpandedSections(new Set(['product-info']));
+    }
+  // formData is intentionally included so the snapshot is current when sortedSections first arrives
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sortedSections, setExpandedSections, mode]);
 
-  // Phase 4 — edit mode: trigger category field loading once base schema is ready.
-  // The pre-filled category value won't fire handleCategoryChange automatically,
-  // so we call loadCategoryFieldsSmooth explicitly after the base schema loads.
-  const editCategoryLoadedRef = useRef(false);
+  // Phase 4 — edit mode: skip the category-specific schema reload entirely.
+  // The backend's category schema only returns category-specific fields and replaces the
+  // essential schema when set, hiding global fields (name, sku, price, …). In edit mode
+  // the essential schema already contains all the fields we need; the initialData pre-fills them.
+  const editCategoryLoadedRef = useRef(mode === 'edit');
   useEffect(() => {
     if (mode !== 'edit' || editCategoryLoadedRef.current) return;
     if (!schema || !formData.category) return;
     editCategoryLoadedRef.current = true;
-    loadCategoryFieldsSmooth(formData.category);
+    loadSchema(formData.category);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode, schema, formData.category]);
 

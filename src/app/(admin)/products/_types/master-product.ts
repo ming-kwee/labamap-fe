@@ -91,6 +91,8 @@ export interface MasterProductDetail {
   currency?: string | null;
   imageUrl?: string | null;
   description?: string | null;
+  /** Original category slug stored in productAttributes — use this for schema generation */
+  categorySlug?: string | null;
   tags?: string[] | null;
   images?: string[] | null;
   variantCount: number;

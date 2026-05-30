@@ -6,6 +6,8 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/shared/contexts/AuthContext";
 import { MasterProductService } from "../_services/master-product.service";
 import type { MasterProductDetail, ChannelDistributionCard, ChannelSyncStatus } from "../_types/master-product";
+import { ChannelStoreService } from "@/modules/ecommerce-product-v2/step2-channel-fields/services/channelStore.service";
+import type { ChannelStoreConnection } from "@/modules/ecommerce-product-v2/step2-channel-fields/types/channelStore";
 
 const BASE_API = "http://localhost:8888/labamap/api/v1";
 
@@ -70,35 +72,60 @@ const WrenchIcon = () => (
   </svg>
 );
 
-// ─── Channel card ─────────────────────────────────────────────────────────────
+// ─── Store publish card (published + unpublished states) ─────────────────────
 
-function ChannelCard({
-  card, masterProductId, currency, onResync,
+function StorePublishCard({
+  store, published, masterProductId, currency, onResync,
 }: {
-  card: ChannelDistributionCard;
+  store: ChannelStoreConnection;
+  published: ChannelDistributionCard | null;
   masterProductId: string;
   currency?: string | null;
   onResync: (storeId: string) => Promise<void>;
 }) {
   const [syncing, setSyncing] = useState(false);
-  const cfg = statusConfig(card.syncStatus);
-  const emoji = CHANNEL_EMOJI[card.channelType.toLowerCase()] ?? "🔗";
-  const editUrl = `/products/${masterProductId}/channel-fields`;
+  const emoji = CHANNEL_EMOJI[store.channelType.toLowerCase()] ?? "🔗";
+  const channelFieldsUrl = `/products/${masterProductId}/channel-fields`;
 
   async function handleResync() {
     setSyncing(true);
-    try { await onResync(card.storeId); } finally { setSyncing(false); }
+    try { await onResync(store.storeId); } finally { setSyncing(false); }
   }
 
+  if (!published) {
+    // Not yet published to this store
+    return (
+      <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-white/[0.02] p-4 space-y-3">
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="text-base leading-none">{emoji}</span>
+            <span className="text-sm font-semibold text-gray-900 dark:text-white truncate">{store.storeName}</span>
+          </div>
+          <span className="text-xs text-gray-400 dark:text-gray-500 px-2 py-0.5 rounded-full bg-gray-100 dark:bg-gray-800">
+            Not published
+          </span>
+        </div>
+        <p className="text-xs text-gray-400 dark:text-gray-500 leading-relaxed">
+          Fill in the {store.channelType} fields (category mapping, shipping class, etc.) then publish.
+        </p>
+        <Link
+          href={channelFieldsUrl}
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-brand-500 hover:bg-brand-600 text-white transition-colors"
+        >
+          <PlusIcon /> Set up &amp; publish
+        </Link>
+      </div>
+    );
+  }
+
+  const cfg = statusConfig(published.syncStatus);
   return (
     <div className={`rounded-xl border ${cfg.border} ${cfg.bg} p-4 space-y-3`}>
       {/* Header */}
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-2 min-w-0">
           <span className="text-base leading-none">{emoji}</span>
-          <span className="text-sm font-semibold text-gray-900 dark:text-white truncate">
-            {card.storeName}
-          </span>
+          <span className="text-sm font-semibold text-gray-900 dark:text-white truncate">{published.storeName}</span>
         </div>
         <span className={`flex items-center gap-1.5 text-xs font-medium px-2 py-0.5 rounded-full flex-shrink-0 ${cfg.text}`}>
           <span className={`w-1.5 h-1.5 rounded-full ${cfg.dot}`} />
@@ -106,81 +133,176 @@ function ChannelCard({
         </span>
       </div>
 
-      {/* Sync info / error */}
-      {card.syncStatus === "FAILED" && card.errorMessage ? (
-        <p className="text-xs text-error-600 dark:text-error-400 leading-relaxed">{card.errorMessage}</p>
-      ) : card.syncStatus === "WARNING" && card.errorMessage ? (
-        <p className="text-xs text-warning-600 dark:text-warning-400 leading-relaxed">{card.errorMessage}</p>
-      ) : card.lastSyncedAt ? (
-        <p className="text-xs text-gray-400 dark:text-gray-500">
-          Last sync: {formatRelativeTime(card.lastSyncedAt)}
+      {/* Error / sync time */}
+      {(published.syncStatus === "FAILED" || published.syncStatus === "WARNING") && published.errorMessage ? (
+        <p className={`text-xs leading-relaxed ${published.syncStatus === "FAILED" ? "text-error-600 dark:text-error-400" : "text-warning-600 dark:text-warning-400"}`}>
+          {published.errorMessage}
         </p>
-      ) : (
-        <p className="text-xs text-gray-400 dark:text-gray-500">Not yet synced</p>
-      )}
+      ) : published.lastSyncedAt ? (
+        <p className="text-xs text-gray-400 dark:text-gray-500">Last sync: {formatRelativeTime(published.lastSyncedAt)}</p>
+      ) : null}
 
       {/* Channel price / SKU */}
-      {(card.channelPrice != null || card.channelSku) && (
+      {(published.channelPrice != null || published.channelSku) && (
         <div className="flex flex-wrap gap-x-4 gap-y-1">
-          {card.channelPrice != null && (
+          {published.channelPrice != null && (
             <div>
               <span className="text-[10px] uppercase tracking-wider text-gray-400 dark:text-gray-500">Price</span>
-              <p className="text-sm font-medium text-gray-800 dark:text-gray-200">
-                {currency ?? ""} {card.channelPrice.toLocaleString()}
-              </p>
+              <p className="text-sm font-medium text-gray-800 dark:text-gray-200">{currency ?? ""} {published.channelPrice.toLocaleString()}</p>
             </div>
           )}
-          {card.channelSku && (
+          {published.channelSku && (
             <div>
               <span className="text-[10px] uppercase tracking-wider text-gray-400 dark:text-gray-500">SKU</span>
-              <p className="text-sm font-mono text-gray-800 dark:text-gray-200">{card.channelSku}</p>
+              <p className="text-sm font-mono text-gray-800 dark:text-gray-200">{published.channelSku}</p>
             </div>
           )}
         </div>
       )}
 
-      {/* Completion bar */}
-      {card.completionPercentage > 0 && card.syncStatus === "DRAFT" && (
+      {/* Completion bar for drafts */}
+      {published.completionPercentage > 0 && published.syncStatus === "DRAFT" && (
         <div className="space-y-1">
           <div className="flex items-center justify-between">
             <span className="text-[10px] uppercase tracking-wider text-gray-400 dark:text-gray-500">Fields complete</span>
-            <span className="text-xs font-medium text-gray-500 dark:text-gray-400">{card.completionPercentage}%</span>
+            <span className="text-xs font-medium text-gray-500 dark:text-gray-400">{published.completionPercentage}%</span>
           </div>
           <div className="h-1.5 rounded-full bg-gray-200 dark:bg-gray-700 overflow-hidden">
-            <div
-              className="h-full rounded-full bg-brand-500 transition-all"
-              style={{ width: `${card.completionPercentage}%` }}
-            />
+            <div className="h-full rounded-full bg-brand-500 transition-all" style={{ width: `${published.completionPercentage}%` }} />
           </div>
         </div>
       )}
 
       {/* Actions */}
       <div className="flex items-center gap-2 pt-1">
-        {card.syncStatus === "FAILED" ? (
-          <Link
-            href={editUrl}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-error-500 hover:bg-error-600 text-white transition-colors"
-          >
+        {published.syncStatus === "FAILED" ? (
+          <Link href={channelFieldsUrl} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-error-500 hover:bg-error-600 text-white transition-colors">
             <WrenchIcon /> Fix issue
           </Link>
         ) : (
-          <Link
-            href={editUrl}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
-          >
+          <Link href={channelFieldsUrl} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
             <EditIcon /> Edit fields
           </Link>
         )}
         <button
           onClick={handleResync}
-          disabled={syncing || card.syncStatus === "SYNCING"}
+          disabled={syncing || published.syncStatus === "SYNCING"}
           className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors disabled:opacity-50"
         >
-          <RefreshIcon spinning={syncing || card.syncStatus === "SYNCING"} />
+          <RefreshIcon spinning={syncing || published.syncStatus === "SYNCING"} />
           {syncing ? "Syncing…" : "Re-sync"}
         </button>
       </div>
+    </div>
+  );
+}
+
+// ─── Channel-group accordion (detail view) ───────────────────────────────────
+// Groups stores of the same channel type into a collapsible section so that
+// 10+ stores per channel never turns the page into a wall of cards.
+
+function ChannelGroupAccordion({
+  channelType,
+  stores,
+  channelDistribution,
+  masterProductId,
+  currency,
+  onResync,
+}: {
+  channelType: string;
+  stores: ChannelStoreConnection[];
+  channelDistribution: ChannelDistributionCard[];
+  masterProductId: string;
+  currency?: string | null;
+  onResync: (storeId: string) => Promise<void>;
+}) {
+  const published  = stores.filter(s => channelDistribution.some(c => c.storeId === s.storeId));
+  const statuses   = published.map(s => channelDistribution.find(c => c.storeId === s.storeId)!.syncStatus);
+  const hasFailed  = statuses.includes("FAILED");
+  const hasWarning = statuses.includes("WARNING");
+  const allSynced  = published.length === stores.length && statuses.every(s => s === "SYNCED");
+
+  // Auto-expand when there are issues; collapse healthy groups
+  const [open, setOpen] = React.useState(hasFailed || hasWarning || published.length < stores.length);
+
+  const emoji = CHANNEL_EMOJI[channelType.toLowerCase()] ?? "🔗";
+  const label = channelType.charAt(0).toUpperCase() + channelType.slice(1);
+
+  const summaryColor =
+    hasFailed  ? "text-red-600 dark:text-red-400" :
+    hasWarning ? "text-amber-600 dark:text-amber-400" :
+    allSynced  ? "text-green-600 dark:text-green-400" :
+    "text-gray-400 dark:text-gray-500";
+
+  const summaryText =
+    hasFailed  ? `${statuses.filter(s => s === "FAILED").length} failed` :
+    hasWarning ? `${statuses.filter(s => s === "WARNING").length} warning` :
+    allSynced  ? "All synced" :
+    published.length === 0 ? "Not published" :
+    `${published.length}/${stores.length} published`;
+
+  async function handleSyncChannel() {
+    await Promise.allSettled(published.map(s => onResync(s.storeId)));
+  }
+
+  return (
+    <div className="rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
+      {/* Section header — always visible */}
+      <button
+        type="button"
+        onClick={() => setOpen(o => !o)}
+        className="w-full flex items-center gap-3 px-4 py-3 bg-gray-50 dark:bg-gray-800/60 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors text-left"
+      >
+        <span className="text-lg leading-none flex-shrink-0">{emoji}</span>
+        <span className="text-sm font-semibold text-gray-800 dark:text-gray-200 flex-1">{label}</span>
+        <span className="text-xs text-gray-400 dark:text-gray-500 tabular-nums mr-2">
+          {stores.length} store{stores.length !== 1 ? "s" : ""}
+        </span>
+        <span className={`text-xs font-medium ${summaryColor} flex items-center gap-1 mr-2`}>
+          <span className={`h-1.5 w-1.5 rounded-full flex-shrink-0 ${
+            hasFailed ? "bg-red-500" : hasWarning ? "bg-amber-400" : allSynced ? "bg-green-500" : "bg-gray-300 dark:bg-gray-600"
+          }`} />
+          {summaryText}
+        </span>
+        {published.length > 0 && (
+          <span
+            role="button"
+            tabIndex={0}
+            onClick={e => { e.stopPropagation(); handleSyncChannel(); }}
+            onKeyDown={e => e.key === "Enter" && (e.stopPropagation(), handleSyncChannel())}
+            className="text-xs text-gray-400 dark:text-gray-500 hover:text-brand-500 dark:hover:text-brand-400 mr-2 transition-colors"
+            title={`Re-sync all ${label} stores`}
+          >
+            <RefreshIcon />
+          </span>
+        )}
+        <svg
+          width="14" height="14" viewBox="0 0 24 24" fill="none"
+          stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+          className={`text-gray-400 flex-shrink-0 transition-transform ${open ? "rotate-180" : ""}`}
+        >
+          <path d="m6 9 6 6 6-6"/>
+        </svg>
+      </button>
+
+      {/* Stores list — expandable */}
+      {open && (
+        <div className="divide-y divide-gray-100 dark:divide-gray-700/50 bg-white dark:bg-white/[0.02]">
+          {stores.map(store => {
+            const pub = channelDistribution.find(c => c.storeId === store.storeId) ?? null;
+            return (
+              <StorePublishCard
+                key={store.storeId}
+                store={store}
+                published={pub}
+                masterProductId={masterProductId}
+                currency={currency}
+                onResync={onResync}
+              />
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
@@ -231,20 +353,34 @@ function MasterDataPanel({ product }: { product: MasterProductDetail }) {
           </span>
           <div className="rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
             {displayVariants.map((v, i) => {
-              const sku   = String(v.sku   ?? v.SKU   ?? `Variant ${i + 1}`);
+              const sku   = String(v.sku ?? v.SKU ?? `Variant ${i + 1}`);
               const price = v.price != null ? Number(v.price) : null;
               const label = getVariantLabel(v);
+              const images = Array.isArray(v.variantImages) ? v.variantImages as string[] : [];
+              const thumb  = images[0] ?? null;
               return (
                 <div
                   key={sku + i}
-                  className="flex items-center justify-between px-3 py-2 border-b border-gray-100 dark:border-gray-700/50 last:border-b-0 text-sm"
+                  className="flex items-center gap-3 px-3 py-2 border-b border-gray-100 dark:border-gray-700/50 last:border-b-0 text-sm"
                 >
-                  <div className="min-w-0">
-                    <span className="font-mono text-xs text-gray-500 dark:text-gray-400">{sku}</span>
-                    {label && <span className="ml-2 text-gray-700 dark:text-gray-300">{label}</span>}
+                  {/* Thumbnail */}
+                  {thumb ? (
+                    <img src={thumb} alt={sku} className="w-8 h-8 rounded-md object-cover flex-shrink-0 border border-gray-100 dark:border-gray-700" />
+                  ) : (
+                    <div className="w-8 h-8 rounded-md bg-gray-100 dark:bg-gray-800 flex-shrink-0" />
+                  )}
+
+                  {/* Label + SKU */}
+                  <div className="min-w-0 flex-1">
+                    {label && (
+                      <p className="text-sm font-medium text-gray-800 dark:text-gray-200 truncate">{label}</p>
+                    )}
+                    <p className="font-mono text-xs text-gray-400 dark:text-gray-500 truncate">{sku}</p>
                   </div>
-                  {price != null && (
-                    <span className="text-gray-800 dark:text-gray-200 flex-shrink-0 ml-3">
+
+                  {/* Price */}
+                  {price != null && price > 0 && (
+                    <span className="text-sm text-gray-700 dark:text-gray-300 flex-shrink-0">
                       {product.currency ?? ""} {price.toLocaleString()}
                     </span>
                   )}
@@ -306,10 +442,24 @@ function Field({ label, value, mono }: { label: string; value: string; mono?: bo
   );
 }
 
+const VARIANT_NON_DIMENSION = new Set([
+  "id", "_id", "sku", "SKU", "price", "comparePrice", "compareAtPrice",
+  "inventory", "quantity", "stock", "stockQuantity", "costPrice",
+  "barcode", "weight", "variantImages", "images", "galleryImages",
+]);
+
 function getVariantLabel(v: Record<string, unknown>): string {
-  const SKIP = new Set(["sku", "SKU", "price", "compareAtPrice", "quantity", "barcode", "weight", "id", "_id"]);
   return Object.entries(v)
-    .filter(([k, val]) => !SKIP.has(k) && val != null && String(val).trim())
+    .filter(([k, val]) => {
+      if (VARIANT_NON_DIMENSION.has(k)) return false;
+      if (val == null) return false;
+      if (Array.isArray(val)) return false;
+      const str = String(val).trim();
+      if (!str || str === "0") return false;
+      if (str.startsWith("http://") || str.startsWith("https://")) return false;
+      if (str.length > 60) return false;
+      return true;
+    })
     .map(([, val]) => String(val))
     .slice(0, 3)
     .join(" / ");
@@ -322,19 +472,24 @@ export default function ProductDetailPage({ masterProductId }: { masterProductId
   const { organization } = useAuth();
   const orgId = organization?.organizationId ?? "";
 
-  const [product, setProduct] = useState<MasterProductDetail | null>(null);
-  const [loading, setLoading]  = useState(true);
-  const [error, setError]      = useState<string | null>(null);
+  const [product, setProduct]   = useState<MasterProductDetail | null>(null);
+  const [stores, setStores]     = useState<ChannelStoreConnection[]>([]);
+  const [loading, setLoading]   = useState(true);
+  const [error, setError]       = useState<string | null>(null);
   const [syncingAll, setSyncingAll] = useState(false);
-  const [toast, setToast]      = useState<{ msg: string; ok: boolean } | null>(null);
+  const [toast, setToast]       = useState<{ msg: string; ok: boolean } | null>(null);
 
   const load = useCallback(async () => {
     if (!orgId) return;
     setLoading(true);
     setError(null);
     try {
-      const data = await MasterProductService.getById(masterProductId, orgId);
+      const [data, storeList] = await Promise.all([
+        MasterProductService.getById(masterProductId, orgId),
+        ChannelStoreService.listStores(orgId).catch(() => [] as ChannelStoreConnection[]),
+      ]);
       setProduct(data);
+      setStores(storeList.filter(s => s.isActive));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load product");
     } finally {
@@ -473,60 +628,59 @@ export default function ProductDetailPage({ masterProductId }: { masterProductId
           </div>
         </div>
 
-        {/* ── Right: channel distribution ───────────────────────────────── */}
-        <div className="lg:col-span-2 space-y-4">
-          {/* Section header */}
-          <div className="flex items-center justify-between">
-            <h2 className="text-[10px] uppercase tracking-wider font-semibold text-gray-400 dark:text-gray-500">
-              Channel Distribution
-            </h2>
-            <div className="flex items-center gap-2">
-              <Link
-                href={`/products/${masterProductId}/channel-fields`}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
-              >
-                <PlusIcon /> Add channel
-              </Link>
-              {hasChannels && (
-                <button
-                  onClick={handleSyncAll}
-                  disabled={syncingAll}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors disabled:opacity-50"
-                >
-                  <RefreshIcon spinning={syncingAll} /> Sync all
-                </button>
-              )}
+        {/* ── Right: publish status grouped by channel ──────────────────── */}
+        <div className="lg:col-span-2 space-y-3">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <h2 className="text-sm font-semibold text-gray-800 dark:text-gray-200">Publish status</h2>
+              <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
+                This product across your connected stores
+              </p>
             </div>
+            {hasChannels && (
+              <button
+                onClick={handleSyncAll}
+                disabled={syncingAll}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors disabled:opacity-50"
+              >
+                <RefreshIcon spinning={syncingAll} /> Sync all
+              </button>
+            )}
           </div>
 
-          {/* Channel cards */}
-          {hasChannels ? (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {product.channelDistribution.map((card) => (
-                <ChannelCard
-                  key={card.storeId}
-                  card={card}
-                  masterProductId={masterProductId}
-                  currency={product.currency}
-                  onResync={handleResync}
-                />
-              ))}
-            </div>
-          ) : (
-            <div className="rounded-2xl border-2 border-dashed border-gray-200 dark:border-gray-700 p-10 text-center">
-              <div className="text-3xl mb-3">🔌</div>
-              <p className="font-medium text-gray-700 dark:text-gray-300 mb-1">No channels connected</p>
-              <p className="text-sm text-gray-400 dark:text-gray-500 mb-5">
-                Configure channel-specific fields to start distributing this product.
+          {stores.length === 0 ? (
+            <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-800/30 p-4">
+              <p className="text-sm font-medium text-gray-700 dark:text-gray-300">No stores connected</p>
+              <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
+                Connect a Shopify, Wix, or other store in{" "}
+                <Link href="/channels/stores" className="text-brand-500 hover:underline">Channel Stores</Link>{" "}
+                first, then come back to publish this product.
               </p>
-              <Link
-                href={`/products/${masterProductId}/channel-fields`}
-                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-brand-500 hover:bg-brand-600 text-white text-sm font-medium transition-colors"
-              >
-                <PlusIcon /> Configure channels
-              </Link>
             </div>
-          )}
+          ) : (() => {
+            // Group stores by channel type — one accordion per channel
+            const groups = new Map<string, ChannelStoreConnection[]>();
+            for (const s of stores) {
+              const arr = groups.get(s.channelType) ?? [];
+              arr.push(s);
+              groups.set(s.channelType, arr);
+            }
+            return (
+              <div className="space-y-2">
+                {[...groups.entries()].map(([channelType, channelStores]) => (
+                  <ChannelGroupAccordion
+                    key={channelType}
+                    channelType={channelType}
+                    stores={channelStores}
+                    channelDistribution={product.channelDistribution}
+                    masterProductId={masterProductId}
+                    currency={product.currency}
+                    onResync={handleResync}
+                  />
+                ))}
+              </div>
+            );
+          })()}
         </div>
       </div>
     </div>

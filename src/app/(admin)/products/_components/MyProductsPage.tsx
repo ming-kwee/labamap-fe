@@ -1,13 +1,13 @@
 "use client";
 
-import React, { useState, useEffect, useCallback, useMemo } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/shared/contexts/AuthContext";
 import { MasterProductService } from "../_services/master-product.service";
 import type { MasterProduct, MasterProductChannelSummary, ChannelSyncStatus } from "../_types/master-product";
-import { overallSyncStatus } from "../_types/master-product";
 import { ChannelStoreService } from "@/modules/ecommerce-product-v2/step2-channel-fields/services/channelStore.service";
+import type { ChannelStoreConnection } from "@/modules/ecommerce-product-v2/step2-channel-fields/types/channelStore";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -53,84 +53,95 @@ const PackageIcon = () => (
   </svg>
 );
 
-// ─── Status badge ─────────────────────────────────────────────────────────────
+// ─── Per-store publish status cell ────────────────────────────────────────────
 
-function StatusBadge({ summaries }: { summaries: MasterProductChannelSummary[] }) {
-  const status = overallSyncStatus(summaries);
-  const failedCount  = summaries.filter(s => s.syncStatus === "FAILED").length;
-  const warningCount = summaries.filter(s => s.syncStatus === "WARNING").length;
+// ─── Worst-status helper ──────────────────────────────────────────────────────
 
-  if (summaries.length === 0) {
-    return (
-      <span className="inline-flex items-center gap-1 text-[11px] font-medium px-2 py-1 rounded-lg bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400">
-        <span className="h-1.5 w-1.5 rounded-full bg-gray-400 flex-shrink-0" />
-        No channels
-      </span>
-    );
-  }
-  if (status === "failed") {
-    return (
-      <span className="inline-flex items-center gap-1 text-[11px] font-medium px-2 py-1 rounded-lg bg-red-50 text-red-700 dark:bg-red-500/10 dark:text-red-400">
-        <span className="h-1.5 w-1.5 rounded-full bg-red-500 flex-shrink-0" />
-        {failedCount} failed
-      </span>
-    );
-  }
-  if (status === "warning") {
-    return (
-      <span className="inline-flex items-center gap-1 text-[11px] font-medium px-2 py-1 rounded-lg bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-400">
-        <span className="h-1.5 w-1.5 rounded-full bg-amber-400 flex-shrink-0" />
-        {warningCount} warning
-      </span>
-    );
-  }
-  if (status === "syncing") {
-    return (
-      <span className="inline-flex items-center gap-1 text-[11px] font-medium px-2 py-1 rounded-lg bg-blue-50 text-blue-700 dark:bg-blue-500/10 dark:text-blue-400">
-        <span className="h-1.5 w-1.5 rounded-full bg-blue-400 animate-pulse flex-shrink-0" />
-        Syncing
-      </span>
-    );
-  }
-  if (status === "draft") {
-    return (
-      <span className="inline-flex items-center gap-1 text-[11px] font-medium px-2 py-1 rounded-lg bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400">
-        <span className="h-1.5 w-1.5 rounded-full bg-gray-400 flex-shrink-0" />
-        Draft
-      </span>
-    );
-  }
-  return (
-    <span className="inline-flex items-center gap-1 text-[11px] font-medium px-2 py-1 rounded-lg bg-green-50 text-green-700 dark:bg-green-500/10 dark:text-green-400">
-      <span className="h-1.5 w-1.5 rounded-full bg-green-500 flex-shrink-0" />
-      All synced
-    </span>
-  );
+function worstStatus(statuses: ChannelSyncStatus[]): ChannelSyncStatus | "NONE" {
+  if (statuses.includes("FAILED"))  return "FAILED";
+  if (statuses.includes("WARNING")) return "WARNING";
+  if (statuses.includes("SYNCING")) return "SYNCING";
+  if (statuses.includes("SYNCED"))  return "SYNCED";
+  if (statuses.includes("DRAFT"))   return "DRAFT";
+  return "NONE";
 }
 
-// ─── Channel icons ────────────────────────────────────────────────────────────
+// ─── Per-channel-type group badge (list view) ─────────────────────────────────
+// Groups all stores of the same channel into one compact badge: 🛍 3/5
+// This stays readable even with 10+ stores per channel.
 
-function ChannelIcons({ summaries }: { summaries: MasterProductChannelSummary[] }) {
-  if (summaries.length === 0) {
-    return <span className="text-xs text-gray-300 dark:text-gray-600">—</span>;
+function StoreStatusCell({
+  channelSummary,
+  orgStores,
+}: {
+  channelSummary: MasterProductChannelSummary[];
+  orgStores: ChannelStoreConnection[];
+}) {
+  if (orgStores.length === 0) {
+    if (channelSummary.length === 0)
+      return <span className="text-xs text-gray-300 dark:text-gray-600">—</span>;
+    // No org store data — fall back to raw summary icons
+    const types = [...new Set(channelSummary.map(s => s.channelType))];
+    return (
+      <div className="flex items-center gap-1 flex-wrap">
+        {types.map(ct => (
+          <span key={ct} className="text-sm leading-none">{CHANNEL_EMOJI[ct] ?? "🏪"}</span>
+        ))}
+      </div>
+    );
   }
+
+  // Group org stores by channel type
+  const groups = new Map<string, ChannelStoreConnection[]>();
+  for (const s of orgStores) {
+    const arr = groups.get(s.channelType) ?? [];
+    arr.push(s);
+    groups.set(s.channelType, arr);
+  }
+
   return (
-    <div className="flex items-center gap-0.5 flex-wrap">
-      {summaries.map(s => (
-        <span
-          key={s.storeId}
-          title={`${s.storeName} (${s.channelType}) — ${s.syncStatus}`}
-          className={`text-sm leading-none ${
-            s.syncStatus === "FAILED"  ? "grayscale-0 opacity-60" :
-            s.syncStatus === "WARNING" ? "opacity-80" : ""
-          }`}
-        >
-          {CHANNEL_EMOJI[s.channelType] ?? "🏪"}
-        </span>
-      ))}
+    <div className="flex items-center gap-1.5 flex-wrap">
+      {[...groups.entries()].map(([channelType, stores]) => {
+        const published = stores.filter(s => channelSummary.some(c => c.storeId === s.storeId));
+        const statuses  = published.map(s => channelSummary.find(c => c.storeId === s.storeId)!.syncStatus);
+        const worst     = worstStatus(statuses);
+        const emoji     = CHANNEL_EMOJI[channelType] ?? "🏪";
+
+        const dotColor =
+          worst === "FAILED"  ? "bg-red-500" :
+          worst === "WARNING" ? "bg-amber-400" :
+          worst === "SYNCING" ? "bg-blue-400 animate-pulse" :
+          worst === "SYNCED"  ? "bg-green-500" :
+          worst === "DRAFT"   ? "bg-gray-400" : "bg-gray-200 dark:bg-gray-600";
+
+        const textColor =
+          worst === "FAILED"  ? "text-red-700 dark:text-red-400 border-red-200 dark:border-red-500/30 bg-red-50 dark:bg-red-500/10" :
+          worst === "WARNING" ? "text-amber-700 dark:text-amber-400 border-amber-200 dark:border-amber-500/30 bg-amber-50 dark:bg-amber-500/10" :
+          worst === "SYNCED"  ? "text-green-700 dark:text-green-400 border-green-200 dark:border-green-500/30 bg-green-50 dark:bg-green-500/10" :
+          "text-gray-500 dark:text-gray-400 border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800";
+
+        // Tooltip: list each store and its status
+        const tip = stores.map(s => {
+          const entry = channelSummary.find(c => c.storeId === s.storeId);
+          return `${s.storeName}: ${entry ? entry.syncStatus : "not published"}`;
+        }).join("\n");
+
+        return (
+          <span
+            key={channelType}
+            title={tip}
+            className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md border text-[11px] font-medium ${textColor}`}
+          >
+            <span className="text-xs leading-none">{emoji}</span>
+            <span className={`h-1.5 w-1.5 rounded-full flex-shrink-0 ${dotColor}`} />
+            <span className="tabular-nums">{published.length}/{stores.length}</span>
+          </span>
+        );
+      })}
     </div>
   );
 }
+
 
 // ─── Skeleton row ─────────────────────────────────────────────────────────────
 
@@ -143,9 +154,11 @@ function SkeletonRow() {
         <div className="h-4 w-40 rounded bg-gray-200 dark:bg-gray-700 animate-pulse mb-1.5" />
         <div className="h-3 w-24 rounded bg-gray-100 dark:bg-gray-800 animate-pulse" />
       </td>
-      <td className="px-4 py-3"><div className="h-4 w-24 rounded bg-gray-200 dark:bg-gray-700 animate-pulse" /></td>
-      <td className="px-4 py-3"><div className="h-5 w-16 rounded bg-gray-200 dark:bg-gray-700 animate-pulse" /></td>
-      <td className="px-4 py-3"><div className="h-6 w-20 rounded-lg bg-gray-200 dark:bg-gray-700 animate-pulse" /></td>
+      <td className="px-4 py-3 hidden md:table-cell"><div className="h-4 w-24 rounded bg-gray-200 dark:bg-gray-700 animate-pulse" /></td>
+      <td className="px-4 py-3 hidden sm:table-cell">
+        <div className="h-5 w-20 rounded bg-gray-200 dark:bg-gray-700 animate-pulse mb-1" />
+        <div className="h-3 w-14 rounded bg-gray-100 dark:bg-gray-800 animate-pulse" />
+      </td>
     </tr>
   );
 }
@@ -158,19 +171,19 @@ export default function MyProductsPage() {
   const router = useRouter();
 
   // ── Data state ──────────────────────────────────────────────────────────────
-  const [products, setProducts] = useState<MasterProduct[]>([]);
+  const [products, setProducts]     = useState<MasterProduct[]>([]);
+  const [orgStores, setOrgStores]   = useState<ChannelStoreConnection[]>([]);
   const [totalElements, setTotalElements] = useState(0);
   const [totalPages, setTotalPages] = useState(0);
-  const [isLoading, setIsLoading] = useState(true);
-  const [loadError, setLoadError] = useState<string | null>(null);
+  const [isLoading, setIsLoading]   = useState(true);
+  const [loadError, setLoadError]   = useState<string | null>(null);
 
   // ── Filter state ────────────────────────────────────────────────────────────
-  const [page, setPage] = useState(0);
+  const [page, setPage]             = useState(0);
   const [searchQuery, setSearchQuery] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
-  const [channelFilter, setChannelFilter] = useState<string>("ALL");
-  const [statusFilter, setStatusFilter] = useState<ChannelSyncStatus | "ALL">("ALL");
-  const [connectedChannelTypes, setConnectedChannelTypes] = useState<string[]>([]);
+  const [channelFilter, setChannelFilter]   = useState<string>("ALL");
+  const [statusFilter, setStatusFilter]     = useState<ChannelSyncStatus | "ALL">("ALL");
 
   // ── Selection state ─────────────────────────────────────────────────────────
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -188,14 +201,11 @@ export default function MyProductsPage() {
     return () => clearTimeout(t);
   }, [searchQuery]);
 
-  // ── Load connected channel types for filter ─────────────────────────────────
+  // ── Load org stores once ─────────────────────────────────────────────────────
   useEffect(() => {
     if (!orgId) return;
-    ChannelStoreService.listAllStores(orgId)
-      .then(stores => {
-        const types = [...new Set(stores.map(s => s.channelType))];
-        setConnectedChannelTypes(types);
-      })
+    ChannelStoreService.listStores(orgId)
+      .then(stores => setOrgStores(stores.filter(s => s.isActive)))
       .catch(() => {/* non-fatal */});
   }, [orgId]);
 
@@ -210,8 +220,8 @@ export default function MyProductsPage() {
         page,
         size:  PAGE_SIZE,
         q:     debouncedSearch || undefined,
-        channelType:   channelFilter !== "ALL"  ? channelFilter  : undefined,
-        channelStatus: statusFilter  !== "ALL"  ? statusFilter   : undefined,
+        channelType:   channelFilter !== "ALL" ? channelFilter  : undefined,
+        channelStatus: statusFilter  !== "ALL" ? statusFilter   : undefined,
       });
       setProducts(res.content);
       setTotalElements(res.totalElements);
@@ -223,43 +233,24 @@ export default function MyProductsPage() {
     }
   }, [orgId, page, debouncedSearch, channelFilter, statusFilter]);
 
-  // Clear selection when page changes to avoid stale cross-page selection
   useEffect(() => { setSelectedIds(new Set()); }, [page]);
-
   useEffect(() => { load(); }, [load]);
 
   // ── Selection helpers ───────────────────────────────────────────────────────
   const allSelected = products.length > 0 && products.every(p => selectedIds.has(p.id));
-
   const toggleAll = () => {
     if (allSelected) {
-      setSelectedIds(prev => {
-        const next = new Set(prev);
-        products.forEach(p => next.delete(p.id));
-        return next;
-      });
+      setSelectedIds(prev => { const n = new Set(prev); products.forEach(p => n.delete(p.id)); return n; });
     } else {
-      setSelectedIds(prev => {
-        const next = new Set(prev);
-        products.forEach(p => next.add(p.id));
-        return next;
-      });
+      setSelectedIds(prev => { const n = new Set(prev); products.forEach(p => n.add(p.id)); return n; });
     }
   };
-
   const toggleOne = (id: string) => {
-    setSelectedIds(prev => {
-      const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
-      return next;
-    });
+    setSelectedIds(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
   };
-
   const selectedCount = selectedIds.size;
 
-  // ── Stats ───────────────────────────────────────────────────────────────────
-  // Use connected store count (loaded once) — not current-page products which only reflect 10 rows
-  const uniqueChannels = connectedChannelTypes.length;
+  const channelTypes = [...new Set(orgStores.map(s => s.channelType))];
 
   // ─── Render ───────────────────────────────────────────────────────────────
 
@@ -278,7 +269,7 @@ export default function MyProductsPage() {
               <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
                 {isLoading
                   ? "Loading…"
-                  : `${totalElements} product${totalElements !== 1 ? "s" : ""}${uniqueChannels > 0 ? ` · ${uniqueChannels} channel${uniqueChannels !== 1 ? "s" : ""}` : ""}`
+                  : `${totalElements} product${totalElements !== 1 ? "s" : ""}${orgStores.length > 0 ? ` · ${orgStores.length} store${orgStores.length !== 1 ? "s" : ""} connected` : ""}`
                 }
               </p>
             </div>
@@ -306,15 +297,15 @@ export default function MyProductsPage() {
           />
         </div>
 
-        {/* Channel filter */}
-        {connectedChannelTypes.length > 0 && (
+        {/* Channel filter — built from org stores */}
+        {channelTypes.length > 0 && (
           <select
             value={channelFilter}
             onChange={e => { setChannelFilter(e.target.value); setPage(0); }}
             className="text-sm border border-gray-200 dark:border-gray-700 rounded-lg px-2.5 py-2 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 focus:outline-none"
           >
-            <option value="ALL">All channels</option>
-            {connectedChannelTypes.map(ct => (
+            <option value="ALL">All stores</option>
+            {channelTypes.map(ct => (
               <option key={ct} value={ct}>
                 {CHANNEL_EMOJI[ct] ?? "🏪"} {ct.charAt(0).toUpperCase() + ct.slice(1)}
               </option>
@@ -322,14 +313,14 @@ export default function MyProductsPage() {
           </select>
         )}
 
-        {/* Status filter */}
+        {/* Publish status filter */}
         <div className="flex items-center rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
           {([
-            { value: "ALL",    label: "All" },
-            { value: "SYNCED", label: "Synced" },
-            { value: "WARNING",label: "Warning" },
-            { value: "FAILED", label: "Failed" },
-            { value: "DRAFT",  label: "Draft" },
+            { value: "ALL",     label: "All" },
+            { value: "SYNCED",  label: "Synced" },
+            { value: "WARNING", label: "Warning" },
+            { value: "FAILED",  label: "Failed" },
+            { value: "DRAFT",   label: "Draft" },
           ] as const).map(opt => (
             <button
               key={opt.value}
@@ -372,36 +363,23 @@ export default function MyProductsPage() {
             <thead>
               <tr className="bg-gray-50 dark:bg-gray-800/60 border-b border-gray-200 dark:border-gray-700">
                 <th className="px-4 py-3 w-10">
-                  <input
-                    type="checkbox"
-                    checked={allSelected}
-                    onChange={toggleAll}
-                    className="h-4 w-4 rounded border-gray-300 text-brand-500 focus:ring-brand-500/30"
-                  />
+                  <input type="checkbox" checked={allSelected} onChange={toggleAll}
+                    className="h-4 w-4 rounded border-gray-300 text-brand-500 focus:ring-brand-500/30" />
                 </th>
                 <th className="px-3 py-3 w-14" />
-                <th className="px-4 py-3 text-[11px] font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">
-                  Product
-                </th>
-                <th className="px-4 py-3 text-[11px] font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide hidden md:table-cell">
-                  Category
-                </th>
+                <th className="px-4 py-3 text-[11px] font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Product</th>
+                <th className="px-4 py-3 text-[11px] font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide hidden md:table-cell">Category</th>
                 <th className="px-4 py-3 text-[11px] font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide hidden sm:table-cell">
-                  Channels
-                </th>
-                <th className="px-4 py-3 text-[11px] font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">
-                  Status
+                  Publish status
                 </th>
               </tr>
             </thead>
             <tbody>
-              {/* Loading */}
               {isLoading && Array.from({ length: PAGE_SIZE }, (_, i) => <SkeletonRow key={i} />)}
 
-              {/* Empty state */}
               {!isLoading && !loadError && products.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="py-20 text-center">
+                  <td colSpan={5} className="py-20 text-center">
                     <div className="flex flex-col items-center gap-3">
                       <div className="w-14 h-14 rounded-2xl bg-gray-100 dark:bg-gray-800 flex items-center justify-center text-3xl">📦</div>
                       {debouncedSearch || channelFilter !== "ALL" || statusFilter !== "ALL" ? (
@@ -418,7 +396,7 @@ export default function MyProductsPage() {
                         <>
                           <p className="text-sm font-medium text-gray-600 dark:text-gray-400">No products yet</p>
                           <p className="text-xs text-gray-400 dark:text-gray-500 max-w-xs">
-                            Create your first master product, then configure channel-specific fields and publish to your stores.
+                            Create your first master product, then publish it to your connected stores.
                           </p>
                           <Link
                             href="/products/v2/create"
@@ -433,7 +411,6 @@ export default function MyProductsPage() {
                 </tr>
               )}
 
-              {/* Product rows */}
               {!isLoading && products.map(product => (
                 <tr
                   key={product.id}
@@ -442,34 +419,23 @@ export default function MyProductsPage() {
                 >
                   {/* Checkbox */}
                   <td className="px-4 py-3" onClick={e => e.stopPropagation()}>
-                    <input
-                      type="checkbox"
-                      checked={selectedIds.has(product.id)}
-                      onChange={() => toggleOne(product.id)}
-                      className="h-4 w-4 rounded border-gray-300 text-brand-500 focus:ring-brand-500/30"
-                    />
+                    <input type="checkbox" checked={selectedIds.has(product.id)} onChange={() => toggleOne(product.id)}
+                      className="h-4 w-4 rounded border-gray-300 text-brand-500 focus:ring-brand-500/30" />
                   </td>
 
                   {/* Thumbnail */}
                   <td className="px-3 py-3">
                     {product.imageUrl ? (
-                      <img
-                        src={product.imageUrl}
-                        alt={product.name}
-                        className="w-10 h-10 rounded-lg object-cover border border-gray-100 dark:border-gray-700"
-                      />
+                      <img src={product.imageUrl} alt={product.name}
+                        className="w-10 h-10 rounded-lg object-cover border border-gray-100 dark:border-gray-700" />
                     ) : (
-                      <div className="w-10 h-10 rounded-lg bg-gray-100 dark:bg-gray-800 flex items-center justify-center text-lg">
-                        📦
-                      </div>
+                      <div className="w-10 h-10 rounded-lg bg-gray-100 dark:bg-gray-800 flex items-center justify-center text-lg">📦</div>
                     )}
                   </td>
 
                   {/* Name / SKU */}
                   <td className="px-4 py-3 min-w-0">
-                    <p className="text-sm font-semibold text-gray-900 dark:text-white truncate max-w-[220px]">
-                      {product.name}
-                    </p>
+                    <p className="text-sm font-semibold text-gray-900 dark:text-white truncate max-w-[220px]">{product.name}</p>
                     <p className="text-[11px] text-gray-400 dark:text-gray-500 mt-0.5 font-mono">
                       {product.sku ? `SKU: ${product.sku}` : "No SKU"}
                       {product.variantCount > 1 && (
@@ -487,14 +453,9 @@ export default function MyProductsPage() {
                     </span>
                   </td>
 
-                  {/* Channel icons */}
+                  {/* Publish status — per-store badges */}
                   <td className="px-4 py-3 hidden sm:table-cell">
-                    <ChannelIcons summaries={product.channelSummary} />
-                  </td>
-
-                  {/* Status */}
-                  <td className="px-4 py-3">
-                    <StatusBadge summaries={product.channelSummary} />
+                    <StoreStatusCell channelSummary={product.channelSummary} orgStores={orgStores} />
                   </td>
                 </tr>
               ))}
@@ -505,15 +466,12 @@ export default function MyProductsPage() {
         {/* Bottom bar: bulk actions + pagination */}
         {!isLoading && (products.length > 0 || selectedCount > 0) && (
           <div className="mt-4 flex items-center justify-between gap-4 flex-wrap">
-            {/* Bulk actions */}
             <div className="flex items-center gap-2">
               {selectedCount > 0 ? (
                 <>
-                  <span className="text-xs font-medium text-gray-600 dark:text-gray-400">
-                    {selectedCount} selected
-                  </span>
+                  <span className="text-xs font-medium text-gray-600 dark:text-gray-400">{selectedCount} selected</span>
                   <button
-                    onClick={() => showToast("Bulk sync coming in Phase 5", "ok")}
+                    onClick={() => showToast("Bulk sync coming soon", "ok")}
                     className="text-xs px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
                   >
                     Sync selected
@@ -532,7 +490,6 @@ export default function MyProductsPage() {
               )}
             </div>
 
-            {/* Pagination */}
             {totalPages > 1 && (
               <div className="flex items-center gap-1">
                 <button
@@ -553,10 +510,10 @@ export default function MyProductsPage() {
                     <button
                       key={pageNum}
                       onClick={() => setPage(pageNum)}
-                      className={`px-2.5 py-1 text-xs rounded-lg border transition-colors ${
+                      className={`min-w-[32px] h-8 rounded-lg text-xs font-medium transition-colors ${
                         pageNum === page
-                          ? "bg-brand-500 border-brand-500 text-white"
-                          : "border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700"
+                          ? "bg-brand-500 text-white"
+                          : "border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700"
                       }`}
                     >
                       {pageNum + 1}
@@ -571,10 +528,6 @@ export default function MyProductsPage() {
                 >
                   <ChevronRightIcon />
                 </button>
-
-                <span className="ml-1 text-xs text-gray-400 tabular-nums">
-                  {page + 1} / {totalPages}
-                </span>
               </div>
             )}
           </div>
@@ -583,12 +536,9 @@ export default function MyProductsPage() {
 
       {/* Toast */}
       {toast && (
-        <div className={`fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2.5 px-4 py-3 rounded-xl shadow-lg border text-sm font-medium ${
-          toast.type === "ok"
-            ? "bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-800 dark:text-gray-200"
-            : "bg-red-50 dark:bg-red-500/10 border-red-200 dark:border-red-500/30 text-red-700 dark:text-red-400"
+        <div className={`fixed bottom-6 right-6 z-50 px-4 py-3 rounded-xl shadow-lg text-sm font-medium ${
+          toast.type === "ok" ? "bg-green-500 text-white" : "bg-red-500 text-white"
         }`}>
-          {toast.type === "ok" ? "✓" : <AlertIcon />}
           {toast.msg}
         </div>
       )}

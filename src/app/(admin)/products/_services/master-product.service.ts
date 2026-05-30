@@ -13,16 +13,17 @@ const JSON_HEADERS = { "Content-Type": "application/json" };
 
 function mapProduct(r: Record<string, unknown>): MasterProduct {
   const channelSummary = Array.isArray(r.channelSummary) ? r.channelSummary : [];
+  const attrs = (r.productAttributes ?? {}) as Record<string, unknown>;
   return {
-    id:             String(r.id ?? r._id ?? ""),
+    id:             String(r.productId ?? r.id ?? r._id ?? ""),
     organizationId: String(r.organizationId ?? ""),
-    name:           String(r.name ?? ""),
-    sku:            r.sku != null ? String(r.sku) : null,
+    name:           String(r.name ?? attrs.name ?? ""),
+    sku:            (r.sku ?? attrs.sku) != null ? String(r.sku ?? attrs.sku) : null,
     categoryId:     r.categoryId != null ? String(r.categoryId) : null,
-    categoryName:   r.categoryName != null ? String(r.categoryName) : null,
-    basePrice:      r.basePrice != null ? Number(r.basePrice) : null,
-    currency:       r.currency != null ? String(r.currency) : null,
-    imageUrl:       r.imageUrl != null ? String(r.imageUrl) : null,
+    categoryName:   (r.categoryName ?? attrs.category) != null ? String(r.categoryName ?? attrs.category) : null,
+    basePrice:      (r.basePrice ?? attrs.price ?? attrs.basePrice) != null ? Number(r.basePrice ?? attrs.price ?? attrs.basePrice) : null,
+    currency:       (r.currency ?? attrs.currency) != null ? String(r.currency ?? attrs.currency) : null,
+    imageUrl:       (r.imageUrl ?? attrs.mainImage ?? attrs.imageUrl) != null ? String(r.imageUrl ?? attrs.mainImage ?? attrs.imageUrl) : null,
     variantCount:   Number(r.variantCount ?? 0),
     channelSummary: (channelSummary as Record<string, unknown>[]).map(s => ({
       storeId:       String(s.storeId ?? ""),
@@ -117,18 +118,23 @@ export const MasterProductService = {
     return {
       id:            String(raw.productId ?? raw.id ?? raw._id ?? ""),
       organizationId: String(raw.organizationId ?? ""),
-      name:          String(raw.name ?? ""),
-      sku:           raw.sku   != null ? String(raw.sku)   : null,
+      name:          String(raw.name ?? attrs.name ?? ""),
+      sku:           (raw.sku ?? attrs.sku) != null ? String(raw.sku ?? attrs.sku) : null,
       categoryId:    raw.categoryId   != null ? String(raw.categoryId)   : null,
       categoryName:  raw.categoryName != null ? String(raw.categoryName) : null,
-      basePrice:     raw.basePrice    != null ? Number(raw.basePrice)    : null,
-      currency:      raw.currency     != null ? String(raw.currency)     : null,
-      imageUrl:      raw.imageUrl     != null ? String(raw.imageUrl)     : null,
+      basePrice:     (raw.basePrice ?? attrs.price ?? attrs.basePrice) != null ? Number(raw.basePrice ?? attrs.price ?? attrs.basePrice) : null,
+      currency:      (raw.currency ?? attrs.currency) != null ? String(raw.currency ?? attrs.currency) : null,
+      imageUrl:      (raw.imageUrl ?? attrs.mainImage ?? attrs.imageUrl) != null ? String(raw.imageUrl ?? attrs.mainImage ?? attrs.imageUrl) : null,
       description:   attrs.description != null ? String(attrs.description) : null,
+      categorySlug:  attrs.category    != null ? String(attrs.category)    : null,
       tags:          tags.length > 0 ? tags : null,
       images:        images.length > 0 ? images : null,
       variantCount:  Number(raw.variantCount ?? 0),
-      variants:      Array.isArray(raw.variants) ? raw.variants as Record<string, unknown>[] : [],
+      variants:      Array.isArray(raw.variants) && raw.variants.length > 0
+                       ? raw.variants as Record<string, unknown>[]
+                       : Array.isArray(attrs.variants)
+                         ? attrs.variants as Record<string, unknown>[]
+                         : [],
       status:        (raw.status as MasterProductDetail["status"]) ?? "ACTIVE",
       createdAt:     String(raw.createdAt ?? ""),
       updatedAt:     String(raw.updatedAt ?? ""),

@@ -34,15 +34,6 @@ export default function VariantsSection({
   productTypeName,
   isLoadingVariantOptions,
 }: VariantsSectionProps) {
-  if (!schema?.fields) return null;
-
-  const variantField = schema.fields.find((f: any) => {
-    const ft = (f.fieldType || '').toLowerCase();
-    return ft === 'variant_configurator' || ft === 'variant-configurator';
-  });
-
-  if (!variantField) return null;
-
   const hasVariantsEnabled = !!formData['hasVariants'];
 
   const handleHasVariantsChange = (enabled: boolean) => {

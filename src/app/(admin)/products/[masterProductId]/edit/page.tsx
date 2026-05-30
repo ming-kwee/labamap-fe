@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { use, useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/shared/contexts/AuthContext";
@@ -9,11 +9,11 @@ import ProductCreatePage from "@/modules/ecommerce-product-v2/step1-create/compo
 import type { MasterProduct } from "@/modules/ecommerce-product-v2/types/product";
 
 interface Props {
-  params: { masterProductId: string };
+  params: Promise<{ masterProductId: string }>;
 }
 
 export default function EditProductPage({ params }: Props) {
-  const { masterProductId } = params;
+  const { masterProductId } = use(params);
   const router = useRouter();
   const { organization } = useAuth();
   const orgId = organization?.organizationId ?? "";
@@ -33,22 +33,37 @@ export default function EditProductPage({ params }: Props) {
       // Build the initialData for the form from the product's stored attributes.
       // productAttributes is the flat map that was submitted at create time.
       // We also carry over variants so the VariantConfigurator can restore them.
+      // Gallery images = all saved images minus the main/featured one
+      const galleryImages = (detail.images ?? []).filter(
+        (u: string) => u !== detail.imageUrl
+      );
+
       const attrs: Record<string, unknown> = {
-        // Promoted scalar fields as fallbacks
-        name:        detail.name,
-        sku:         detail.sku   ?? undefined,
-        basePrice:   detail.basePrice ?? undefined,
-        price:       detail.basePrice ?? undefined,
-        currency:    detail.currency ?? undefined,
-        description: detail.description ?? undefined,
-        category:    detail.categoryName ?? detail.categoryId ?? undefined,
-        imageUrl:    detail.imageUrl ?? undefined,
+        name:          detail.name,
+        sku:           detail.sku        ?? undefined,
+        basePrice:     detail.basePrice  ?? undefined,
+        price:         detail.basePrice  ?? undefined,
+        currency:      detail.currency   ?? undefined,
+        description:   detail.description ?? undefined,
+        category:      detail.categorySlug ?? detail.categoryName ?? detail.categoryId ?? undefined,
+        // Map to both the schema field name AND the legacy key so either is pre-filled
+        mainImage:     detail.imageUrl   ?? undefined,
+        imageUrl:      detail.imageUrl   ?? undefined,
+        galleryImages: galleryImages.length > 0 ? galleryImages : undefined,
       };
 
-      // variantConfigurator: wrap variants in the shape the form expects
-      if (detail.variants && detail.variants.length > 0) {
-        attrs.variantConfigurator = { variants: detail.variants };
+      // variantConfigurator: wrap variants in the shape the form expects.
+      // Use variantCount > 1 as a fallback signal when the GET endpoint omits the
+      // variants array (a count of 1 is the default "no user variants" state).
+      const hasVariants =
+        (detail.variants && detail.variants.length > 0) || detail.variantCount > 1;
+      if (hasVariants) {
         attrs.hasVariants = true;
+        // VariantConfigurator expects a JSON string — JSON.parse(value) is called internally.
+        // Passing a plain object causes JSON.parse to silently fail, leaving the table empty.
+        if (detail.variants && detail.variants.length > 0) {
+          attrs.variantConfigurator = JSON.stringify({ variants: detail.variants });
+        }
       }
 
       setInitialData(attrs);

@@ -203,16 +203,15 @@ const VariantConfigurator: React.FC<VariantConfiguratorProps> = ({
   }, [formData?.category, activeDimensions, lastCategory]);
 
   React.useEffect(() => {
-    if (value) {
-      try {
-        const parsed = JSON.parse(value);
-        if (parsed.variants && Array.isArray(parsed.variants) && parsed.variants.length > 0) {
-          setVariants(parsed.variants);
-          if (parsed.options) setSelectedOptions(parsed.options);
-        }
-      } catch {
-        // ignore
+    if (!value) return;
+    try {
+      const parsed = typeof value === 'string' ? JSON.parse(value) : value;
+      if (parsed?.variants && Array.isArray(parsed.variants) && parsed.variants.length > 0) {
+        setVariants(parsed.variants);
+        if (parsed.options) setSelectedOptions(parsed.options);
       }
+    } catch {
+      // ignore malformed JSON
     }
   }, [value]);
 

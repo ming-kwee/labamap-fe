@@ -1,7 +1,12 @@
-import { ChannelProductsGrid } from "@/modules/channel-platform/components/ChannelProductsGrid";
+import { Suspense } from "react";
+import ChannelSyncDashboard from "./_components/ChannelSyncDashboard";
 
-export const metadata = { title: "Channel Platform | Products" };
+export const metadata = { title: "Channel Sync" };
 
 export default function ChannelProductsPage() {
-  return <ChannelProductsGrid />;
+  return (
+    <Suspense>
+      <ChannelSyncDashboard />
+    </Suspense>
+  );
 }
