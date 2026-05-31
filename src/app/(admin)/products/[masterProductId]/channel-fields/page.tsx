@@ -3,9 +3,10 @@ import ChannelFieldsWizard from "@/modules/ecommerce-product-v2/step2-channel-fi
 export const metadata = { title: "Step 2: Channel Fields | Product Wizard" };
 
 interface Props {
-  params: { masterProductId: string };
+  params: Promise<{ masterProductId: string }>;
 }
 
-export default function ChannelFieldsPage({ params }: Props) {
-  return <ChannelFieldsWizard masterProductId={params.masterProductId} />;
+export default async function ChannelFieldsPage({ params }: Props) {
+  const { masterProductId } = await params;
+  return <ChannelFieldsWizard masterProductId={masterProductId} />;
 }

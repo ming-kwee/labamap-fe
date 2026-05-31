@@ -15,9 +15,9 @@ export default function CreateProductV2Page() {
 
   return (
     <div className="max-w-5xl mx-auto p-6">
-      <div className="mb-6">
+      <div className="mb-3">
         <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Create Master Product</h1>
-        <p className="text-gray-500 dark:text-gray-400 mt-1">
+        <p className="text-gray-500 dark:text-gray-400 mt-0.5 text-sm">
           Step 1 of 3 — Fill in the product details to generate your master product.
         </p>
       </div>

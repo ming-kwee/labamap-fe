@@ -91,8 +91,10 @@ export interface MasterProductDetail {
   currency?: string | null;
   imageUrl?: string | null;
   description?: string | null;
-  /** Original category slug stored in productAttributes — use this for schema generation */
+  /** Original category slug stored in productAttributes */
   categorySlug?: string | null;
+  /** Resolved MongoDB ObjectId of the product category — populated by backend since 2026-05-30 */
+  categoryObjectId?: string | null;
   tags?: string[] | null;
   images?: string[] | null;
   variantCount: number;

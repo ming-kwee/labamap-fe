@@ -1,13 +1,15 @@
 import ProductDetailPage from "../_components/ProductDetailPage";
 
 interface Props {
-  params: { masterProductId: string };
+  params: Promise<{ masterProductId: string }>;
 }
 
 export async function generateMetadata({ params }: Props) {
-  return { title: `Product — ${params.masterProductId}` };
+  const { masterProductId } = await params;
+  return { title: `Product — ${masterProductId}` };
 }
 
-export default function Page({ params }: Props) {
-  return <ProductDetailPage masterProductId={params.masterProductId} />;
+export default async function Page({ params }: Props) {
+  const { masterProductId } = await params;
+  return <ProductDetailPage masterProductId={masterProductId} />;
 }

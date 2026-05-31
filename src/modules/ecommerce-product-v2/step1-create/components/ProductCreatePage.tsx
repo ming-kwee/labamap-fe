@@ -38,7 +38,6 @@ export default function ProductCreatePage({
   const { user, organization, isAuthenticated, isLoading: authLoading } = useAuth();
   const {
     organizationConfig,
-    businessRulesConfig,
     getAssignedChannels,
     getAssignedCategories,
     isLoading: orgLoading,
@@ -96,64 +95,18 @@ export default function ProductCreatePage({
   // ── Render ──────────────────────────────────────────────────────────────────
 
   return (
-    <div className="space-y-4">
-      {/* Organization Info Bar */}
-      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-        <div className="flex items-center justify-between">
-          <div>
-            <h4 className="font-semibold text-blue-900">{organization.organizationName}</h4>
-            <p className="text-sm text-blue-700">
-              {organization.businessDomain} • {organization.subscriptionTier}
-            </p>
-          </div>
-          <div className="text-right">
-            <div className="text-sm text-blue-700">
-              <strong>User:</strong> {user.firstName} {user.lastName}
-            </div>
-            <div className="text-sm text-blue-600">{user.role}</div>
-          </div>
-        </div>
-
-        {businessRulesConfig && (
-          <div className="mt-3 pt-3 border-t border-blue-200">
-            <div className="flex items-center space-x-4 text-sm">
-              <div className="flex items-center space-x-1">
-                <span
-                  className={`w-2 h-2 rounded-full ${
-                    businessRulesConfig.businessRulesConfig.globalSettings.businessRulesEnabled
-                      ? 'bg-green-500'
-                      : 'bg-red-500'
-                  }`}
-                />
-                <span className="text-blue-700">
-                  Business Rules:{' '}
-                  {businessRulesConfig.businessRulesConfig.globalSettings.businessRulesEnabled
-                    ? 'Enabled'
-                    : 'Disabled'}
-                </span>
-              </div>
-              <div className="text-blue-600">
-                Version: {businessRulesConfig.businessRulesConfig.version}
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* Form */}
-      <ProductCreateForm
-        userId={user.userId}
-        organizationId={organization.organizationId}
-        userRole={mapUserRole(user.role)}
-        targetChannels={getAssignedChannels()}
-        assignedCategories={getAssignedCategories()}
-        organizationDefaultCategory={organizationDefaultCategory}
-        onProductCreated={onProductCreated}
-        mode={mode}
-        initialProductId={masterProductId}
-        initialData={initialData}
-        onProductSaved={onProductSaved}
-      />
-    </div>
+    <ProductCreateForm
+      userId={user.userId}
+      organizationId={organization.organizationId}
+      userRole={mapUserRole(user.role)}
+      targetChannels={getAssignedChannels()}
+      assignedCategories={getAssignedCategories()}
+      organizationDefaultCategory={organizationDefaultCategory}
+      onProductCreated={onProductCreated}
+      mode={mode}
+      initialProductId={masterProductId}
+      initialData={initialData}
+      onProductSaved={onProductSaved}
+    />
   );
 }

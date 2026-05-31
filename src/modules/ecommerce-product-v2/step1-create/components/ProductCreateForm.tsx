@@ -451,32 +451,20 @@ export default function ProductCreateForm({
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
-      {/* Header */}
-      <div className="flex justify-between items-center">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
-            {mode === 'edit' ? 'Edit Product' : 'Create Product'}
-          </h1>
-          <p className="text-gray-600 dark:text-gray-400 mt-1">
-            {formStage === 'essential'
-              ? 'Fill in the basics, then select a category to unlock product-type fields'
-              : productTypeName
-                ? `Fields shown for: ${productTypeName}`
-                : selectedCategory && !productTypeId
-                  ? 'Category-specific fields loaded — no product type assigned yet'
-                  : mode === 'edit' ? 'Edit product information' : 'Complete product information'}
-          </p>
-        </div>
-        <Button
+      {/* Dev-only JSON preview — fixed floating badge, no layout footprint */}
+      {process.env.NODE_ENV === 'development' && (
+        <button
           type="button"
-          variant="outline"
           onClick={() => setShowJsonPreview(!showJsonPreview)}
+          className="fixed bottom-6 right-6 z-50 flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium bg-gray-800 dark:bg-gray-700 text-gray-200 shadow-lg hover:bg-gray-700 dark:hover:bg-gray-600 transition-colors border border-gray-700 dark:border-gray-600"
+          title="Dev tool: toggle JSON preview"
         >
-          {showJsonPreview ? 'Hide' : 'Show'} JSON Preview
-        </Button>
-      </div>
+          <span className="h-1.5 w-1.5 rounded-full bg-amber-400" />
+          {showJsonPreview ? 'Hide JSON' : 'JSON Preview'}
+        </button>
+      )}
 
-      {/* Fix 5: Progressive disclosure controls */}
+      {/* Progressive disclosure controls */}
       <div className="flex items-center gap-3 text-sm text-gray-500 dark:text-gray-400">
         <span>
           {viewLevel === 'essential' && 'Showing essential fields only'}

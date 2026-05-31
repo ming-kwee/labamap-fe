@@ -52,8 +52,7 @@ const merchantNavItems: NavItem[] = [
       { name: "Channel Stores", path: "/channels/stores", pro: false, new: true },
       { name: "My Categories", path: "/channels/categories", pro: false, new: true },
       { name: "Channel Category Mapping", path: "/omni-admin/channel-category-mapping", pro: false, new: true },
-      { name: "Channel Products", path: "/channels/products", pro: false },
-      { name: "Sync Queue", path: "/channels/sync-queue", pro: false },
+
       { name: "Inventory Sync", path: "/channels/inventory", pro: false },
     ],
   },
