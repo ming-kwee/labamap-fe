@@ -1,6 +1,7 @@
 "use client";
 import React, { useEffect, useState, useCallback, useRef } from "react";
-import { useRouter } from "next/navigation";
+import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
 import type {
   ChannelStepSchemaResponse,
   ChannelSchemaPerStore,
@@ -223,6 +224,8 @@ interface Props {
 
 export default function ChannelFieldsWizard({ masterProductId }: Props) {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const targetStoreId = searchParams.get("storeId") ?? null;
   const { organization } = useAuth();
   const orgId = organization?.organizationId ?? "";
 
@@ -237,7 +240,7 @@ export default function ChannelFieldsWizard({ masterProductId }: Props) {
   const [masterProductSnapshot, setMasterProductSnapshot] =
     useState<MasterProductSnapshot | null>(null);
 
-  // Active tab
+  // Active tab — starts at the store specified by ?storeId= query param, or 0
   const [activeStoreIndex, setActiveStoreIndex] = useState(0);
 
   // Per-store form values map: storeId → values
@@ -381,20 +384,26 @@ export default function ChannelFieldsWizard({ masterProductId }: Props) {
                 if (!categoryField) return;
 
                 const fn = categoryField.fieldName;
-                if (initValues[ch.storeId]?.channelData[fn]) return;
+                // Skip overwriting form values when the saved value already matches the mapping.
+                // If it differs, override — it's a stale value from a previous buggy pre-fill.
+                const existingValue = initValues[ch.storeId]?.channelData[fn];
+                const valueAlreadyMatches = existingValue && String(existingValue) === mapped.externalId;
 
-                initValues[ch.storeId] = {
-                  ...initValues[ch.storeId],
-                  channelData: {
-                    ...initValues[ch.storeId]?.channelData,
-                    [fn]: mapped.externalId,
-                    categoryId: mapped.externalId,
-                  },
-                };
+                if (!valueAlreadyMatches) {
+                  initValues[ch.storeId] = {
+                    ...initValues[ch.storeId],
+                    channelData: {
+                      ...initValues[ch.storeId]?.channelData,
+                      [fn]: mapped.externalId,
+                      categoryId: mapped.externalId,
+                    },
+                  };
+                }
 
-                // Resolve the full breadcrumb path (e.g. Apparel › Clothing › Shirts)
-                // rather than showing only the leaf name. Falls back to leaf-only on error.
-                if (categoryField.categoryTreeConfig) {
+                // Always resolve the breadcrumb path when the backend hasn't pre-populated it.
+                // In edit mode the in-memory picker state is gone, so without selectedPath
+                // CategoryTreePicker falls back to showing the raw ID (e.g. gid://shopify/…).
+                if (categoryField.categoryTreeConfig && !categoryField.categoryTreeConfig.selectedPath?.length) {
                   categoryField.categoryTreeConfig.selectedPath =
                     await resolveTaxonomyPath(
                       ch.channelType, ch.storeId,
@@ -413,6 +422,12 @@ export default function ChannelFieldsWizard({ masterProductId }: Props) {
       setSchemaResponse(resp);
       setStoreValues(initValues);
       setStoreCompletion(initCompletion);
+
+      // Jump to the store specified by ?storeId= (e.g. clicked "Set up & publish" on a specific store)
+      if (targetStoreId) {
+        const idx = resp.channels.findIndex(ch => ch.storeId === targetStoreId);
+        if (idx > 0) setActiveStoreIndex(idx);
+      }
     } catch (err) {
       setLoadError(err instanceof Error ? err.message : "Failed to load channel schema");
     } finally {
@@ -495,7 +510,7 @@ export default function ChannelFieldsWizard({ masterProductId }: Props) {
 
   async function handlePreviousStep() {
     await flushDirtyStores();
-    router.push(`/products/v2/create`);
+    router.push(`/products/${masterProductId}/edit`);
   }
 
   async function handleNext() {
@@ -575,7 +590,11 @@ export default function ChannelFieldsWizard({ masterProductId }: Props) {
 
     setActiveTabFieldErrors(new Set());
     setContinueWarning(null);
-    router.push(`/products/${masterProductId}/publish`);
+    const activeStoreId = schemaResponse?.channels[activeStoreIndex]?.storeId;
+    const publishUrl = activeStoreId
+      ? `/products/${masterProductId}/publish?storeId=${encodeURIComponent(activeStoreId)}`
+      : `/products/${masterProductId}/publish`;
+    router.push(publishUrl);
   }
 
   async function flushDirtyStores() {
@@ -647,11 +666,11 @@ export default function ChannelFieldsWizard({ masterProductId }: Props) {
       {/* Header */}
       <div>
         <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400 mb-1">
-          <a href="/products/v2/create" className="hover:text-brand-500 transition-colors">Step 1: Master Product</a>
+          <Link href={`/products/${masterProductId}/edit`} className="hover:text-brand-500 transition-colors">Step 1: Master Product</Link>
           <span>›</span>
           <span className="font-medium text-gray-900 dark:text-white">Step 2: Channel Fields</span>
           <span>›</span>
-          <span>Step 3: Preview & Publish</span>
+          <Link href={`/products/${masterProductId}/publish`} className="hover:text-brand-500 transition-colors">Step 3: Preview &amp; Publish</Link>
         </div>
         <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Channel-Specific Fields</h1>
         <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">

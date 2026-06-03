@@ -492,3 +492,107 @@ sehingga cache selalu tersisa 26 node.
 
 User pertama melihat root nodes dalam ~1,5 detik. BFS selesai diam-diam di background.
 Semua user berikutnya mendapat response < 100ms dari warm cache.
+
+---
+
+## Phase 3b — Category Tree Search ⚠️ Backend implementation required
+
+### Masalah
+
+`CategoryTreePicker` hanya bisa browse level per level. Untuk Shopify (~6.000 node, 4 level) atau Amazon (~100.000+ node), merchant tidak bisa memverifikasi apakah kategori mereka ada di tree tanpa navigasi 3–4 level. Butuh search.
+
+### Solusi
+
+Tambah field opsional `searchEndpoint` ke `CategoryTreeConfigDto`. Ketika field ini ada:
+- Frontend switch ke **server-side search mode** (debounced 300ms)
+- Merchant ketik → satu API call → hasil flat list dengan full path ("Apparel › Clothing › Tops › Shirts")
+- Merchant bisa konfirmasi atau pilih dalam satu langkah
+
+Ketika `searchEndpoint` tidak ada (Wix, taxonomy kecil):
+- Frontend fallback ke **client-side filter** node yang sedang tampil di level aktif
+- Tidak butuh perubahan backend
+
+**Frontend sudah selesai.** Yang perlu diimplementasikan backend:
+
+### Perubahan `CategoryTreeConfigDto`
+
+```java
+public record CategoryTreeConfigDto(
+    String rootEndpoint,
+    String childEndpoint,
+    int maxDepth,
+    boolean requireLeafNode,
+    List<CategoryNodeDto> selectedPath,
+
+    // NEW — Phase 3b
+    // Null untuk channel dengan taxonomy kecil (Wix).
+    // Diisi untuk Shopify, Amazon, TikTok, Lazada, Shopee, eBay.
+    // Pre-built path: "/merchant-data/{ch}/{store}/categories/search?organizationId=..."
+    // Frontend append: &q={urlEncodedQuery}
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    String searchEndpoint
+) {}
+```
+
+### Endpoint baru
+
+```
+GET /api/v1/merchant-data/{channelType}/{storeId}/categories/search
+    ?q={query}&organizationId={organizationId}[&maxResults=20][&leafOnly=false]
+```
+
+**Response: `CategorySearchResultDto[]`**
+
+```json
+[
+  {
+    "id":          "gid://shopify/TaxonomyCategory/aa-1-13-7",
+    "name":        "Shirts",
+    "fullName":    "Apparel & Accessories > Clothing > Clothing Tops > Shirts",
+    "hasChildren": false,
+    "level":       3,
+    "ancestorIds": [
+      "gid://shopify/TaxonomyCategory/aa",
+      "gid://shopify/TaxonomyCategory/aa-1",
+      "gid://shopify/TaxonomyCategory/aa-1-13"
+    ]
+  }
+]
+```
+
+**Invariant wajib:** `fullName.split(" > ").length === ancestorIds.length + 1`
+
+### Implementasi
+
+Search dilakukan pada `channel_category_cache` yang sudah ada (Phase 3). Tambah dua field baru ke dokumen cache, diisi oleh `CategorySyncJob`:
+
+| Field baru | Isi |
+|---|---|
+| `fullName` | `"Apparel & Accessories > Clothing > Clothing Tops > Shirts"` |
+| `ancestorIds` | List ID ancestor dari root ke parent langsung |
+
+Query: regex case-insensitive pada field `name`. Untuk collection besar bisa upgrade ke MongoDB `$text` index.
+
+**Ordering response:** leaf dulu, lalu intermediate node; dalam tiap tier urutkan berdasarkan panjang nama ascending.
+
+### Channel yang harus include `searchEndpoint`
+
+| Channel | Include? | Alasan |
+|---|---|---|
+| Shopify | ✅ Ya | ~12.000+ node, 4 level |
+| Amazon | ✅ Ya | ~100.000+ node, 6 level |
+| TikTok Shop | ✅ Ya | ~3.000 node |
+| Lazada | ✅ Ya | ~5.000 node |
+| Shopee | ✅ Ya | ~3.000 node |
+| eBay | ✅ Ya | ~3.000 node |
+| Wix | ❌ Tidak | Merchant-created, 20–200 node, frontend filter cukup |
+
+### Checklist testing
+
+- [ ] `?q=shirts` mengembalikan node "Shirts" dengan `fullName` dan `ancestorIds` yang benar
+- [ ] `fullName.split(" > ").length === ancestorIds.length + 1` untuk semua hasil
+- [ ] `?q=sh` (< 2 karakter) mengembalikan `200 []`
+- [ ] `?leafOnly=true` hanya mengembalikan node dengan `hasChildren: false`
+- [ ] Schema Shopify menyertakan `searchEndpoint` di `categoryTreeConfig`
+- [ ] Schema Wix tidak menyertakan `searchEndpoint`
+- [ ] CategoryTreePicker di frontend menampilkan search results dengan full path breadcrumb

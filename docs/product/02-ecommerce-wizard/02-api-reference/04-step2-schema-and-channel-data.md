@@ -122,6 +122,13 @@ interface ChannelFormField {
     maxDepth:        number;
     requireLeafNode: boolean;
     selectedPath?:   CategoryTreeNode[];
+
+    // Phase 3b (new — backend implementation required):
+    // Full-text search endpoint for large taxonomies (Shopify, Amazon, TikTok, etc.)
+    // GET {searchEndpoint}&q={query}
+    // Returns CategorySearchResult[] — see search endpoint below.
+    // Omit for channels with small taxonomies (Wix); frontend falls back to level-filter.
+    searchEndpoint?: string;
   };
 }
 
@@ -424,6 +431,84 @@ Returns direct children of the given parent node.
 **Query params:** `organizationId` (required)
 
 Backend caches responses in `channel_category_cache` (TTL 24h, indexed by `(channelType, storeId, parentId)`), warmed nightly by `CategorySyncJob`.
+
+---
+
+## Phase 3b — Category Tree Search ⚠️ Backend implementation required
+
+Extends Phase 3. Enables full-text search inside the `CategoryTreePicker` for large taxonomies (Shopify ~6 000 nodes, Amazon ~100 000+) where level-by-level browsing is impractical.
+
+**How it works:**
+- Backend adds `searchEndpoint` to `categoryTreeConfig` in the schema response for channels with large taxonomies
+- Frontend detects `searchEndpoint` present → switches picker to server-search mode (debounced 300ms)
+- When absent → falls back to filtering the currently-loaded level client-side (no backend change needed)
+- Frontend is already complete — only the backend endpoint below needs to be built
+
+### GET `/merchant-data/{channelType}/{storeId}/categories/search`
+
+**Query params:**
+
+| Param | Required | Default | Description |
+|---|---|---|---|
+| `q` | yes | — | Search term, min 2 chars. Case-insensitive contains. |
+| `organizationId` | yes | — | Owning organization |
+| `maxResults` | no | 20 | Max 50 |
+| `leafOnly` | no | false | If true, exclude intermediate (non-leaf) nodes |
+
+**Response:** `CategorySearchResult[]`
+
+```json
+[
+  {
+    "id":          "gid://shopify/TaxonomyCategory/aa-1-13-7",
+    "name":        "Shirts",
+    "fullName":    "Apparel & Accessories > Clothing > Clothing Tops > Shirts",
+    "hasChildren": false,
+    "level":       3,
+    "ancestorIds": [
+      "gid://shopify/TaxonomyCategory/aa",
+      "gid://shopify/TaxonomyCategory/aa-1",
+      "gid://shopify/TaxonomyCategory/aa-1-13"
+    ]
+  }
+]
+```
+
+**Frontend contract — must be upheld:**
+- `fullName.split(" > ").length === ancestorIds.length + 1` — used to build the breadcrumb path
+- Separator is exactly `" > "` (space–gt–space)
+- `ancestorIds` ordered root-first (index 0 = root, last = immediate parent)
+- Return `200 []` (not an error) for `q` shorter than 2 chars or when nothing matches
+- Never return 4xx/5xx — the picker degrades gracefully on empty results
+
+**Ordering:** leaf nodes first, then intermediate nodes; within each tier sort by name length ascending (shorter = more specific match).
+
+**Implementation:** Regex search on the existing `channel_category_cache` collection.
+Two new fields must be added to `ChannelCategoryCacheDocument` and populated by `CategorySyncJob`:
+
+| New field | Type | Content |
+|---|---|---|
+| `fullName` | `String` | `"Apparel & Accessories > Clothing > Clothing Tops > Shirts"` |
+| `ancestorIds` | `List<String>` | Ordered list of ancestor node IDs, root-first |
+
+**Channels that must include `searchEndpoint` in their `categoryTreeConfig`:**
+Shopify, Amazon, TikTok Shop, Lazada, Shopee, eBay
+
+**Channels that must omit `searchEndpoint`:**
+Wix (small merchant-created taxonomy — frontend uses client-side level filter)
+
+**Example `categoryTreeConfig` for Shopify with search enabled:**
+
+```json
+"categoryTreeConfig": {
+  "rootEndpoint":   "/merchant-data/shopify/store-abc/categories?organizationId=org_123",
+  "childEndpoint":  "/merchant-data/shopify/store-abc/categories?parentId={parentId}&organizationId=org_123",
+  "searchEndpoint": "/merchant-data/shopify/store-abc/categories/search?organizationId=org_123",
+  "maxDepth": 4,
+  "requireLeafNode": true,
+  "selectedPath": [ ... ]
+}
+```
 
 ---
 

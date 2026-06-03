@@ -243,6 +243,13 @@ export interface CategoryTreeConfig {
    * The last entry is the committed leaf node.
    */
   selectedPath?: CategoryTreeNode[];
+  /**
+   * Optional: full-text search endpoint for large taxonomies (e.g. Shopify).
+   * GET {searchEndpoint}?q={query}
+   * Returns TaxonomyCategory[] with fullName and ancestorIds.
+   * When absent the picker falls back to filtering the currently-loaded level.
+   */
+  searchEndpoint?: string;
 }
 
 export interface ChannelFormField {
@@ -453,6 +460,7 @@ export interface PublishSingleRequest {
   masterProductId: string;
   storeId: string;
   organizationId: string;
+  userId?: string;
   /** Full flattened master product fields — required by backend to merge Step 2 channel data into */
   masterProductData?: Record<string, unknown>;
   /** Channel type, e.g. "shopify" — used by backend for routing and JOLT lookup */

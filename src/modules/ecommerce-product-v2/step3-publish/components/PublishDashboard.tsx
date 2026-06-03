@@ -1,6 +1,7 @@
 "use client";
 import React, { useEffect, useState, useCallback } from "react";
-import { useRouter } from "next/navigation";
+import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/shared/ui/card/Card";
 import Button from "@/shared/ui/button/Button";
 import Progress from "@/shared/ui/progress/Progress";
@@ -101,6 +102,7 @@ import {
   generateMappingRequest,
   transformMasterProductToSourceSchema,
 } from "@/modules/ecommerce-product-v2/utils/product-mapper";
+import { MasterProductService } from "@/app/(admin)/products/_services/master-product.service";
 
 // ─── Status Badge ─────────────────────────────────────────────────────────────
 
@@ -364,6 +366,7 @@ interface Props {
 
 export default function PublishDashboard({ masterProductId }: Props) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { organization } = useAuth();
   const orgId = organization?.organizationId ?? "";
 
@@ -378,8 +381,10 @@ export default function PublishDashboard({ masterProductId }: Props) {
   const [batchPublishing, setBatchPublishing] = useState(false);
   const [batchError, setBatchError] = useState<string | null>(null);
 
-  // Analysis state — keyed by channelType (mapping is per channel type, not per store)
-  const [selectedStoreId, setSelectedStoreId] = useState<string | null>(null);
+  // Analysis state — seed selectedStoreId from ?storeId= so back-nav returns to the right tab
+  const [selectedStoreId, setSelectedStoreId] = useState<string | null>(
+    searchParams.get("storeId")
+  );
   const [analysisByChannel, setAnalysisByChannel] = useState<Record<string, AdaptivePatternMatchingResponse>>({});
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analyzeError, setAnalyzeError] = useState<string | null>(null);
@@ -389,20 +394,55 @@ export default function PublishDashboard({ masterProductId }: Props) {
   const [showJoltPreview, setShowJoltPreview] = useState(false);
   const [joltPreviewData, setJoltPreviewData] = useState<Record<string, unknown> | null>(null);
 
-  // Full master product from sessionStorage (written by Step 1 create page)
+  // Full master product — read from sessionStorage first, fall back to API.
+  // sessionStorage is only written by the Step 1 create flow; when navigating
+  // from My Products the session key is absent, so we load from the backend.
   const [product, setProduct] = useState<MasterProduct | null>(null);
   const [productMissing, setProductMissing] = useState(false);
 
   useEffect(() => {
-    if (typeof window !== "undefined") {
-      const raw = sessionStorage.getItem(`product_${masterProductId}`);
-      if (raw) {
-        try { setProduct(JSON.parse(raw)); } catch { setProductMissing(true); }
-      } else {
-        setProductMissing(true);
-      }
+    if (typeof window === "undefined") return;
+
+    // Fast path: already in session
+    const raw = sessionStorage.getItem(`product_${masterProductId}`);
+    if (raw) {
+      try { setProduct(JSON.parse(raw)); return; } catch { /* fall through */ }
     }
-  }, [masterProductId]);
+
+    // API fallback — requires orgId from auth (may be empty on first render)
+    if (!orgId) return;
+
+    MasterProductService.getById(masterProductId, orgId)
+      .then(detail => {
+        const fallback: MasterProduct = {
+          id: detail.id,
+          name: detail.name,
+          sku: detail.sku ?? "",
+          price: detail.basePrice ?? 0,
+          category: detail.categorySlug ?? detail.categoryId ?? undefined,
+          mainImage: detail.imageUrl ?? undefined,
+          description: detail.description ?? undefined,
+          tags: detail.tags ?? undefined,
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          variants: (detail.variants ?? []) as any[],
+          hasVariants: (detail.variantCount ?? 0) > 0,
+          customAttributes: {
+            _organizationId: detail.organizationId,
+            _createdBy: "",
+            // Expose currency so transformMasterProductToSourceSchema can include it
+            ...(detail.currency ? { currency: detail.currency } : {}),
+          },
+          // MasterProduct uses lowercase status; MasterProductDetail uses uppercase
+          status: (detail.status?.toLowerCase() ?? "draft") as "draft" | "active" | "archived",
+          createdAt: detail.createdAt,
+          updatedAt: detail.updatedAt,
+        };
+        // Write back so the next navigation uses the fast path
+        try { sessionStorage.setItem(`product_${masterProductId}`, JSON.stringify(fallback)); } catch { /**/ }
+        setProduct(fallback);
+      })
+      .catch(() => setProductMissing(true));
+  }, [masterProductId, orgId]);
 
   // Load store completion data
   const loadData = useCallback(async () => {
@@ -622,6 +662,11 @@ export default function PublishDashboard({ masterProductId }: Props) {
   const currentStoreData = selectedStoreId ? storeData.find((d) => d.storeId === selectedStoreId) ?? null : null;
   const currentAnalysis = currentStoreData ? analysisByChannel[currentStoreData.channelType] ?? null : null;
 
+  // Back-to-Step-2 URL carries the active store so the wizard opens on the right tab
+  const channelFieldsUrl = selectedStoreId
+    ? `/products/${masterProductId}/channel-fields?storeId=${encodeURIComponent(selectedStoreId)}`
+    : `/products/${masterProductId}/channel-fields`;
+
   const currentPublishStatus: ChannelProductStatus = (() => {
     if (!selectedStoreId) return "DRAFT";
     const r = publishResults[selectedStoreId];
@@ -638,7 +683,7 @@ export default function PublishDashboard({ masterProductId }: Props) {
         <div>
           <Button
             variant="outline"
-            onClick={() => router.push(`/products/${masterProductId}/channel-fields`)}
+            onClick={() => router.push(channelFieldsUrl)}
             className="mb-2"
           >
             <ArrowLeft className="h-4 w-4 mr-2" />
@@ -653,11 +698,9 @@ export default function PublishDashboard({ masterProductId }: Props) {
 
       {/* Breadcrumb */}
       <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
-        <a href="/products/v2/create" className="hover:text-brand-500 transition-colors">Step 1: Master Product</a>
+        <Link href={`/products/${masterProductId}/edit`} className="hover:text-brand-500 transition-colors">Step 1: Master Product</Link>
         <span>›</span>
-        <a href={`/products/${masterProductId}/channel-fields`} className="hover:text-brand-500 transition-colors">
-          Step 2: Channel Fields
-        </a>
+        <Link href={channelFieldsUrl} className="hover:text-brand-500 transition-colors">Step 2: Channel Fields</Link>
         <span>›</span>
         <span className="font-medium text-gray-900 dark:text-white">Step 3: Preview &amp; Publish</span>
       </div>
@@ -689,7 +732,7 @@ export default function PublishDashboard({ masterProductId }: Props) {
           <div className="h-16 w-16 rounded-2xl bg-gray-100 dark:bg-gray-800 flex items-center justify-center mb-4 text-2xl">📦</div>
           <p className="font-medium text-gray-900 dark:text-white">No channel data found</p>
           <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Go back to Step 2 to fill channel-specific fields.</p>
-          <Button onClick={() => router.push(`/products/${masterProductId}/channel-fields`)} className="mt-4">
+          <Button onClick={() => router.push(channelFieldsUrl)} className="mt-4">
             ← Back to Channel Fields
           </Button>
         </div>
@@ -857,7 +900,7 @@ export default function PublishDashboard({ masterProductId }: Props) {
                 )}
                 <Button
                   variant="outline"
-                  onClick={() => router.push(`/products/${masterProductId}/channel-fields`)}
+                  onClick={() => router.push(channelFieldsUrl)}
                   className="w-full"
                 >
                   <ArrowLeft className="h-4 w-4 mr-2" />

@@ -85,7 +85,7 @@ function StorePublishCard({
 }) {
   const [syncing, setSyncing] = useState(false);
   const emoji = CHANNEL_EMOJI[store.channelType.toLowerCase()] ?? "🔗";
-  const channelFieldsUrl = `/products/${masterProductId}/channel-fields`;
+  const channelFieldsUrl = `/products/${masterProductId}/channel-fields?storeId=${encodeURIComponent(store.storeId)}`;
 
   async function handleResync() {
     setSyncing(true);
@@ -184,6 +184,12 @@ function StorePublishCard({
             <EditIcon /> Edit fields
           </Link>
         )}
+        <Link
+          href={`/products/${masterProductId}/publish?storeId=${encodeURIComponent(store.storeId)}`}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border border-brand-300 dark:border-brand-700 text-brand-600 dark:text-brand-400 hover:bg-brand-50 dark:hover:bg-brand-500/10 transition-colors"
+        >
+          ⚡ Analyse &amp; Publish
+        </Link>
         <button
           onClick={handleResync}
           disabled={syncing || published.syncStatus === "SYNCING"}
