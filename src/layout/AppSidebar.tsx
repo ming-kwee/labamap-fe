@@ -84,6 +84,7 @@ const adminNavItems: NavItem[] = [
       { name: "Channel Field Mappings", path: "/platform-admin/channel-field-mappings", pro: false, new: true },
       { name: "Field Semantic Knowledge", path: "/platform-admin/field-semantic-knowledge", pro: false, new: true },
       { name: "Merchant API Operations", path: "/platform-admin/merchant-api-operations", pro: false, new: true },
+      { name: "Channel JOLT Specs", path: "/platform-admin/channel-jolt-specs", pro: false, new: true },
     ],
   },
   {
