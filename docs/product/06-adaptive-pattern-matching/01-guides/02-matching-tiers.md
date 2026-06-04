@@ -111,28 +111,45 @@ This is the fallback tier. High usage of Tier 5 in practice indicates gaps in th
 
 ## Channel Boost
 
-After the best tier match is selected, confidence scores are adjusted by channel-specific boosts defined in `ChannelConfiguration.fieldBoosts`. For example, a Shopify boost for `title` adds +5% to any match targeting that field. This is how `BOOST` confidence adjustments happen — it's not a separate tier but a post-match step.
+After the best tier match is selected, confidence scores are adjusted by channel-specific boosts defined in `ChannelConfiguration.fieldBoosts`. This is not a separate tier but a post-match step applied by `applyChannelBoosts()`.
 
-### Current implementation
+### Channel-level boosts (unconditional)
 
-`getChannelSpecificBoostReactive()` in `KnowledgeBasedFieldMatchingService` matches `sourcePattern` and `targetPattern` from the `fieldBoosts` list. The `FieldBoost.condition` field exists on the class and is stored in MongoDB but is **never evaluated** — the service ignores it.
+Seeded by `ChannelFieldBoostsMigration` (@Order 8). These apply to every product on the channel regardless of category — they encode naming-convention differences:
 
-All boosts seeded by `ChannelFieldBoostsMigration` are naming-convention boosts that apply to every product on the channel (e.g. Shopify `brand→vendor`, `category→product_type`). These are correctly channel-level and require no category context.
+| Channel | Example | Reason |
+|---------|---------|--------|
+| Shopify | `brand → vendor +10` | Shopify always uses "vendor" |
+| Shopify | `stock_quantity → inventory_quantity +7` | Shopify inventory naming |
+| Amazon | `brand → brand +15` | Brand required on all Amazon listings |
+| Walmart | `barcode → upc +15` | Walmart always requires UPC |
 
-### Planned: category-specific boosts
+### Category-scoped boosts
 
-Some channels require category-aware boosting — e.g. Amazon `clothing` should boost `color→color` and `size→size` more aggressively than `electronics`. Two implementation options:
+**Implemented** — `FieldBoost.condition` is now fully evaluated. Condition format: `"category=<slug>"` or `"category=<slug1>|<slug2>"`. A `null` or blank condition applies to all categories (backward-compatible).
 
-| Option | Approach | Change required |
-|--------|----------|-----------------|
-| A | Evaluate `condition` field as category slug expression in `getChannelSpecificBoostReactive()` | Wire `categoryId` into the boost lookup call; evaluate `condition` in service |
-| B | Store per-category boosts inside `CategoryFieldOverride` (see `11-step2-category-required-fields.md`) | Merge category boosts at APM request time before calling boost service |
+Seeded by `ChannelCategoryFieldBoostsMigration` (@Order 116):
 
-Option A is minimal — `condition` was designed for this. Option B co-locates category config but requires passing boost context through more layers.
+| Channel | Condition | Example boost |
+|---------|-----------|---------------|
+| Amazon | `category=electronics` | `model_number → .*ModelNumber.* +15` |
+| Amazon | `category=electronics` | `connectivity → .*Connectivity.* +10` |
+| Amazon | `category=clothing` | `material → .*MaterialType.* +12` |
+| Amazon | `category=clothing` | `department → .*Department.* +10` |
+| eBay | `category=electronics` | `processor → .*Processor.* +12` |
+| Shopify | `category=clothing` | `size_type → .*size_type.* +10` |
 
-**Prerequisites:** neither option can be tested until the `fetchAndCacheAttributes()` stub in `CategoryCacheServiceImpl` is implemented (collection `channel_category_attributes_cache` is absent from MongoDB until first save).
+**How condition evaluation works** (`matchesCondition()` in `KnowledgeBasedFieldMatchingService`):
 
-See full planning detail in `docs/product/02-ecommerce-wizard/01-guides/11-step2-category-required-fields.md` → `fieldBoosts` section.
+```
+condition = null                      → always true  (all channels, all categories)
+condition = "category=electronics"    → true only when categorySlug = "electronics"
+condition = "category=clothing|fashion" → true when slug is "clothing" or "fashion"
+```
+
+`categorySlug` flows into the engine from `AdaptivePatternMatchingCommandImpl` → `FieldMatchingService.findMatchesReactive(sources, targets, channelId, categorySlug)` → `KnowledgeBasedFieldMatchingService.findMatches(sources, targets, channelId, categorySlug)`.
+
+**Result:** a boost seeded with `condition=category=electronics` is silently skipped for clothing products — no score inflation across unrelated categories.
 
 ---
 

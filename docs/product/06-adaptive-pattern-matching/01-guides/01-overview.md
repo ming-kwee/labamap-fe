@@ -29,19 +29,20 @@ Step 3 (frontend)
   └─ POST /api/v1/channels/publish                   ← publish (uses jolt from above or from DB)
 ```
 
-**Not yet implemented as endpoints (services exist in codebase):**
-- `POST /channels/publish/analyze` — `PublishAnalysisService` is implemented but not exposed via any controller
-- `POST /channels/preview-jolt` — no controller endpoint exists
+**Also available:**
+- `POST /channels/publish/analyze` — `PublishAnalysisService` exposed via `ChannelController`; runs the full analysis pipeline including category-aware APM
+- `POST /channels/preview-jolt` — no controller endpoint exists (service only)
 
 ---
 
 ## Collections
 
-| Collection                 | Purpose                                                                                                                                                                   |
-|----------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `channel_jolt_specs`       | Category-aware JOLT specs — one per (channelId × categoryId × organizationId). Stored so subsequent publish calls skip re-analysis (~20ms vs ~1000ms)                     |
-| `field_semantic_knowledge` | Knowledge base of field semantic types. `fieldName` is unique; `semanticType` is NOT unique (multiple fields can share the same type). Used by Tier 2 and Tier 3 matching |
-| `channel_field_mappings`   | Pre-configured or learned field mappings per channel. Used by Tier 1 (CHANNEL_SPECIFIC). Highest priority — represents verified relationships                             |
+| Collection                        | Purpose                                                                                                                                                                   |
+|-----------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `channel_jolt_specs`              | Category-aware JOLT specs — one per (channelId × categoryId × organizationId). Stored so subsequent publish calls skip re-analysis (~20ms vs ~1000ms)                     |
+| `field_semantic_knowledge`        | Knowledge base of field semantic types. `fieldName` is unique; `semanticType` is NOT unique. Used by Tier 2 and Tier 3 matching                                           |
+| `channel_field_mappings`          | Pre-configured or learned field mappings per channel. Used by Tier 1 (CHANNEL_SPECIFIC). Highest priority — represents verified relationships                             |
+| `channel_category_api_schemas`    | Per-category API schema extensions — one active document per (channelType × categorySlug). Seeded for Amazon (8 categories), eBay (5), Walmart (3). Merged into base `apiSchema` at APM time so category-specific fields appear in the target schema. Managed at runtime via `GET/POST/PUT /api/v1/admin/channel-category-schemas` |
 
 ---
 
@@ -51,15 +52,18 @@ Step 3 (frontend)
 AdaptivePatternMatchingCommandImpl          ← orchestrator
   ├─ FieldMatchingService                  ← facade; entry point for field matching
   │    └─ KnowledgeBasedFieldMatchingService  ← 5-tier matching engine
-  │         ├─ ChannelFieldMappingRepository     (Tier 1: CHANNEL_SPECIFIC)
-  │         ├─ FieldSemanticKnowledgeRepository  (Tier 2: SEMANTIC_KNOWLEDGE, Tier 3: ALIAS_MAPPING)
-  │         └─ ChannelConfigurationRepository    (channel boosts)
+  │         ├─ ChannelFieldMappingRepository          (Tier 1: CHANNEL_SPECIFIC)
+  │         ├─ FieldSemanticKnowledgeRepository       (Tier 2: SEMANTIC_KNOWLEDGE, Tier 3: ALIAS_MAPPING)
+  │         ├─ ChannelConfigurationRepository         (channel boosts + category-scoped boost conditions)
+  │         └─ ChannelCategoryApiSchemaRepository     (category schema extensions — Phase 1–4)
+  ├─ ChannelSchemaService                 ← generates target schema; merges category extension
   ├─ SchemaFlattenerService               ← converts nested schemas to flat field paths
   └─ JoltSpecGeneratorService             ← turns MatchResult list into JOLT shift spec
 ```
 
-`FieldMatchingService` is a facade over `KnowledgeBasedFieldMatchingService`. It exposes two methods:
+`FieldMatchingService` is a facade over `KnowledgeBasedFieldMatchingService`. It exposes:
 - `findMatchesReactive(sourceFields, targetFields, channelId)` — standard matching
+- `findMatchesReactive(sourceFields, targetFields, channelId, categorySlug)` — category-aware matching; passes slug into boost condition evaluation
 - `findMatchesForOrganization(sourceFields, targetFields, channelId, organizationId)` — adds org-specific override tiers
 
 `DataInitializationService` seeds `field_semantic_knowledge` and `channel_field_mappings` from the JSON files in `src/main/resources/adaptivepattern/`.

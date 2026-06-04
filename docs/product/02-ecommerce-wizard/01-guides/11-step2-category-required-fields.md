@@ -33,10 +33,10 @@ Real-world required fields differ significantly per category:
 
 Required fields in Step 2 are assembled from three layers, applied in order:
 
-| Layer | Source | Applies when |
-|-------|--------|--------------|
-| **0 — Channel-wide** | `EcommerceMasterAttributeDocument.requiredByChannel` | Always — every product on that channel |
-| **1 — Category slug (Path A)** | `ChannelConfiguration.categoryRequirements[slug]` | When saved `categoryId` maps to a known slug |
+| Layer                          | Source                                                           | Applies when                                                   |
+|--------------------------------|------------------------------------------------------------------|----------------------------------------------------------------|
+| **0 — Channel-wide**           | `EcommerceMasterAttributeDocument.requiredByChannel`             | Always — every product on that channel                         |
+| **1 — Category slug (Path A)** | `ChannelConfiguration.categoryRequirements[slug]`                | When saved `categoryId` maps to a known slug                   |
 | **2 — Leaf category (Path B)** | Live channel attribute API → `channel_category_attributes_cache` | When a leaf category is selected and channel has attribute API |
 
 All three layers are additive — a field appearing in any layer is placed in the required section and counted in `channelRequiredTotal` (layers 0+1) or `categoryRequiredTotal` (layer 2).
@@ -63,10 +63,10 @@ Fields that must be filled for **every product on a given channel**, regardless 
 }
 ```
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `required` | `Boolean` | Document-level default. Used as fallback when `requiredByChannel` has no entry for the current channel. |
-| `requiredByChannel` | `Map<String, Boolean>` | Per-channel override. Key = `channelType`. Takes precedence over `required`. |
+| Field               | Type                   | Description                                                                                             |
+|---------------------|------------------------|---------------------------------------------------------------------------------------------------------|
+| `required`          | `Boolean`              | Document-level default. Used as fallback when `requiredByChannel` has no entry for the current channel. |
+| `requiredByChannel` | `Map<String, Boolean>` | Per-channel override. Key = `channelType`. Takes precedence over `required`.                            |
 
 **Resolution logic in `ChannelStepSchemaService.isRequiredForChannel()`:**
 1. If `requiredByChannel` contains the current `channelType` → use that value
@@ -74,18 +74,18 @@ Fields that must be filled for **every product on a given channel**, regardless 
 
 **Precedence table:**
 
-| `required` | `requiredByChannel` | Result for `shopify` |
-|---|---|---|
-| `true` | absent | required (falls back to default) |
-| `null` | `{"shopify": true}` | required (per-channel wins) |
-| `true` | `{"shopify": false, "woocommerce": true}` | not required on Shopify, required on WooCommerce |
-| `true` | `{"woocommerce": false}` | required on Shopify (fallback), not required on WooCommerce |
+| `required`  | `requiredByChannel`                       | Result for `shopify`                                        |
+|-------------|-------------------------------------------|-------------------------------------------------------------|
+| `true`      | absent                                    | required (falls back to default)                            |
+| `null`      | `{"shopify": true}`                       | required (per-channel wins)                                 |
+| `true`      | `{"shopify": false, "woocommerce": true}` | not required on Shopify, required on WooCommerce            |
+| `true`      | `{"woocommerce": false}`                  | required on Shopify (fallback), not required on WooCommerce |
 
 ### Currently Seeded Channel-Wide Required Fields
 
-| Field | Channels | Seeder |
-|-------|----------|--------|
-| `vendor` | Shopify | `ShopifyChannelAttributesMigration` |
+| Field          | Channels     | Seeder                              |
+|----------------|--------------|-------------------------------------|
+| `vendor`       | Shopify      | `ShopifyChannelAttributesMigration` |
 | `product_type` | Shopify, WIX | `ShopifyChannelAttributesMigration` |
 
 ### Adding Required Fields for Other Channels

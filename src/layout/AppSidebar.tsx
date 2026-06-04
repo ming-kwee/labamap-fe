@@ -80,6 +80,8 @@ const adminNavItems: NavItem[] = [
     name: "Platform Admin",
     subItems: [
       { name: "Category Templates", path: "/platform-admin/category-templates", pro: false, new: true },
+      { name: "Channel Category Schemas", path: "/platform-admin/channel-category-schemas", pro: false, new: true },
+      { name: "Channel Field Mappings", path: "/platform-admin/channel-field-mappings", pro: false, new: true },
     ],
   },
   {

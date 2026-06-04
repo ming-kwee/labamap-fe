@@ -53,12 +53,29 @@ organizationId=org_123    ← optional
 
 ## GET `/channels/{channelId}/schema`
 
-Returns the channel's API schema.
+Returns the channel's API schema, optionally merged with a category-specific extension.
 
 **Query params:**
 ```
 organizationId=org_123    ← optional
-format=flat|nested        ← default: nested
+categoryId=electronics    ← optional; merges channel_category_api_schemas extension for this slug
+```
+
+When `categoryId` is provided and an active extension document exists in `channel_category_api_schemas` for `(channelId, categoryId)`, the response includes the merged schema (base + category extension). Without `categoryId`, returns the base schema unchanged — fully backward-compatible.
+
+**Response includes `categorySlug`** when a category was applied:
+```json
+{
+  "channelId":    "amazon",
+  "categorySlug": "electronics",
+  "targetSchema": {
+    "Item.DescriptionData.Title":                       "",
+    "Item.ProductType.Electronics.ModelNumber":         "",
+    "Item.ProductType.Electronics.Connectivity":        "",
+    "Item.ProductType.Electronics.BatteriesRequired":   false
+  },
+  "fieldCount": 42
+}
 ```
 
 ---
@@ -246,44 +263,55 @@ Simulates a full publish transformation (JOLT + wrapper apply) without calling t
 
 ---
 
-## apiSchema — Current State and Category Gap
+## apiSchema — Base Schema + Category Extensions
 
-`ChannelConfiguration.apiSchema` (`Map<String, Object>`) is the target schema used by APM when building `AdaptivePatternMatchingRequest.targetSchema`. It is seeded by `ChannelConfigurationDataLoader` and returned by `GET /channels/{channelId}/schema/complex`.
+`ChannelConfiguration.apiSchema` (`Map<String, Object>`) is the base target schema for APM. It covers universal product fields (title, price, images, variants). Channels whose schema varies by category have additional extensions in a **separate collection** `channel_category_api_schemas`.
 
-### Channels where a single schema is correct
+### Schema coverage by channel
 
-| Channel | Reason |
-|---------|--------|
-| Shopify | Product structure is uniform — `product.title`, `product.variants[]`, `product.options[]` apply to all categories |
-| WIX | Same uniform structure — `name`, `priceData`, `productOptions[]` apply to all categories |
+| Channel | Base schema sufficient? | Reason |
+|---------|------------------------|--------|
+| Shopify | Yes | Uniform `product.*` structure for all categories |
+| WIX | Yes | Uniform structure for all physical products |
+| Amazon | No — needs extensions | SP-API has category-specific product type definitions (`Electronics`, `Clothing`, `Food`, etc.) |
+| eBay | No — needs extensions | Item Specifics are category-driven (`Processor`, `RAM` for Electronics; `Size`, `Material` for Clothing) |
+| Walmart | No — needs extensions | Category attribute groups differ per category |
+| TikTok Shop | Partially handled | `product_attributes[]` extension point in base schema; category-specific attribute IDs from category API cache |
 
-### Channels where a single schema is an oversimplification
+### `channel_category_api_schemas` collection
 
-| Channel | Problem |
-|---------|---------|
-| Amazon | Seeded schema covers `Item.DescriptionData.*` and `Item.StandardProductID` only. Category-specific attributes (`ClothingSize`, `Color`, `ModelNumber`, `BatteryType`, etc.) are missing entirely. APM cannot suggest mappings for these fields because they are absent from the target schema. |
-| eBay | Similar — category determines which item specifics are required (`Brand`, `Type`, `Compatible With`). None are in the current schema. |
-| Walmart | Category determines required feed fields (`color`, `size`, `material`). Not present in current schema. |
-| TikTok Shop | Partially handled — schema includes `product_attributes[]` with a comment noting category-specificity. The stub is correct in shape but values are static placeholders. |
+One document per `(channelType × categorySlug)`. Each document holds an `apiSchemaExtension` map that is merged on top of the base `apiSchema` at APM time. Only one document is active per pair at a time (`isActive=true`).
 
-### Planned fix: `categoryApiSchemas`
+**Seeded channels and categories** (`ChannelCategoryApiSchemaDataLoader` @Order 115):
 
-Add `categoryApiSchemas: Map<String, Map<String, Object>>` to `ChannelConfiguration`. At APM request time, merge the category-specific schema on top of the base `apiSchema` before passing to `AdaptivePatternMatchingRequest.targetSchema`:
+| Channel | Categories seeded |
+|---------|-------------------|
+| Amazon | electronics, clothing, food, health, sports, home-garden, toys, books |
+| eBay | electronics, clothing, home-garden, sports, motors |
+| Walmart | electronics, clothing, food |
 
+**Merge happens in `ChannelSchemaService.generateComplexTargetSchema(channelId, categorySlug)`:**
 ```
-targetSchema = merge(channelConfig.apiSchema, channelConfig.categoryApiSchemas[categoryId])
+base apiSchema (from channel_configurations)
+    +
+apiSchemaExtension (from channel_category_api_schemas, active doc for that pair)
+    ↓
+merged target schema passed to APM
 ```
 
-Seeding: extend `ChannelConfigurationDataLoader` with per-category schema maps for Amazon, eBay, Walmart. TikTok's `product_attributes[]` stub should be replaced with category-keyed entries.
+If no extension exists (e.g. Shopify, WIX, or unknown category), `switchIfEmpty` returns the base schema unchanged.
 
-**Files to change:**
-- `ChannelConfiguration.java` — add `categoryApiSchemas` field
-- `ChannelConfigurationDataLoader.java` — seed category schemas for Amazon/eBay/Walmart/TikTok
-- `ChannelSchemaService.java` (or wherever `schema/complex` is built) — merge category schema when `categoryId` query param is present
-- APM request builder — pass `categoryId` through to schema fetch
+### Admin API for runtime schema management
 
-**Query param extension:**
+No code change or redeploy needed to update category schemas:
 
-`GET /channels/{channelId}/schema/complex?format=nested&categoryId=clothing` returns the base schema merged with `categoryApiSchemas["clothing"]`. No `categoryId` → returns base schema unchanged (backward-compatible).
+| Method | Endpoint | Action |
+|--------|----------|--------|
+| `GET` | `/api/v1/admin/channel-category-schemas?channelType=amazon` | List all docs (active + inactive) |
+| `GET` | `/api/v1/admin/channel-category-schemas/active?channelType=amazon&categorySlug=electronics` | Get active doc |
+| `POST` | `/api/v1/admin/channel-category-schemas` | Create new doc (auto-deactivates existing active) |
+| `PUT` | `/api/v1/admin/channel-category-schemas/{id}` | Update extension + bump version |
+| `PUT` | `/api/v1/admin/channel-category-schemas/{id}/deactivate` | Soft-delete (isActive=false) |
+| `PUT` | `/api/v1/admin/channel-category-schemas/{id}/activate` | Re-activate (rollback) |
 
-See full planning context in `docs/product/02-ecommerce-wizard/01-guides/11-step2-category-required-fields.md` → `apiSchema` section.
+See full design rationale in `docs/product/02-ecommerce-wizard/01-guides/17-apischema-per-channel-per-category.md`.
