@@ -4,25 +4,37 @@ Base URL: `http://localhost:8888/labamap/api/v1/admin/field-semantic-knowledge`
 
 Manages `field_semantic_knowledge` collection — the APM knowledge base for Tier 2 (SEMANTIC), Tier 3 (ALIAS), and Tier 4 (PATTERN) matching.
 
-**Status: Not Yet Implemented**
+**Status: Implemented** (2026-06-04)
+
+**Files:**
+- `adaptivepattern/controller/FieldSemanticKnowledgeAdminController.java`
+- `adaptivepattern/model/dto/FieldSemanticKnowledgeRequest.java`
 
 ---
 
 ## GET `/admin/field-semantic-knowledge`
 
-List entries with optional filters.
+List entries with optional filters. Filter priority (most specific base query wins):
+1. `channelId` → entries valid for that channel (`validChannels` contains channelId)
+2. `semanticType` → all entries of that type
+3. `category` → all entries in that category
+4. `search` → text search across fieldName, aliases, keywords (regex, case-insensitive)
+5. none → all active entries (pass `isActive=false` to include deactivated)
+
+Additional filters `isActive`, `isRequired`, `isCommon`, `minConfidence` applied reactively on top of the base query.
 
 **Query params:**
 
-| Param | Type | Description |
-|---|---|---|
-| `semanticType` | String | Filter by semantic type — "PRICE", "PRODUCT_NAME", "MATERIAL_TYPE", etc. |
-| `category` | String | Filter by category — "product", "variant", "media" |
-| `channelId` | String | Filter entries valid for a specific channel |
-| `isCommon` | Boolean | Filter common fields only |
-| `isRequired` | Boolean | Filter required fields only |
-| `isActive` | Boolean | Default true |
-| `search` | String | Free text search across fieldName, aliases, keywords |
+| Param | Type | Default | Description |
+|---|---|---|---|
+| `semanticType` | String | — | Filter by semantic type — "PRICE", "PRODUCT_NAME", "MATERIAL_TYPE", etc. |
+| `category` | String | — | Filter by category — "product", "variant", "media", "pricing" |
+| `channelId` | String | — | Filter entries valid for a specific channel |
+| `search` | String | — | Text search across fieldName, aliases, keywords |
+| `isCommon` | Boolean | — | Filter common fields only |
+| `isRequired` | Boolean | — | Filter required fields only |
+| `isActive` | Boolean | `true` | Pass `false` to include deactivated entries |
+| `minConfidence` | Double | — | Filter by baseConfidence >= value |
 
 **Response:** `FieldSemanticKnowledge[]`
 
@@ -83,6 +95,18 @@ Create a new semantic knowledge entry.
   "description": "Sustainability certification or eco-label for products"
 }
 ```
+
+**Defaults applied when not provided:**
+- `baseConfidence` → `85.0`
+- `isActive` → `true`
+- `isCommon` → `false`
+- `isRequired` → `false`
+- `dataSource` → `"USER_DEFINED"`
+- `usageCount` → `0`
+- `successRate` → `0.0`
+
+**Returns `400 Bad Request`** when `fieldName` or `semanticType` is missing.
+**Returns `409 Conflict`** when `fieldName` already exists — use `PUT /{id}` to update.
 
 **Response:** `201 Created` — saved entry
 
@@ -171,10 +195,14 @@ Common semantic types already seeded (not exhaustive):
 
 ## Implementation Notes
 
-**Repository:** `FieldSemanticKnowledgeRepository` — already has all needed query methods.
+**Controller:** `adaptivepattern/controller/FieldSemanticKnowledgeAdminController.java`
+**DTO:** `adaptivepattern/model/dto/FieldSemanticKnowledgeRequest.java`
+**Repository:** `FieldSemanticKnowledgeRepository` — all needed query methods already exist.
 
-**Package:** `adaptivepattern/repository/`
+**No JOLT invalidation** — semantic knowledge changes affect APM match quality, not target schema structure. Existing JOLT specs continue to work. Merchants re-analyse to benefit from improved semantic matching.
 
-**No JOLT invalidation needed** — semantic knowledge changes affect match quality, not target schema structure. Existing JOLT specs continue to work. Merchants re-analyse to benefit from improved matching.
+**Uniqueness:** `fieldName` is `@Indexed(unique=true)` at DB level. `POST` returns `409 Conflict` on duplicate via application-level guard before the DB constraint fires.
 
-**Uniqueness:** `fieldName` must be unique. On duplicate POST, return `409 Conflict`.
+**Immutable after creation:** `fieldName` — ignored if included in `PUT` body.
+
+**Never editable:** `usageCount`, `successRate`, `lastUpdated` — learned from APM usage history. `lastUpdated` is set automatically by the service on every save.

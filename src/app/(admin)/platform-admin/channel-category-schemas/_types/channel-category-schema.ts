@@ -14,16 +14,17 @@ export type ChannelCategorySchemaChannelType =
   | "shopee";
 
 export const CHANNEL_TYPE_LABELS: Record<string, string> = {
-  shopify:   "Shopify",
-  wix:       "WIX",
-  amazon:    "Amazon",
-  ebay:      "eBay",
-  walmart:   "Walmart",
-  tiktok:    "TikTok Shop",
-  lazada:    "Lazada",
-  tokopedia: "Tokopedia",
-  facebook:  "Facebook",
-  shopee:    "Shopee",
+  shopify:    "Shopify",
+  wix:        "WIX",
+  amazon:     "Amazon",
+  ebay:       "eBay",
+  walmart:    "Walmart",
+  tiktok:     "TikTok Shop",
+  tiktokshop: "TikTok Shop", // backend merchant-api-operations uses this key
+  lazada:     "Lazada",
+  tokopedia:  "Tokopedia",
+  facebook:   "Facebook",
+  shopee:     "Shopee",
 };
 
 /** One document in `channel_category_api_schemas` */

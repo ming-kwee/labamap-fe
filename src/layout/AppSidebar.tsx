@@ -82,6 +82,8 @@ const adminNavItems: NavItem[] = [
       { name: "Category Templates", path: "/platform-admin/category-templates", pro: false, new: true },
       { name: "Channel Category Schemas", path: "/platform-admin/channel-category-schemas", pro: false, new: true },
       { name: "Channel Field Mappings", path: "/platform-admin/channel-field-mappings", pro: false, new: true },
+      { name: "Field Semantic Knowledge", path: "/platform-admin/field-semantic-knowledge", pro: false, new: true },
+      { name: "Merchant API Operations", path: "/platform-admin/merchant-api-operations", pro: false, new: true },
     ],
   },
   {

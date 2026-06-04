@@ -6,7 +6,7 @@ Module root: `com.labamap.labamapomnichannelbe4fe` (spread across `adaptivepatte
 
 Base URL: `http://localhost:8888/labamap/api/v1/admin`
 
-**Status: Partially Implemented** — P0 `channel_field_mappings` done (2026-06-04). P0 `field_semantic_knowledge` and `merchant_api_operations`, plus all P1 items, pending.
+**Status: Partially Implemented** — P0 `channel_field_mappings` and `field_semantic_knowledge` done (2026-06-04). P0 `merchant_api_operations` and all P1 items pending.
 
 ---
 
@@ -65,7 +65,7 @@ Platform Operator (internal tooling / Postman)
 | # | Collection | Controller | Endpoint Prefix | Status |
 |---|---|---|---|---|
 | 1 | `channel_field_mappings` | `ChannelFieldMappingAdminController` | `/admin/channel-field-mappings` | **✅ Implemented** |
-| 2 | `field_semantic_knowledge` | `FieldSemanticKnowledgeAdminController` | `/admin/field-semantic-knowledge` | Pending |
+| 2 | `field_semantic_knowledge` | `FieldSemanticKnowledgeAdminController` | `/admin/field-semantic-knowledge` | **✅ Implemented** |
 | 3 | `merchant_api_operations` | `MerchantApiOperationAdminController` | `/admin/merchant-api-operations` | Pending |
 
 ### 🟡 P1 — Important (operational agility)
