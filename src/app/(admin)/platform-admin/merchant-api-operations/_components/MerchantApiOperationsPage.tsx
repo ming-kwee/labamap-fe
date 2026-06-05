@@ -307,10 +307,19 @@ export default function MerchantApiOperationsPage() {
     setLoading(true);
     setError(null);
     try {
-      const data = await MerchantApiOperationService.listOperations({
-        channelType: channelFilter !== "all" ? channelFilter : undefined,
+      const channelType = channelFilter !== "all" ? channelFilter : undefined;
+      // Fetch enabled and disabled separately (backend filters by exact value, no "include all" flag)
+      const [enabled, disabled] = await Promise.all([
+        MerchantApiOperationService.listOperations({ channelType }),
+        MerchantApiOperationService.listOperations({ channelType, enabled: false }),
+      ]);
+      const seen = new Set<string>();
+      const merged = [...enabled, ...disabled].filter((op) => {
+        if (seen.has(op.id)) return false;
+        seen.add(op.id);
+        return true;
       });
-      setOperations(data);
+      setOperations(merged);
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -510,11 +519,9 @@ export default function MerchantApiOperationsPage() {
       {error ? (
         <div className="px-4 py-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg text-sm text-red-700 dark:text-red-400">
           {error}
-          {error.includes("404") || error.includes("not found") ? (
-            <p className="mt-1 text-xs opacity-80">
-              The backend endpoint is not yet implemented. The UI is ready — data will appear once the backend ships.
-            </p>
-          ) : null}
+          {(error.includes("CORS") || error.includes("fetch") || error.includes("NetworkError")) && (
+            <p className="mt-1 text-xs opacity-80">Check that the backend is running at <code className="font-mono">localhost:8888</code>.</p>
+          )}
         </div>
       ) : loading ? (
         <div className="text-center py-12 text-sm text-gray-400">Loading…</div>

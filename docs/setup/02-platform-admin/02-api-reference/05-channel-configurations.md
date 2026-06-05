@@ -4,7 +4,12 @@ Base URL: `http://localhost:8888/labamap/api/v1/admin/channel-configurations`
 
 Targeted read + sub-field update API for `channel_configurations` collection. Full document replace is intentionally not exposed — only safe sub-structures are editable.
 
-**Status: Not Yet Implemented**
+**Status: Implemented** (2026-06-04)
+
+**Files:**
+- `channel/controller/ChannelConfigurationAdminController.java`
+- `channel/model/dto/ChannelFieldBoostRequest.java`
+- `channel/model/dto/ChannelPostProcessingRuleRequest.java`
 
 ---
 
@@ -162,10 +167,19 @@ Get only the `fieldBoosts` list for a channel.
 
 ## Implementation Notes
 
-**Repository:** `ChannelConfigurationRepository` — `findActiveByChannelId`, `findSystemDefaultByChannelId`, `findAll`.
+**Controller:** `channel/controller/ChannelConfigurationAdminController.java`
+**DTOs:** `channel/model/dto/ChannelFieldBoostRequest.java`, `channel/model/dto/ChannelPostProcessingRuleRequest.java`
+**Repository:** `ChannelConfigurationRepository` — uses `findSystemDefaultByChannelId` and `findAllSystemDefaults`.
 
-**Package:** `channel/repository/`
+**Sensitive field redaction:** `integrationConfig` and `oauthConfig` are set to null before returning any response — they are never exposed via this API.
 
-**Update strategy:** Load the document, modify only the targeted sub-field, save. Do not use `$set` with the full document to avoid overwriting other fields.
+**Update strategy:** Load document → modify only the targeted sub-field → save. Prevents accidental overwrite of other fields.
 
-**Concurrency note:** If two admins update field boosts simultaneously, the second write wins (last-write-wins). This is acceptable for low-frequency admin operations.
+**Concurrency note:** Last-write-wins. Low risk for infrequent admin operations.
+
+**Implemented endpoints:**
+- `GET /` → `findAllSystemDefaults()` + redact
+- `GET /{channelId}` → `findSystemDefaultByChannelId` + redact + 404
+- `GET /{channelId}/field-boosts` → returns only fieldBoosts list; optional `?condition=` filter
+- `PUT /{channelId}/field-boosts` → actions: `add`, `remove`, `replace`; returns updated list
+- `PUT /{channelId}/post-processing-rules` → actions: `upsert`, `remove`, `enable`, `disable`; returns updated list

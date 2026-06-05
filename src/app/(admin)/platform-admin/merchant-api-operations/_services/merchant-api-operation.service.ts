@@ -56,7 +56,7 @@ export const MerchantApiOperationService = {
     const qs = buildQs({
       channelType:   params?.channelType,
       operationName: params?.operationName,
-      enabled:       params?.enabled ?? false,
+      enabled:       params?.enabled,
     });
     const res = await fetch(`${BASE}${qs}`, { method: "GET", headers: JSON_HEADERS });
     const raw = await handleResponse<unknown>(res);

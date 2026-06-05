@@ -4,21 +4,31 @@ Base URL: `http://localhost:8888/labamap/api/v1/admin/merchant-api-operations`
 
 Manages `merchant_api_operations` collection — data-driven configuration for fetching dynamic options (warehouses, brands, categories, carriers) from merchant/channel APIs.
 
-**Status: Not Yet Implemented**
+**Status: Implemented** (2026-06-04)
+
+**Files:**
+- `channel/merchant/controller/MerchantApiOperationAdminController.java`
+- `channel/merchant/model/dto/MerchantApiOperationRequest.java`
+- `channel/merchant/repository/MerchantApiOperationRepository.java` — added `findByChannelType()` and `findByChannelTypeAndOperationName()`
 
 ---
 
 ## GET `/admin/merchant-api-operations`
 
-List all operations with optional filters.
+List operations with optional filters. Filter priority:
+1. `channelType` + `operationName` → exact pair lookup
+2. `channelType` only → all operations for that channel
+3. none → all operations across all channels
+
+Default: returns only enabled operations. Pass `enabled=false` to include disabled ones.
 
 **Query params:**
 
-| Param | Type | Description |
-|---|---|---|
-| `channelType` | String | Filter by channel — "shopify", "tiktokshop", etc. |
-| `operationName` | String | Filter by operation name |
-| `enabled` | Boolean | Default true; pass false to include disabled |
+| Param | Type | Default | Description |
+|---|---|---|---|
+| `channelType` | String | — | Filter by channel — "shopify", "tiktokshop", etc. |
+| `operationName` | String | — | Filter by operation name (use with channelType) |
+| `enabled` | Boolean | `true` | Pass `false` to include disabled operations |
 
 **Response:** `MerchantApiOperationDocument[]`
 
@@ -75,6 +85,13 @@ Create a new merchant API operation.
 }
 ```
 
+**Defaults applied when not provided:**
+- `httpMethod` → `"GET"`
+- `enabled` → `true`
+
+**Returns `400 Bad Request`** when any of these are missing: `channelType`, `operationName`, `baseUrl`, `urlPath`, `itemsJsonPath`, `valueField`, `labelField`.
+**Returns `409 Conflict`** when `(channelType, operationName)` pair already exists — use `PUT /{id}`.
+
 **Response:** `201 Created` — saved document
 
 **Auth strategy values:**
@@ -99,6 +116,8 @@ Update an existing operation. All fields optional.
   "itemsJsonPath": "data.warehouses"
 }
 ```
+
+**Immutable fields (ignored if provided):** `channelType`, `operationName`
 
 **Response:** `200 OK` — updated document or `404`
 
@@ -166,8 +185,16 @@ Adding a new operation document is immediately reflected on the next Step 2 form
 
 ## Implementation Notes
 
-**Repository:** `MerchantApiOperationRepository` — `findByChannelTypeAndOperationNameAndEnabledTrue`, `findByChannelTypeAndEnabledTrue`.
+**Controller:** `channel/merchant/controller/MerchantApiOperationAdminController.java`
+**DTO:** `channel/merchant/model/dto/MerchantApiOperationRequest.java`
+**Repository:** `channel/merchant/repository/MerchantApiOperationRepository.java`
 
-**Package:** `channel/merchant/repository/`
+Two methods were added to the repository for the admin API:
+- `findByChannelType(channelType)` — all operations regardless of enabled status
+- `findByChannelTypeAndOperationName(channelType, operationName)` — exact pair lookup regardless of enabled
 
-**Uniqueness:** `(channelType, operationName)` should be unique. On duplicate POST, return `409 Conflict`.
+**Uniqueness:** `(channelType, operationName)` is enforced by `@CompoundIndex(unique = true)` at DB level. `POST` returns `409 Conflict` via application-level guard before the DB constraint fires.
+
+**No JOLT invalidation needed** — merchant API operations feed Step 2 form field options, not JOLT transformation schemas. Changes take effect on next form schema load.
+
+**disable vs delete:** Use `disable` for reversible removal. A disabled operation causes `GenericMerchantDataService.fetchOptions()` to return an empty list — the form field gracefully falls back to free-text input.

@@ -121,7 +121,7 @@ export default function CategoryTreePicker({ field, value, onChange, disabled }:
         return res.json();
       })
       .then(raw => {
-        const nodes = normalizeNodes(raw) as Array<Record<string, unknown>>;
+        const nodes = normalizeNodes(raw) as unknown as Array<Record<string, unknown>>;
         const results: SearchResult[] = nodes.map(n => {
           const fullName  = typeof n.fullName  === "string" ? n.fullName  : String(n.name ?? "");
           const ancestorIds = Array.isArray(n.ancestorIds) ? (n.ancestorIds as string[]) : [];

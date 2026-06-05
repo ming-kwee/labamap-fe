@@ -108,11 +108,6 @@ function extractInitialValues(schema: ChannelSchemaPerStore): StoreFormValues {
       for (const field of section.fields ?? []) {
         if (field.currentValue !== undefined && field.currentValue !== null) {
           channelData[field.fieldName] = field.currentValue;
-          // Persist categoryId explicitly for CATEGORY_TREE fields so backend
-          // resolveCategorySlug() finds it on the first autosave (Path A)
-          if (field.fieldType === "CATEGORY_TREE" && field.fieldName !== "categoryId") {
-            channelData["categoryId"] = field.currentValue;
-          }
         }
       }
     }
@@ -451,7 +446,15 @@ export default function ChannelFieldsWizard({ masterProductId }: Props) {
     dirtyStores.current.delete(storeId);
     setSavingStoreId(storeId);
     try {
-      const categoryId = values.channelData["categoryId"] as string | undefined;
+      // Derive top-level categoryId from the CATEGORY_TREE field value (not channelData["categoryId"]).
+      // Backend resolveCategorySlug() skips GID-format values and falls back to categoryPath (Priority 3).
+      const categoryTreeFieldName = channel.sections
+        .flatMap((s) => s.fields ?? [])
+        .find((f) => f.fieldType === "CATEGORY_TREE")
+        ?.fieldName;
+      const categoryId = categoryTreeFieldName
+        ? (values.channelData[categoryTreeFieldName] as string | undefined)
+        : undefined;
       const result = await ChannelProductDataService.saveChannelData(orgId, {
         masterProductId,
         storeId,

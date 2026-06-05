@@ -4,20 +4,23 @@ Base URL: `http://localhost:8888/labamap/api/v1/admin/channel-category-api-confi
 
 Manages `channel_category_api_config` collection — configuration for how the platform fetches category trees and category attributes per channel.
 
-**Status: Not Yet Implemented**
+**Status: Implemented** (2026-06-04)
+
+**Files:**
+- `channel/category/controller/ChannelCategoryApiConfigAdminController.java`
 
 ---
 
 ## GET `/admin/channel-category-api-configs`
 
-List all channel category API configurations.
+List channel category API configurations.
 
 **Query params:**
 
-| Param | Type | Description |
-|---|---|---|
-| `channelType` | String | Filter by channel |
-| `enabled` | Boolean | Default true |
+| Param | Type | Default | Description |
+|---|---|---|---|
+| `channelType` | String | — | Filter to one channel |
+| `enabled` | Boolean | `true` | When true, returns only enabled channels; pass false for all |
 
 **Response:** `ChannelCategoryApiConfig[]`
 
@@ -26,22 +29,44 @@ List all channel category API configurations.
   {
     "id": "6612a3f400000030",
     "channelType": "shopify",
+    "label": "Shopify",
     "treeApiConfig": {
-      "endpoint": "/merchant-data/shopify/{storeId}/categories",
-      "searchEndpoint": "/merchant-data/shopify/{storeId}/categories/search",
-      "authStrategy": "BEARER_TOKEN",
+      "baseUrl": "https://{storeId}",
+      "httpMethod": "GET",
+      "childrenUrlPath": "/admin/api/2024-01/custom_collections.json",
+      "authStrategy": "API_KEY_HEADER",
       "authCredentialKey": "accessToken",
-      "fullTreeStrategy": "SINGLE_REQUEST",
-      "treeStructure": "HIERARCHICAL"
+      "authHeaderName": "X-Shopify-Access-Token",
+      "itemsJsonPath": "custom_collections",
+      "nodeIdField": "id",
+      "nodeNameField": "title",
+      "treeStructure": "FLAT_WITH_PARENT_ID",
+      "fullTreeStrategy": "SINGLE_CALL",
+      "paginationStrategy": "NONE",
+      "searchEndpoint": "/merchant-data/shopify/{storeId}/categories/search"
     },
-    "attributeApiConfig": {
-      "endpoint": "/merchant-data/shopify/{storeId}/category-attributes",
-      "authStrategy": "BEARER_TOKEN",
-      "authCredentialKey": "accessToken"
+    "attributeConfig": {
+      "graphqlQuery": "query TaxonomyCategoryAttributes($id: ID!) { ... }",
+      "graphqlIdVariable": "id",
+      "itemsJsonPath": "data.node.attributeCategories",
+      "nestedArrayField": "attributes",
+      "idField": "id",
+      "nameField": "name"
     },
     "taxonomyConfig": {
-      "graphqlEndpoint": "https://{storeId}/admin/api/2024-01/graphql.json",
-      "enabled": true
+      "enabled": true,
+      "fetchConfig": {
+        "fetchStrategy": "GRAPHQL",
+        "apiPath": "/admin/api/{apiVersion}/graphql.json",
+        "apiVersion": "2024-01",
+        "dataPath": "data.taxonomy.categories"
+      }
+    },
+    "importConfig": {
+      "capable": true,
+      "slugField": "handle",
+      "productCountField": "products_count",
+      "collectionType": "manual"
     },
     "enabled": true,
     "updatedAt": "2026-06-04T08:00:00"
@@ -53,7 +78,7 @@ List all channel category API configurations.
 
 ## GET `/admin/channel-category-api-configs/{channelType}`
 
-Get config for a specific channel.
+Get the config for a specific channel.
 
 **Response:** `ChannelCategoryApiConfig` or `404`
 
@@ -61,80 +86,107 @@ Get config for a specific channel.
 
 ## POST `/admin/channel-category-api-configs`
 
-Create a new channel category API configuration (for onboarding a new channel).
+Create a config for a new channel. Use when onboarding a channel that has no existing config document.
 
-**Request body:**
+**Request body:** Full `ChannelCategoryApiConfig` — the `id` field is ignored (MongoDB assigns one).
 
 ```json
 {
   "channelType": "shopee_sg",
+  "label": "Shopee SG",
   "treeApiConfig": {
-    "endpoint": "https://partner.shopeemobile.com/api/v2/product/get_category",
-    "authStrategy": "API_KEY_QUERY",
+    "baseUrl": "https://partner.shopeemobile.com",
+    "childrenUrlPath": "/api/v2/product/get_category",
+    "authStrategy": "HMAC_SHA256",
     "authCredentialKey": "partnerKey",
-    "fullTreeStrategy": "SINGLE_REQUEST",
-    "treeStructure": "HIERARCHICAL"
+    "itemsJsonPath": "response.category_list",
+    "nodeIdField": "catid",
+    "nodeNameField": "display_category_name",
+    "nodeHasChildrenField": "has_children",
+    "treeStructure": "NESTED",
+    "nestedChildrenField": "children",
+    "fullTreeStrategy": "SINGLE_CALL",
+    "paginationStrategy": "NONE"
   },
   "enabled": true
 }
 ```
 
-**Response:** `201 Created`
+**Response:** `201 Created` — saved `ChannelCategoryApiConfig`
 
 ---
 
 ## PUT `/admin/channel-category-api-configs/{channelType}/tree-api`
 
-Update the `treeApiConfig` for a channel — endpoint and auth changes when the channel updates their API.
+Replace the `treeApiConfig` sub-document for a channel.
 
-**Request body:**
+Use when the channel migrates their category tree API endpoint, auth strategy, or response field names.
+
+**Request body:** `CategoryTreeApiConfig` — full replacement of the sub-document.
 
 ```json
 {
-  "endpoint": "/merchant-data/shopify/{storeId}/categories/v2",
-  "searchEndpoint": "/merchant-data/shopify/{storeId}/categories/search/v2",
-  "authStrategy": "BEARER_TOKEN",
-  "authCredentialKey": "accessToken"
+  "baseUrl": "https://{storeId}",
+  "httpMethod": "GET",
+  "childrenUrlPath": "/admin/api/2024-10/custom_collections.json",
+  "authStrategy": "API_KEY_HEADER",
+  "authCredentialKey": "accessToken",
+  "authHeaderName": "X-Shopify-Access-Token",
+  "itemsJsonPath": "custom_collections",
+  "nodeIdField": "id",
+  "nodeNameField": "title",
+  "treeStructure": "FLAT_WITH_PARENT_ID",
+  "fullTreeStrategy": "SINGLE_CALL",
+  "paginationStrategy": "NONE"
 }
 ```
 
-**Response:** `200 OK` — updated `treeApiConfig`
+**Response:** `200 OK` — updated `treeApiConfig` sub-document
 
-**Side effect:** `channel_category_cache` for this channel should be cleared so the next category tree load fetches fresh data against the new endpoint.
+**Side effect:** Clears `channel_category_cache` for this channel across all stores so the next tree load fetches from the updated endpoint.
 
 ---
 
 ## PUT `/admin/channel-category-api-configs/{channelType}/attribute-api`
 
-Update the `attributeApiConfig` — endpoint for fetching category-specific required attributes.
+Replace the `attributeConfig` sub-document for a channel.
 
-**Request body:**
+Use when the channel changes their per-category attribute API (endpoint path, response field names, GraphQL query, or lookup strategy).
+
+**Request body:** `AttributeApiConfig` — full replacement of the sub-document.
 
 ```json
 {
-  "endpoint": "/merchant-data/amazon/{storeId}/category-attributes/v2",
-  "authStrategy": "BEARER_TOKEN",
-  "authCredentialKey": "accessToken"
+  "urlPath": "/api/v2/product/get_attributes",
+  "categoryIdQueryParam": "category_id",
+  "itemsJsonPath": "response.attribute_list",
+  "idField": "attribute_id",
+  "nameField": "attribute_name",
+  "requiredField": "is_mandatory",
+  "isCustomizedField": "input_type",
+  "valuesField": "attribute_value_list",
+  "valueIdField": "value_id",
+  "valueNameField": "display_value_name"
 }
 ```
 
-**Response:** `200 OK` — updated `attributeApiConfig`
+**Response:** `200 OK` — updated `attributeConfig` sub-document
 
 ---
 
 ## PUT `/admin/channel-category-api-configs/{channelType}/disable`
 
-Disable category sync for a channel. `CategorySyncJob` and `CategoryDriftPollingJob` will skip this channel.
+Disable category sync for a channel. `CategorySyncJob` and `CategoryDriftPollingJob` skip channels where `enabled=false`.
 
-**Response:** `200 OK`
+**Response:** `200 OK` — full updated `ChannelCategoryApiConfig`
 
 ---
 
 ## PUT `/admin/channel-category-api-configs/{channelType}/enable`
 
-Re-enable a disabled channel.
+Re-enable a disabled channel's category sync.
 
-**Response:** `200 OK`
+**Response:** `200 OK` — full updated `ChannelCategoryApiConfig`
 
 ---
 
@@ -142,28 +194,30 @@ Re-enable a disabled channel.
 
 | Field | Reason |
 |---|---|
-| `importWizardConfig` | Import wizard orchestration is complex; config changes require code review |
-| `taxonomyConfig.graphqlQuery` | GraphQL query shape is tightly coupled to `ChannelTaxonomyService` parsing logic |
+| `importConfig` | Import wizard orchestration is tightly coupled to `ChannelCategoryImportService` parsing logic; changes require code review |
+| `taxonomyConfig` | GraphQL taxonomy query shape is tightly coupled to `ChannelTaxonomyService`; changes require code review |
 
 ---
 
 ## Currently Configured Channels (Reference)
 
-| Channel | Tree Strategy | Taxonomy |
-|---|---|---|
-| `shopify` | SINGLE_REQUEST / HIERARCHICAL | GraphQL taxonomy enabled |
-| `amazon` | PAGINATED / FLAT | No |
-| `tiktokshop` | SINGLE_REQUEST / HIERARCHICAL | No |
-| `lazada` | RECURSIVE / HIERARCHICAL | No |
-| `shopee` | SINGLE_REQUEST / FLAT | No |
-| `ebay` | PAGINATED / FLAT | No |
+| Channel | Tree Strategy | Attribute API | Taxonomy |
+|---|---|---|---|
+| `shopify` | SINGLE_CALL + FLAT_WITH_PARENT_ID | GraphQL (attributeCategories) | GraphQL taxonomy enabled |
+| `amazon` | RECURSIVE + CHILDREN_PER_REQUEST | Two-step lookup (JSON_SCHEMA) | No |
+| `tiktokshop` | SINGLE_CALL + NESTED | REST GET with category_id | No |
+| `lazada` | RECURSIVE + CHILDREN_PER_REQUEST | REST GET with primary_category_id | No |
+| `shopee` | SINGLE_CALL + NESTED | REST GET (HMAC_SHA256) | No |
+| `ebay` | SINGLE_CALL + FLAT_WITH_PARENT_ID | REST GET (aspectConstraint) | No |
 
 ---
 
 ## Implementation Notes
 
-**Repository:** `ChannelCategoryApiConfigRepository` — `findByChannelType`, `findAll`.
+**Controller:** `channel/category/controller/ChannelCategoryApiConfigAdminController.java`
 
-**Package:** `channel/category/config/`
+**Repository:** `ChannelCategoryApiConfigRepository` — `findByChannelType`, `findByEnabledTrue`, `findAll`.
 
-**Cache invalidation:** When `treeApiConfig.endpoint` is updated, call `ChannelCategoryRepository.deleteByChannelType(channelType)` to clear stale cached tree data. The next tree load will fetch from the updated endpoint.
+**Cache invalidation:** `PUT /tree-api` calls `ChannelCategoryRepository.deleteAllByChannelType(channelType)` to clear stale cache across all stores for the channel. Cache-miss on the next tree load triggers a fresh fetch from the updated endpoint. Errors are logged but do not fail the config update.
+
+**Update strategy:** Load document → replace targeted sub-document → save. Other sub-documents (`importConfig`, `taxonomyConfig`) are untouched.

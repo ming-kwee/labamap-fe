@@ -8,6 +8,8 @@ export interface JoltMetadata {
   generatedAt?: string;
   generatedBy?: string;
   strategyBreakdown?: Record<string, number>;
+  confidence?: number | null;
+  supersetSchemaHash?: string | null;
 }
 
 export interface ChannelJoltSpec {
@@ -22,6 +24,8 @@ export interface ChannelJoltSpec {
   /** Array of JOLT operation objects */
   joltSpec: unknown[];
   joltMetadata: JoltMetadata;
+  supersetSchema: Record<string, unknown> | null;
+  description?: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -72,7 +76,11 @@ export function mapRawJoltSpec(raw: unknown): ChannelJoltSpec {
       strategyBreakdown:    isStringNumberMap(meta.strategyBreakdown)
                               ? (meta.strategyBreakdown as Record<string, number>)
                               : undefined,
+      confidence:           meta.confidence != null ? Number(meta.confidence) : null,
+      supersetSchemaHash:   meta.supersetSchemaHash as string | null | undefined,
     },
+    supersetSchema: (r.supersetSchema as Record<string, unknown> | null) ?? null,
+    description:    r.description as string | null | undefined,
     createdAt: (r.createdAt ?? "") as string,
     updatedAt: (r.updatedAt ?? "") as string,
   };

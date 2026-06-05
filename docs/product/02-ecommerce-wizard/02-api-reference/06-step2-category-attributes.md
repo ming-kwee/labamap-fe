@@ -36,38 +36,33 @@ GET /labamap/api/v1/merchant-data/tiktokshop/store-sg-01/category-attributes
 **Response:** `CategoryAttributesResponse`
 ```json
 {
-  "categoryId":   "123456",
-  "categoryName": "Women's T-Shirts",
-  "categoryPath": ["Clothing", "Women's", "T-Shirts"],
-  "requiredFields": [
-    {
-      "fieldName":  "100001",
-      "fieldType":  "SELECT",
-      "label":      "Color",
-      "required":   true,
-      "options": [
-        { "value": "1001", "label": "Red" },
-        { "value": "1002", "label": "Blue" }
-      ]
-    },
-    {
-      "fieldName": "100002",
-      "fieldType": "TEXT",
-      "label":     "Material",
-      "required":  true
-    }
-  ],
+  "categoryId":   "gid://shopify/TaxonomyCategory/aa-1-13-7",
+  "categoryName": "Shirts",
+  "categoryPath": ["Apparel & Accessories", "Clothing", "Tops"],
+  "requiredFields": [],
   "optionalFields": [
-    {
-      "fieldName": "100010",
-      "fieldType": "SELECT",
-      "label":     "Pattern",
-      "required":  false,
-      "options":   [{ "value": "solid", "label": "Solid" }]
-    }
+    { "fieldName": "Sleeve length type", "fieldType": "SELECT", "label": "Sleeve length type",
+      "required": false, "options": [{ "value": "gid://...", "label": "Long sleeve" }, ...] },
+    { "fieldName": "Neckline",           "fieldType": "SELECT", "label": "Neckline",
+      "required": false, "options": [{ "value": "gid://...", "label": "V-neck" }, ...] },
+    { "fieldName": "Care instructions",  "fieldType": "SELECT", "label": "Care instructions",
+      "required": false, "options": [...] }
+  ],
+  "variantOptionSuggestions": [
+    { "fieldName": "Color",   "fieldType": "SELECT", "label": "Color",
+      "required": false, "options": [{ "value": "gid://shopify/TaxonomyValue/1", "label": "Black" }, ...] },
+    { "fieldName": "Size",    "fieldType": "SELECT", "label": "Size",
+      "required": false, "options": [{ "value": "gid://shopify/TaxonomyValue/100", "label": "S" }, ...] },
+    { "fieldName": "Pattern", "fieldType": "SELECT", "label": "Pattern",
+      "required": false, "options": [...] }
   ]
 }
 ```
+
+`variantOptionSuggestions` — attributes whose values typically drive variant creation (Color, Size, Pattern)
+rather than describing the product as a whole. Only populated when `variantOptionAttributeNames` is
+configured on the channel's `AttributeApiConfig`. For channels without this config, all non-required
+attributes appear in `optionalFields` as before.
 
 **Empty response (no attribute API configured, e.g. WIX):**
 ```json
@@ -76,7 +71,8 @@ GET /labamap/api/v1/merchant-data/tiktokshop/store-sg-01/category-attributes
   "categoryName": "",
   "categoryPath": [],
   "requiredFields": [],
-  "optionalFields": []
+  "optionalFields": [],
+  "variantOptionSuggestions": []
 }
 ```
 
@@ -92,7 +88,7 @@ within 24 hours are served from cache.
 | TikTok Shop | REST GET | Direct: `/api/products/attributes?category_id={id}` |
 | Shopee | REST GET | Direct: `/api/v2/product/get_attributes?category_id={id}` |
 | eBay | REST GET | Direct: `/commerce/taxonomy/v1/category_tree/0/get_item_aspects_for_category?category_id={id}` |
-| Shopify | GraphQL POST | `TaxonomyCategoryAttributes` query; nested `attributeCategories[].attributes[]` flattened |
+| Shopify | GraphQL POST | `TaxonomyCategoryAttributes` query; `TaxonomyCategoryAttribute` union — `TaxonomyChoiceListAttribute` (SELECT, `values.nodes`) + `TaxonomyMeasurementAttribute` (TEXT); `attributes(first: 50)` paginated connection |
 | Amazon | Two-step REST | Category name → product type search → JSON Schema fetch |
 | WooCommerce | REST GET | Store-level attributes (not category-specific); bare JSON array response |
 | WIX | — | No attribute API; returns empty. Category requirements from Path A only |
@@ -129,6 +125,10 @@ in `channel_product_data` for that store.
 in `sections` already contains these fields (category required fields are appended directly).
 `categoryAttributeSection` is provided as a convenience so the frontend can render a context
 panel ("These fields are required for: Women's T-Shirts") without re-parsing the required section.
+
+`variantOptionSuggestions` inside `categoryAttributeSection` lists attributes that are better
+presented in the variant builder (Color, Size, Pattern) rather than the product optional section.
+See `18-variant-option-suggestions-frontend.md` for the complete frontend implementation guide.
 
 ---
 
@@ -195,8 +195,12 @@ Created automatically on first cache write (MongoDB deferred collection creation
     }
   ],
   "optionalFields": [...],
-  "syncedAt":  "2026-05-15T10:00:00Z",
-  "expireAt":  "2026-05-16T10:00:00Z"
+  "variantSuggestionFields": [
+    { "fieldName": "Color", "fieldType": "SELECT", "label": "Color", "required": false, "options": [...] },
+    { "fieldName": "Size",  "fieldType": "SELECT", "label": "Size",  "required": false, "options": [...] }
+  ],
+  "syncedAt":  "2026-06-05T10:00:00Z",
+  "expireAt":  "2026-06-06T10:00:00Z"
 }
 ```
 
@@ -312,13 +316,15 @@ Seeded slugs per channel:
 ## TypeScript Types
 
 ```typescript
-// CategoryAttributesResponse — matches Java record
+// CategoryAttributesResponse — matches Java record (updated 2026-06-05)
 interface CategoryAttributesResponse {
-  categoryId:     string;
-  categoryName:   string;
-  categoryPath:   string[];  // e.g. ["Clothing", "Women's", "T-Shirts"]
-  requiredFields: ChannelFormField[];
-  optionalFields: ChannelFormField[];
+  categoryId:              string;
+  categoryName:            string;
+  categoryPath:            string[];       // ancestor labels, root → parent (NOT including leaf)
+  requiredFields:          ChannelFormField[];
+  optionalFields:          ChannelFormField[];  // product-level metadata attributes
+  variantOptionSuggestions: ChannelFormField[]; // NEW — variant-driving attributes (Color, Size, Pattern)
+                                                // empty [] for channels without variantOptionAttributeNames config
 }
 
 // Updated CompletionStats — replaces the old { required, total, percentage } shape

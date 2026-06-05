@@ -145,8 +145,15 @@ export interface CategoryAttributeSection {
   categoryPath: string[];
   /** Fields that are required for this category — seller must fill all before publish */
   requiredFields: ChannelFormField[];
-  /** Optional category-specific fields */
+  /** Optional category-specific fields — product-level metadata (Neckline, Sleeve length, etc.) */
   optionalFields: ChannelFormField[];
+  /**
+   * Variant-driving attributes (Color, Size, Pattern) — rendered in the variant options panel,
+   * NOT in the optional section. Empty [] for channels without variantOptionAttributeNames config.
+   * Use option.label (not option.value) when building channelData — Shopify takes human-readable
+   * labels, not taxonomy GIDs.
+   */
+  variantOptionSuggestions: ChannelFormField[];
 }
 
 // ─── Completion Summary ───────────────────────────────────────────────────────

@@ -6,7 +6,7 @@ Three collections that directly control APM (Adaptive Pattern Matching) quality 
 |---|---|---|
 | 1 | `channel_field_mappings` | **✅ Implemented** (2026-06-04) |
 | 2 | `field_semantic_knowledge` | **✅ Implemented** (2026-06-04) |
-| 3 | `merchant_api_operations` | Pending |
+| 3 | `merchant_api_operations` | **✅ Implemented** (2026-06-04) |
 
 ---
 

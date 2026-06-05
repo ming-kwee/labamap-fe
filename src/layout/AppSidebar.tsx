@@ -40,18 +40,18 @@ const merchantNavItems: NavItem[] = [
     icon: <ListIcon />,
     name: "Products",
     subItems: [
-      { name: "Create Product", path: "/products/v2/create", pro: false, new: true },
-      { name: "My Products", path: "/products", pro: false, new: true },
-      { name: "Channel Mapping Templates", path: "/products/channel-templates", pro: false, new: true },
+      { name: "Create Product", path: "/products/v2/create", pro: false },
+      { name: "My Products", path: "/products", pro: false },
+      { name: "Channel Mapping Templates", path: "/products/channel-templates", pro: false },
     ],
   },
   {
     icon: <PlugInIcon />,
     name: "Channel Platform",
     subItems: [
-      { name: "Channel Stores", path: "/channels/stores", pro: false, new: true },
-      { name: "My Categories", path: "/channels/categories", pro: false, new: true },
-      { name: "Channel Category Mapping", path: "/omni-admin/channel-category-mapping", pro: false, new: true },
+      { name: "Channel Stores", path: "/channels/stores", pro: false },
+      { name: "My Categories", path: "/channels/categories", pro: false },
+      { name: "Channel Category Mapping", path: "/omni-admin/channel-category-mapping", pro: false },
 
       { name: "Inventory Sync", path: "/channels/inventory", pro: false },
     ],
@@ -70,21 +70,26 @@ const adminNavItems: NavItem[] = [
     icon: <TableIcon />,
     name: "Catalog Setup",
     subItems: [
-      { name: "Product Types", path: "/omni-admin/product-types", pro: false, new: true },
-      { name: "Master Attributes", path: "/omni-admin/master-attributes", pro: false, new: true },
-      { name: "Product Categories", path: "/omni-admin/product-categories", pro: false, new: true },
+      { name: "Product Types", path: "/omni-admin/product-types", pro: false },
+      { name: "Master Attributes", path: "/omni-admin/master-attributes", pro: false },
+      { name: "Product Categories", path: "/omni-admin/product-categories", pro: false },
     ],
   },
   {
     icon: <PaperPlaneIcon />,
     name: "Platform Admin",
     subItems: [
-      { name: "Category Templates", path: "/platform-admin/category-templates", pro: false, new: true },
-      { name: "Channel Category Schemas", path: "/platform-admin/channel-category-schemas", pro: false, new: true },
-      { name: "Channel Field Mappings", path: "/platform-admin/channel-field-mappings", pro: false, new: true },
-      { name: "Field Semantic Knowledge", path: "/platform-admin/field-semantic-knowledge", pro: false, new: true },
-      { name: "Merchant API Operations", path: "/platform-admin/merchant-api-operations", pro: false, new: true },
-      { name: "Channel JOLT Specs", path: "/platform-admin/channel-jolt-specs", pro: false, new: true },
+      // ── Operational / runtime (change most often) ─────────────────────────
+      { name: "Channel JOLT Specs", path: "/platform-admin/channel-jolt-specs", pro: false },
+      { name: "Channel Field Mappings", path: "/platform-admin/channel-field-mappings", pro: false },
+      { name: "Merchant API Operations", path: "/platform-admin/merchant-api-operations", pro: false },
+      { name: "Field Semantic Knowledge", path: "/platform-admin/field-semantic-knowledge", pro: false },
+      // ── Tuning / config (change when channels update their APIs) ──────────
+      { name: "Channel Configurations", path: "/platform-admin/channel-configurations", pro: false },
+      { name: "Channel Category API Configs", path: "/platform-admin/channel-category-api-configs", pro: false },
+      // ── Onboarding setup (set once per new channel) ───────────────────────
+      { name: "Channel Category Schemas", path: "/platform-admin/channel-category-schemas", pro: false },
+      { name: "Category Templates", path: "/platform-admin/category-templates", pro: false },
     ],
   },
   {

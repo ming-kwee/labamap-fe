@@ -216,6 +216,114 @@ function FieldsGrid({
   );
 }
 
+// ── Variant Option Suggestions Panel ─────────────────────────────────────────
+// Shown when categoryAttrs.variantOptionSuggestions is non-empty (Shopify only, initial release).
+// Lets the seller pick which variant-driving attributes (Color, Size, Pattern) to apply,
+// then injects option{n}_name + option{n}_values into channelData.
+// Uses option.label (NOT option.value) — Shopify takes human-readable names, not taxonomy GIDs.
+
+function VariantOptionSuggestionsPanel({
+  suggestions,
+  categoryName,
+  onApply,
+}: {
+  suggestions: ChannelFormField[];
+  categoryName: string;
+  onApply: (orderedSelections: Array<{ fieldName: string; labels: string[] }>) => void;
+}) {
+  const [selected, setSelected] = useState<Set<string>>(
+    () => new Set(suggestions.map((f) => f.fieldName))
+  );
+  const [applied, setApplied] = useState(false);
+
+  function toggle(fieldName: string) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(fieldName)) next.delete(fieldName); else next.add(fieldName);
+      return next;
+    });
+    setApplied(false);
+  }
+
+  function handleApply() {
+    const ordered = suggestions
+      .filter((f) => selected.has(f.fieldName))
+      .map((f) => ({ fieldName: f.fieldName, labels: (f.options ?? []).map((o) => o.label) }));
+    onApply(ordered);
+    setApplied(true);
+  }
+
+  return (
+    <div className="space-y-2">
+      <div className="px-4 py-3 border-l-4 border-l-teal-400 dark:border-l-teal-500 border border-teal-200/60 dark:border-teal-500/20 bg-teal-50/40 dark:bg-teal-500/5 rounded-xl">
+        <div className="flex items-center gap-2.5 mb-0.5">
+          <span className="text-[10px] font-bold text-teal-500 dark:text-teal-400 uppercase tracking-wider flex-shrink-0">Variant</span>
+          <span className="text-sm font-semibold text-teal-800 dark:text-teal-200">
+            Suggested variant options — {categoryName}
+          </span>
+          <span className="text-xs bg-white dark:bg-gray-800 border border-teal-200 dark:border-teal-500/30 px-1.5 py-0.5 rounded-md text-teal-600 dark:text-teal-400 font-medium">
+            {suggestions.length}
+          </span>
+        </div>
+        <p className="text-xs text-teal-600 dark:text-teal-400">
+          These attributes typically drive variant creation. Select and click Apply to populate variant option fields.
+        </p>
+      </div>
+
+      <div className="space-y-1 px-1">
+        {suggestions.map((field) => {
+          const isSelected = selected.has(field.fieldName);
+          const count = field.options?.length ?? 0;
+          const preview = field.options?.slice(0, 3).map((o) => o.label).join(", ");
+          return (
+            <label
+              key={field.fieldName}
+              className={`flex items-center gap-3 px-3 py-2.5 rounded-lg border cursor-pointer transition-colors ${
+                isSelected
+                  ? "bg-teal-50 dark:bg-teal-500/10 border-teal-200 dark:border-teal-500/30"
+                  : "bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700 opacity-55"
+              }`}
+            >
+              <input
+                type="checkbox"
+                checked={isSelected}
+                onChange={() => toggle(field.fieldName)}
+                className="w-4 h-4 rounded border-gray-300 text-teal-600 focus:ring-teal-500 flex-shrink-0"
+              />
+              <div className="flex-1 min-w-0">
+                <span className="text-sm font-medium text-gray-800 dark:text-gray-200">{field.label}</span>
+                {count > 0 && (
+                  <span className="ml-2 text-xs text-gray-500 dark:text-gray-400">
+                    {count} values — {preview}{count > 3 ? "…" : ""}
+                  </span>
+                )}
+              </div>
+            </label>
+          );
+        })}
+      </div>
+
+      <div className="flex items-center justify-between px-1 pt-1">
+        <span className="text-xs text-gray-400 dark:text-gray-500">
+          {selected.size} of {suggestions.length} selected
+        </span>
+        <button
+          type="button"
+          onClick={handleApply}
+          disabled={selected.size === 0}
+          className={`flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
+            applied
+              ? "bg-teal-100 dark:bg-teal-500/20 text-teal-700 dark:text-teal-300"
+              : "bg-teal-600 hover:bg-teal-700 text-white"
+          }`}
+        >
+          {applied ? "✓ Applied" : "Apply as variant options"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ── Main component ────────────────────────────────────────────────────────────
 
 export default function ChannelStoreTab({ schema, values, onChange, isSaving, lastSaved, masterProduct, fieldErrors, savedCompletionPct, orgId = "" }: Props) {
@@ -274,24 +382,23 @@ export default function ChannelStoreTab({ schema, values, onChange, isSaving, la
     const isCategoryField = mainCategoryField != null && fieldName === mainCategoryField.fieldName;
 
     if (isCategoryField && value !== values.channelData[fieldName] && categoryAttrs) {
+      // Clear stale category-specific fields (required + optional + variant suggestions)
+      // when the seller picks a different category mid-session.
       const staleKeys = new Set([
         ...(categoryAttrs.requiredFields ?? []).map((f) => f.fieldName),
         ...(categoryAttrs.optionalFields ?? []).map((f) => f.fieldName),
+        ...(categoryAttrs.variantOptionSuggestions ?? []).map((f) => f.fieldName),
       ]);
       const clearedData = Object.fromEntries(
         Object.entries(values.channelData).filter(([k]) => !staleKeys.has(k))
       );
-      const updatedData: Record<string, unknown> = { ...clearedData, [fieldName]: value };
-      if (fieldName !== "categoryId") updatedData.categoryId = value;
-      onChange({ ...values, channelData: updatedData });
+      // Do NOT write channelData["categoryId"] = GID — backend skips GID values in
+      // resolveCategorySlug() and derives the slug from categoryPath (Priority 3).
+      onChange({ ...values, channelData: { ...clearedData, [fieldName]: value } });
       return;
     }
 
-    const updatedChannelData: Record<string, unknown> = { ...values.channelData, [fieldName]: value };
-    if (isCategoryField && fieldName !== "categoryId") {
-      updatedChannelData.categoryId = value;
-    }
-    onChange({ ...values, channelData: updatedChannelData });
+    onChange({ ...values, channelData: { ...values.channelData, [fieldName]: value } });
   }
 
   function handleVariantChange(sku: string, fieldName: string, value: unknown) {
@@ -464,25 +571,59 @@ export default function ChannelStoreTab({ schema, values, onChange, isSaving, la
 
     if (!categoryAttrs) return null;
 
-    const { categoryName, categoryPath, requiredFields, optionalFields } = categoryAttrs;
+    const { categoryName, categoryPath, requiredFields, optionalFields, variantOptionSuggestions } = categoryAttrs;
     const breadcrumb = [...categoryPath, categoryName].filter(Boolean).join(" › ");
+    const hasSuggestions = (variantOptionSuggestions ?? []).length > 0;
+
+    function handleVariantSuggestionsApply(
+      orderedSelections: Array<{ fieldName: string; labels: string[] }>
+    ) {
+      // Inject option{n}_name + option{n}_values into channelData.
+      // Uses label values (NOT taxonomy GIDs) per Shopify product create API requirements.
+      const updates: Record<string, unknown> = {};
+      orderedSelections.forEach(({ fieldName, labels }, idx) => {
+        updates[`option${idx + 1}_name`]   = fieldName;
+        updates[`option${idx + 1}_values`] = labels;
+      });
+      // Clear any previously applied option keys beyond current count
+      const currentCount = orderedSelections.length;
+      for (let i = currentCount + 1; i <= 3; i++) {
+        updates[`option${i}_name`]   = undefined;
+        updates[`option${i}_values`] = undefined;
+      }
+      const merged = { ...values.channelData };
+      for (const [k, v] of Object.entries(updates)) {
+        if (v === undefined) delete merged[k]; else merged[k] = v;
+      }
+      onChange({ ...values, channelData: merged });
+    }
 
     // Category unchanged from schema load — fields already rendered inside form sections.
-    // Show only a compact info banner to avoid duplication.
+    // Show only a compact info banner to avoid duplication, then the suggestions panel if present.
     if (categoryIsUnchangedFromSchema) {
       return (
-        <div className="flex items-start gap-3 px-4 py-3 border-l-4 border-l-violet-400 dark:border-l-violet-500 border border-violet-200/60 dark:border-violet-500/20 bg-violet-50/40 dark:bg-violet-500/5 rounded-xl">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-violet-500 dark:text-violet-400 flex-shrink-0 mt-0.5">
-            <circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/>
-          </svg>
-          <div className="min-w-0">
-            <p className="text-sm font-semibold text-violet-800 dark:text-violet-200">
-              Category-specific fields applied
-            </p>
-            <p className="text-xs text-violet-600 dark:text-violet-400 mt-0.5 truncate">
-              {breadcrumb} — {requiredFields.length} required, {optionalFields.length} optional
-            </p>
+        <div className="space-y-3">
+          <div className="flex items-start gap-3 px-4 py-3 border-l-4 border-l-violet-400 dark:border-l-violet-500 border border-violet-200/60 dark:border-violet-500/20 bg-violet-50/40 dark:bg-violet-500/5 rounded-xl">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-violet-500 dark:text-violet-400 flex-shrink-0 mt-0.5">
+              <circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/>
+            </svg>
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-violet-800 dark:text-violet-200">
+                Category-specific fields applied
+              </p>
+              <p className="text-xs text-violet-600 dark:text-violet-400 mt-0.5 truncate">
+                {breadcrumb} — {requiredFields.length} required, {optionalFields.length} optional
+              </p>
+            </div>
           </div>
+          {hasSuggestions && (
+            <VariantOptionSuggestionsPanel
+              key={categoryAttrs.categoryId}
+              suggestions={variantOptionSuggestions}
+              categoryName={categoryName}
+              onApply={handleVariantSuggestionsApply}
+            />
+          )}
         </div>
       );
     }
@@ -554,6 +695,15 @@ export default function ChannelStoreTab({ schema, values, onChange, isSaving, la
               />
             )}
           </div>
+        )}
+
+        {/* Variant option suggestions panel */}
+        {hasSuggestions && (
+          <VariantOptionSuggestionsPanel
+            suggestions={variantOptionSuggestions}
+            categoryName={categoryName}
+            onApply={handleVariantSuggestionsApply}
+          />
         )}
       </div>
     );

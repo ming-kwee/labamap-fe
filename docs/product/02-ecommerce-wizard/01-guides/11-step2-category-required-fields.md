@@ -206,30 +206,46 @@ Supported slugs to seed for Shopify: `clothing`, `electronics`, `home-garden`, `
 Supported slugs to seed for WIX: same set, adjusted for WIX field names  
 Supported slugs to seed for eBay: `electronics`, `motors`, `fashion`, `collectibles`, `sporting-goods`
 
-### 3. Category Slug Resolution
+### 3. Category Slug Resolution (updated 2026-06-05)
 
-The saved `channelData` in `ChannelProductData` contains the product's selected category. The value is a category ID (e.g. `"shopify_cat_123"`) or slug depending on the channel. A helper is needed to normalise this to a slug:
+`resolveCategorySlug()` now uses three-priority resolution so that Path A and Path B can fire
+simultaneously from a single `channelData` state (no duplicate key needed):
+
+**Priority 1 & 2 — explicit keys (existing behaviour, GID-format values now skipped)**
+
+`channelData["categoryId"]` → `channelData["category"]`. Values that start with `gid://` are
+skipped — they are channel taxonomy GIDs (e.g. Shopify's `gid://shopify/TaxonomyCategory/...`)
+that don't map to any slug. Previously these would cause Path A to silently fail.
+
+**Priority 3 — derive from Path B category path (new)**
+
+When the explicit keys are absent or GID-format, the method reads `categoryAttrsForSchema`
+(the Path B response) and word-tokenises each segment of `categoryPath` and `categoryName`.
+The first word that matches `CATEGORY_SLUG_ALIASES` wins.
+
+```
+Shopify example:
+  channelData["shopify_taxonomy_category_id"] = "gid://shopify/TaxonomyCategory/aa-1-13-7"
+  → Path B fires → categoryAttrsForSchema.categoryPath = ["Apparel & Accessories", "Clothing", "Tops"]
+  → Priority 3: "Apparel & Accessories" → word "apparel" → alias → "clothing"
+  → Path A fires: categoryRequirements["clothing"] → adds material, care_instructions, size_type
+```
+
+Both paths now activate from a single `shopify_taxonomy_category_id` value — no `categoryId`
+slug key needed in `channelData`.
 
 ```java
-// In ChannelStepSchemaService
-
-private String resolveCategorySlug(ChannelProductData savedData, String channelType) {
-    if (savedData == null || savedData.getChannelData() == null) return null;
-    Object catVal = savedData.getChannelData().get("categoryId");
-    if (catVal == null) catVal = savedData.getChannelData().get("category");
-    if (catVal == null) return null;
-    String raw = String.valueOf(catVal).toLowerCase();
-    // Shopify/WIX store product type slugs directly — normalise to known slug
-    return CATEGORY_SLUG_ALIASES.getOrDefault(raw, raw);
-}
-
-// Known aliases map (seed from platform docs):
+// Known aliases map:
 private static final Map<String, String> CATEGORY_SLUG_ALIASES = Map.of(
-    "apparel", "clothing",
-    "clothes", "clothing",
-    "fashion", "clothing",
-    "tech",    "electronics",
-    "gadgets", "electronics"
+    "apparel",    "clothing",
+    "clothes",    "clothing",
+    "fashion",    "clothing",
+    "tech",       "electronics",
+    "gadgets",    "electronics",
+    "garden",     "home-garden",
+    "home",       "home-garden",
+    "sport",      "sports",
+    "sportswear", "sports"
 );
 ```
 
@@ -584,7 +600,7 @@ Option 1 is simpler and backward-compatible (null condition = all categories). O
 
 ---
 
-## Implementation Status (as of 2026-05-16)
+## Implementation Status (as of 2026-06-05)
 
 | Phase | Status | Notes |
 |-------|--------|-------|
@@ -592,6 +608,7 @@ Option 1 is simpler and backward-compatible (null condition = all categories). O
 | Phase 1 — Path B wiring | **Done** | `CompletionStats` extended, scoring wired, section builders updated |
 | Phase 2 — Path B activation | **Done** | All 7 channels configured: Lazada, TikTok, Shopee, eBay, Shopify (GraphQL), Amazon (two-step), WooCommerce |
 | Phase 3 — Path A model + seeder | **Done** | `CategoryFieldOverride` added, `ChannelCategoryRequirementsMigration` @Order(111) seeded Shopify/WIX/eBay |
+| Path A + B simultaneous activation | **Done** | `resolveCategorySlug()` extended: skips GID-format `categoryId` values; falls back to Path B `categoryPath` segments for slug derivation; `slugFromLabel()` helper word-tokenises Shopify taxonomy labels to known slugs |
 | Phase 4 — APM condition eval | **Pending** | `KnowledgeBasedFieldMatchingService.getChannelSpecificBoostReactive()` not yet updated |
 
 API reference for Phases 1–3: [`02-api-reference/06-step2-category-attributes.md`](../02-api-reference/06-step2-category-attributes.md)

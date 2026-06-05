@@ -6,7 +6,7 @@ Module root: `com.labamap.labamapomnichannelbe4fe` (spread across `adaptivepatte
 
 Base URL: `http://localhost:8888/labamap/api/v1/admin`
 
-**Status: Partially Implemented** — P0 `channel_field_mappings` and `field_semantic_knowledge` done (2026-06-04). P0 `merchant_api_operations` and all P1 items pending.
+**Status: Fully Implemented** — All P0 and P1 items done (2026-06-04).
 
 ---
 
@@ -66,15 +66,15 @@ Platform Operator (internal tooling / Postman)
 |---|---|---|---|---|
 | 1 | `channel_field_mappings` | `ChannelFieldMappingAdminController` | `/admin/channel-field-mappings` | **✅ Implemented** |
 | 2 | `field_semantic_knowledge` | `FieldSemanticKnowledgeAdminController` | `/admin/field-semantic-knowledge` | **✅ Implemented** |
-| 3 | `merchant_api_operations` | `MerchantApiOperationAdminController` | `/admin/merchant-api-operations` | Pending |
+| 3 | `merchant_api_operations` | `MerchantApiOperationAdminController` | `/admin/merchant-api-operations` | **✅ Implemented** |
 
 ### 🟡 P1 — Important (operational agility)
 
 | # | Collection | Controller | Endpoint Prefix | Status |
 |---|---|---|---|---|
-| 4 | `channel_jolt_specs` | `ChannelJoltSpecAdminController` | `/admin/channel-jolt-specs` | Pending |
-| 5 | `channel_configurations` | `ChannelConfigurationAdminController` | `/admin/channel-configurations` | Pending |
-| 6 | `channel_category_api_config` | `ChannelCategoryApiConfigAdminController` | `/admin/channel-category-api-configs` | Pending |
+| 4 | `channel_jolt_specs` | `ChannelJoltSpecAdminController` | `/admin/channel-jolt-specs` | **✅ Implemented** |
+| 5 | `channel_configurations` | `ChannelConfigurationAdminController` | `/admin/channel-configurations` | **✅ Implemented** |
+| 6 | `channel_category_api_config` | `ChannelCategoryApiConfigAdminController` | `/admin/channel-category-api-configs` | **✅ Implemented** |
 
 ---
 
