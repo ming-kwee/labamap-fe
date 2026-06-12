@@ -335,17 +335,33 @@ export default function ChannelFieldInput({ field, value, onChange, disabled, va
         />
       );
 
-    default: // TEXT, COLOR, etc.
+    default: { // TEXT, COLOR, etc.
+      // When options are present, add a datalist so taxonomy values appear as
+      // browser autocomplete suggestions while still allowing free-text input.
+      // Used by dynamic variant option columns (Color, Size, Pattern per-variant cells)
+      // where Shopify accepts any string but suggests taxonomy labels.
+      const listId = options.length > 0 ? `dl-${field.fieldName}` : undefined;
       return (
-        <input
-          type="text"
-          value={(value as string) ?? ""}
-          onChange={(e) => onChange(field.fieldName, e.target.value)}
-          placeholder={field.placeholder ?? ""}
-          disabled={disabled}
-          maxLength={effectiveValidation?.maxLength}
-          className={baseClass}
-        />
+        <>
+          <input
+            type="text"
+            list={listId}
+            value={(value as string) ?? ""}
+            onChange={(e) => onChange(field.fieldName, e.target.value)}
+            placeholder={field.placeholder ?? ""}
+            disabled={disabled}
+            maxLength={effectiveValidation?.maxLength}
+            className={baseClass}
+          />
+          {listId && (
+            <datalist id={listId}>
+              {options.map((opt) => (
+                <option key={opt.value} value={opt.label} />
+              ))}
+            </datalist>
+          )}
+        </>
       );
+    }
   } } // closes switch + renderInput
 }

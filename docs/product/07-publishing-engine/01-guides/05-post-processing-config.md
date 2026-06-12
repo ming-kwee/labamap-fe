@@ -139,14 +139,49 @@ Rules are embedded in `channel_configurations.postProcessingRules`:
     ]
   },
   {
-    "name": "shopify-generate-options",
+    "name": "shopify-options-from-channel-data",
+    "sourcePath": "product",
+    "targetPath": "product.options",
+    "priority": 19,
+    "enabled": true,
+    "operations": [
+      {
+        "op": "BUILD_OPTIONS_FROM_FLAT_KEYS",
+        "nameKeyPattern": "option{n}_name",
+        "valuesKeyPattern": "option{n}_values",
+        "maxOptions": 3,
+        "fallbackToExtractDimensions": true,
+        "fallbackSourcePath": "product.variants",
+        "fallbackNameTransform": "CAPITALIZE",
+        "fallbackValueStructure": "FLAT_LIST"
+      }
+    ]
+  },
+  {
+    "name": "generate-options-from-variants",
     "sourcePath": "product.variants",
     "targetPath": "product.options",
     "priority": 20,
+    "enabled": false,
+    "operations": [
+      { "op": "EXTRACT_DIMENSIONS", "nameTransform": "CAPITALIZE", "valueStructure": "FLAT_LIST", "maxOptions": 3 },
+      { "op": "MAP_TO_INDEXED",     "fieldPrefix": "option", "startIndex": 1, "maxOptions": 3 }
+    ]
+  },
+  {
+    "name": "shopify-map-variants-to-options",
+    "sourcePath": "product.variants",
+    "targetPath": "product.variants",
+    "priority": 21,
     "enabled": true,
     "operations": [
-      { "op": "EXTRACT_DIMENSIONS", "nameTransform": "CAPITALIZE", "valueStructure": "FLAT_LIST" },
-      { "op": "MAP_TO_INDEXED",     "fieldPrefix": "option", "startIndex": 1 }
+      {
+        "op": "MAP_TO_INDEXED",
+        "fieldPrefix": "option",
+        "startIndex": 1,
+        "maxOptions": 3,
+        "dimensionSource": "product.options.name"
+      }
     ]
   },
   {
@@ -410,3 +445,124 @@ Use `POST /labamap/api/v1/post-processing/validate` to catch typos before saving
 - [ ] Run `POST /labamap/api/v1/post-processing/validate` with sample rule JSON
 - [ ] Publish a test product with `dryRun: true` and inspect `publishedData`
 - [ ] Publish live and verify the channel API response
+
+---
+
+## ✅ Resolved — Shopify Variant Options from Step 2 Channel Data (2026-06-11)
+
+**Status: Implemented. See changes below.**
+
+### Problem (original)
+
+Two separate issues caused the Shopify error `"Product options must have corresponding variants"`:
+
+**Issue A — Wrong option names (`Option1` instead of `Color`):**
+The existing `generate-options-from-variants` rule (priority 20, now disabled) derived
+`product.options` names from variant field names via `EXTRACT_DIMENSIONS + nameTransform: CAPITALIZE`:
+```
+variants[n].color = "Black"  →  EXTRACT_DIMENSIONS  →  { name: "Color", values: ["Black"] }
+```
+This worked for simple cases but broke when the seller used the **Step 2 "Apply as variant options"
+panel**, which saves named flat keys:
+```json
+{ "channelData": { "option1_name": "Color", "option1_values": ["Black"], "option2_name": "Size", ... } }
+```
+The old rule ignored these and would produce `options[0].name = "Color"` only by coincidence from
+field-name capitalisation — not from the seller's explicit choice.
+
+**Issue B — Missing `option1`/`option2` on variant items:**
+Even after `product.options` was correctly built, each variant item still only had `color`/`size`
+(from JOLT output) — never `option1`/`option2`. Shopify requires every variant to carry positional
+`option1`, `option2`, `option3` fields matching the entries in `product.options`.
+
+The `MAP_TO_INDEXED` operation that would add these keys was bundled in the disabled rule 2b and
+never ran.
+
+---
+
+### Solution implemented
+
+#### Rule 2a — `shopify-options-from-channel-data` (priority 19) — already existed
+
+Uses `BUILD_OPTIONS_FROM_FLAT_KEYS` to read `option{n}_name` / `option{n}_values` from the merged
+source document and write `product.options` with correct seller-chosen names. Falls back to
+`EXTRACT_DIMENSIONS` when those flat keys are absent (products published without Step 2 panel).
+
+#### Rule 2b — `generate-options-from-variants` (priority 20) — kept disabled
+
+The `EXTRACT_DIMENSIONS` part is now fully handled by rule 2a's fallback path. Disabled to avoid
+running twice.
+
+#### Rule 2c — `shopify-map-variants-to-options` (priority 21) — **new**
+
+Adds `option1`, `option2`, `option3` fields to each variant item using `MAP_TO_INDEXED` with the
+new `dimensionSource` parameter:
+
+```json
+{
+  "name": "shopify-map-variants-to-options",
+  "sourcePath": "product.variants",
+  "targetPath": "product.variants",
+  "priority": 21,
+  "enabled": true,
+  "operations": [
+    {
+      "op": "MAP_TO_INDEXED",
+      "fieldPrefix":     "option",
+      "startIndex":      1,
+      "maxOptions":      3,
+      "dimensionSource": "product.options.name"
+    }
+  ]
+}
+```
+
+`dimensionSource: "product.options.name"` reads the ordered list of option names from the
+`product.options` array built by rule 2a, lowercases them, and uses them as the dimension→position
+mapping. This guarantees the order matches what the seller chose, rather than relying on Map
+key-iteration order from `detectDimensionFields`.
+
+---
+
+### New `dimensionSource` parameter for `MAP_TO_INDEXED`
+
+Added to `GenericPostProcessingEngine.executeMapToIndexed()`. Resolution priority:
+
+| Priority | Source | When used |
+|----------|--------|-----------|
+| 1 | `dimensionFields` list in op config | Explicit override |
+| 2 | **`dimensionSource` path** | Reads names from a document path (e.g. `product.options.name`) |
+| 3 | `detectDimensionFields(items)` | Auto-detect fallback |
+
+The helper `resolveDimensionFieldsFromSource(data, path)` splits off a trailing field key from the
+path (`"product.options.name"` → list path `"product.options"`, field key `"name"`), reads each
+element's `name` value, and returns them lowercased.
+
+`MAP_TO_INDEXED` also gained a **case-insensitive variant field lookup**: `"Color"` in the options
+list matches `"color"` in the variant map, so casing differences between taxonomy labels and JOLT
+output field names are handled transparently.
+
+---
+
+### Execution order after fix
+
+```
+priority 19  BUILD_OPTIONS_FROM_FLAT_KEYS  →  product.options = [{name:"Color",...},{name:"Size",...}]
+priority 20  (disabled)
+priority 21  MAP_TO_INDEXED (dimensionSource="product.options.name")
+             →  variant.option1 = "Black",  variant.option2 = "Xs"   (in-place)
+priority 25  transform-variant-images  →  variant.images wrapped
+```
+
+`applyVariantOverridesPostJolt` runs after all post-processing and merges Step 2 per-SKU overrides
+(`barcode`, `inventory_policy`, etc.) on top. The `option1`/`option2` values are already present
+at that point so they are not overwritten.
+
+---
+
+### Files changed
+
+| File | Change |
+|------|--------|
+| `channel/service/GenericPostProcessingEngine.java` | Added `dimensionSource` resolution branch and `resolveDimensionFieldsFromSource()` helper to `executeMapToIndexed()`; added case-insensitive variant field lookup |
+| `channel/config/ChannelConfigurationDataLoader.java` | Added `shopify-map-variants-to-options` rule (priority 21); updated rule 2b comment |

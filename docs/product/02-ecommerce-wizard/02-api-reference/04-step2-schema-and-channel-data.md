@@ -181,6 +181,109 @@ One document per master product × connected store.
 
 ---
 
+## ⚠ Backend Gap — Shopify Schema Must Include `option{n}_name` / `option{n}` Fields (2026-06-09)
+
+**Status: Must be verified. If absent, option selections do not survive page reload.**
+
+### Context
+
+From Step 2, sellers save Shopify variant option data in two places:
+
+```json
+{
+  "channelData": {
+    "option1_name":   "Color",
+    "option1_values": ["Black"],
+    "option2_name":   "Size",
+    "option2_values": ["XS", "S"]
+  },
+  "variantOverrides": {
+    "SKU-XS-BLACK": { "option1": "Black", "option2": "XS" },
+    "SKU-S-BLACK":  { "option1": "Black", "option2": "S"  }
+  }
+}
+```
+
+These are saved correctly by the save endpoint. The problem is **on page reload**: the frontend
+pre-fills `channelData` only from schema field `currentValue`. If `option1_name`, `option1_values`,
+`option2_name`, `option2_values` are not present as fields in the Shopify channel schema's
+`optional` (or `required`) section, the backend never populates their `currentValue`, and the
+frontend starts with an empty `channelData` for these keys — the variant option columns disappear.
+
+### Required: these fields must be in the Shopify channel config as schema fields
+
+The Shopify `channel_configurations.requiredFieldObjects` or the optional-section definition
+must include `option1_name`, `option2_name`, `option3_name` (TEXT fields) and optionally
+`option1_values`, `option2_values`, `option3_values` (MULTISELECT or TEXT fields):
+
+```json
+{
+  "fieldName": "option1_name",
+  "fieldType": "TEXT",
+  "label":     "Variant Option 1 Name",
+  "required":  false,
+  "helpText":  "e.g. Color, Size — set automatically by the Apply panel"
+}
+```
+
+When these fields exist in the schema, `ChannelStepSchemaService.buildSchemaForStore()` reads
+the saved values from `channelProductData.channelData` and populates `currentValue`. The frontend
+then pre-fills `channelData.option1_name = "Color"` on load and the variant table columns appear.
+
+### `variantOverrides` for `option1`/`option2` — already handled
+
+`variant.currentOverrides` is already populated from `channelProductData.variantOverrides` (all
+keys). No schema registration is needed for `option1`/`option2` per-variant values — they flow
+through `currentOverrides` automatically regardless of `variantFields` definition.
+
+### MongoDB upsert to add the fields (no code change needed if architecture is correct)
+
+In `ChannelConfigurationDataLoader` (@Order 5), add to the Shopify channel config upsert:
+
+```java
+// In the Shopify optional field list:
+ChannelFieldConfig.builder()
+    .fieldName("option1_name").fieldType("TEXT").label("Variant Option 1 Name")
+    .required(false).section("optional").priority(200).build(),
+ChannelFieldConfig.builder()
+    .fieldName("option2_name").fieldType("TEXT").label("Variant Option 2 Name")
+    .required(false).section("optional").priority(201).build(),
+ChannelFieldConfig.builder()
+    .fieldName("option3_name").fieldType("TEXT").label("Variant Option 3 Name")
+    .required(false).section("optional").priority(202).build(),
+// option{n}_values are derived from variantOverrides at save time;
+// storing them as explicit fields is optional but aids completion scoring.
+```
+
+### Updated `channel_product_data` example (with option fields)
+
+```json
+{
+  "channelData": {
+    "vendor":          "TechBrand US",
+    "product_type":    "Electronics",
+    "option1_name":    "Color",
+    "option1_values":  ["Black"],
+    "option2_name":    "Size",
+    "option2_values":  ["XS", "S"]
+  },
+  "variantOverrides": {
+    "SKU-XS-BLACK": {
+      "inventory_policy": "deny",
+      "option1":          "Black",
+      "option2":          "XS"
+    },
+    "SKU-S-BLACK": {
+      "inventory_policy": "deny",
+      "option1":          "Black",
+      "option2":          "S"
+    }
+  }
+}
+```
+
+---
+
 ## POST `/channel-product-data/save`
 
 Saves (upserts) one store's channel data. Called on autosave (30s debounce) and on tab switch.

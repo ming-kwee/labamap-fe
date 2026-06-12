@@ -369,6 +369,13 @@ export interface MasterProductSnapshot {
   variants?: Array<{
     sku: string;
     variantLabel: string;
+    /**
+     * Structured option key-value pairs from Step 1, e.g. { Color: "Black", Size: "XS" }.
+     * Preserved from sessionStorage so Step 2 can auto-populate per-variant option{n} values
+     * when the seller clicks "Apply as variant options" in the suggestion panel.
+     * Keys are the option dimension names exactly as entered in Step 1.
+     */
+    variantOptions?: Record<string, string>;
     /** All master variant attributes — open map so any fieldName resolves correctly in the variant table */
     [fieldName: string]: unknown;
   }>;

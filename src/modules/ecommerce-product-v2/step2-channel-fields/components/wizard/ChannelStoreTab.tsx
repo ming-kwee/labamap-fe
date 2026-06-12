@@ -217,24 +217,30 @@ function FieldsGrid({
 }
 
 // ── Variant Option Suggestions Panel ─────────────────────────────────────────
-// Shown when categoryAttrs.variantOptionSuggestions is non-empty (Shopify only, initial release).
+// Shown when categoryAttrs.variantOptionSuggestions is non-empty.
 // Lets the seller pick which variant-driving attributes (Color, Size, Pattern) to apply,
 // then injects option{n}_name + option{n}_values into channelData.
-// Uses option.label (NOT option.value) — Shopify takes human-readable names, not taxonomy GIDs.
+// Uses option.label (NOT option.value) — channels expect human-readable names.
+// option{n}_name uses field.label (NOT field.fieldName) so channels receive "Color" not "color".
 
 function VariantOptionSuggestionsPanel({
   suggestions,
   categoryName,
   onApply,
+  initialAppliedSummary = null,
 }: {
   suggestions: ChannelFormField[];
   categoryName: string;
-  onApply: (orderedSelections: Array<{ fieldName: string; labels: string[] }>) => void;
+  onApply: (orderedSelections: Array<{ fieldName: string; label: string; labels: string[] }>) => void;
+  /** Restored from saved channelData so the button shows "Applied — Re-apply" after navigation. */
+  initialAppliedSummary?: Array<{ label: string; count: number }> | null;
 }) {
   const [selected, setSelected] = useState<Set<string>>(
     () => new Set(suggestions.map((f) => f.fieldName))
   );
-  const [applied, setApplied] = useState(false);
+  const [appliedSummary, setAppliedSummary] = useState<Array<{ label: string; count: number }> | null>(
+    () => initialAppliedSummary ?? null
+  );
 
   function toggle(fieldName: string) {
     setSelected((prev) => {
@@ -242,16 +248,18 @@ function VariantOptionSuggestionsPanel({
       if (next.has(fieldName)) next.delete(fieldName); else next.add(fieldName);
       return next;
     });
-    setApplied(false);
+    setAppliedSummary(null);
   }
 
   function handleApply() {
     const ordered = suggestions
       .filter((f) => selected.has(f.fieldName))
-      .map((f) => ({ fieldName: f.fieldName, labels: (f.options ?? []).map((o) => o.label) }));
+      .map((f) => ({ fieldName: f.fieldName, label: f.label, labels: (f.options ?? []).map((o) => o.label) }));
     onApply(ordered);
-    setApplied(true);
+    setAppliedSummary(ordered.map((o) => ({ label: o.label, count: o.labels.length })));
   }
+
+  const isApplied = appliedSummary !== null;
 
   return (
     <div className="space-y-2">
@@ -303,6 +311,29 @@ function VariantOptionSuggestionsPanel({
         })}
       </div>
 
+      {/* Post-apply confirmation summary */}
+      {isApplied && appliedSummary && appliedSummary.length > 0 && (
+        <div className="px-3 py-2.5 rounded-lg bg-teal-50 dark:bg-teal-500/10 border border-teal-200 dark:border-teal-500/30">
+          <p className="text-xs font-semibold text-teal-700 dark:text-teal-300 mb-1">
+            ✓ Applied to Shopify variant options:
+          </p>
+          <div className="flex flex-wrap gap-1.5">
+            {appliedSummary.map((item, idx) => (
+              <span
+                key={item.label}
+                className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-teal-100 dark:bg-teal-500/20 text-teal-700 dark:text-teal-300"
+              >
+                <span className="font-medium">Option {idx + 1}: {item.label}</span>
+                <span className="text-teal-500 dark:text-teal-400">({item.count} values)</span>
+              </span>
+            ))}
+          </div>
+          <p className="text-[11px] text-teal-600 dark:text-teal-400 mt-1.5">
+            Per-variant values auto-populated from your existing variants. Review the variant table above — edit any cell or type a value to override.
+          </p>
+        </div>
+      )}
+
       <div className="flex items-center justify-between px-1 pt-1">
         <span className="text-xs text-gray-400 dark:text-gray-500">
           {selected.size} of {suggestions.length} selected
@@ -312,12 +343,12 @@ function VariantOptionSuggestionsPanel({
           onClick={handleApply}
           disabled={selected.size === 0}
           className={`flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
-            applied
+            isApplied
               ? "bg-teal-100 dark:bg-teal-500/20 text-teal-700 dark:text-teal-300"
               : "bg-teal-600 hover:bg-teal-700 text-white"
           }`}
         >
-          {applied ? "✓ Applied" : "Apply as variant options"}
+          {isApplied ? "✓ Applied — Re-apply" : "Apply as variant options"}
         </button>
       </div>
     </div>
@@ -435,6 +466,20 @@ export default function ChannelStoreTab({ schema, values, onChange, isSaving, la
 
   const visibility = useChannelFieldVisibility(allFields, values.channelData);
 
+  // Derive "Applied — Re-apply" button state from persisted channelData.
+  // Computed at component level (not inside renderCategoryAttributeSection) so it
+  // only re-runs when channelData changes, not on every render call.
+  const initialAppliedSummary = useMemo((): Array<{ label: string; count: number }> | null => {
+    const result: Array<{ label: string; count: number }> = [];
+    for (let i = 1; i <= 3; i++) {
+      const name = values.channelData[`option${i}_name`] as string | undefined;
+      if (!name) break;
+      const vals = values.channelData[`option${i}_values`];
+      result.push({ label: name, count: Array.isArray(vals) ? vals.length : 0 });
+    }
+    return result.length > 0 ? result : null;
+  }, [values.channelData]);
+
   const sections = [...schema.sections].sort((a, b) => a.priority - b.priority);
 
   // ── Section renderer ────────────────────────────────────────────────────────
@@ -453,7 +498,44 @@ export default function ChannelStoreTab({ schema, values, onChange, isSaving, la
     }
 
     if (section.sectionName === "variant_overrides") {
-      if (!section.variantFields?.length || !section.variants?.length) return null;
+      if (!section.variants?.length) return null;
+
+      // Derive dynamic option columns from applied channelData.
+      // When the seller clicks "Apply as variant options", channelData gets
+      // option1_name="Color", option1_values=["Black","Blue",...] etc.
+      // We inject a SELECT column per applied option so the seller can assign
+      // per-variant values (SKU-XS-BLACK → option1="Black", option3="XS").
+      // Build dynamic option columns from applied option{n}_name / option{n}_values.
+      // fieldType TEXT (not SELECT) — Shopify accepts any string for option values;
+      // taxonomy labels are offered as datalist suggestions, not hard constraints.
+      // Column appears as soon as option{n}_name is set, even if values list is empty.
+      // Skip any dynamic field whose fieldName already exists in the schema variantFields
+      // to avoid duplicate columns (and React key warnings) if the backend already
+      // includes option1/option2/option3 as explicit schema fields.
+      const schemaVariantFieldNames = new Set(
+        (section.variantFields ?? []).map((f) => f.fieldName)
+      );
+      const dynamicOptionFields: ChannelFormField[] = [];
+      for (let i = 1; i <= 3; i++) {
+        const fieldName = `option${i}`;
+        if (schemaVariantFieldNames.has(fieldName)) continue;
+        const name = values.channelData[`${fieldName}_name`] as string | undefined;
+        const vals = values.channelData[`${fieldName}_values`] as string[] | undefined;
+        if (!name) continue;
+        dynamicOptionFields.push({
+          fieldName,
+          fieldType: "TEXT",
+          label: name,
+          required: false,
+          placeholder: `Enter ${name}…`,
+          // Taxonomy labels as datalist — shown as suggestions, not constraints.
+          options: (vals ?? []).map((v) => ({ value: v, label: v })),
+        });
+      }
+
+      const allVariantFields = [...(section.variantFields ?? []), ...dynamicOptionFields];
+      if (!allVariantFields.length) return null;
+
       const ptDims = masterProduct?.productTypeVariantDimensions;
       const ptName = masterProduct?.productTypeName;
       return (
@@ -472,9 +554,16 @@ export default function ChannelStoreTab({ schema, values, onChange, isSaving, la
               </span>
             </div>
           )}
+          {dynamicOptionFields.length > 0 && (
+            <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-teal-50 dark:bg-teal-500/10 border border-teal-200 dark:border-teal-500/30">
+              <span className="text-xs text-teal-700 dark:text-teal-300">
+                Shopify option columns added: <strong>{dynamicOptionFields.map(f => f.label).join(", ")}</strong> — assign a value per variant row
+              </span>
+            </div>
+          )}
           <SectionHeader label={section.label} count={section.variants.length} expanded />
           <VariantOverridesTable
-            variantFields={section.variantFields}
+            variantFields={allVariantFields}
             variants={section.variants}
             overrides={values.variantOverrides}
             onChange={handleVariantChange}
@@ -571,23 +660,72 @@ export default function ChannelStoreTab({ schema, values, onChange, isSaving, la
 
     if (!categoryAttrs) return null;
 
-    const { categoryName, categoryPath, requiredFields, optionalFields, variantOptionSuggestions } = categoryAttrs;
+    const { categoryName: rawCategoryName, categoryPath: rawCategoryPath, requiredFields, optionalFields, variantOptionSuggestions } = categoryAttrs;
+
+    // Always prefer the human-readable labels resolved by the category picker (selectedPath),
+    // falling back to whatever the backend sent in categoryName / categoryPath.
+    // This keeps the UI generic — no channel-specific string parsing on the frontend.
+    const selectedPath = mainCategoryField?.categoryTreeConfig?.selectedPath ?? [];
+    const categoryName = selectedPath.length > 0
+      ? (selectedPath[selectedPath.length - 1]?.name ?? rawCategoryName)
+      : rawCategoryName;
+    const categoryPath = selectedPath.length > 1
+      ? selectedPath.slice(0, -1).map(n => n.name)
+      : rawCategoryPath;
     const breadcrumb = [...categoryPath, categoryName].filter(Boolean).join(" › ");
     const hasSuggestions = (variantOptionSuggestions ?? []).length > 0;
 
     function handleVariantSuggestionsApply(
-      orderedSelections: Array<{ fieldName: string; labels: string[] }>
+      orderedSelections: Array<{ fieldName: string; label: string; labels: string[] }>
     ) {
-      // Inject option{n}_name + option{n}_values into channelData.
-      // Uses label values (NOT taxonomy GIDs) per Shopify product create API requirements.
       const updates: Record<string, unknown> = {};
-      orderedSelections.forEach(({ fieldName, labels }, idx) => {
-        updates[`option${idx + 1}_name`]   = fieldName;
-        updates[`option${idx + 1}_values`] = labels;
+      const newVariantOverrides = { ...values.variantOverrides };
+
+      orderedSelections.forEach(({ fieldName, label, labels }, idx) => {
+        const optionKey = `option${idx + 1}`;
+        // option{n}_name = field.label (human-readable: "Color", "Size") — NOT fieldName.
+        updates[`${optionKey}_name`] = label;
+
+        // ── Auto-populate per-variant values from master's structured options ──
+        // variantOptions = { Color: "Black", Size: "XS" } preserved from sessionStorage.
+        // Case-insensitive match: taxonomy may send "color" while Step 1 stored "Color".
+        const usedValues = new Set<string>();
+        (masterProduct?.variants ?? []).forEach((v) => {
+          if (!v.sku) return;
+          const variantOpts = v.variantOptions as Record<string, string> | undefined;
+          // lcOpts: from structured variantOptions map (Step 1 products with explicit options:{})
+          const lcOpts: Record<string, string> = {};
+          if (variantOpts) {
+            for (const [k, val] of Object.entries(variantOpts)) lcOpts[k.toLowerCase()] = val;
+          }
+          // lcFlat: from flat variant fields (Step 1 products created via product-type dimensions
+          // where options:{} is empty but v.Color / v.Size etc. exist as top-level keys)
+          const lcFlat: Record<string, string> = {};
+          for (const [k, val] of Object.entries(v)) {
+            if (typeof val === "string" && val.trim() && k !== "sku" && k !== "variantLabel")
+              lcFlat[k.toLowerCase()] = val;
+          }
+          const masterVal =
+            lcOpts[fieldName.toLowerCase()] ??
+            lcOpts[label.toLowerCase()] ??
+            lcFlat[fieldName.toLowerCase()] ??
+            lcFlat[label.toLowerCase()];
+          if (!masterVal) return;
+          usedValues.add(masterVal);
+          newVariantOverrides[v.sku] = {
+            ...(newVariantOverrides[v.sku] ?? {}),
+            [optionKey]: masterVal,
+          };
+        });
+
+        // option{n}_values = unique values the actual variants use — NOT all taxonomy values.
+        // Falls back to taxonomy labels when master options are absent or vocabulary doesn't
+        // match (seller then picks manually from the datalist in the variant table).
+        updates[`${optionKey}_values`] = usedValues.size > 0 ? [...usedValues] : labels;
       });
-      // Clear any previously applied option keys beyond current count
-      const currentCount = orderedSelections.length;
-      for (let i = currentCount + 1; i <= 3; i++) {
+
+      // Clear stale option keys beyond current count
+      for (let i = orderedSelections.length + 1; i <= 3; i++) {
         updates[`option${i}_name`]   = undefined;
         updates[`option${i}_values`] = undefined;
       }
@@ -595,7 +733,8 @@ export default function ChannelStoreTab({ schema, values, onChange, isSaving, la
       for (const [k, v] of Object.entries(updates)) {
         if (v === undefined) delete merged[k]; else merged[k] = v;
       }
-      onChange({ ...values, channelData: merged });
+      onChange({ ...values, channelData: merged, variantOverrides: newVariantOverrides });
+      setOptionalExpanded(true);
     }
 
     // Category unchanged from schema load — fields already rendered inside form sections.
@@ -622,6 +761,7 @@ export default function ChannelStoreTab({ schema, values, onChange, isSaving, la
               suggestions={variantOptionSuggestions}
               categoryName={categoryName}
               onApply={handleVariantSuggestionsApply}
+              initialAppliedSummary={initialAppliedSummary}
             />
           )}
         </div>
@@ -700,9 +840,11 @@ export default function ChannelStoreTab({ schema, values, onChange, isSaving, la
         {/* Variant option suggestions panel */}
         {hasSuggestions && (
           <VariantOptionSuggestionsPanel
+            key={categoryAttrs.categoryId}
             suggestions={variantOptionSuggestions}
             categoryName={categoryName}
             onApply={handleVariantSuggestionsApply}
+            initialAppliedSummary={initialAppliedSummary}
           />
         )}
       </div>

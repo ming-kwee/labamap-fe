@@ -203,6 +203,9 @@ function getMasterSnapshotFromSession(
           variantLabel: options && Object.keys(options).length > 0
             ? Object.values(options).join(" / ")
             : v.sku,
+          // Preserve structured options so Step 2's Apply can auto-populate
+          // per-variant option{n} values (e.g. { Color: "Black", Size: "XS" }).
+          variantOptions: options ?? {},
         };
       }),
     };
@@ -294,6 +297,63 @@ export default function ChannelFieldsWizard({ masterProductId }: Props) {
           pct: ch.completionPercentage,
           status: ch.completionStatus,
         };
+      }
+
+      // Restore state that the schema API does not echo back via field.currentValue:
+      //   • channelData extras — option{n}_name / option{n}_values written by the
+      //     "Apply as variant options" panel (not schema fields, so no currentValue)
+      //   • variantOverrides extras — option1/option2/option3 per-SKU values written
+      //     by the same panel (schema currentOverrides may omit them when the backend
+      //     only returns pre-registered variant fields)
+      // Without this, navigating away and back clears the dynamic variant columns,
+      // their per-variant values, and the "Applied — Re-apply" button state.
+      try {
+        const savedStoreData = await ChannelProductDataService.getAllStoreData(masterProductId);
+        for (const saved of savedStoreData) {
+          if (!initValues[saved.storeId]) continue;
+
+          // ── channelData: restore extra keys missing from schema ──────────────
+          if (saved.channelData) {
+            const extracted = initValues[saved.storeId].channelData;
+            const extras: Record<string, unknown> = {};
+            for (const [key, val] of Object.entries(saved.channelData)) {
+              if (!(key in extracted) && val !== null && val !== undefined) {
+                extras[key] = val;
+              }
+            }
+            if (Object.keys(extras).length > 0) {
+              initValues[saved.storeId] = {
+                ...initValues[saved.storeId],
+                channelData: { ...extras, ...extracted },
+              };
+            }
+          }
+
+          // ── variantOverrides: restore per-SKU keys missing from currentOverrides ──
+          if (saved.variantOverrides) {
+            const extractedVariants = initValues[saved.storeId].variantOverrides;
+            const mergedVariants: Record<string, Record<string, unknown>> = { ...extractedVariants };
+            for (const [sku, savedSkuOverrides] of Object.entries(saved.variantOverrides)) {
+              if (!savedSkuOverrides || typeof savedSkuOverrides !== "object") continue;
+              const existing = mergedVariants[sku] ?? {};
+              const skuExtras: Record<string, unknown> = {};
+              for (const [key, val] of Object.entries(savedSkuOverrides as Record<string, unknown>)) {
+                if (!(key in existing) && val !== null && val !== undefined) {
+                  skuExtras[key] = val;
+                }
+              }
+              if (Object.keys(skuExtras).length > 0) {
+                mergedVariants[sku] = { ...skuExtras, ...existing };
+              }
+            }
+            initValues[saved.storeId] = {
+              ...initValues[saved.storeId],
+              variantOverrides: mergedVariants,
+            };
+          }
+        }
+      } catch {
+        // Non-fatal — user can re-apply variant options manually
       }
 
       // Pre-fill CATEGORY_TREE fields from saved channel-category mappings.
@@ -390,7 +450,8 @@ export default function ChannelFieldsWizard({ masterProductId }: Props) {
                     channelData: {
                       ...initValues[ch.storeId]?.channelData,
                       [fn]: mapped.externalId,
-                      categoryId: mapped.externalId,
+                      // Do NOT add categoryId inside channelData — it creates a duplicate TEXT field in the UI.
+                      // The top-level save request body already carries categoryId for completion scoring.
                     },
                   };
                 }

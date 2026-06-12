@@ -52,7 +52,7 @@ Publishes a master product to a single channel store.
 | `fieldMappings` | No | From APM `/analyze` response. Informational — not used directly in transformation |
 | `joltSpec` | No | From APM `/analyze` response. Used only when no JOLT found in `channel_jolt_specs` |
 | `dryRun` | No | `false` by default. `true` runs full pipeline but skips sync API call |
-| `variantOverrides` | No | Per-SKU variant fields from Step 2. Applied post-JOLT |
+| `variantOverrides` | No | Per-SKU variant fields from Step 2. Applied post-JOLT. See gap note below. |
 | `publishOptions.skipValidation` | No | Default `false` |
 | `publishOptions.autoPublish` | No | Default `true` |
 | `publishOptions.syncInventory` | No | Default `true` |
@@ -315,3 +315,72 @@ interface BatchPublishResponse {
   results:         BatchPublishResult[];
 }
 ```
+
+---
+
+## ⚠ Backend Gap — `variantOverrides` Apply Order for Shopify Option Values (2026-06-09)
+
+**Status: Needs verification and possible fix.**
+
+### Context
+
+From Step 2, sellers now save per-variant Shopify option values in `variantOverrides`:
+
+```json
+{
+  "variantOverrides": {
+    "SKU-XS-BLACK": { "inventory_policy": "deny", "option1": "Black", "option2": "XS" },
+    "SKU-S-BLACK":  { "inventory_policy": "deny", "option1": "Black", "option2": "S"  }
+  }
+}
+```
+
+The `option1` / `option2` keys must reach the sync API as `product.variants.option1` and
+`product.variants.option2` per variant — the paths that the Shopify `attributeMappings.variantFields`
+pre-registers as `product@variants@option1` and `product@variants@option2`.
+
+### The ambiguity: "applied post-JOLT" — before or after `buildVariantGroups`?
+
+| Apply timing | Effect |
+|---|---|
+| **Before** `buildVariantGroups` | `variantOverrides` patch `productData.variants[n].option1` in-place; the pre-registered mapping emits `product.variants.option1 = "Black"` correctly in Pass 1 — **no code change needed** |
+| **After** `buildVariantGroups` | The sync request's `ChannelVariant` entries for `product.variants.option1` already contain the JOLT-derived value; the variantOverride value is ignored unless there is explicit patching logic — **code change required** |
+
+### Action required
+
+1. Locate `ChannelPublishService.publishProduct()` and find where `variantOverrides` are applied.
+2. If applied **before** `buildVariantGroups` (i.e., merged into `productData.variants` first) — no change needed; passthrough or pre-registered mapping handles it.
+3. If applied **after** — add a patch step in `ChannelAttributeConverterService.buildVariantGroups()` that updates existing `ChannelVariant.chnlVrntValue` for matching `chnlVrntName`, or adds a new passthrough entry if the field is not pre-registered:
+
+```java
+// After Pass 1 + Pass 2 complete, apply variantOverrides as a patch pass:
+for (Map.Entry<String, Map<String, Object>> overrideEntry : variantOverrides.entrySet()) {
+    String sku = overrideEntry.getKey();
+    variantGroups.stream()
+        .filter(vg -> sku.equals(vg.getSku()))
+        .findFirst()
+        .ifPresent(vg -> overrideEntry.getValue().forEach((fieldName, value) -> {
+            String targetPath = "product.variants." + fieldName;
+            vg.getChannelVariant().stream()
+                .filter(cv -> targetPath.equals(cv.getChnlVrntName()))
+                .findFirst()
+                .ifPresentOrElse(
+                    cv  -> cv.setChnlVrntValue(String.valueOf(value)),
+                    ()  -> vg.addPassthrough(fieldName, value, "TEXT")
+                );
+        }));
+}
+```
+
+### Why this matters specifically for option values
+
+`inventory_policy`, `barcode` etc. in `variantOverrides` worked before this gap was identified
+because they were likely passthrough (not pre-registered). `option1`/`option2` ARE pre-registered
+(`product@variants@option1` → `vrntId: "color"`), so they go through Pass 1. If the
+variantOverride value doesn't patch the pre-registered entry, the JOLT-derived color value (from
+the master product's `color` field) would be published instead of the seller's explicit selection.
+
+### Affected files
+
+`channel/service/ChannelPublishService.java` — verify apply order.
+`channel/service/ChannelAttributeConverterService.java` — add patch pass if needed.

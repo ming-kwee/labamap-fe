@@ -132,6 +132,85 @@ See `18-variant-option-suggestions-frontend.md` for the complete frontend implem
 
 ---
 
+## ⚠ Backend Gap — `categoryAttributeSection` Not Reliably Embedded on Schema Load (2026-06-09)
+
+**Status: Spec says it should be embedded; observed behaviour is often `null` for saved products.**
+
+### Expected behaviour (per this spec)
+
+When `channel_product_data` for the store already has a saved CATEGORY_TREE field value (the seller
+previously picked a category and autosave ran), the schema generation should:
+
+1. Read the saved `categoryId` from `channelData[categoryTreeFieldName]`
+2. Call `CategoryCacheService.getAttributesForCategory(channelType, storeId, categoryId)` (reads
+   from `channel_category_attributes_cache`, TTL 24h)
+3. Embed the result as `categoryAttributeSection` in `ChannelSchemaPerStore`
+
+### Observed behaviour
+
+`categoryAttributeSection` comes back `null` even for products with a confirmed saved category.
+The frontend therefore always hits the mid-session fetch path:
+
+```
+ChannelStoreTab mount
+  → categoryId = "gid://shopify/TaxonomyCategory/aa-1-13-7"  (from channelData)
+  → schema.categoryAttributeSection = null                    (expected: populated)
+  → useEffect fires: GET /merchant-data/shopify/{storeId}/category-attributes?categoryId=...
+  → categoryAttrs loaded from live API / cache (extra round-trip)
+  → categoryIsUnchangedFromSchema = false (mid-session path, not compact banner path)
+```
+
+Side effects of the missing embed:
+- Extra HTTP call on every Step 2 page load
+- `categoryName` returned by the live endpoint may be a raw GID instead of a display name (backend
+  data quality issue surfaced by this path)
+- `variantOptionSuggestions` not available at initial render — panel appears after the extra fetch
+
+### Root cause to investigate in `ChannelStepSchemaService`
+
+```java
+// ChannelStepSchemaService.buildSchemaForStore() — suspected omission:
+
+// Current (suspected):
+channelSchemaPerStore.setCategoryAttributeSection(null);  // or not set at all
+
+// Required:
+String savedCategoryId = getCategoryIdFromChannelData(channelProductData, channelConfig);
+if (savedCategoryId != null) {
+    CategoryAttributeSection section =
+        categoryCacheService.getAttributesForCategory(channelType, storeId, savedCategoryId);
+    channelSchemaPerStore.setCategoryAttributeSection(section);  // embed — never null when id present
+}
+```
+
+### `categoryName` quality requirement
+
+When the frontend falls back to the mid-session fetch path, the endpoint
+`GET /merchant-data/{channelType}/{storeId}/category-attributes?categoryId=...` must return a
+human-readable `categoryName` (e.g. `"Shirts"`), never the raw GID
+(`"gid://shopify/TaxonomyCategory/aa-1-13-7"`).
+
+If `categoryName` is not resolved from the cache, the backend should fall back to extracting
+the display name from the category cache node rather than echoing the GID:
+
+```java
+// CategoryAttributeServiceImpl — when building CategoryAttributeSection:
+String displayName = categoryNode.getDisplayName();  // from channel_category_cache
+if (displayName == null || displayName.startsWith("gid://")) {
+    displayName = categoryNode.getExternalId();  // last-resort: use the leaf code
+}
+section.setCategoryName(displayName);
+```
+
+The same applies to `categoryPath[]` — no element should contain a raw GID.
+
+### Priority
+
+Medium. The frontend works around it with an extra fetch, but it adds latency on every Step 2 load
+and causes display artefacts when the backend returns a GID as the category name.
+
+---
+
 ## Updated: `CompletionStats` Shape
 
 The `completionStats` object on `ChannelSchemaPerStore` has been extended to expose the split
