@@ -92,6 +92,7 @@ Think of `credId` as "the name on the label" and `chnlCredName` as "the name in 
 | **eBay**        | `appId`, `certId`, `devId`, `oauthUserToken`                         | User-level OAuth token                         |
 | **WIX**         | `accessToken`, `wixSiteId` (+ `refreshToken`, `clientId` from OAuth) | Site ID is UUID from dashboard                 |
 | **TikTok Shop** | `appKey`, `appSecret`, `accessToken`, `shopCipher`                   | All four needed for HMAC signing               |
+| **Shopee**      | `accessToken`, `refreshToken`, `shopId`, `partnerId`                 | `partnerId` auto-filled from platform config; `shopId` is per-merchant. Both needed as query params for every HMAC-signed API call. Token expires 4h — refreshed via `refreshToken`. |
 
 ### How the Frontend Uses This
 

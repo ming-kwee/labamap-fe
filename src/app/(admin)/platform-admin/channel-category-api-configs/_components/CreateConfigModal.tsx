@@ -13,11 +13,16 @@ interface Props {
 }
 
 const TREE_API_PLACEHOLDER = JSON.stringify({
-  baseUrl:          "https://partner.example.com",
+  baseUrl:          "https://partner.shopeemobile.com",
   httpMethod:       "GET",
   childrenUrlPath:  "/api/v2/product/get_category",
   authStrategy:     "HMAC_SHA256",
-  authCredentialKey:"partnerKey",
+  authCredentialKey:"accessToken",
+  credentialQueryParams: {
+    access_token: "accessToken",
+    shop_id:      "shopId",
+    partner_id:   "partnerId",
+  },
   itemsJsonPath:    "response.category_list",
   nodeIdField:      "catid",
   nodeNameField:    "display_category_name",
@@ -171,7 +176,9 @@ export default function CreateConfigModal({ onSave, onClose }: Props) {
             {/* Tree API Config */}
             <Field label={<>Tree API Config <span className="text-xs text-gray-400 font-normal">(treeApiConfig)</span></>} error={treeError}>
               <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">
-                Defines how the category tree is fetched. Required for category sync to work.{" "}
+                Defines how the category tree is fetched. Required for category sync to work.
+                For HMAC_SHA256 channels, set <code className="font-mono">credentialQueryParams</code> for per-request credential injection
+                and optionally override <code className="font-mono">hmacSigningCredentialKey</code> (default: <code className="font-mono">&quot;partnerId&quot;</code>).{" "}
                 <button type="button" onClick={() => setTreeRaw(TREE_API_PLACEHOLDER)}
                   className="text-indigo-500 hover:underline">Load example (Shopee)</button>
               </p>

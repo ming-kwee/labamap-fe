@@ -212,6 +212,44 @@ Re-enable a disabled channel's category sync.
 
 ---
 
+## `HMAC_SHA256` Auth Strategy — Generic Per-Request Signing
+
+When `authStrategy = "HMAC_SHA256"`, `GenericCategoryService` computes a fresh HMAC-SHA256
+signature for every request. The signing is **fully data-driven** via three fields on
+`CategoryTreeApiConfig`:
+
+| Field | Default | Description |
+|---|---|---|
+| `hmacSigningCredentialKey` | `"partnerId"` | Credential key whose value is prepended to the sign message |
+| `hmacTimestampParam` | `"timestamp"` | Query param name for the computed timestamp |
+| `hmacSignParam` | `"sign"` | Query param name for the computed signature |
+
+**Sign formula:** `HMAC-SHA256(creds[hmacSigningCredentialKey] + urlPath + timestamp, OAuthAppConfig.clientSecret)`
+
+The signing secret comes from `app.oauth.channels.{channelType}.client-secret` in
+`application.yml` — the platform-level partner key, never stored per-store.
+
+**Shopee example** (uses all defaults — no override needed in config):
+```json
+{
+  "authStrategy": "HMAC_SHA256",
+  "authCredentialKey": "accessToken",
+  "credentialQueryParams": {
+    "access_token": "accessToken",
+    "shop_id":      "shopId",
+    "partner_id":   "partnerId"
+  }
+}
+```
+`GenericCategoryService` appends `?access_token=...&shop_id=...&partner_id=...&timestamp=...&sign=...`
+to every category/attribute request automatically.
+
+To add a **new channel** with HMAC signing: set `authStrategy = "HMAC_SHA256"` and configure
+`credentialQueryParams` for the channel-specific credential params. Override `hmacSigningCredentialKey`
+only if the channel uses a different field name than `"partnerId"` in its sign formula.
+
+---
+
 ## Implementation Notes
 
 **Controller:** `channel/category/controller/ChannelCategoryApiConfigAdminController.java`

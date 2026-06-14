@@ -24,6 +24,14 @@ export interface PostProcessingRule {
   operations: PostProcessingOperation[];
 }
 
+export interface IntegrationConfig {
+  /** API path signed for every publish request (non-null activates HMAC signing, e.g. Shopee) */
+  publishApiPath?: string;
+  /** Credential key whose value is the signing identity prepended to sign message */
+  publishHmacSigningCredentialKey?: string;
+  [key: string]: unknown;
+}
+
 export interface ChannelConfiguration {
   channelId: string;
   channelName: string;
@@ -31,7 +39,9 @@ export interface ChannelConfiguration {
   version?: string;
   fieldBoosts: FieldBoost[];
   postProcessingRules: PostProcessingRule[];
+  integrationConfig?: IntegrationConfig;
   categoryRequirements?: Record<string, unknown>;
+  /** productAdminUrlTemplate, categoryGidPrefix, categoryGidFieldPath, etc. */
   metadata?: Record<string, unknown>;
   updatedAt?: string;
 }
@@ -86,6 +96,7 @@ export function mapRawConfig(raw: unknown): ChannelConfiguration {
     version:              r.version  as string | undefined,
     fieldBoosts:          Array.isArray(r.fieldBoosts)         ? r.fieldBoosts.map(mapFieldBoost)         : [],
     postProcessingRules:  Array.isArray(r.postProcessingRules) ? r.postProcessingRules.map(mapRule)        : [],
+    integrationConfig:    r.integrationConfig as IntegrationConfig | undefined,
     categoryRequirements: r.categoryRequirements as Record<string, unknown> | undefined,
     metadata:             r.metadata             as Record<string, unknown> | undefined,
     updatedAt:            r.updatedAt as string | undefined,

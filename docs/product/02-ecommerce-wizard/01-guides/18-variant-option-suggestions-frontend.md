@@ -2,7 +2,7 @@
 
 **Backend implemented:** 2026-06-05
 **Frontend revised:** 2026-06-09
-**Relates to:** `06-step2-category-attributes.md` (API reference), `11-step2-category-required-fields.md` (backend design)
+**Relates to:** `06-step2-category-attributes.md` (API reference), `11-step2-category-required-fields.md` (backend design), `07-publishing-engine/01-guides/06-variant-value-id-translation.md` (label→ID translation at publish time)
 
 ---
 
@@ -269,10 +269,16 @@ When master option values don't directly match taxonomy labels (e.g. master uses
 Shopify taxonomy has `"Black"`), the per-variant cell stays empty after auto-populate. The seller
 must type the correct value manually (the datalist shows taxonomy suggestions).
 
-`channel_field_value_mappings` (Scenario B) is the right backend mechanism for systematic
-mismatches — seed a mapping from `"jet black"` → `"Black"` and the backend can emit a
-`masterMappedSuggestion` on the variant option field with EXACT/FUZZY confidence. This is not
-yet implemented for variant option values and is optional enrichment, not core to the flow.
+`channel_field_value_mappings` is the backend mechanism for systematic mismatches — seed a
+mapping `"jet black" → "Black"` and the backend can emit a `masterMappedSuggestion` on the
+variant option field. For **ID-based channels** (TikTok Shop, Lazada), this same mapping also
+drives label → ID translation at publish time via `VariantValueTranslationService` — the
+frontend always stores human-readable labels, and the backend substitutes the taxonomy ID
+transparently. See `06-variant-value-id-translation.md` for the full design.
+
+> **Frontend contract:** always store `opt.label` (the human-readable string) in
+> `option{n}_values` and in `variantOverrides.option{n}`. Never store `opt.value` (taxonomy GID
+> or ID). The backend resolves the correct channel API value at publish time.
 
 **Vocabulary mismatch is often a category signal.** If the master product has adult sizes
 `["XS", "S", "M"]` but the Shopify category (e.g. "Shirts" in the Babies taxonomy) returns
@@ -333,16 +339,16 @@ PUT /api/v1/admin/channel-category-api-configs/tiktokshop/attribute-api
 | 7 | Missing `key` on mid-session `VariantOptionSuggestionsPanel` — stale state on category switch | `ChannelStoreTab.tsx` | ✅ 2026-06-09 |
 | 8 | Case-insensitive `variantOptions` lookup (step 1 may store "Color", taxonomy sends "color") | `ChannelStoreTab.tsx` | ✅ 2026-06-09 |
 
-### Backend (pending — recommendations written to backend team)
+### Backend (implemented 2026-06-10)
 
 | # | What | Doc | Priority | Status |
 |---|---|---|---|---|
-| B1 | New post-processing operation `BUILD_OPTIONS_FROM_FLAT_KEYS` — reads `option{n}_name` / `option{n}_values` from channelData and builds `product.options` with correct names | `07-publishing-engine/01-guides/05-post-processing-config.md` | **Critical** | ⬜ |
-| B2 | New `shopify-options-from-channel-data` rule seeded at priority 19 with `fallbackToExtractDimensions: true` | `05-post-processing-config.md` | **Critical** | ⬜ |
-| B3 | Verify `variantOverrides` apply order: must patch `productData.variants` **before** `buildVariantGroups` runs so `option1`/`option2` per-variant values reach the sync API correctly | `07-publishing-engine/02-api-reference/01-publish-request-response.md` | **Critical** | ⬜ |
-| B4 | Add `option1_name`, `option2_name`, `option3_name` as optional schema fields in Shopify `channel_configurations` so `currentValue` is populated on schema reload | `02-ecommerce-wizard/02-api-reference/04-step2-schema-and-channel-data.md` | **Important** | ⬜ |
-| B5 | `ChannelStepSchemaService` must embed `categoryAttributeSection` when category is already saved — avoids extra round-trip and GID-as-name display bug | `02-ecommerce-wizard/02-api-reference/06-step2-category-attributes.md` | **Important** | ⬜ |
-| B6 | `categoryName` / `categoryPath` returned by category-attributes endpoint must never be a raw GID | `06-step2-category-attributes.md` | **Important** | ⬜ |
+| B1 | New `BUILD_OPTIONS_FROM_FLAT_KEYS` operation in `GenericPostProcessingEngine` — reads `option{n}_name` / `option{n}_values` from `product.*` (forwarded by JOLT from channelData) and builds `product.options` with correct names; falls back to `EXTRACT_DIMENSIONS` when keys absent | `07-publishing-engine/01-guides/05-post-processing-config.md` | **Critical** | ✅ 2026-06-10 |
+| B2 | `shopify-options-from-channel-data` rule seeded at priority 19 in `ChannelConfigurationDataLoader`; old `generate-options-from-variants` disabled (`enabled: false`) — new rule covers both paths | `05-post-processing-config.md` | **Critical** | ✅ 2026-06-10 |
+| B3 | `variantOverrides` applied post-JOLT via `applyVariantOverridesPostJolt()` — verified correct: directly patches variant map after JOLT, overrides any JOLT-derived option values | `07-publishing-engine/02-api-reference/01-publish-request-response.md` | **Critical** | ✅ already correct |
+| B4 | `option1_name` / `option2_name` / `option3_name` / `option{n}_values` added to Shopify `apiSchema` in `ChannelConfigurationDataLoader` — JOLT now forwards them to `product.*`; also surfaces as optional Step 2 schema fields for `currentValue` on reload | `02-ecommerce-wizard/02-api-reference/04-step2-schema-and-channel-data.md` | **Important** | ✅ 2026-06-10 |
+| B5 | `categoryAttributeSection` embed relies on 3s timeout in `ChannelStepSchemaService` — works once cache is populated; storeUrl fix (2026-06-10) resolved the root cause that prevented initial cache population | `02-ecommerce-wizard/02-api-reference/06-step2-category-attributes.md` | **Important** | ✅ root cause fixed |
+| B6 | `categoryName` GID fallback fixed: `CategoryCacheServiceImpl.fetchAndCacheAttributes()` now tries `ChannelTaxonomyCacheRepository.findByChannelTypeAndNodeId()` when path resolution returns a GID string | `06-step2-category-attributes.md` | **Important** | ✅ 2026-06-10 |
 | B7 | Seed `channel_field_value_mappings` for variant option vocab mismatches (e.g. master "Jet Black" → Shopify taxonomy "Black") | Scenario B in `09-step2-channel-data-sources.md` | Optional | ⬜ |
 
 ---

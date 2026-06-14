@@ -6,9 +6,17 @@ export interface CategoryTreeApiConfig {
   baseUrl?: string;
   httpMethod?: string;
   childrenUrlPath?: string;
-  authStrategy?: string;
+  authStrategy?: string;          // "API_KEY_HEADER" | "HMAC_SHA256" | ...
   authCredentialKey?: string;
   authHeaderName?: string;
+  /** Credential query params appended to every request (key = query param name, value = credential key) */
+  credentialQueryParams?: Record<string, string>;
+  /** HMAC_SHA256 only — credential key whose value is prepended in sign message (default: "partnerId") */
+  hmacSigningCredentialKey?: string;
+  /** HMAC_SHA256 only — query param name for timestamp (default: "timestamp") */
+  hmacTimestampParam?: string;
+  /** HMAC_SHA256 only — query param name for signature (default: "sign") */
+  hmacSignParam?: string;
   itemsJsonPath?: string;
   nodeIdField?: string;
   nodeNameField?: string;

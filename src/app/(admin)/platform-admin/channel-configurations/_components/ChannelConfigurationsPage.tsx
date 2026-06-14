@@ -78,6 +78,33 @@ function ChannelBadge({ channelId }: { channelId: string }) {
   );
 }
 
+// ─── Key-value read-only display ──────────────────────────────────────────────
+
+function FieldTable({ data }: { data: Record<string, unknown> }) {
+  const entries = Object.entries(data).filter(([, v]) => v !== undefined && v !== null && v !== "");
+  if (entries.length === 0) return <p className="text-xs text-gray-400 italic py-2">No fields configured.</p>;
+  return (
+    <table className="w-full text-xs">
+      <tbody>
+        {entries.map(([k, v]) => (
+          <tr key={k} className="border-b border-gray-50 dark:border-gray-800/50">
+            <td className="py-1.5 pr-4 text-gray-500 dark:text-gray-400 font-medium align-top w-56 shrink-0">
+              <code className="font-mono">{k}</code>
+            </td>
+            <td className="py-1.5 text-gray-800 dark:text-gray-200 align-top break-all">
+              {typeof v === "string" ? (
+                <span className={v.length > 80 ? "text-xs" : ""}>{v}</span>
+              ) : (
+                <code className="font-mono text-gray-600 dark:text-gray-400 text-xs">{JSON.stringify(v)}</code>
+              )}
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
 // ─── Channel config card ───────────────────────────────────────────────────────
 
 type BoostModal = { type: "add" } | { type: "edit"; boost: FieldBoost; index: number };
@@ -93,7 +120,7 @@ function ChannelConfigCard({
   onToast: (msg: string, type: "success" | "error") => void;
 }) {
   const [expanded, setExpanded]           = useState(false);
-  const [activeTab, setActiveTab]         = useState<"boosts" | "rules">("boosts");
+  const [activeTab, setActiveTab]         = useState<"boosts" | "rules" | "details">("boosts");
   const [boostModal, setBoostModal]       = useState<BoostModal | null>(null);
   const [ruleModal, setRuleModal]         = useState<RuleModal | null>(null);
   const [confirmBoostIdx, setConfirmBoostIdx] = useState<number | null>(null);
@@ -210,14 +237,18 @@ function ChannelConfigCard({
         <div className="border-t border-gray-100 dark:border-gray-800">
           {/* Tabs */}
           <div className="flex border-b border-gray-100 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-800/30">
-            {(["boosts", "rules"] as const).map((tab) => (
-              <button key={tab} onClick={() => setActiveTab(tab)}
+            {([
+              { key: "boosts",  label: `Field Boosts (${config.fieldBoosts.length})` },
+              { key: "rules",   label: `Post-Processing Rules (${config.postProcessingRules.length})` },
+              { key: "details", label: "Integration & Metadata" },
+            ] as const).map(({ key, label }) => (
+              <button key={key} onClick={() => setActiveTab(key)}
                 className={`px-5 py-2.5 text-xs font-medium transition-colors ${
-                  activeTab === tab
+                  activeTab === key
                     ? "text-slate-700 dark:text-slate-300 border-b-2 border-slate-600 -mb-px"
                     : "text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300"
                 }`}>
-                {tab === "boosts" ? `Field Boosts (${config.fieldBoosts.length})` : `Post-Processing Rules (${config.postProcessingRules.length})`}
+                {label}
               </button>
             ))}
           </div>
@@ -385,6 +416,44 @@ function ChannelConfigCard({
                   </tbody>
                 </table>
               )}
+            </div>
+          )}
+          {/* Integration & Metadata tab */}
+          {activeTab === "details" && (
+            <div className="p-4 space-y-5">
+              <div className="flex items-start gap-2 px-4 py-3 bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-lg">
+                <div className="text-slate-500 shrink-0 mt-0.5"><InfoIcon /></div>
+                <p className="text-xs text-slate-700 dark:text-slate-300">
+                  <strong>Read-only — code-managed.</strong>{" "}
+                  <code className="font-mono">integrationConfig</code> and <code className="font-mono">metadata</code>{" "}
+                  are set by <code className="font-mono">ChannelConfigurationDataLoader</code> at startup and require a code change + redeploy to update.
+                </p>
+              </div>
+
+              <div>
+                <h4 className="text-xs font-semibold text-gray-700 dark:text-gray-300 mb-2 flex items-center gap-2">
+                  integrationConfig
+                  {config.integrationConfig?.publishApiPath && (
+                    <span className="px-1.5 py-0.5 text-xs bg-rose-100 dark:bg-rose-900/30 text-rose-700 dark:text-rose-400 rounded font-normal">
+                      HMAC publish signing active
+                    </span>
+                  )}
+                </h4>
+                {config.integrationConfig && Object.keys(config.integrationConfig).length > 0 ? (
+                  <FieldTable data={config.integrationConfig as unknown as Record<string, unknown>} />
+                ) : (
+                  <p className="text-xs text-gray-400 italic">Not configured or not returned by API.</p>
+                )}
+              </div>
+
+              <div>
+                <h4 className="text-xs font-semibold text-gray-700 dark:text-gray-300 mb-2">metadata</h4>
+                {config.metadata && Object.keys(config.metadata).length > 0 ? (
+                  <FieldTable data={config.metadata} />
+                ) : (
+                  <p className="text-xs text-gray-400 italic">No metadata keys returned by API.</p>
+                )}
+              </div>
             </div>
           )}
         </div>

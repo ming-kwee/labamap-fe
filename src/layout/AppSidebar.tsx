@@ -79,6 +79,8 @@ const adminNavItems: NavItem[] = [
     icon: <PaperPlaneIcon />,
     name: "Platform Admin",
     subItems: [
+      // ── Store connections (cross-org admin) ───────────────────────────────
+      { name: "Channel Store Connections", path: "/platform-admin/channel-stores", pro: false },
       // ── Operational / runtime (change most often) ─────────────────────────
       { name: "Channel JOLT Specs", path: "/platform-admin/channel-jolt-specs", pro: false },
       { name: "Channel Field Mappings", path: "/platform-admin/channel-field-mappings", pro: false },

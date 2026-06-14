@@ -102,8 +102,25 @@ GET /labamap/api/v1/oauth/{channelType}/callback?code=AUTH_CODE&state=BASE64&hma
 | Amazon | Config `tokenEndpoint` | `access_token`, `refresh_token`, `expires_in` |
 | eBay | Config `tokenEndpoint` (form-urlencoded + Basic auth) | `access_token`, `refresh_token`, `expires_in`, `refresh_token_expires_in` |
 
-4. **Encrypts and saves** credentials + `tokenExpiry` map to `channel_store_connections`
-5. **Redirects** browser to:
+4. **Resolves store URL** — `OAuthCallbackService.resolveStoreUrl()` builds a stable identifier
+   for the store using a data-driven template from `OAuthAppConfig`:
+
+   ```yaml
+   # application.yml — app.oauth.channels.{channelType}
+   shopify:
+     store-url-template: "{shop}"                              # → callback.getShop()
+   shopee:
+     store-url-template: "shopee.com/shop/{shop_id}"          # → callback.getShop_id()
+   amazon:
+     store-url-template: "sellercentral.amazon.com/{selling_partner_id}"
+   wix:
+     store-url-template: "manage.wix.com/dashboard/{instance_id}"
+   ```
+   Falls back to `"{channelType}-oauth-store"` when no template is configured.
+   To add a new channel, add `store-url-template` to `application.yml` — no code change needed.
+
+5. **Encrypts and saves** credentials + `tokenExpiry` map to `channel_store_connections`
+6. **Redirects** browser to:
    - Success: `/channels/stores?connected=shopify`
    - Failure: `/channels/stores?error=REASON`
 
