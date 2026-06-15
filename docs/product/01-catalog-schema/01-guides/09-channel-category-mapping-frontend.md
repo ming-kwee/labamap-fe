@@ -1,6 +1,6 @@
 # Channel Category Mapping — Frontend Implementation
 
-## Status: Complete
+## Status: Complete — Phase 1 (2026-06-15), Phase 4 backend deployed (2026-06-15)
 
 All components are built and wired to the real API. The taxonomy browser child-level
 query issue is resolved (see Backend Fix Summary below).
@@ -9,17 +9,70 @@ query issue is resolved (see Backend Fix Summary below).
 
 ## Files
 
-| File                                         | Purpose                                                       |
-|----------------------------------------------|---------------------------------------------------------------|
-| `_types/channel-mapping.ts`                  | All TypeScript types + channel classification constants       |
-| `_services/channel-mapping.service.ts`       | API calls                                                     |
-| `_components/ChannelCategoryMappingPage.tsx` | Main matrix page + three-way routing in `handleOpenMap()`     |
-| `_components/TaxonomyMapperModal.tsx`        | Batch mapper for Type 2 (taxonomy) and Type 3 (tree) channels |
-| `_components/CollectionMapperModal.tsx`      | Link existing platform categories to channel collections      |
-| `_components/ImportWizardModal.tsx`          | Import wizard for WooCommerce / Etsy / Wix                    |
-| `_components/DriftResolutionModal.tsx`       | Drift resolution for all channel types                        |
+| File                                         | Purpose                                                            |
+|----------------------------------------------|--------------------------------------------------------------------|
+| `_types/channel-mapping.ts`                  | All TypeScript types + channel classification constants            |
+| `_services/channel-mapping.service.ts`       | API calls                                                          |
+| `_components/ChannelCategoryMappingPage.tsx` | Main matrix page + three-way routing + onboarding panel + import lock |
+| `_components/CategoryOnboardingPanel.tsx`    | One-time onboarding choice UI (import vs template)                 |
+| `_components/TaxonomyMapperModal.tsx`        | Batch mapper for Type 2 (taxonomy) and Type 3 (tree) channels      |
+| `_components/CollectionMapperModal.tsx`      | Link existing platform categories to channel collections           |
+| `_components/ImportWizardModal.tsx`          | Import wizard — onboarding only, hidden after grace period         |
+| `_components/DriftResolutionModal.tsx`       | Drift resolution for Type 1 channels                               |
+
+**Category origin types and service (shared with My Categories):**
+
+| File                                                           | Purpose                                      |
+|----------------------------------------------------------------|----------------------------------------------|
+| `channels/categories/_types/category-origin.ts`               | `CategoryOriginInfo`, helpers `isImportLocked`, `formatOriginLabel` |
+| `channels/categories/_services/category-origin.service.ts`    | `getOriginInfo()`, `setOrigin()` — graceful 404 fallback |
 
 All under `src/app/omni-admin/channel-category-mapping/`.
+
+---
+
+## Phase 1: One-Time Onboarding (Implemented 2026-06-15)
+
+### categorySourceOrigin Gate
+
+`ChannelCategoryMappingPage` loads `CategoryOriginInfo` from
+`GET /organizations/{orgId}` on mount (via `CategoryOriginService.getOriginInfo()`).
+
+**Three states:**
+
+| `categorySourceOrigin` | UI shown |
+|---|---|
+| `null` (not yet chosen) | `CategoryOnboardingPanel` — full screen, blocks normal UI |
+| `"import"` in grace period | Normal UI + blue grace period banner + "Import (Onboarding)" button visible |
+| `"import"` after grace period | Normal UI, import button hidden (`isImportLocked = true`) |
+| `"template"` | Normal UI, import button hidden (`isImportLocked = true`) |
+
+### CategoryOnboardingPanel
+
+Full-screen panel shown when `categorySourceOrigin == null`.
+Two choices: "Import dari Channel" or "Platform Template".
+On confirm → `CategoryOriginService.setOrigin(orgId, origin)` → `POST /organizations/{orgId}/category-origin`.
+After success → `originInfo` updated in state → normal UI shown.
+
+Warning displayed: perubahan hanya bisa dilakukan dalam 14 hari.
+
+### Import Button Lock
+
+```typescript
+const importLocked = isImportLocked(originInfo);
+// true when: categorySourceOrigin == "template"
+//         OR categorySourceOrigin == "import" AND !categoryGracePeriodActive
+
+{!importLocked && (
+  <ImportButton ... label={gracePeriodActive ? "Import (Onboarding)" : "Import from channel"} />
+)}
+```
+
+### MerchantCategoriesPage Banner
+
+`/channels/categories` also loads `CategoryOriginInfo` and shows a top banner:
+- Blue banner during grace period with origin name, grace period end date, "Ganti pilihan →" link
+- Grey info line after grace period (no action link)
 
 ---
 
@@ -77,21 +130,11 @@ if (store.taxonomyEnabled === true) {
 
 All three flags come from `ChannelStoreConnectionResponse` (backend-driven).
 
-### `treeCapable` frontend fallback
+### `treeCapable` — backend deployed 2026-06-15
 
-`treeCapable` is a new field not yet returned by the backend. Until it ships, the frontend
-uses a hardcoded list as fallback:
-
-```typescript
-// _types/channel-mapping.ts
-export const TREE_CAPABLE_CHANNELS = ["shopee", "amazon", "tiktok", "tiktokshop", "ebay", "lazada"] as const;
-
-export function isTreeCapable(channelType: string): boolean {
-  return TREE_CAPABLE_CHANNELS.includes(channelType as TreeCapableChannel);
-}
-```
-
-The check prioritises the backend field — the fallback only fires when `store.treeCapable` is `null`:
+`treeCapable` is now returned by the backend for all relevant channels. The frontend
+fallback `TREE_CAPABLE_CHANNELS` is a no-op — `store.treeCapable === true` always fires
+first. The second branch in the check below is a safety net only:
 
 ```typescript
 const storeTreeCapable =
@@ -99,9 +142,8 @@ const storeTreeCapable =
   || (store.treeCapable == null && isTreeCapable(store.channelType));
 ```
 
-Once the backend ships `treeCapable: true` in the response, `TREE_CAPABLE_CHANNELS` becomes
-a no-op. See `02-api-reference/07-channel-category-api-config.md §Backend Recommendation`
-for the full backend implementation spec.
+`TREE_CAPABLE_CHANNELS` can be removed from `_types/channel-mapping.ts` in a future
+cleanup once the backend deployment is confirmed stable.
 
 ---
 
@@ -214,7 +256,7 @@ export const IMPORT_CAPABLE_CHANNELS = ["woocommerce", "etsy", "wix"] as const;
 export function isImportCapable(channelType: string): boolean { ... }
 
 // Type 3 — platform-defined REST tree: gates TaxonomyMapperModal mode="tree"
-// Frontend fallback only — superseded when backend ships store.treeCapable
+// treeCapable deployed 2026-06-15. This list is a safety net for stale responses.
 export const TREE_CAPABLE_CHANNELS = ["shopee", "amazon", "tiktok", "tiktokshop", "ebay", "lazada"] as const;
 export function isTreeCapable(channelType: string): boolean { ... }
 ```

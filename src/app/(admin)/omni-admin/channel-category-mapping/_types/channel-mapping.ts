@@ -100,10 +100,18 @@ export function isImportCapable(channelType: string): boolean {
 // and store.importCapable from the channel store API response instead.
 
 // ─── Type 3: platform-defined category trees (REST/HMAC) — browse & link ──────
-// Channels that have a browsable category tree via GenericCategoryService but do
-// NOT use Shopify-style GraphQL taxonomy.  The backend returns store.treeCapable
-// from ChannelCategoryApiConfig.treeApiConfig != null; this list is the frontend
-// fallback for backends that have not yet deployed that field.
+// Channels with a browsable category tree via GenericCategoryService (not GraphQL taxonomy).
+//
+// Backend deployed 2026-06-15: `ChannelStoreConnectionResponse` now returns
+// `treeCapable: true` for shopee, amazon, tiktokshop, ebay, lazada.
+// `store.treeCapable === true` always fires first in the routing check.
+//
+// This list is a safety net only — fires when store.treeCapable is null
+// (e.g., stale cached response or pre-release test environment).
+// It can be removed once deployment is confirmed stable in all envs.
+//
+// Note: both "tiktok" and "tiktokshop" are included — backend uses "tiktokshop"
+// but older stores may carry "tiktok" as channelType. Both are safe to match.
 export const TREE_CAPABLE_CHANNELS = ["shopee", "amazon", "tiktok", "tiktokshop", "ebay", "lazada"] as const;
 export type TreeCapableChannel = typeof TREE_CAPABLE_CHANNELS[number];
 

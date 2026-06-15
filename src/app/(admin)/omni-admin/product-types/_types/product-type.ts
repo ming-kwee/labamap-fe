@@ -1,6 +1,7 @@
-// ProductType types — Phase 4 of the Category Ownership Architecture
-// ProductType is the stable bridge between ProductCategory (merchant data)
-// and MasterAttribute (platform engineer data).
+// ProductType types
+// ProductType is the stable channel-agnostic classification bridge.
+// Phase 2 (2026-06-15): added channelCategoryDefaults — replaces platform-category
+// mapping table as the primary way to assign channel categories to products.
 
 /** One entry in the ordered variant dimension list. */
 export interface VariantDimension {
@@ -10,16 +11,30 @@ export interface VariantDimension {
   required: boolean;
 }
 
+/**
+ * Default channel category for a specific channel type.
+ * Set at ProductType level — applies to ALL products of this type unless
+ * the merchant overrides per product in Step 2.
+ */
+export interface ChannelCategoryDefault {
+  channelType: string;        // "shopee" | "tokopedia" | "lazada" | "shopify" | …
+  categoryId: string;         // channel-native category ID (externalId)
+  categoryName: string;       // leaf node display name (denormalized)
+  categoryFullPath: string;   // "Pakaian › Pria › Atasan › Kaos" (denormalized, for display)
+  updatedAt?: string;
+}
+
 /** Frontend model */
 export interface ProductType {
   id: string;
-  name: string;                          // "Smartphone"
-  slug: string;                          // "smartphone"
+  name: string;                          // "Kaos Pria"
+  slug: string;                          // "kaos-pria"
   description?: string;
-  inheritFromTypeId?: string | null;     // parent type for attribute inheritance
-  inheritFromTypeName?: string | null;   // denormalized for display
-  variantDimensions: VariantDimension[]; // ordered SKU matrix axes
-  attributeCount: number;                // how many MasterAttributes reference this type
+  inheritFromTypeId?: string | null;
+  inheritFromTypeName?: string | null;
+  variantDimensions: VariantDimension[];
+  channelCategoryDefaults: ChannelCategoryDefault[];
+  attributeCount: number;
   active: boolean;
   createdAt?: string;
   updatedAt?: string;
@@ -40,6 +55,13 @@ export interface ProductTypeDoc {
     order: number;
     required?: boolean;
   }>;
+  channelCategoryDefaults?: Array<{
+    channelType: string;
+    categoryId: string;
+    categoryName: string;
+    categoryFullPath: string;
+    updatedAt?: string;
+  }>;
   attributeCount?: number;
   active?: boolean;
   createdAt?: string;
@@ -58,12 +80,21 @@ export function docToProductType(doc: ProductTypeDoc): ProductType {
     description:         r.description ?? undefined,
     inheritFromTypeId:   r.inheritFromTypeId ?? null,
     inheritFromTypeName: r.inheritFromTypeName ?? null,
-    variantDimensions:   Array.isArray(r.variantDimensions)
+    variantDimensions: Array.isArray(r.variantDimensions)
       ? r.variantDimensions.map((d: any, i: number) => ({
           attributeCode: d.attributeCode ?? "",
           attributeName: d.attributeName ?? d.attributeCode ?? "",
           order:         d.order ?? i + 1,
           required:      d.required ?? true,
+        }))
+      : [],
+    channelCategoryDefaults: Array.isArray(r.channelCategoryDefaults)
+      ? r.channelCategoryDefaults.map((d: any) => ({
+          channelType:      String(d.channelType ?? ""),
+          categoryId:       String(d.categoryId ?? ""),
+          categoryName:     String(d.categoryName ?? ""),
+          categoryFullPath: String(d.categoryFullPath ?? d.categoryName ?? ""),
+          updatedAt:        d.updatedAt as string | undefined,
         }))
       : [],
     attributeCount: r.attributeCount ?? 0,
@@ -86,6 +117,12 @@ export function productTypeToPayload(
       attributeName: d.attributeName,
       order:         d.order,
       required:      d.required,
+    })),
+    channelCategoryDefaults: pt.channelCategoryDefaults.map(d => ({
+      channelType:      d.channelType,
+      categoryId:       d.categoryId,
+      categoryName:     d.categoryName,
+      categoryFullPath: d.categoryFullPath,
     })),
     active: pt.active,
   };

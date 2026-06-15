@@ -45,7 +45,7 @@ export interface ChannelStoreConnection {
   taxonomyEnabled?: boolean;
   /** Derived from !taxonomyEnabled — true = can use the import wizard (WooCommerce, Etsy) */
   importCapable?: boolean;
-  /** From ChannelCategoryApiConfig.treeApiConfig != null — true = has a browsable category tree (Shopee, Amazon, etc.) */
+  /** From ChannelCategoryApiConfig.treeCapable — true = REST/HMAC browsable category tree (Shopee, Amazon, TikTok, eBay, Lazada). Deployed 2026-06-15. */
   treeCapable?: boolean;
 }
 
@@ -384,7 +384,9 @@ export interface MasterProductSnapshot {
   /**
    * Phase 5: populated by backend when the master product has a ProductType with variantDimensions.
    * Used by ChannelStoreTab to display an informational banner about the variant structure.
+   * Phase 2 (2026-06-15): productTypeId used to fetch channelCategoryDefaults for pre-fill.
    */
+  productTypeId?: string;
   productTypeName?: string;
   productTypeVariantDimensions?: Array<{
     attributeCode: string;

@@ -11,6 +11,10 @@ import { isImportCapable, isTreeCapable } from "../_types/channel-mapping";
 import { ChannelStoreService } from "@/modules/ecommerce-product-v2/step2-channel-fields/services/channelStore.service";
 import type { ChannelStoreConnection } from "@/modules/ecommerce-product-v2/step2-channel-fields/types/channelStore";
 import { useAuth } from "@/shared/contexts/AuthContext";
+import { CategoryOriginService } from "@/app/(admin)/channels/categories/_services/category-origin.service";
+import type { CategoryOriginInfo } from "@/app/(admin)/channels/categories/_types/category-origin";
+import { isImportLocked, formatOriginLabel } from "@/app/(admin)/channels/categories/_types/category-origin";
+import { CategoryOnboardingPanel } from "./CategoryOnboardingPanel";
 import { DriftResolutionModal } from "./DriftResolutionModal";
 import { ImportWizardModal } from "./ImportWizardModal";
 import { TaxonomyMapperModal } from "./TaxonomyMapperModal";
@@ -385,6 +389,9 @@ export default function ChannelCategoryMappingPage() {
   const { organization } = useAuth();
   const orgId = organization?.organizationId ?? "";
 
+  const [originInfo, setOriginInfo]   = useState<CategoryOriginInfo | null>(null);
+  const [originLoading, setOriginLoading] = useState(true);
+
   const [tree, setTree] = useState<ProductCategoryTree[]>([]);
   const [stores, setStores] = useState<ChannelStoreConnection[]>([]);
   const [mappings, setMappings] = useState<ChannelCategoryMapping[]>([]);
@@ -424,26 +431,35 @@ export default function ChannelCategoryMappingPage() {
   }, []);
 
   const loadAll = useCallback(async () => {
-    if (!orgId) return;
+    if (!orgId) {
+      // Auth not yet resolved — clear loading states so the page isn't stuck on a spinner
+      setOriginLoading(false);
+      setLoadingTree(false);
+      setLoadingStores(false);
+      setLoadingMappings(false);
+      return;
+    }
     setLoadError(null);
     try {
-      const [treeData, storeData, mappingData] = await Promise.all([
+      const [treeData, storeData, mappingData, origin] = await Promise.all([
         CategoryService.getTree(orgId).finally(() => setLoadingTree(false)),
         ChannelStoreService.listAllStores(orgId)
           .then(all => all.filter(s => s.isActive && s.connectionStatus !== "INACTIVE"))
           .finally(() => setLoadingStores(false)),
         ChannelMappingService.listAll(orgId).finally(() => setLoadingMappings(false)),
+        CategoryOriginService.getOriginInfo(orgId).finally(() => setOriginLoading(false)),
       ]);
       setTree(treeData);
       setStores(storeData);
       setMappings(mappingData);
-      // Auto-expand root nodes
+      setOriginInfo(origin);
       setExpandedIds(new Set(treeData.map(n => n.id)));
     } catch (err) {
       setLoadError((err as Error).message);
       setLoadingTree(false);
       setLoadingStores(false);
       setLoadingMappings(false);
+      setOriginLoading(false);
     }
   }, [orgId]);
 
@@ -578,6 +594,7 @@ export default function ChannelCategoryMappingPage() {
   }, [tree, flatNodes, searchQuery]);
 
   const isLoading = loadingTree || loadingStores || loadingMappings;
+  const importLocked = isImportLocked(originInfo);
 
   const stats = useMemo(() => {
     const total   = mappings.length;
@@ -586,8 +603,89 @@ export default function ChannelCategoryMappingPage() {
     return { total, mapped, drifted };
   }, [mappings]);
 
+  // Onboarding: handler when merchant picks their category source
+  async function handleOriginChosen(origin: "import" | "template") {
+    const updated = await CategoryOriginService.setOrigin(orgId, origin);
+    setOriginInfo(updated);
+  }
+
+  // Grace period: merchant wants to change their choice → reset to null locally,
+  // onboarding panel reappears, setOrigin is called again with new choice
+  function handleChangeOrigin() {
+    CategoryOriginService.resetLocalForChange(orgId);
+    setOriginInfo(prev => prev ? { ...prev, categorySourceOrigin: null } : null);
+  }
+
+  // ── Conditional renders ───────────────────────────────────────────────────
+
+  if (originLoading) {
+    return (
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center">
+        <span className="h-8 w-8 rounded-full border-2 border-brand-500 border-t-transparent animate-spin" />
+      </div>
+    );
+  }
+
+  // Network error fetching origin (different from "not yet chosen")
+  if (loadError && originInfo == null) {
+    return (
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center px-6">
+        <div className="text-center max-w-sm">
+          <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Tidak dapat memuat halaman</p>
+          <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">{loadError}</p>
+          <button onClick={loadAll} className="px-4 py-2 text-sm font-medium rounded-xl bg-brand-600 text-white hover:bg-brand-700 transition-colors">
+            Coba lagi
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (originInfo?.categorySourceOrigin == null) {
+    return (
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
+        <div className="bg-white dark:bg-gray-800/60 border-b border-gray-200 dark:border-gray-700/60 px-6 py-5">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-indigo-50 dark:bg-indigo-500/10 flex items-center justify-center text-indigo-600 dark:text-indigo-400">
+              <LinkIcon />
+            </div>
+            <div>
+              <h1 className="text-lg font-bold text-gray-900 dark:text-white">Channel Category Mapping</h1>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Setup awal diperlukan sebelum memulai</p>
+            </div>
+          </div>
+        </div>
+        <CategoryOnboardingPanel onChosen={handleOriginChosen} />
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
+      {/* Grace period banner */}
+      {originInfo.categoryGracePeriodActive && (
+        <div className="bg-blue-50 dark:bg-blue-500/10 border-b border-blue-200 dark:border-blue-500/30 px-6 py-2.5 flex items-center justify-between gap-4">
+          <div className="flex items-center gap-2">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-blue-500 flex-shrink-0"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
+            <p className="text-xs text-blue-700 dark:text-blue-400">
+              Sumber kategori:{" "}
+              <strong>{formatOriginLabel(originInfo.categorySourceOrigin)}</strong>.
+              {originInfo.categoryGracePeriodEndsAt && (
+                <> Bisa diganti hingga{" "}
+                  <strong>{new Date(originInfo.categoryGracePeriodEndsAt).toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" })}</strong>.
+                </>
+              )}
+            </p>
+          </div>
+          <button
+            onClick={handleChangeOrigin}
+            className="text-[11px] font-medium text-blue-600 dark:text-blue-400 hover:underline flex-shrink-0"
+          >
+            Ganti pilihan
+          </button>
+        </div>
+      )}
+
       {/* Page header */}
       <div className="bg-white dark:bg-gray-800/60 border-b border-gray-200 dark:border-gray-700/60 px-6 py-5">
         <div className="flex items-center justify-between gap-4 flex-wrap">
@@ -611,42 +709,45 @@ export default function ChannelCategoryMappingPage() {
               <RefreshIcon /> {syncing ? "Syncing…" : "Sync all"}
             </button>
 
-            {/* Import dropdown */}
-            <div className="relative">
-              <button
-                onClick={() => setShowImportMenu(v => !v)}
-                disabled={importableStores.length === 0}
-                className="flex items-center gap-1.5 px-4 py-2 text-sm font-medium bg-brand-500 hover:bg-brand-600 text-white rounded-lg transition-colors shadow-sm shadow-brand-500/20 disabled:opacity-40 disabled:cursor-not-allowed"
-              >
-                <ImportIcon /> Import from channel
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="m6 9 6 6 6-6"/></svg>
-              </button>
-              {showImportMenu && importableStores.length > 0 && (
-                <>
-                  <div className="fixed inset-0 z-10" onClick={() => setShowImportMenu(false)} />
-                  <div className="absolute right-0 top-full mt-1 z-20 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-lg min-w-[200px] py-1 overflow-hidden">
-                    {importableStores.map(store => (
-                      <button
-                        key={store.storeId}
-                        onClick={() => { setShowImportMenu(false); setImportModal({ initialStoreId: store.storeId }); }}
-                        className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors text-left"
-                      >
-                        <span>{CHANNEL_EMOJI[store.channelType] ?? "🏪"}</span>
-                        <div className="min-w-0">
-                          <p className="font-medium truncate">{store.storeName}</p>
-                          <p className="text-[11px] text-gray-400">{CHANNEL_LABEL[store.channelType] ?? store.channelType}</p>
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-                </>
-              )}
-              {importableStores.length === 0 && stores.length > 0 && (
-                <p className="text-[11px] text-gray-400 dark:text-gray-500 mt-1">
-                  No import-capable stores (WooCommerce, Etsy, Wix)
-                </p>
-              )}
-            </div>
+            {/* Import dropdown — hidden when locked */}
+            {!importLocked && (
+              <div className="relative">
+                <button
+                  onClick={() => setShowImportMenu(v => !v)}
+                  disabled={importableStores.length === 0}
+                  className="flex items-center gap-1.5 px-4 py-2 text-sm font-medium bg-brand-500 hover:bg-brand-600 text-white rounded-lg transition-colors shadow-sm shadow-brand-500/20 disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  <ImportIcon />
+                  {originInfo.categoryGracePeriodActive ? "Import (Onboarding)" : "Import from channel"}
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="m6 9 6 6 6-6"/></svg>
+                </button>
+                {showImportMenu && importableStores.length > 0 && (
+                  <>
+                    <div className="fixed inset-0 z-10" onClick={() => setShowImportMenu(false)} />
+                    <div className="absolute right-0 top-full mt-1 z-20 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-lg min-w-[200px] py-1 overflow-hidden">
+                      {importableStores.map(store => (
+                        <button
+                          key={store.storeId}
+                          onClick={() => { setShowImportMenu(false); setImportModal({ initialStoreId: store.storeId }); }}
+                          className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors text-left"
+                        >
+                          <span>{CHANNEL_EMOJI[store.channelType] ?? "🏪"}</span>
+                          <div className="min-w-0">
+                            <p className="font-medium truncate">{store.storeName}</p>
+                            <p className="text-[11px] text-gray-400">{CHANNEL_LABEL[store.channelType] ?? store.channelType}</p>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  </>
+                )}
+                {importableStores.length === 0 && stores.length > 0 && (
+                  <p className="text-[11px] text-gray-400 dark:text-gray-500 mt-1">
+                    No import-capable stores (WooCommerce, Etsy, Wix)
+                  </p>
+                )}
+              </div>
+            )}
           </div>
         </div>
       </div>

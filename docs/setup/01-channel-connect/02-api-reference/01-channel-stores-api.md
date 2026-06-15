@@ -76,7 +76,7 @@ export interface ChannelStoreConnection {
   taxonomyEnabled?: boolean;
   /** From ChannelCategoryApiConfig.importCapable — true = use ImportWizardModal (WooCommerce, Etsy, Wix) */
   importCapable?: boolean;
-  /** From ChannelCategoryApiConfig.treeCapable — true = use TaxonomyMapperModal mode="tree" (Shopee, Amazon, TikTok, eBay, Lazada). PENDING backend implementation — see 07-channel-category-api-config.md */
+  /** From ChannelCategoryApiConfig.treeCapable — true = use TaxonomyMapperModal mode="tree" (Shopee, Amazon, TikTok, eBay, Lazada). */
   treeCapable?: boolean;
 }
 
@@ -170,9 +170,8 @@ GET /labamap/api/v1/channel-stores?organizationId=org_123&includeInactive=true
 ]
 ```
 
-> **`treeCapable` status:** Field is returned in the response but currently always `false`.
-> Backend implementation pending — see `07-channel-category-api-config.md` §Backend Recommendation.
-> The frontend uses a hardcoded fallback (`TREE_CAPABLE_CHANNELS`) until this is deployed.
+> **`treeCapable`:** Deployed 2026-06-15. Returns `true` for Shopee, Amazon, TikTok Shop, eBay, Lazada.
+> Frontend fallback `TREE_CAPABLE_CHANNELS` is now a no-op — backend always returns the correct value.
 
 ---
 

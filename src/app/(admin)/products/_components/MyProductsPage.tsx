@@ -8,6 +8,7 @@ import { MasterProductService } from "../_services/master-product.service";
 import type { MasterProduct, MasterProductChannelSummary, ChannelSyncStatus } from "../_types/master-product";
 import { ChannelStoreService } from "@/modules/ecommerce-product-v2/step2-channel-fields/services/channelStore.service";
 import type { ChannelStoreConnection } from "@/modules/ecommerce-product-v2/step2-channel-fields/types/channelStore";
+import TagInput from "@/shared/ui/tag-input/TagInput";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -18,6 +19,108 @@ const CHANNEL_EMOJI: Record<string, string> = {
 };
 
 const PAGE_SIZE = 10;
+
+// ─── Bulk Tag Modal ───────────────────────────────────────────────────────────
+
+function BulkTagModal({
+  selectedCount,
+  orgId,
+  productIds,
+  onDone,
+  onClose,
+}: {
+  selectedCount: number;
+  orgId: string;
+  productIds: string[];
+  onDone: (msg: string) => void;
+  onClose: () => void;
+}) {
+  const [addTags,       setAddTags]       = useState<string[]>([]);
+  const [removeTags,    setRemoveTags]    = useState<string[]>([]);
+  const [saving,        setSaving]        = useState(false);
+  const [error,         setError]         = useState<string | null>(null);
+  const [addSuggestions,    setAddSuggestions]    = useState<string[]>([]);
+  const [removeSuggestions, setRemoveSuggestions] = useState<string[]>([]);
+
+  const fetchAddSuggestions = useCallback(async (prefix: string) => {
+    if (!prefix) return;
+    const s = await MasterProductService.suggestTags(orgId, prefix);
+    // exclude tags already in the addTags list
+    setAddSuggestions(s.filter(t => !addTags.includes(t)));
+  }, [orgId, addTags]);
+
+  const fetchRemoveSuggestions = useCallback(async (prefix: string) => {
+    if (!prefix) return;
+    const s = await MasterProductService.suggestTags(orgId, prefix);
+    // For remove field, exclude tags already in removeTags and newly added tags
+    setRemoveSuggestions(s.filter(t => !removeTags.includes(t) && !addTags.includes(t)));
+  }, [orgId, addTags, removeTags]);
+
+  async function handleSave() {
+    if (addTags.length === 0 && removeTags.length === 0) {
+      setError("Add at least one tag to add or remove.");
+      return;
+    }
+    setSaving(true);
+    setError(null);
+    try {
+      const { updatedCount } = await MasterProductService.bulkUpdateTags(orgId, productIds, addTags, removeTags);
+      onDone(`Tags updated for ${updatedCount} product${updatedCount !== 1 ? "s" : ""}`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to update tags");
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40" onClick={onClose}>
+      <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-xl w-full max-w-md border border-gray-200 dark:border-gray-700" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 dark:border-gray-800">
+          <div>
+            <p className="text-sm font-semibold text-gray-900 dark:text-white">Bulk Update Tags</p>
+            <p className="text-xs text-gray-400 mt-0.5">{selectedCount} product{selectedCount !== 1 ? "s" : ""} selected</p>
+          </div>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 text-lg leading-none">✕</button>
+        </div>
+        <div className="px-5 py-4 space-y-4">
+          <div>
+            <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1.5">Add tags</label>
+            <TagInput
+              value={addTags}
+              onChange={setAddTags}
+              suggestions={addSuggestions}
+              onSuggestionSearch={fetchAddSuggestions}
+              placeholder="Type tag and press Enter…"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1.5">Remove tags</label>
+            <p className="text-[11px] text-gray-400 dark:text-gray-500 mb-1.5">
+              Enter tags to remove from all selected products. Only existing tags will be affected.
+            </p>
+            <TagInput
+              value={removeTags}
+              onChange={setRemoveTags}
+              suggestions={removeSuggestions}
+              onSuggestionSearch={fetchRemoveSuggestions}
+              placeholder="Tags to remove…"
+            />
+          </div>
+          {error && <p className="text-xs text-red-600 dark:text-red-400">{error}</p>}
+        </div>
+        <div className="flex justify-end gap-2 px-5 py-4 border-t border-gray-100 dark:border-gray-800">
+          <button onClick={onClose} className="px-4 py-2 text-sm text-gray-600 dark:text-gray-400 border border-gray-200 dark:border-gray-700 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
+            Cancel
+          </button>
+          <button onClick={handleSave} disabled={saving}
+            className="px-4 py-2 text-sm font-semibold rounded-xl bg-brand-500 hover:bg-brand-600 text-white transition-colors disabled:opacity-50">
+            {saving ? "Saving…" : "Apply"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 // ─── Icons ────────────────────────────────────────────────────────────────────
 
@@ -184,6 +287,10 @@ export default function MyProductsPage() {
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [channelFilter, setChannelFilter]   = useState<string>("ALL");
   const [statusFilter, setStatusFilter]     = useState<ChannelSyncStatus | "ALL">("ALL");
+  const [tagFilter, setTagFilter]           = useState<string[]>([]);
+  const [debouncedTagFilter, setDebouncedTagFilter] = useState<string[]>([]);
+  const [tagSuggestions, setTagSuggestions] = useState<string[]>([]);
+  const [showBulkTagModal, setShowBulkTagModal] = useState(false);
 
   // ── Selection state ─────────────────────────────────────────────────────────
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -200,6 +307,19 @@ export default function MyProductsPage() {
     const t = setTimeout(() => { setDebouncedSearch(searchQuery); setPage(0); }, 350);
     return () => clearTimeout(t);
   }, [searchQuery]);
+
+  // ── Debounce tag filter ──────────────────────────────────────────────────────
+  useEffect(() => {
+    const t = setTimeout(() => { setDebouncedTagFilter(tagFilter); setPage(0); }, 350);
+    return () => clearTimeout(t);
+  }, [tagFilter]);
+
+  // ── Tag autocomplete ─────────────────────────────────────────────────────────
+  const fetchTagSuggestions = useCallback(async (prefix: string) => {
+    if (!orgId || !prefix) return;
+    const s = await MasterProductService.suggestTags(orgId, prefix);
+    setTagSuggestions(s);
+  }, [orgId]);
 
   // ── Load org stores once ─────────────────────────────────────────────────────
   useEffect(() => {
@@ -220,6 +340,7 @@ export default function MyProductsPage() {
         page,
         size:  PAGE_SIZE,
         q:     debouncedSearch || undefined,
+        tags:  debouncedTagFilter.length > 0 ? debouncedTagFilter : undefined,
         channelType:   channelFilter !== "ALL" ? channelFilter  : undefined,
         channelStatus: statusFilter  !== "ALL" ? statusFilter   : undefined,
       });
@@ -231,7 +352,7 @@ export default function MyProductsPage() {
     } finally {
       setIsLoading(false);
     }
-  }, [orgId, page, debouncedSearch, channelFilter, statusFilter]);
+  }, [orgId, page, debouncedSearch, debouncedTagFilter, channelFilter, statusFilter]);
 
   useEffect(() => { setSelectedIds(new Set()); }, [page]);
   useEffect(() => { load(); }, [load]);
@@ -344,6 +465,28 @@ export default function MyProductsPage() {
         </span>
       </div>
 
+      {/* Tag filter row — separate line for clarity */}
+      <div className="bg-white dark:bg-gray-800/30 border-b border-gray-200 dark:border-gray-700/40 px-6 py-2.5 flex items-center gap-3">
+        <span className="text-[11px] font-medium text-gray-500 dark:text-gray-400 flex-shrink-0">Filter by tags:</span>
+        <div className="flex-1 max-w-lg">
+          <TagInput
+            value={tagFilter}
+            onChange={v => { setTagFilter(v); setPage(0); }}
+            suggestions={tagSuggestions}
+            onSuggestionSearch={fetchTagSuggestions}
+            placeholder="Type a tag and press Enter to filter…"
+          />
+        </div>
+        {tagFilter.length > 0 && (
+          <button
+            onClick={() => { setTagFilter([]); setPage(0); }}
+            className="text-xs font-medium text-brand-600 dark:text-brand-400 hover:text-brand-700 dark:hover:text-brand-300 transition-colors flex-shrink-0"
+          >
+            Clear tags ({tagFilter.length})
+          </button>
+        )}
+      </div>
+
       {/* Error */}
       {loadError && (
         <div className="mx-6 mt-4 flex items-start gap-3 px-4 py-3 rounded-xl bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/30 text-sm text-red-700 dark:text-red-400">
@@ -433,7 +576,7 @@ export default function MyProductsPage() {
                     )}
                   </td>
 
-                  {/* Name / SKU */}
+                  {/* Name / SKU / tags */}
                   <td className="px-4 py-3 min-w-0">
                     <p className="text-sm font-semibold text-gray-900 dark:text-white truncate max-w-[220px]">{product.name}</p>
                     <p className="text-[11px] text-gray-400 dark:text-gray-500 mt-0.5 font-mono">
@@ -444,6 +587,23 @@ export default function MyProductsPage() {
                         </span>
                       )}
                     </p>
+                    {product.tags && product.tags.length > 0 && (
+                      <div className="flex flex-wrap gap-1 mt-1">
+                        {product.tags.slice(0, 4).map(tag => (
+                          <button
+                            key={tag}
+                            onClick={e => { e.stopPropagation(); setTagFilter(prev => prev.includes(tag) ? prev : [...prev, tag]); }}
+                            title={`Filter by "${tag}"`}
+                            className="text-[10px] px-1.5 py-0.5 rounded-md bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 hover:bg-brand-50 dark:hover:bg-brand-500/10 hover:text-brand-600 dark:hover:text-brand-400 transition-colors"
+                          >
+                            {tag}
+                          </button>
+                        ))}
+                        {product.tags.length > 4 && (
+                          <span className="text-[10px] text-gray-400 dark:text-gray-500 px-1">+{product.tags.length - 4}</span>
+                        )}
+                      </div>
+                    )}
                   </td>
 
                   {/* Category */}
@@ -470,6 +630,12 @@ export default function MyProductsPage() {
               {selectedCount > 0 ? (
                 <>
                   <span className="text-xs font-medium text-gray-600 dark:text-gray-400">{selectedCount} selected</span>
+                  <button
+                    onClick={() => setShowBulkTagModal(true)}
+                    className="text-xs px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+                  >
+                    Edit tags
+                  </button>
                   <button
                     onClick={() => showToast("Bulk sync coming soon", "ok")}
                     className="text-xs px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
@@ -533,6 +699,22 @@ export default function MyProductsPage() {
           </div>
         )}
       </div>
+
+      {/* Bulk Tag Modal */}
+      {showBulkTagModal && (
+        <BulkTagModal
+          selectedCount={selectedCount}
+          orgId={orgId}
+          productIds={[...selectedIds]}
+          onDone={(msg) => {
+            setShowBulkTagModal(false);
+            setSelectedIds(new Set());
+            showToast(msg);
+            load();
+          }}
+          onClose={() => setShowBulkTagModal(false)}
+        />
+      )}
 
       {/* Toast */}
       {toast && (

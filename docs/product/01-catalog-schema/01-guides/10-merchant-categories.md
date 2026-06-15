@@ -2,19 +2,21 @@
 
 ## Why This Page Exists
 
-Platform categories flow to merchants in two ways:
+Platform categories are created through a **one-time onboarding choice**:
 
-| Source | Who controls it | Example |
+| Onboarding path | Who controls it afterwards | Example |
 |---|---|---|
-| **Platform category templates** | Platform admin provisions a standard tree to the merchant's org | "Electronics > Phones > Smartphones" |
-| **Channel import** | Merchant imports their channel collections into the platform | Wix collection "Baju Kaos" becomes a platform category |
+| **Platform category templates** | Platform admin provisions a standard tree; merchant customizes from there | "Electronics > Phones > Smartphones" |
+| **One-time channel import** | Merchant imports channel collections as bootstrap; platform becomes master after import | Wix collection "Baju Kaos" → platform category |
 
-Once categories exist in the merchant's org (`product_categories` scoped by `organizationId`),
-the merchant owns them. They may need to:
+After onboarding (and the 14-day grace period), **platform is always master**.
+Import from channel is no longer available — all category changes happen here.
+
+Merchants use this page to:
 - Rename a category after a business change
-- Add sub-categories the template didn't include
+- Add sub-categories the initial structure didn't include
 - Deactivate a category no longer in use
-- Delete a category they accidentally imported from a channel
+- Delete a category (must unlink all channel mappings first)
 
 Previously there was no merchant-facing page for this. `ProductCategoriesPage` at
 `/omni-admin/product-categories` is owned by the **platform admin**, not the merchant.
@@ -32,8 +34,8 @@ Platform Admin
   └── Manages the admin-level product category tree (/omni-admin/product-categories)
 
 Merchant User
+  ├── Chooses category source at onboarding (import OR template — once only)
   ├── Receives provisioned categories (org-scoped copy)
-  ├── Can import channel collections as categories (Channel Category Mapping → Import wizard)
   ├── Manages their own org's categories  ← THIS PAGE  /channels/categories
   └── Maps their categories to channel stores  (Channel Category Mapping)
 ```
@@ -141,7 +143,7 @@ Insert after `{ name: "Channel Stores", ... }`.
 
 | State | Handling |
 |---|---|
-| No categories yet (fresh org) | Empty state with "Your platform admin will provision categories for your organisation, or import them from your channel store." |
+| No categories yet (fresh org) | Empty state: "Pilih cara setup kategori Anda di halaman Channel Category Mapping untuk memulai." (redirects to onboarding panel) |
 | Category has children | Backend 409 — cannot delete parent before children. Show: "Remove child categories first." |
 | Category mapped to channels | Frontend blocks delete with tooltip. Backend returns 409 as safety net. |
 | Category both has children AND is mapped | Show children error first (most actionable) |

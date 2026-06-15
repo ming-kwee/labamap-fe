@@ -9,24 +9,42 @@ Base path: `/labamap/api/v1/admin/product-types`
 ```json
 {
   "_id":            "ObjectId",
-  "name":           "Smartphone",
-  "slug":           "smartphone",
-  "description":    "Mobile phones with touch interface and app ecosystem",
+  "name":           "Kaos Pria",
+  "slug":           "kaos-pria",
+  "description":    "Kaos pria katun, polos dan bergambar",
   "variantDimensions": [
-    { "attributeCode": "color",            "order": 1, "required": true },
-    { "attributeCode": "storage_capacity", "order": 2, "required": true }
+    { "attributeCode": "color",  "order": 1, "required": true },
+    { "attributeCode": "size",   "order": 2, "required": true }
+  ],
+  "channelCategoryDefaults": [
+    {
+      "channelType":      "shopee",
+      "categoryId":       "100001",
+      "categoryName":     "Kaos",
+      "categoryFullPath": "Pakaian › Pria › Atasan › Kaos",
+      "updatedAt":        "2026-06-15T10:00:00Z"
+    },
+    {
+      "channelType":      "tokopedia",
+      "categoryId":       "30045",
+      "categoryName":     "Kaos",
+      "categoryFullPath":  "Fashion Pria › Baju Pria › Kaos",
+      "updatedAt":        "2026-06-15T10:00:00Z"
+    }
   ],
   "inheritFromTypeId": null,
-  "attributeCount":    12,
+  "attributeCount":    8,
   "active":            true,
   "createdAt": "2026-01-10T08:00:00Z",
-  "updatedAt": "2026-04-20T14:00:00Z"
+  "updatedAt": "2026-06-15T10:00:00Z"
 }
 ```
 
-`attributeCount` is denormalized — updated whenever `MasterAttribute.productTypeIds` changes. Used in the ProductType list view without querying `ecommerce_master_attributes`.
+`attributeCount` is denormalized — updated whenever `MasterAttribute.productTypeIds` changes.
 
-Each entry in `variantDimensions` references a MasterAttribute by `attributeCode`. The attribute must be `SELECT` or `MULTI_SELECT` with an `options[]` array populated. `order` determines which axis is rows (1) and which is columns (2, 3, ...) in the variant matrix.
+`channelCategoryDefaults` is an array of per-channel default categories. Set by platform admin via the Product Types page. Used by Step 2 to pre-fill `CATEGORY_TREE` fields when a merchant opens a channel tab and hasn't yet selected a category.
+
+Each entry in `variantDimensions` references a MasterAttribute by `attributeCode`.
 
 ---
 
@@ -103,6 +121,58 @@ All fields optional.
 - Existing products keep their saved variant structure (no retroactive change)
 - New products created with this type use the new dimensions immediately
 - Form schema cache for this `productTypeId` is invalidated
+
+---
+
+## GET `/admin/product-types/{id}/channel-defaults/{channelType}` (Phase 2)
+
+Returns the default channel category for a specific channel type, or `404` if none is set.
+
+```
+GET /admin/product-types/6623a1b2c3d4e5f6a7b8c9e1/channel-defaults/shopee
+
+Response 200:
+{
+  "channelType":      "shopee",
+  "categoryId":       "100001",
+  "categoryName":     "Kaos",
+  "categoryFullPath": "Pakaian › Pria › Atasan › Kaos",
+  "updatedAt":        "2026-06-15T10:00:00Z"
+}
+
+Response 404: no default set for this channel type
+```
+
+Called by Step 2 `ChannelStoreTab` on mount to pre-fill the `CATEGORY_TREE` field when
+the merchant hasn't yet selected a category for this product.
+
+---
+
+## PUT `/admin/product-types/{id}/channel-defaults/{channelType}` (Phase 2)
+
+Set or replace the default channel category for a specific channel type.
+
+```json
+{
+  "channelType":      "shopee",
+  "categoryId":       "100001",
+  "categoryName":     "Kaos",
+  "categoryFullPath": "Pakaian › Pria › Atasan › Kaos"
+}
+```
+
+**Response `200 OK`:** full updated `ProductType` document (with all `channelCategoryDefaults`).
+
+Backend should upsert the entry — if a default already exists for this `channelType`, replace it.
+
+---
+
+## DELETE `/admin/product-types/{id}/channel-defaults/{channelType}` (Phase 2)
+
+Remove the default for a specific channel type.
+
+**Response `200 OK`:** full updated `ProductType` document.  
+**Response `404`:** no default existed for this channel type (idempotent — treat as success on frontend).
 
 ---
 

@@ -36,7 +36,7 @@ every application start.
 | `label` | String | Human-readable name for logging and admin display. |
 | `enabled` | Boolean | If `false`, `GenericCategoryService` and `CategorySyncJob` skip this channel. |
 | `taxonomyEnabled` | Boolean | `true` = channel has a fixed, channel-owned global taxonomy tree fetched via **GraphQL** (currently Shopify only). Read by `ChannelTaxonomyService`. Independent of `importCapable`; Shopify is both. |
-| `treeCapable` | Boolean | `true` = channel has a platform-defined category tree browseable via REST (`GenericCategoryService`). Covers Shopee, Amazon, TikTok, eBay, Lazada. **Not set in `CategoryApiConfigDataLoader` yet — see Backend Recommendation below.** |
+| `treeCapable` | Boolean | `true` = channel has a platform-defined category tree browseable via REST (`GenericCategoryService`). Covers Shopee, Amazon, TikTok, eBay, Lazada. |
 
 ---
 
@@ -180,7 +180,7 @@ are **not** mutually exclusive. Shopify is both taxonomy-enabled and import-capa
 ```
 channel_category_api_config.taxonomyEnabled
 channel_category_api_config.importCapable
-channel_category_api_config.treeCapable       ← NEW (pending backend implementation)
+channel_category_api_config.treeCapable       ← deployed 2026-06-15
         ↓ read at request time (not startup)
 
 ChannelStoreController GET /channel-stores
@@ -261,11 +261,9 @@ GET /import/preview?storeId=xxx
 
 ## Current documents (8 channels)
 
-`treeCapable` column shows the **target value** after backend implementation (see Backend
-Recommendation below). Currently all channels have `treeCapable = false` (field not yet
-added to `CategoryApiConfigDataLoader`).
+`treeCapable` deployed 2026-06-15 — values set by `CategoryApiConfigDataLoader`.
 
-| `channelType` | `taxonomyEnabled` | `importCapable` | `treeCapable` (target) | `fullTreeStrategy` | Auth strategy |
+| `channelType` | `taxonomyEnabled` | `importCapable` | `treeCapable` | `fullTreeStrategy` | Auth strategy |
 |---|---|---|---|---|---|
 | `lazada` | false | false | **true** | `RECURSIVE` | `API_KEY_QUERY` |
 | `tiktokshop` | false | false | **true** | `RECURSIVE` | `API_KEY_QUERY` + `credentialQueryParams` |
@@ -331,207 +329,26 @@ next startup and all three consumers (`GenericCategoryService`, `CategorySyncJob
 
 ---
 
-## Backend Recommendation — `treeCapable` Field
+## `treeCapable` — Implementation Notes (deployed 2026-06-15)
 
-**Status:** Frontend complete (2026-06-15). Backend implementation pending.
+`treeCapable` is now a live field returned in `GET /channel-stores` responses.
 
-**Context:** The Channel Category Mapping page (`/omni-admin/channel-category-mapping`)
-routes each store to one of three mapping flows based on flags returned in the
-`GET /channel-stores` response. Currently only `taxonomyEnabled` and `importCapable` are
-returned. Channels like Shopee, Amazon, TikTok, eBay, and Lazada have a browsable
-category tree via `GenericCategoryService` but no flag to activate the mapping UI — so
-they show `—` (no Map button) instead.
+**How it flows:**
 
-`treeCapable` is the third flag that unlocks the **Category Tree** mapping flow for these
-channels.
-
----
-
-### What the frontend currently does (interim)
-
-Until the backend ships `treeCapable`, the frontend uses a hardcoded fallback list:
-
-```typescript
-// src/app/(admin)/omni-admin/channel-category-mapping/_types/channel-mapping.ts
-export const TREE_CAPABLE_CHANNELS = ["shopee", "amazon", "tiktok", "tiktokshop", "ebay", "lazada"] as const;
-
-export function isTreeCapable(channelType: string): boolean {
-  return TREE_CAPABLE_CHANNELS.includes(channelType as TreeCapableChannel);
-}
+```
+channel_category_api_config.treeCapable (set by CategoryApiConfigDataLoader)
+  ↓
+ChannelTaxonomyService.getCategoryFlags() → ChannelCategoryFlags(taxonomyEnabled, importCapable, treeCapable)
+  ↓
+ChannelStoreConnectionResponse.from(entity, flags) → { treeCapable: true/false }
+  ↓
+Frontend: store.treeCapable === true → TaxonomyMapperModal mode="tree"
 ```
 
-The routing logic uses a precedence check — backend value takes priority, fallback only
-applies when the backend field is absent (`null`):
+**Frontend fallback** `TREE_CAPABLE_CHANNELS` in `_types/channel-mapping.ts` is now a
+no-op — the `store.treeCapable === true` branch short-circuits before `isTreeCapable()`.
 
-```typescript
-treeCapable={
-  store.treeCapable === true
-  || (store.treeCapable == null && isTreeCapable(store.channelType))
-}
-```
-
-**Once the backend ships `treeCapable`, the frontend fallback becomes a no-op** — the
-`store.treeCapable === true` branch short-circuits before `isTreeCapable()` is called.
-No frontend code change is required at that point.
-
----
-
-### Required backend changes (4 touchpoints)
-
-#### 1. `ChannelCategoryApiConfig` entity — add field
-
-```java
-// channel/category/model/ChannelCategoryApiConfig.java
-@Document(collection = "channel_category_api_config")
-public class ChannelCategoryApiConfig {
-    // ... existing fields ...
-
-    /**
-     * true = channel has a platform-defined category tree browsable via GenericCategoryService
-     * (REST / HMAC_SHA256). Activates the Category Tree mapping flow in the frontend.
-     *
-     * Distinct from taxonomyEnabled (GraphQL-only, currently Shopify).
-     * Distinct from importCapable (merchant-owned collections — WooCommerce, Etsy, Wix).
-     *
-     * Channels: Shopee, Amazon, TikTok Shop, eBay, Lazada.
-     */
-    private boolean treeCapable;
-}
-```
-
-#### 2. `CategoryApiConfigDataLoader` — set values per channel
-
-```java
-// channel/config/CategoryApiConfigDataLoader.java
-
-// Shopee
-ChannelCategoryApiConfig shopee = ...;
-shopee.setTreeCapable(true);   // SINGLE_CALL + NESTED via HMAC_SHA256
-
-// Amazon
-ChannelCategoryApiConfig amazon = ...;
-amazon.setTreeCapable(true);   // ROOT_ONLY, drill-down via children endpoint
-
-// TikTok Shop
-ChannelCategoryApiConfig tiktok = ...;
-tiktok.setTreeCapable(true);   // RECURSIVE
-
-// eBay
-ChannelCategoryApiConfig ebay = ...;
-ebay.setTreeCapable(true);     // SINGLE_CALL + FLAT_WITH_PARENT_ID
-
-// Lazada
-ChannelCategoryApiConfig lazada = ...;
-lazada.setTreeCapable(true);   // RECURSIVE
-
-// Shopify — false: already covered by taxonomyEnabled (GraphQL taxonomy)
-// Wix     — false: importCapable (merchant collections), not a fixed tree
-// WooCommerce — false: importCapable
-```
-
-#### 3. `ChannelTaxonomyService.getCategoryFlags()` — include third flag
-
-```java
-// channel/category/service/ChannelTaxonomyService.java
-
-public record ChannelCategoryFlags(
-    boolean taxonomyEnabled,
-    boolean importCapable,
-    boolean treeCapable          // NEW
-) {}
-
-public ChannelCategoryFlags getCategoryFlags(String channelType) {
-    return configRepository.findByChannelType(channelType)
-        .map(cfg -> new ChannelCategoryFlags(
-            cfg.isTaxonomyEnabled(),
-            cfg.isImportCapable(),
-            cfg.isTreeCapable()   // NEW
-        ))
-        .orElse(new ChannelCategoryFlags(false, false, false));
-}
-```
-
-#### 4. `ChannelStoreConnectionResponse` — expose field in API response
-
-```java
-// channel/store/model/dto/ChannelStoreConnectionResponse.java
-
-public class ChannelStoreConnectionResponse {
-    // ... existing fields ...
-    private boolean taxonomyEnabled;
-    private boolean importCapable;
-    private boolean treeCapable;   // NEW
-
-    public static ChannelStoreConnectionResponse from(
-            ChannelStoreConnection entity,
-            ChannelCategoryFlags flags) {
-        // ... existing mapping ...
-        response.setTreeCapable(flags.treeCapable());   // NEW
-        return response;
-    }
-}
-```
-
-The JSON response will then include:
-```json
-{
-  "storeId": "shopee-my-store",
-  "channelType": "shopee",
-  "taxonomyEnabled": false,
-  "importCapable": false,
-  "treeCapable": true
-}
-```
-
----
-
-### Why `treeCapable` is separate from `taxonomyEnabled`
-
-| | `taxonomyEnabled` | `treeCapable` |
-|---|---|---|
-| **What it represents** | Channel has a GraphQL platform taxonomy (Shopify Product Taxonomy) | Channel has a REST/HMAC category tree via `GenericCategoryService` |
-| **Backend source** | `taxonomyFetchConfig` is populated + `ChannelTaxonomyService` uses `channel_taxonomy_cache` | `treeApiConfig` is configured + `GenericCategoryService` uses `channel_category_cache` |
-| **Category ownership** | Shopify owns it globally (same tree for all merchants) | Channel owns it globally (same tree for all merchants) |
-| **Frontend modal** | `TaxonomyMapperModal mode="taxonomy"` | `TaxonomyMapperModal mode="tree"` |
-| **Label shown to merchant** | "Map to Shopify Taxonomy" | "Map to Shopee Category Tree" |
-| **Browse endpoint** | `GET /taxonomy/{channelType}/children` (reads `channel_taxonomy_cache`) | `GET /taxonomy/{channelType}/children` (reads `channel_category_cache`) |
-
-Both use the same browse endpoint because `GET /taxonomy/{channelType}/children` already
-routes through the generic cache layer. **No new endpoint is required for `treeCapable`.**
-
-The only functional difference is which cache table is populated:
-- `taxonomyEnabled` → `channel_taxonomy_cache` (populated by `ChannelTaxonomyService`)
-- `treeCapable` → `channel_category_cache` (populated by `CategorySyncJob` using `GenericCategoryService`)
-
-For Shopee specifically, `CategorySyncJob` already warms `channel_category_cache` nightly
-(SINGLE_CALL strategy). The browse endpoint can serve Shopee immediately once `treeCapable`
-is set — no additional cache warm-up work is needed.
-
----
-
-### Why `treeCapable` is not derivable from existing fields
-
-It cannot be derived as `!taxonomyEnabled && !importCapable` because:
-
-- Amazon, TikTok, eBay, Lazada, Shopee all have `taxonomyEnabled=false` AND `importCapable=false`
-- But the same is true of a hypothetical future channel that has **neither** a tree nor
-  import capability (e.g., a flat catalog channel with no hierarchy)
-- An explicit flag prevents false positives for such future channels
-
-It cannot reuse `importCapable` because the two flows are fundamentally different:
-- `importCapable` = merchant's own categories → **import wizard creates new platform categories**
-- `treeCapable` = channel's fixed tree → **browse and link to existing platform categories**
-
----
-
-### Verification checklist after backend deploy
-
-- [ ] `GET /channel-stores?organizationId=xxx` response for a Shopee store includes `"treeCapable": true`
-- [ ] Shopee column in the Channel Category Mapping page shows **Map** button (not `—`)
-- [ ] Clicking Map opens the **"Map to Shopee Category Tree"** modal
-- [ ] Browse panel loads Shopee root categories (from `channel_category_cache`)
-- [ ] Drilling into a non-leaf category loads children
-- [ ] Selecting a leaf saves mapping via `POST /second-channel`
-- [ ] Shopee store in the mapping grid transitions from `—` / `UNMAPPED` to `MAPPED`
-- [ ] Same test for Amazon, TikTok, eBay, Lazada stores
-- [ ] Frontend fallback `isTreeCapable()` no longer fires (verify via `store.treeCapable === true` branch)
+**Why separate from `taxonomyEnabled`:** `taxonomyEnabled` covers GraphQL taxonomy
+(Shopify). `treeCapable` covers REST/HMAC category trees (Shopee, Amazon, TikTok, eBay,
+Lazada). Both use `GET /taxonomy/{channelType}/children` but different cache tables:
+`channel_taxonomy_cache` vs `channel_category_cache`.

@@ -21,6 +21,8 @@ export interface MasterProduct {
   basePrice?: number | null;
   currency?: string | null;
   imageUrl?: string | null;
+  /** Phase 3 (2026-06-15): flat tag list for lightweight internal organization */
+  tags?: string[];
   variantCount: number;
   channelSummary: MasterProductChannelSummary[];
   status: MasterProductStatus;
@@ -42,6 +44,8 @@ export interface MasterProductListParams {
   size?: number;
   q?: string;
   categoryId?: string;
+  /** Phase 3: filter by tags (AND logic — all tags must match) */
+  tags?: string[];
   channelType?: string;
   channelStatus?: ChannelSyncStatus | "ALL";
   status?: MasterProductStatus | "ALL";

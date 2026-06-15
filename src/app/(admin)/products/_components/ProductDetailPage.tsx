@@ -8,6 +8,7 @@ import { MasterProductService } from "../_services/master-product.service";
 import type { MasterProductDetail, ChannelDistributionCard, ChannelSyncStatus } from "../_types/master-product";
 import { ChannelStoreService } from "@/modules/ecommerce-product-v2/step2-channel-fields/services/channelStore.service";
 import type { ChannelStoreConnection } from "@/modules/ecommerce-product-v2/step2-channel-fields/types/channelStore";
+import TagInput from "@/shared/ui/tag-input/TagInput";
 
 const BASE_API = "http://localhost:8888/labamap/api/v1";
 
@@ -315,7 +316,78 @@ function ChannelGroupAccordion({
 
 // ─── Left column: master data summary ────────────────────────────────────────
 
-function MasterDataPanel({ product }: { product: MasterProductDetail }) {
+// ─── Inline tag editor ────────────────────────────────────────────────────────
+
+function TagsEditor({ initialTags, onSave }: { initialTags: string[]; onSave: (tags: string[]) => void }) {
+  const [editing, setEditing]   = useState(false);
+  const [tags, setTags]         = useState<string[]>(initialTags);
+  const [saving, setSaving]     = useState(false);
+
+  // Sync if parent reloads product
+  useEffect(() => { setTags(initialTags); }, [initialTags.join(",")]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function handleSave() {
+    setSaving(true);
+    try {
+      await onSave(tags);
+      setEditing(false);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function handleCancel() {
+    setTags(initialTags);
+    setEditing(false);
+  }
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-2">
+        <span className="text-[10px] uppercase tracking-wider text-gray-400 dark:text-gray-500">Tags</span>
+        {!editing && (
+          <button onClick={() => setEditing(true)}
+            className="text-[11px] text-brand-600 dark:text-brand-400 hover:underline">
+            Edit
+          </button>
+        )}
+      </div>
+      {editing ? (
+        <div className="space-y-2">
+          <TagInput value={tags} onChange={setTags} placeholder="Add tag…" />
+          <div className="flex gap-2">
+            <button onClick={handleSave} disabled={saving}
+              className="text-[11px] font-medium px-3 py-1 rounded-lg bg-brand-500 hover:bg-brand-600 text-white transition-colors disabled:opacity-50">
+              {saving ? "Saving…" : "Save"}
+            </button>
+            <button onClick={handleCancel} disabled={saving}
+              className="text-[11px] px-3 py-1 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
+              Cancel
+            </button>
+          </div>
+        </div>
+      ) : tags.length > 0 ? (
+        <div className="flex flex-wrap gap-1.5">
+          {tags.map(tag => (
+            <span key={tag} className="px-2 py-0.5 rounded-md text-xs bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300">
+              {tag}
+            </span>
+          ))}
+        </div>
+      ) : (
+        <p className="text-xs text-gray-400 dark:text-gray-500 italic">No tags — click Edit to add.</p>
+      )}
+    </div>
+  );
+}
+
+function MasterDataPanel({
+  product,
+  onTagsSaved,
+}: {
+  product: MasterProductDetail;
+  onTagsSaved?: (tags: string[]) => void;
+}) {
   const displayImages = (product.images ?? []).slice(0, 5);
   const displayVariants = product.variants.slice(0, 5);
   const moreVariants = product.variantCount - displayVariants.length;
@@ -419,21 +491,12 @@ function MasterDataPanel({ product }: { product: MasterProductDetail }) {
         </div>
       )}
 
-      {/* Tags */}
-      {product.tags && product.tags.length > 0 && (
-        <div>
-          <span className="block text-[10px] uppercase tracking-wider text-gray-400 dark:text-gray-500 mb-2">Tags</span>
-          <div className="flex flex-wrap gap-1.5">
-            {product.tags.map((tag) => (
-              <span
-                key={tag}
-                className="px-2 py-0.5 rounded-md text-xs bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300"
-              >
-                {tag}
-              </span>
-            ))}
-          </div>
-        </div>
+      {/* Tags — editable inline */}
+      {onTagsSaved && (
+        <TagsEditor
+          initialTags={product.tags ?? []}
+          onSave={onTagsSaved}
+        />
       )}
     </div>
   );
@@ -630,7 +693,13 @@ export default function ProductDetailPage({ masterProductId }: { masterProductId
             <h2 className="text-[10px] uppercase tracking-wider font-semibold text-gray-400 dark:text-gray-500 mb-4">
               Master Data
             </h2>
-            <MasterDataPanel product={product} />
+            <MasterDataPanel
+              product={product}
+              onTagsSaved={async (tags) => {
+                await MasterProductService.updateTags(product.id, orgId, tags);
+                setProduct(p => p ? { ...p, tags } : p);
+              }}
+            />
           </div>
         </div>
 

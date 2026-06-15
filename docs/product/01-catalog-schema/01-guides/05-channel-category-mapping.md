@@ -24,34 +24,45 @@ are designed for this pattern.
 
 ---
 
-## Two Fundamentally Different Channel Types
+## Three Channel Types for Category Mapping
 
 ### Type 1: Import-capable (merchant-created collections)
-| Channel     | Import support   |
+| Channel     | Onboarding flow  |
 |-------------|------------------|
-| WooCommerce | ✅ Import wizard  |
-| Etsy        | ✅ Import wizard  |
-| Wix         | ✅ Import wizard  |
+| WooCommerce | ✅ One-time import wizard (onboarding only) |
+| Etsy        | ✅ One-time import wizard (onboarding only) |
+| Wix         | ✅ One-time import wizard (onboarding only) |
 
-Direction: **Channel → import → Platform** (one-time onboarding)
-Then: **Platform → push → Channel** (ongoing, platform is master)
+Direction on first connect: **Channel → import → Platform** (one-time bootstrap)  
+After onboarding: **Platform is master** — changes made here, not re-imported from channel.
+
+> **One-time only:** The import wizard is only available during the initial onboarding
+> window (14-day grace period after merchant sets `categorySourceOrigin = "import"`).
+> After the grace period, the "Import from channel" button is hidden and platform
+> categories are managed directly. See `12-category-evolution-roadmap.md §Phase 1`.
 
 > **Wix note:** Wix collections are merchant-created (same model as WooCommerce/Etsy).
-> The import wizard and the collection mapper (for linking existing platform categories
-> to Wix collections) both apply. `importCapable` must be `true` on the
-> `ChannelStoreConnection` returned by the stores API for Wix stores.
+> `importCapable` must be `true` on the `ChannelStoreConnection` for Wix stores.
 
-### Type 2: Fixed-taxonomy (channel-owned, read-only)
-| Channel     | What can be done                      |
-|-------------|---------------------------------------|
-| Shopify     | Map platform → Taxonomy category only |
-| Amazon      | Map platform → Browse Node only       |
-| TikTok Shop | Map platform → TikTok category only   |
-| eBay        | Map platform → eBay category only     |
+### Type 2: Fixed-taxonomy (channel-owned global tree, GraphQL)
+| Channel | Mapping flow |
+|---------|-------------|
+| Shopify | Browse Shopify Product Taxonomy → link platform category to taxonomy node |
 
-Never import Type 2 channels as platform categories. Their taxonomy IDs are meaningless
-outside the channel and the trees are fully owned by the channel — merchants cannot
-create, rename, or reorganize them.
+Never import Type 2 channels as platform categories. Their taxonomy is global, read-only,
+owned by the channel, and versioned by the channel (not the merchant).
+
+### Type 3: Category-tree (channel-owned global tree, REST/HMAC)
+| Channel     | Mapping flow |
+|-------------|-------------|
+| Amazon      | Browse Amazon Browse Node tree → link platform category |
+| TikTok Shop | Browse TikTok category tree → link platform category |
+| eBay        | Browse eBay category tree → link platform category |
+| Lazada      | Browse Lazada category tree → link platform category |
+| Shopee      | Browse Shopee category tree (HMAC_SHA256) → link platform category |
+
+Same flow as Type 2 but fetched via `GenericCategoryService` (REST) instead of GraphQL.
+Requires `treeCapable = true` on `ChannelCategoryApiConfig`. See `07-channel-category-api-config.md`.
 
 For Shopify specifically: what looks like a "category" in the storefront is actually a
 **Collection** (merchant-created merchandising group), which is a different concept from
@@ -338,21 +349,24 @@ All subsequent users get sub-100 ms responses from the warm cache.
 
 ## The Three Sync Operations
 
-### ① IMPORT (Channel → Platform, one-time)
+### ① IMPORT (Channel → Platform, one-time onboarding bootstrap)
 
-**Applies to: WooCommerce, Etsy only.**
+**Applies to: WooCommerce, Etsy, Wix — during onboarding grace period only.**
 
 ```
-1. Platform fetches channel collections via backend proxy
-2. Merchant reviews preview, selects/deselects collections
-3. Platform creates product_categories + channel_category_mappings (PENDING_IMPORT)
-4. Merchant confirms → status transitions to MAPPED
-5. Platform auto-suggests ProductType (NLP matching)
+1. Merchant chooses "Import dari Channel" at onboarding (categorySourceOrigin = "import")
+2. Platform fetches channel collections via backend proxy
+3. Merchant reviews preview, selects/deselects collections
+4. Platform creates product_categories + channel_category_mappings (PENDING_IMPORT)
+5. Merchant confirms → status transitions to MAPPED
+6. Platform auto-suggests ProductType (NLP matching)
 ```
 
-Shopify does NOT use this flow. Its taxonomy is global and fixed — there is nothing to
-import as platform categories. Shopify uses the second-channel mapping flow (see below),
-which browses the taxonomy tree and links existing platform categories to taxonomy nodes.
+**After grace period (14 days):** Import is locked. Platform categories are master.
+New categories are added directly in My Categories (`/channels/categories`).
+
+Type 2 (Shopify taxonomy) and Type 3 (REST tree channels: Shopee, Amazon, etc.) do NOT
+use this flow — they use the second-channel mapping flow below.
 
 ### ② PUSH OUT (Platform → All channels, ongoing)
 

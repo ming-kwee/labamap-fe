@@ -4,6 +4,10 @@ import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { ProductType, VariantDimension } from "../_types/product-type";
 import { ProductTypeService } from "../_services/product-type.service";
 import SkuMatrixPreview from "@/modules/ecommerce-product-v2/step1-create/components/SkuMatrixPreview";
+import { ChannelDefaultsSection } from "./ChannelDefaultsSection";
+import { ChannelStoreService } from "@/modules/ecommerce-product-v2/step2-channel-fields/services/channelStore.service";
+import type { ChannelStoreConnection } from "@/modules/ecommerce-product-v2/step2-channel-fields/types/channelStore";
+import { useAuth } from "@/shared/contexts/AuthContext";
 
 // ─── Icons ──────────────────────────────────────────────────────────────────────
 
@@ -243,6 +247,8 @@ function AddEditModal({ type, allTypes, onSave, onClose }: AddEditModalProps) {
         description: description.trim() || undefined,
         inheritFromTypeId: inheritFromTypeId || null,
         variantDimensions: dimensions.map((d, i) => ({ ...d, order: i + 1 })),
+        // Preserve existing channel category defaults — managed separately via ChannelDefaultsSection
+        channelCategoryDefaults: type?.channelCategoryDefaults ?? [],
         active,
       });
     } catch (err) {
@@ -540,12 +546,15 @@ function AddEditModal({ type, allTypes, onSave, onClose }: AddEditModalProps) {
 interface ProductTypeCardProps {
   type: ProductType;
   savingId: string | null;
+  stores: ChannelStoreConnection[];
+  orgId: string;
   onEdit: (t: ProductType) => void;
   onToggleActive: (t: ProductType) => void;
   onDelete: (t: ProductType) => void;
+  onUpdated: (updated: ProductType) => void;
 }
 
-function ProductTypeCard({ type, savingId, onEdit, onToggleActive, onDelete }: ProductTypeCardProps) {
+function ProductTypeCard({ type, savingId, stores, orgId, onEdit, onToggleActive, onDelete, onUpdated }: ProductTypeCardProps) {
   const isSaving = savingId === type.id;
 
   const dimensionPreview = useMemo(() => {
@@ -627,7 +636,6 @@ function ProductTypeCard({ type, savingId, onEdit, onToggleActive, onDelete }: P
 
         {/* Footer: attr count + actions */}
         <div className="flex items-center justify-between gap-2 pt-1 mt-auto border-t border-gray-100 dark:border-gray-700/50">
-          {/* Attribute count badge */}
           <span className={`inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full ${
             type.attributeCount > 0
               ? "bg-blue-50 text-blue-700 dark:bg-blue-500/10 dark:text-blue-400"
@@ -635,25 +643,25 @@ function ProductTypeCard({ type, savingId, onEdit, onToggleActive, onDelete }: P
           }`}>
             {type.attributeCount} attr{type.attributeCount !== 1 ? "s" : ""}
           </span>
-
-          {/* Action buttons */}
           <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
-            <button
-              onClick={() => onEdit(type)}
-              title="Edit"
-              className="p-1.5 rounded-lg text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
-            >
+            <button onClick={() => onEdit(type)} title="Edit"
+              className="p-1.5 rounded-lg text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
               <EditIcon />
             </button>
-            <button
-              onClick={() => onDelete(type)}
-              title="Delete"
-              className="p-1.5 rounded-lg text-gray-400 hover:text-red-500 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-500/10 transition-colors"
-            >
+            <button onClick={() => onDelete(type)} title="Delete"
+              className="p-1.5 rounded-lg text-gray-400 hover:text-red-500 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-500/10 transition-colors">
               <TrashIcon />
             </button>
           </div>
         </div>
+
+        {/* Channel Category Defaults — Phase 2 */}
+        <ChannelDefaultsSection
+          productType={type}
+          stores={stores}
+          orgId={orgId}
+          onUpdated={onUpdated}
+        />
       </div>
     </div>
   );
@@ -716,20 +724,19 @@ function EmptyState({ onAdd }: { onAdd: () => void }) {
 // ─── Main Page ─────────────────────────────────────────────────────────────────
 
 export default function ProductTypesPage() {
+  const { organization } = useAuth();
+  const orgId = organization?.organizationId ?? "";
+
   const [types, setTypes] = useState<ProductType[]>([]);
+  const [stores, setStores] = useState<ChannelStoreConnection[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [savingId, setSavingId] = useState<string | null>(null);
   const [toast, setToast] = useState<{ msg: string; type: "ok" | "err" } | null>(null);
 
-  // Modal state
   const [showModal, setShowModal] = useState(false);
   const [editingType, setEditingType] = useState<ProductType | null>(null);
-
-  // Delete modal
   const [deleteTarget, setDeleteTarget] = useState<ProductType | null>(null);
-
-  // Toolbar
   const [searchQuery, setSearchQuery] = useState("");
   const [activeFilter, setActiveFilter] = useState<"all" | "active" | "inactive">("all");
 
@@ -739,14 +746,22 @@ export default function ProductTypesPage() {
     setIsLoading(true);
     setLoadError(null);
     try {
-      const data = await ProductTypeService.list();
+      const [data, storeData] = await Promise.all([
+        ProductTypeService.list(),
+        orgId
+          ? ChannelStoreService.listAllStores(orgId)
+              .then(all => all.filter(s => s.isActive && s.connectionStatus !== "INACTIVE"))
+              .catch(() => [] as ChannelStoreConnection[])
+          : Promise.resolve([] as ChannelStoreConnection[]),
+      ]);
       setTypes(data);
+      setStores(storeData);
     } catch (err) {
       setLoadError((err as Error).message ?? String(err));
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [orgId]);
 
   useEffect(() => { loadTypes(); }, [loadTypes]);
 
@@ -958,9 +973,12 @@ export default function ProductTypesPage() {
                 key={t.id}
                 type={t}
                 savingId={savingId}
+                stores={stores}
+                orgId={orgId}
                 onEdit={handleOpenEdit}
                 onToggleActive={handleToggleActive}
                 onDelete={handleDelete}
+                onUpdated={(updated) => setTypes(prev => prev.map(pt => pt.id === updated.id ? updated : pt))}
               />
             ))}
           </div>

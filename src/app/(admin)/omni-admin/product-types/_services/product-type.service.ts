@@ -13,7 +13,7 @@
  *   DELETE /{id}       — blocked with 409 if categories reference this type
  */
 
-import { ProductType, ProductTypeDoc, docToProductType, productTypeToPayload } from "../_types/product-type";
+import { ProductType, ProductTypeDoc, ChannelCategoryDefault, docToProductType, productTypeToPayload } from "../_types/product-type";
 
 const BASE = "http://localhost:8888/labamap/api/v1/admin/product-types";
 const JSON_HEADERS = { "Content-Type": "application/json" };
@@ -92,5 +92,83 @@ export const ProductTypeService = {
       } catch { /* ignore */ }
       throw new Error(`[ProductTypeService] DELETE ${id}: ${res.status} ${message}`);
     }
+  },
+
+  // ─── Channel Category Defaults (Phase 2) ────────────────────────────────────
+
+  /**
+   * GET /admin/product-types/{id}/channel-defaults/{channelType}
+   * Returns the default category for a specific channel type, or null if not set.
+   * Gracefully returns null on 404 (backend not deployed yet or no default set).
+   */
+  async getChannelDefault(id: string, channelType: string): Promise<ChannelCategoryDefault | null> {
+    try {
+      const res = await fetch(`${BASE}/${id}/channel-defaults/${encodeURIComponent(channelType)}`, {
+        method: "GET", headers: JSON_HEADERS,
+      });
+      if (res.status === 404) return null;
+      const raw = await handleResponse<Record<string, unknown>>(res);
+      if (!raw) return null;
+      return {
+        channelType:      String(raw.channelType ?? channelType),
+        categoryId:       String(raw.categoryId ?? ""),
+        categoryName:     String(raw.categoryName ?? ""),
+        categoryFullPath: String(raw.categoryFullPath ?? raw.categoryName ?? ""),
+        updatedAt:        raw.updatedAt as string | undefined,
+      };
+    } catch {
+      return null;
+    }
+  },
+
+  /**
+   * PUT /admin/product-types/{id}/channel-defaults/{channelType}
+   * Set or replace the default category for a specific channel type.
+   * Falls back to full productType update if dedicated endpoint not available (404).
+   */
+  async setChannelDefault(
+    id: string,
+    channelType: string,
+    def: Omit<ChannelCategoryDefault, "channelType" | "updatedAt">,
+  ): Promise<ProductType> {
+    const body = { channelType, ...def };
+    const res = await fetch(`${BASE}/${id}/channel-defaults/${encodeURIComponent(channelType)}`, {
+      method: "PUT", headers: JSON_HEADERS, body: JSON.stringify(body),
+    });
+    // If dedicated endpoint not deployed, fall back to full update
+    if (res.status === 404 || res.status === 405) {
+      const current = await this.get(id);
+      const others = current.channelCategoryDefaults.filter(d => d.channelType !== channelType);
+      return this.update(id, {
+        ...current,
+        channelCategoryDefaults: [...others, { channelType, ...def }],
+      });
+    }
+    const doc = await handleResponse<ProductTypeDoc>(res);
+    if (!doc) return this.get(id);
+    return docToProductType(doc);
+  },
+
+  /**
+   * DELETE /admin/product-types/{id}/channel-defaults/{channelType}
+   * Clear the default for a specific channel. Falls back to full update on 404/405.
+   */
+  async clearChannelDefault(id: string, channelType: string): Promise<ProductType> {
+    const res = await fetch(`${BASE}/${id}/channel-defaults/${encodeURIComponent(channelType)}`, {
+      method: "DELETE", headers: JSON_HEADERS,
+    });
+    if (res.status === 404 || res.status === 405) {
+      const current = await this.get(id);
+      return this.update(id, {
+        ...current,
+        channelCategoryDefaults: current.channelCategoryDefaults.filter(d => d.channelType !== channelType),
+      });
+    }
+    if (!res.ok) {
+      let msg = res.statusText;
+      try { const b = await res.json(); msg = b.message ?? b.error ?? msg; } catch { /* ignore */ }
+      throw new Error(`[ProductTypeService] DELETE channel-default ${channelType}: ${res.status} ${msg}`);
+    }
+    return this.get(id);
   },
 };

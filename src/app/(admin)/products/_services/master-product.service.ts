@@ -14,6 +14,12 @@ const JSON_HEADERS = { "Content-Type": "application/json" };
 function mapProduct(r: Record<string, unknown>): MasterProduct {
   const channelSummary = Array.isArray(r.channelSummary) ? r.channelSummary : [];
   const attrs = (r.productAttributes ?? {}) as Record<string, unknown>;
+  const rawTags = r.tags ?? attrs.tags ?? attrs.tag;
+  const tags: string[] = Array.isArray(rawTags)
+    ? (rawTags as unknown[]).map(String).filter(Boolean)
+    : typeof rawTags === "string" && rawTags
+      ? rawTags.split(/[,;]+/).map(t => t.trim()).filter(Boolean)
+      : [];
   return {
     id:             String(r.productId ?? r.id ?? r._id ?? ""),
     organizationId: String(r.organizationId ?? ""),
@@ -24,6 +30,7 @@ function mapProduct(r: Record<string, unknown>): MasterProduct {
     basePrice:      (r.basePrice ?? attrs.price ?? attrs.basePrice) != null ? Number(r.basePrice ?? attrs.price ?? attrs.basePrice) : null,
     currency:       (r.currency ?? attrs.currency) != null ? String(r.currency ?? attrs.currency) : null,
     imageUrl:       (r.imageUrl ?? attrs.mainImage ?? attrs.imageUrl) != null ? String(r.imageUrl ?? attrs.mainImage ?? attrs.imageUrl) : null,
+    tags:           tags.length > 0 ? tags : undefined,
     variantCount:   Number(r.variantCount ?? 0),
     channelSummary: (channelSummary as Record<string, unknown>[]).map(s => ({
       storeId:       String(s.storeId ?? ""),
@@ -152,6 +159,7 @@ export const MasterProductService = {
     if (params.q)              qs.set("q",             params.q);
     if (params.categoryId)     qs.set("categoryId",    params.categoryId);
     if (params.channelType)    qs.set("channelType",   params.channelType);
+    if (params.tags?.length)   qs.set("tags",          params.tags.join(","));
     if (params.channelStatus && params.channelStatus !== "ALL")
       qs.set("channelStatus", params.channelStatus);
     if (params.status && params.status !== "ALL")
@@ -180,5 +188,66 @@ export const MasterProductService = {
       page:          Number(raw.number ?? raw.page ?? 0),
       size:          Number(raw.size ?? 10),
     };
+  },
+
+  // ─── Phase 3: Tag management ────────────────────────────────────────────────
+
+  /**
+   * PUT /admin/master-products/{id}/tags
+   * Replace the full tag list for a product.
+   * Falls back to 204 gracefully when backend not yet deployed.
+   */
+  async updateTags(productId: string, organizationId: string, tags: string[]): Promise<void> {
+    const res = await fetch(
+      `${BASE}/${encodeURIComponent(productId)}/tags?organizationId=${encodeURIComponent(organizationId)}`,
+      { method: "PUT", headers: JSON_HEADERS, body: JSON.stringify({ tags }) },
+    );
+    if (res.status === 404 || res.status === 405) return; // backend not deployed yet — silent
+    if (!res.ok) {
+      let msg = res.statusText;
+      try { const b = await res.json(); msg = b.message ?? b.error ?? msg; } catch { /* ignore */ }
+      throw new Error(`[MasterProductService] PUT tags ${productId}: ${res.status} ${msg}`);
+    }
+  },
+
+  /**
+   * POST /admin/master-products/bulk-tags
+   * Add or remove tags from multiple products in one call.
+   * Returns { updatedCount }.
+   */
+  async bulkUpdateTags(
+    organizationId: string,
+    productIds: string[],
+    addTags: string[],
+    removeTags: string[],
+  ): Promise<{ updatedCount: number }> {
+    const res = await fetch(
+      `${BASE}/bulk-tags?organizationId=${encodeURIComponent(organizationId)}`,
+      { method: "POST", headers: JSON_HEADERS, body: JSON.stringify({ productIds, addTags, removeTags }) },
+    );
+    if (res.status === 404 || res.status === 405) return { updatedCount: 0 };
+    if (!res.ok) {
+      let msg = res.statusText;
+      try { const b = await res.json(); msg = b.message ?? b.error ?? msg; } catch { /* ignore */ }
+      throw new Error(`[MasterProductService] bulk-tags: ${res.status} ${msg}`);
+    }
+    const data = await res.json().catch(() => ({})) as Record<string, unknown>;
+    return { updatedCount: Number(data.updatedCount ?? 0) };
+  },
+
+  /**
+   * GET /admin/master-products/tags/suggestions?organizationId=...&prefix=...
+   * Returns tags used by this org (for autocomplete).
+   * Returns empty array gracefully when backend not deployed.
+   */
+  async suggestTags(organizationId: string, prefix: string): Promise<string[]> {
+    try {
+      const qs = new URLSearchParams({ organizationId, prefix });
+      const res = await fetch(`${BASE}/tags/suggestions?${qs}`, { headers: JSON_HEADERS });
+      if (!res.ok) return [];
+      return (await res.json() as unknown[]).map(String);
+    } catch {
+      return [];
+    }
   },
 };

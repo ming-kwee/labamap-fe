@@ -409,6 +409,49 @@ export default function ChannelStoreTab({ schema, values, onChange, isSaving, la
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [categoryId]);
 
+  // ── Phase 2: Pre-fill CATEGORY_TREE from ProductType channel default ─────────
+  // Only fires once when the tab first mounts AND the category field is empty.
+  // Does not override a category the merchant has already set.
+
+  // Keep a live ref to values so the async callback always writes to current state,
+  // not the stale snapshot captured at mount time.
+  const valuesRef = useRef(values);
+  useEffect(() => { valuesRef.current = values; });
+
+  const prefillAttempted = useRef(false);
+
+  useEffect(() => {
+    const productTypeId = masterProduct?.productTypeId;
+    if (!productTypeId || !mainCategoryField || prefillAttempted.current) return;
+    const currentValue = values.channelData[mainCategoryField.fieldName];
+    if (currentValue) return; // already has a value — don't override
+
+    prefillAttempted.current = true;
+    const fieldName = mainCategoryField.fieldName; // capture, not the ref
+
+    fetch(
+      `${BASE}/admin/product-types/${encodeURIComponent(productTypeId)}/channel-defaults/${encodeURIComponent(schema.channelType)}`,
+      { headers: { "Content-Type": "application/json" } }
+    )
+      .then(res => {
+        if (!res.ok) return null;
+        return res.json() as Promise<{ categoryId: string }>;
+      })
+      .then(def => {
+        if (!def?.categoryId) return;
+        // Use valuesRef.current (not stale closure) so concurrent field edits are preserved
+        const latest = valuesRef.current;
+        if (latest.channelData[fieldName]) return; // merchant set a value while fetch was in flight
+        onChange({
+          ...latest,
+          channelData: { ...latest.channelData, [fieldName]: def.categoryId },
+        });
+      })
+      .catch(() => { /* silent — pre-fill failure must not block merchant */ });
+  // Pre-fill runs once per mount — deps intentionally empty
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   function handleFieldChange(fieldName: string, value: unknown) {
     const isCategoryField = mainCategoryField != null && fieldName === mainCategoryField.fieldName;
 
