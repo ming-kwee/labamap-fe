@@ -7,7 +7,9 @@ import type { ChannelStoreConnection } from "@/modules/ecommerce-product-v2/step
 import { ChannelMappingService } from "../_services/channel-mapping.service";
 
 const CHANNEL_LABEL: Record<string, string> = {
-  shopify: "Shopify", amazon: "Amazon", tiktok: "TikTok Shop", ebay: "eBay",
+  shopify: "Shopify", amazon: "Amazon", tiktok: "TikTok Shop", tiktokshop: "TikTok Shop",
+  ebay: "eBay", lazada: "Lazada", shopee: "Shopee", tokopedia: "Tokopedia",
+  walmart: "Walmart", wix: "Wix",
 };
 
 // ─── Icons ────────────────────────────────────────────────────────────────────
@@ -66,6 +68,11 @@ interface Props {
   unmappedCategories: ProductCategoryTree[];
   /** Optional: which category was clicked — used to scroll to on open */
   initialCategoryId?: string;
+  /**
+   * "taxonomy" — Shopify-style platform taxonomy (GraphQL); labels say "Taxonomy"
+   * "tree"     — REST/HMAC category tree (Shopee, Amazon, etc.); labels say "Category Tree"
+   */
+  mode?: "taxonomy" | "tree";
   onMapped: () => void;
   onClose: () => void;
 }
@@ -77,11 +84,14 @@ export function TaxonomyMapperModal({
   store,
   unmappedCategories,
   initialCategoryId,
+  mode = "taxonomy",
   onMapped,
   onClose,
 }: Props) {
   const { storeId, channelType, storeName } = store;
   const channelLabel = CHANNEL_LABEL[channelType] ?? channelType;
+  // "Taxonomy" for Shopify-style; "Category Tree" for REST/HMAC channels like Shopee
+  const treeLabel = mode === "taxonomy" ? "Taxonomy" : "Category Tree";
 
   const [phase, setPhase] = useState<Phase>("loading");
   const [confirmError, setConfirmError] = useState<string | null>(null);
@@ -283,8 +293,8 @@ export function TaxonomyMapperModal({
           <div>
             <h2 className="text-sm font-bold text-gray-900 dark:text-white">
               {phase === "browse" && browseCtx
-                ? `Browse ${channelLabel} Taxonomy`
-                : `Map to ${channelLabel} Taxonomy`}
+                ? `Browse ${channelLabel} ${treeLabel}`
+                : `Map to ${channelLabel} ${treeLabel}`}
             </h2>
             <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
               {phase === "browse" && browseCtx
@@ -307,7 +317,7 @@ export function TaxonomyMapperModal({
         {phase === "loading" && (
           <div className="flex-1 flex flex-col items-center justify-center py-16">
             <div className="w-8 h-8 rounded-full border-2 border-brand-500 border-t-transparent animate-spin mb-3" />
-            <p className="text-sm text-gray-500 dark:text-gray-400">Loading taxonomy suggestions…</p>
+            <p className="text-sm text-gray-500 dark:text-gray-400">Loading {treeLabel.toLowerCase()} suggestions…</p>
           </div>
         )}
 
@@ -492,8 +502,8 @@ export function TaxonomyMapperModal({
                     <p className="text-sm text-gray-500 dark:text-gray-400">No sub-categories at this level</p>
                     <p className="text-xs text-gray-400 dark:text-gray-500">
                       {browseCtx.browsePath.length === 0
-                        ? "The taxonomy root returned empty — the backend may need to seed the channel_category_cache."
-                        : "This may be a leaf node or the backend taxonomy children endpoint may not support this depth yet."}
+                        ? `The ${treeLabel.toLowerCase()} root returned empty — the backend may need to seed the channel_category_cache for ${channelLabel}.`
+                        : `This may be a leaf node or the backend ${treeLabel.toLowerCase()} children endpoint may not support this depth yet.`}
                     </p>
                   </div>
                 )}
@@ -516,7 +526,7 @@ export function TaxonomyMapperModal({
 
             {/* Browse footer */}
             <div className="flex-shrink-0 px-6 py-3 border-t border-gray-100 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-800/20 text-xs text-gray-400 dark:text-gray-500">
-              Select a leaf category to map <span className="font-medium text-gray-600 dark:text-gray-300">{browseCtx.categoryName}</span>
+              Select a {treeLabel.toLowerCase()} node to map <span className="font-medium text-gray-600 dark:text-gray-300">{browseCtx.categoryName}</span>
             </div>
           </>
         )}
@@ -526,7 +536,7 @@ export function TaxonomyMapperModal({
           <div className="flex-1 flex flex-col items-center justify-center py-16">
             <div className="w-12 h-12 rounded-full border-2 border-brand-500 border-t-transparent animate-spin mb-4" />
             <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Saving {acceptedMappings.length} mapping{acceptedMappings.length !== 1 ? "s" : ""}…</p>
-            <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Linking to {channelLabel} taxonomy</p>
+            <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Linking to {channelLabel} {treeLabel.toLowerCase()}</p>
           </div>
         )}
 
@@ -538,10 +548,10 @@ export function TaxonomyMapperModal({
             </div>
             <h3 className="text-base font-bold text-gray-900 dark:text-white mb-1">Mappings saved</h3>
             <p className="text-sm text-gray-500 dark:text-gray-400 mb-1">
-              {acceptedMappings.length} categor{acceptedMappings.length !== 1 ? "ies" : "y"} linked to {channelLabel} taxonomy
+              {acceptedMappings.length} categor{acceptedMappings.length !== 1 ? "ies" : "y"} linked to {channelLabel} {treeLabel.toLowerCase()}
             </p>
             <p className="text-xs text-gray-400 dark:text-gray-500 max-w-xs leading-relaxed">
-              Products in these categories will be classified under the correct {channelLabel} taxonomy nodes when published.
+              Products in these categories will be classified under the correct {channelLabel} {treeLabel.toLowerCase()} nodes when published.
             </p>
             <button
               onClick={() => { onMapped(); onClose(); }}

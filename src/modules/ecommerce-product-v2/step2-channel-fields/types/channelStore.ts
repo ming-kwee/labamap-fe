@@ -45,6 +45,8 @@ export interface ChannelStoreConnection {
   taxonomyEnabled?: boolean;
   /** Derived from !taxonomyEnabled — true = can use the import wizard (WooCommerce, Etsy) */
   importCapable?: boolean;
+  /** From ChannelCategoryApiConfig.treeApiConfig != null — true = has a browsable category tree (Shopee, Amazon, etc.) */
+  treeCapable?: boolean;
 }
 
 /**

@@ -72,6 +72,12 @@ export interface ChannelStoreConnection {
   lastSyncedAt?: string;
   disconnectedAt?: string;
   disconnectReason?: string;
+  /** From ChannelCategoryApiConfig.taxonomyConfig.enabled — true = use TaxonomyMapperModal (Shopify) */
+  taxonomyEnabled?: boolean;
+  /** From ChannelCategoryApiConfig.importCapable — true = use ImportWizardModal (WooCommerce, Etsy, Wix) */
+  importCapable?: boolean;
+  /** From ChannelCategoryApiConfig.treeCapable — true = use TaxonomyMapperModal mode="tree" (Shopee, Amazon, TikTok, eBay, Lazada). PENDING backend implementation — see 07-channel-category-api-config.md */
+  treeCapable?: boolean;
 }
 
 export interface StoreConnectionRequest {
@@ -135,10 +141,38 @@ GET /labamap/api/v1/channel-stores?organizationId=org_123&includeInactive=true
     "connectedAt": "2026-01-15T08:00:00",
     "lastSyncedAt": "2026-04-28T14:30:00",
     "disconnectedAt": null,
-    "disconnectReason": null
+    "disconnectReason": null,
+    "taxonomyEnabled": true,
+    "importCapable": true,
+    "treeCapable": false
+  },
+  {
+    "id": "77c2b3d4e5f6g7h8i9j0k1l2",
+    "storeId": "shopee-my-brand-id-store",
+    "channelType": "shopee",
+    "storeName": "My Brand ID Store",
+    "storeUrl": "shopee.com/shop/123456",
+    "region": "ID",
+    "organizationId": "org_123",
+    "credentials": { "accessToken": "***MASKED***", "shopId": "***MASKED***", "partnerId": "***MASKED***" },
+    "isActive": true,
+    "reconnectRequired": false,
+    "connectionStatus": "ACTIVE",
+    "displayOrder": 2,
+    "connectedAt": "2026-02-10T09:00:00",
+    "lastSyncedAt": "2026-04-28T14:30:00",
+    "disconnectedAt": null,
+    "disconnectReason": null,
+    "taxonomyEnabled": false,
+    "importCapable": false,
+    "treeCapable": true
   }
 ]
 ```
+
+> **`treeCapable` status:** Field is returned in the response but currently always `false`.
+> Backend implementation pending — see `07-channel-category-api-config.md` §Backend Recommendation.
+> The frontend uses a hardcoded fallback (`TREE_CAPABLE_CHANNELS`) until this is deployed.
 
 ---
 

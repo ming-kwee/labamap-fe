@@ -82,6 +82,7 @@ export function mapStore(raw: unknown): ChannelStoreConnection {
     disconnectReason:  r.disconnectReason  as string | undefined,
     taxonomyEnabled:   r.taxonomyEnabled   != null ? Boolean(r.taxonomyEnabled)  : undefined,
     importCapable:     r.importCapable     != null ? Boolean(r.importCapable)    : undefined,
+    treeCapable:       r.treeCapable       != null ? Boolean(r.treeCapable)      : undefined,
   };
 }
 

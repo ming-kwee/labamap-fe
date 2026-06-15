@@ -99,6 +99,18 @@ export function isImportCapable(channelType: string): boolean {
 // Use store.taxonomyEnabled (from ChannelConfiguration.taxonomyConfig.enabled)
 // and store.importCapable from the channel store API response instead.
 
+// ─── Type 3: platform-defined category trees (REST/HMAC) — browse & link ──────
+// Channels that have a browsable category tree via GenericCategoryService but do
+// NOT use Shopify-style GraphQL taxonomy.  The backend returns store.treeCapable
+// from ChannelCategoryApiConfig.treeApiConfig != null; this list is the frontend
+// fallback for backends that have not yet deployed that field.
+export const TREE_CAPABLE_CHANNELS = ["shopee", "amazon", "tiktok", "tiktokshop", "ebay", "lazada"] as const;
+export type TreeCapableChannel = typeof TREE_CAPABLE_CHANNELS[number];
+
+export function isTreeCapable(channelType: string): boolean {
+  return TREE_CAPABLE_CHANNELS.includes(channelType as TreeCapableChannel);
+}
+
 // ─── One node from GET /taxonomy/{channelType}/children ────────────────────────
 export interface TaxonomyCategory {
   id: string;          // e.g. "gid://shopify/TaxonomyCategory/aa-1-1-1"

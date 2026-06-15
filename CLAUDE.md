@@ -2,6 +2,48 @@
 
 This file contains configuration and commands for Claude Code to help with development tasks.
 
+---
+
+## Platform Identity — Read This First
+
+**This platform is a pure channel management tool — equivalent to Ginee Omnichannel (Sea Group).**
+
+It is NOT a storefront builder. It does NOT power merchant websites. No customer ever
+visits a storefront on this platform. Merchants use this platform to manage their product
+listings across multiple marketplaces (Shopee, Tokopedia, Lazada, TikTok Shop, Shopify
+stores, WooCommerce stores, Amazon, eBay, etc.) from one dashboard.
+
+### Architectural implications of this
+
+| Concern | Implication |
+|---|---|
+| **Platform categories** | Internal filtering and bulk ops only — no customer ever sees them |
+| **Category hierarchy** | Should trend toward flat tags + product type, not deep rigid taxonomy |
+| **Channel category** | Is a per-listing attribute (set in Step 2 wizard), not derived from a mapping table |
+| **Import from channel** | One-time onboarding bootstrapping only — not an ongoing sync |
+| **Category templates** | Useful for operations convenience, not for website navigation |
+| **Reference architecture** | Ginee, Linnworks, ChannelAdvisor — NOT Shopify, WooCommerce, BigCommerce |
+
+### What is correctly built (aligned with platform type)
+
+- `CategoryTreePicker` in Step 2 wizard — merchants browse and select channel category
+  per product per channel at the point of listing configuration. This is the Ginee pattern.
+- Channel credential management, OAuth flow, store connections — all correct.
+- Master product → channel listing publishing pipeline — correct direction.
+
+### What carries architectural tension (storefront assumptions)
+
+- `channel_category_mappings` table (platform category → channel category mapping)
+  was designed with storefront assumptions. It works, but the abstraction is heavier
+  than needed for a pure channel management platform.
+- `importCapable` (import WooCommerce/Etsy/Wix collections as platform categories)
+  makes more sense for a storefront migration than for Ginee-like channel management.
+- Rigid parent-child category taxonomy has its strongest justification in website navigation.
+
+Full analysis: `docs/product/01-catalog-schema/01-guides/11-category-architecture-analysis.md`
+
+---
+
 ## Development Commands
 
 ```bash

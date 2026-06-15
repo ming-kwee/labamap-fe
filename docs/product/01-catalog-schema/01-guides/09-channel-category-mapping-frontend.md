@@ -9,14 +9,15 @@ query issue is resolved (see Backend Fix Summary below).
 
 ## Files
 
-| File                                         | Purpose                              |
-|----------------------------------------------|--------------------------------------|
-| `_types/channel-mapping.ts`                  | All TypeScript types                 |
-| `_services/channel-mapping.service.ts`       | API calls                            |
-| `_components/ChannelCategoryMappingPage.tsx` | Main matrix page                     |
-| `_components/TaxonomyMapperModal.tsx`        | Batch mapper for Type 2 channels     |
-| `_components/ImportWizardModal.tsx`          | Import wizard for WooCommerce / Etsy |
-| `_components/DriftResolutionModal.tsx`       | Drift resolution for Type 1 channels |
+| File                                         | Purpose                                                       |
+|----------------------------------------------|---------------------------------------------------------------|
+| `_types/channel-mapping.ts`                  | All TypeScript types + channel classification constants       |
+| `_services/channel-mapping.service.ts`       | API calls                                                     |
+| `_components/ChannelCategoryMappingPage.tsx` | Main matrix page + three-way routing in `handleOpenMap()`     |
+| `_components/TaxonomyMapperModal.tsx`        | Batch mapper for Type 2 (taxonomy) and Type 3 (tree) channels |
+| `_components/CollectionMapperModal.tsx`      | Link existing platform categories to channel collections      |
+| `_components/ImportWizardModal.tsx`          | Import wizard for WooCommerce / Etsy / Wix                    |
+| `_components/DriftResolutionModal.tsx`       | Drift resolution for all channel types                        |
 
 All under `src/app/omni-admin/channel-category-mapping/`.
 
@@ -45,19 +46,62 @@ All under `src/app/omni-admin/channel-category-mapping/`.
 
 ---
 
-## Taxonomy Capability: No Hardcoded Channel List
+## Routing: Three Mapping Flows
 
-There is no `TAXONOMY_CHANNELS` constant in the frontend. The routing decision is:
+`handleOpenMap()` routes to one of three flows based on store flags, checked in priority order:
 
 ```typescript
-if (store.taxonomyEnabled === true)  → TaxonomyMapperModal
-if (store.importCapable === true)    → ImportWizardModal
+// ChannelCategoryMappingPage.tsx — handleOpenMap()
+if (store.taxonomyEnabled === true) {
+  // Shopify: GraphQL taxonomy — TaxonomyMapperModal mode="taxonomy"
+  setTaxonomyModal({ store, unmappedCategories, initialCategoryId, mode: "taxonomy" });
+
+} else if (storeTreeCapable) {
+  // Shopee, Amazon, TikTok, eBay, Lazada: REST category tree — TaxonomyMapperModal mode="tree"
+  setTaxonomyModal({ store, unmappedCategories, initialCategoryId, mode: "tree" });
+
+} else if (store.importCapable === true || ...) {
+  // WooCommerce, Etsy, Wix: merchant collections — ImportWizardModal
+  setCollectionModal({ store, unmappedCategories, initialCategoryId });
+
+} else {
+  showToast("No mapping flow configured for ...");
+}
 ```
 
-Both flags come from the backend per-store response (`ChannelStoreConnectionResponse`).
-`taxonomyEnabled` is derived from `ChannelConfiguration.taxonomyConfig.enabled` in MongoDB.
-If a new taxonomy channel is activated by a backend data change, the frontend picks it
-up automatically — no code change needed.
+| Flow | Channels | Flag | Modal |
+|---|---|---|---|
+| Taxonomy | Shopify | `taxonomyEnabled = true` | `TaxonomyMapperModal mode="taxonomy"` |
+| Category Tree | Shopee, Amazon, TikTok, eBay, Lazada | `treeCapable = true` | `TaxonomyMapperModal mode="tree"` |
+| Import Wizard | WooCommerce, Etsy, Wix | `importCapable = true` | `ImportWizardModal` + `CollectionMapperModal` |
+
+All three flags come from `ChannelStoreConnectionResponse` (backend-driven).
+
+### `treeCapable` frontend fallback
+
+`treeCapable` is a new field not yet returned by the backend. Until it ships, the frontend
+uses a hardcoded list as fallback:
+
+```typescript
+// _types/channel-mapping.ts
+export const TREE_CAPABLE_CHANNELS = ["shopee", "amazon", "tiktok", "tiktokshop", "ebay", "lazada"] as const;
+
+export function isTreeCapable(channelType: string): boolean {
+  return TREE_CAPABLE_CHANNELS.includes(channelType as TreeCapableChannel);
+}
+```
+
+The check prioritises the backend field — the fallback only fires when `store.treeCapable` is `null`:
+
+```typescript
+const storeTreeCapable =
+  store.treeCapable === true
+  || (store.treeCapable == null && isTreeCapable(store.channelType));
+```
+
+Once the backend ships `treeCapable: true` in the response, `TREE_CAPABLE_CHANNELS` becomes
+a no-op. See `02-api-reference/07-channel-category-api-config.md §Backend Recommendation`
+for the full backend implementation spec.
 
 ---
 
@@ -160,20 +204,40 @@ category, only the higher-confidence one is shown.
 
 ---
 
-## `TAXONOMY_CHANNELS` — Removed
+## Exported channel classification constants
 
-The documentation previously described a `TAXONOMY_CHANNELS` constant. It does not exist
-in the current types file. Do not re-add it. All routing decisions use `store.taxonomyEnabled`.
-
-The only exported constant for channel classification is:
 ```typescript
-export const IMPORT_CAPABLE_CHANNELS = ["woocommerce", "etsy"] as const;
-export type ImportCapableChannel = typeof IMPORT_CAPABLE_CHANNELS[number];
+// _types/channel-mapping.ts
 
-export function isImportCapable(channelType: string): boolean {
-  return IMPORT_CAPABLE_CHANNELS.includes(channelType as ImportCapableChannel);
+// Type 1 — merchant-owned collections: gates ImportWizardModal + CollectionMapperModal
+export const IMPORT_CAPABLE_CHANNELS = ["woocommerce", "etsy", "wix"] as const;
+export function isImportCapable(channelType: string): boolean { ... }
+
+// Type 3 — platform-defined REST tree: gates TaxonomyMapperModal mode="tree"
+// Frontend fallback only — superseded when backend ships store.treeCapable
+export const TREE_CAPABLE_CHANNELS = ["shopee", "amazon", "tiktok", "tiktokshop", "ebay", "lazada"] as const;
+export function isTreeCapable(channelType: string): boolean { ... }
+```
+
+**Do not add a `TAXONOMY_CHANNELS` constant.** The Type 2 flow (Shopify taxonomy) is gated
+exclusively by `store.taxonomyEnabled`, which comes from the backend. No frontend list
+is needed or allowed for taxonomy channels.
+
+## `TaxonomyMapperModal` — `mode` prop
+
+```typescript
+// TaxonomyMapperModal.tsx
+
+interface Props {
+  // ...
+  mode?: "taxonomy" | "tree";   // default "taxonomy"
 }
 ```
 
-This exists only to gate the import wizard UI (Type 1 flow). The taxonomy mapper is gated
-by `store.taxonomyEnabled`, which comes from the backend.
+| `mode` | Labels shown | Channels |
+|---|---|---|
+| `"taxonomy"` | "Map to Shopify Taxonomy", "Browse Shopify Taxonomy" | Shopify |
+| `"tree"` | "Map to Shopee Category Tree", "Browse Shopee Category Tree" | Shopee, Amazon, TikTok, eBay, Lazada |
+
+Both modes use the same `browseTaxonomy()` service call and the same browse panel.
+The mode only affects display strings — no logic difference.

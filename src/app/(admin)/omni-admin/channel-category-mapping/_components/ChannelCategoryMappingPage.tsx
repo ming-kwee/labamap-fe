@@ -7,7 +7,7 @@ import type { ProductCategoryTree } from "../../product-categories/_types/catego
 import { flattenTree } from "../../product-categories/_types/category";
 import { ChannelMappingService } from "../_services/channel-mapping.service";
 import type { ChannelCategoryMapping, SyncStatus } from "../_types/channel-mapping";
-import { isImportCapable } from "../_types/channel-mapping";
+import { isImportCapable, isTreeCapable } from "../_types/channel-mapping";
 import { ChannelStoreService } from "@/modules/ecommerce-product-v2/step2-channel-fields/services/channelStore.service";
 import type { ChannelStoreConnection } from "@/modules/ecommerce-product-v2/step2-channel-fields/types/channelStore";
 import { useAuth } from "@/shared/contexts/AuthContext";
@@ -156,6 +156,7 @@ function StatusCell({
   channelType,
   taxonomyEnabled,
   importCapable,
+  treeCapable,
   onOpenDrift,
   onOpenMap,
   onUnmap,
@@ -165,12 +166,13 @@ function StatusCell({
   channelType: string;
   taxonomyEnabled: boolean;
   importCapable: boolean;
+  treeCapable: boolean;
   onOpenDrift: (mapping: ChannelCategoryMapping) => void;
   onOpenMap: () => void;
   onUnmap: (mapping: ChannelCategoryMapping) => void;
 }) {
   if (!mapping) {
-    if (taxonomyEnabled || importCapable) {
+    if (taxonomyEnabled || importCapable || treeCapable) {
       return (
         <button
           onClick={onOpenMap}
@@ -236,7 +238,7 @@ function StatusCell({
   }
 
   // UNMAPPED document exists but no link
-  if (taxonomyEnabled || importCapable) {
+  if (taxonomyEnabled || importCapable || treeCapable) {
     return (
       <button
         onClick={onOpenMap}
@@ -346,6 +348,7 @@ function CategoryRow({
                 channelType={store.channelType}
                 taxonomyEnabled={store.taxonomyEnabled === true}
                 importCapable={store.importCapable === true || (store.importCapable == null && isImportCapable(store.channelType))}
+                treeCapable={store.treeCapable === true || (store.treeCapable == null && isTreeCapable(store.channelType))}
                 onOpenDrift={m => onOpenDrift(m, node.name)}
                 onOpenMap={() => onOpenMap(node.id, node.name, store.storeId)}
                 onUnmap={onUnmap}
@@ -407,6 +410,7 @@ export default function ChannelCategoryMappingPage() {
     store: ChannelStoreConnection;
     unmappedCategories: ProductCategoryTree[];
     initialCategoryId?: string;
+    mode: "taxonomy" | "tree";
   } | null>(null);
   const [collectionModal, setCollectionModal] = useState<{
     store: ChannelStoreConnection;
@@ -531,13 +535,21 @@ export default function ChannelCategoryMappingPage() {
   const handleOpenMap = (categoryId: string, _categoryName: string, storeId: string) => {
     const store = stores.find(s => s.storeId === storeId);
     if (!store) return;
+    const storeTreeCapable = store.treeCapable === true || (store.treeCapable == null && isTreeCapable(store.channelType));
     if (store.taxonomyEnabled === true) {
-      // Taxonomy-enabled channels: batch mapper lets merchant link internal categories to taxonomy nodes
+      // Taxonomy-enabled channels (Shopify): batch mapper links internal categories to taxonomy nodes
       const unmapped = flatNodes.filter(n => {
         const m = mappingIndex.get(`${n.id}-${storeId}`);
         return !m || m.syncStatus === "UNMAPPED";
       });
-      setTaxonomyModal({ store, unmappedCategories: unmapped, initialCategoryId: categoryId });
+      setTaxonomyModal({ store, unmappedCategories: unmapped, initialCategoryId: categoryId, mode: "taxonomy" });
+    } else if (storeTreeCapable) {
+      // Category-tree channels (Shopee, Amazon, TikTok, eBay, Lazada): browse channel's REST category tree
+      const unmapped = flatNodes.filter(n => {
+        const m = mappingIndex.get(`${n.id}-${storeId}`);
+        return !m || m.syncStatus === "UNMAPPED";
+      });
+      setTaxonomyModal({ store, unmappedCategories: unmapped, initialCategoryId: categoryId, mode: "tree" });
     } else if (store.importCapable === true || (store.importCapable == null && isImportCapable(store.channelType))) {
       // Import-capable channels (Wix, WooCommerce, Etsy): link existing platform categories to channel collections
       const unmapped = flatNodes.filter(n => {
@@ -877,13 +889,14 @@ export default function ChannelCategoryMappingPage() {
         />
       )}
 
-      {/* Taxonomy mapper modal — Shopify / Amazon / TikTok / eBay (batch) */}
+      {/* Taxonomy / category-tree mapper modal */}
       {taxonomyModal && (
         <TaxonomyMapperModal
           organizationId={orgId}
           store={taxonomyModal.store}
           unmappedCategories={taxonomyModal.unmappedCategories}
           initialCategoryId={taxonomyModal.initialCategoryId}
+          mode={taxonomyModal.mode}
           onMapped={() => {
             ChannelMappingService.listAll(orgId).then(setMappings);
           }}
