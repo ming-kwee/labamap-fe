@@ -33,7 +33,7 @@ export interface ChannelSyncSummary {
   lastSyncedAt: string | null;
 }
 
-/** One channel collection returned by the import preview endpoint (Type 1: WooCommerce, Etsy only) */
+/** One channel collection returned by the import preview endpoint (Type 1: WooCommerce, Etsy, Wix) */
 export interface ImportableCollection {
   externalId: string;
   externalName: string;
@@ -41,6 +41,13 @@ export interface ImportableCollection {
   /** manual = merchant-created; smart = Shopify auto-rule (recommend skip) */
   collectionType: "manual" | "smart";
   productCount: number | null;
+  /**
+   * true = this collection is already mapped to a platform category for this store.
+   * Backend sets this in previewImport response (additive-only: already-imported items
+   * cannot be re-imported). Populated when backend deploys Opsi A additive-only check.
+   * Defaults to false when absent (graceful degradation for older backend).
+   */
+  alreadyImported: boolean;
 }
 
 /** Mapping suggestion when connecting a second channel */

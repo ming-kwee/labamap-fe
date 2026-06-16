@@ -347,6 +347,15 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     initializeAuthState();
   }, [initializeAuthState]);
 
+  // One-time cleanup: remove Phase 1 grace period keys written by category-origin.service.ts
+  useEffect(() => {
+    try {
+      Object.keys(localStorage)
+        .filter(k => k.startsWith("cat_origin_"))
+        .forEach(k => localStorage.removeItem(k));
+    } catch { /* ignore — localStorage unavailable (SSR or privacy mode) */ }
+  }, []);
+
   const login = useCallback(async (email: string, password: string) => {
     setIsLoading(true);
     

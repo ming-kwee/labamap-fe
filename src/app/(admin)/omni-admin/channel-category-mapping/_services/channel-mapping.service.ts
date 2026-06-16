@@ -107,6 +107,9 @@ export const ChannelMappingService = {
       externalSlug:    String(r.externalSlug ?? ""),
       collectionType:  ((r.collectionType ?? r.type ?? "manual") === "smart" ? "smart" : "manual") as ImportableCollection["collectionType"],
       productCount:    r.productCount != null ? Number(r.productCount) : null,
+      // Opsi A: backend sets true when this collection is already mapped.
+      // Defaults to false when field absent (older backend without additive-only check).
+      alreadyImported: Boolean(r.alreadyImported ?? false),
     }));
   },
 
@@ -114,12 +117,12 @@ export const ChannelMappingService = {
    * POST /admin/channel-category-mappings/import
    * Creates ProductCategory records + PENDING_IMPORT mapping documents.
    */
-  async startImport(request: ImportCategoriesRequest): Promise<{ importedCount: number; categoryIds: string[] }> {
+  async startImport(request: ImportCategoriesRequest): Promise<{ importedCount: number; categoryIds: string[]; skippedCount?: number }> {
     const res = await fetch(`${BASE}/import`, {
       method: "POST", headers: JSON_HEADERS,
       body: JSON.stringify(request),
     });
-    const data = await handleResponse<{ importedCount: number; categoryIds: string[] }>(res);
+    const data = await handleResponse<{ importedCount: number; categoryIds: string[]; skippedCount?: number }>(res);
     return data ?? { importedCount: 0, categoryIds: [] };
   },
 

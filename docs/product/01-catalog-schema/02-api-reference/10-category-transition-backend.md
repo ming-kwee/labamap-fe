@@ -26,140 +26,140 @@ Aturan per kategori:
 
 ---
 
-## Phase 1 — Hapus Asumsi: Import adalah Migrasi Website Ongoing ✅ SELESAI
+## Phase 1 — Hapus Asumsi: Import adalah Migrasi Website Ongoing
 
-**Status: Deployed 2026-06-15.**
+**Status: Frontend diimplementasi sebagai Opsi A — additive-only (2026-06-15). Backend pending.**
 
-### Perubahan yang diperlukan
+**Keputusan desain:** Implementasi awal (grace period 14 hari + lock) digantikan dengan
+**Opsi A — additive-only**. Import dari channel boleh dijalankan kapan saja, tapi backend
+hanya membuat platform categories baru — tidak menimpa atau menduplikasi yang sudah ada.
 
-#### 1.1 Organization entity — tambah dua field
+Alasan perubahan: 14-hari lock terlalu membatasi merchant untuk pure channel management tool.
+Yang perlu dicegah bukan frekuensi import — cukup pastikan channel tidak menjadi master.
+Additive-only sudah menjamin itu tanpa friction.
 
-```java
-// com.labamap.channel.organization.model.Organization.java
+---
 
-@Document(collection = "organizations")
-public class Organization {
-    // ... existing fields ...
+### Perubahan backend yang diperlukan (Opsi A)
 
-    /**
-     * Sumber kategori yang dipilih merchant saat onboarding.
-     * "import"   = merchant import dari channel (WooCommerce / Etsy / Wix)
-     * "template" = merchant pakai platform category template
-     * null       = belum memilih (onboarding belum selesai)
-     */
-    private String categorySourceOrigin;
+#### 1.1 Hapus `assertImportAllowed()` jika sudah diimplementasikan
 
-    /**
-     * Waktu pertama kali merchant memilih categorySourceOrigin.
-     * Grace period = 14 hari sejak timestamp ini.
-     * Null jika belum memilih.
-     */
-    private Instant categoryOnboardedAt;
-}
-```
+Jika backend sudah mengimplementasikan `categorySourceOrigin` enforcement, hapus panggilan
+`assertImportAllowed()` dari semua 3 import endpoints. Import harus bisa dijalankan kapan saja.
 
-#### 1.2 OrganizationResponse DTO — expose field baru
+#### 1.2 Tambah additive-only check di `CategoryImportService.startImport()`
 
 ```java
-// OrganizationResponse.java
-private String  categorySourceOrigin;
-private Instant categoryOnboardedAt;
-private boolean categoryGracePeriodActive;  // derived: categoryOnboardedAt != null && now < categoryOnboardedAt + 14 days
-private Instant categoryGracePeriodEndsAt;  // derived: categoryOnboardedAt + 14 days
-```
+// CategoryImportService.java
 
-`categoryGracePeriodActive` dan `categoryGracePeriodEndsAt` di-derive di DTO level —
-tidak disimpan ke database.
+public ImportResult startImport(ImportCategoriesRequest request) {
+    List<String> created = new ArrayList<>();
+    List<String> skipped = new ArrayList<>();
 
-#### 1.3 Endpoint baru — set category origin
+    for (String externalId : request.getSelectedExternalIds()) {
+        // Skip jika mapping dengan externalId ini sudah ada untuk store ini
+        boolean alreadyMapped = channelCategoryMappingRepository
+            .existsByOrganizationIdAndStoreIdAndExternalId(
+                request.getOrganizationId(),
+                request.getStoreId(),
+                externalId
+            );
+        if (alreadyMapped) { skipped.add(externalId); continue; }
 
-```
-POST /labamap/api/v1/organizations/{orgId}/category-origin
+        // Skip jika platform category dengan slug yang sama sudah ada
+        ImportableCollection col = getCollectionByExternalId(request.getStoreId(), externalId);
+        String slug = slugify(col.getExternalName());
+        boolean slugExists = productCategoryRepository
+            .existsByOrganizationIdAndSlug(request.getOrganizationId(), slug);
+        if (slugExists) { skipped.add(externalId); continue; }
 
-Request body:
-{
-  "origin": "import" | "template"
-}
-
-Response 200:
-{
-  "categorySourceOrigin":    "import",
-  "categoryOnboardedAt":     "2026-06-15T10:00:00Z",
-  "categoryGracePeriodActive": true,
-  "categoryGracePeriodEndsAt": "2026-06-29T10:00:00Z"
-}
-
-Response 409 (Conflict) — jika:
-  categorySourceOrigin != null
-  DAN now > categoryOnboardedAt + 14 days
-{
-  "error": "CATEGORY_ORIGIN_LOCKED",
-  "message": "Category source was set on 2026-06-15. Grace period expired on 2026-06-29. Migration required to change.",
-  "categorySourceOrigin": "import",
-  "categoryOnboardedAt":  "2026-06-15T10:00:00Z"
-}
-```
-
-#### 1.4 Guard import endpoints dengan grace period check
-
-File: `ChannelCategoryMappingAdminController.java` (atau nama equivalennya)
-
-Endpoint yang perlu di-guard:
-- `POST /admin/channel-category-mappings/import` (startImport)
-- `POST /admin/channel-category-mappings/import/confirm` (confirmImport)
-- `GET /admin/channel-category-mappings/import/preview` (previewImport)
-
-Guard logic:
-
-```java
-private void assertImportAllowed(String orgId) {
-    Organization org = organizationRepository.findById(orgId)
-        .orElseThrow(() -> new NotFoundException("Organization not found"));
-
-    // Belum onboarding → boleh import (pilihan pertama)
-    if (org.getCategorySourceOrigin() == null) return;
-
-    // Pilih template → tidak boleh import sama sekali
-    if ("template".equals(org.getCategorySourceOrigin())) {
-        throw new ForbiddenException(
-            "IMPORT_NOT_ALLOWED",
-            "This organization uses platform templates as category source. Import is not available."
-        );
+        // Buat platform category baru + mapping (logika existing)
+        createCategoryAndMapping(request, col);
+        created.add(externalId);
     }
 
-    // Pilih import tapi sudah lewat grace period
-    if (org.getCategoryOnboardedAt() != null &&
-        Instant.now().isAfter(org.getCategoryOnboardedAt().plus(14, ChronoUnit.DAYS))) {
-        throw new ForbiddenException(
-            "IMPORT_GRACE_PERIOD_EXPIRED",
-            "Category import grace period expired on " +
-            org.getCategoryOnboardedAt().plus(14, ChronoUnit.DAYS()) +
-            ". Manage categories directly in My Categories."
-        );
-    }
+    return new ImportResult(created.size(), skipped.size(), created);
 }
 ```
 
-Panggil `assertImportAllowed(orgId)` di awal setiap import endpoint.
+**Response `POST /import` diperbarui:**
+```json
+{
+  "importedCount": 12,
+  "skippedCount":   3,
+  "categoryIds":   ["cat_1", "cat_2", ...]
+}
+```
 
-#### 1.5 MongoDB index baru
+Frontend sudah membaca `skippedCount` dari response (`result.skippedCount ?? 0`) dan
+menampilkannya di done step sebagai "N skipped (already imported)".
 
-```javascript
-db.organizations.createIndex(
-  { categorySourceOrigin: 1 },
-  { sparse: true, name: "idx_category_source_origin" }
-)
+#### 1.3 Tambah `alreadyImported` flag ke `previewImport` response
+
+```java
+// ImportPreviewItemDto.java — tambah field
+private boolean alreadyImported;
+
+// Di CategoryImportService.previewImport():
+for (ImportableCollection col : collections) {
+    boolean alreadyMapped = channelCategoryMappingRepository
+        .existsByOrganizationIdAndStoreIdAndExternalId(orgId, storeId, col.getExternalId());
+    items.add(ImportPreviewItemDto.builder()
+        .externalId(col.getExternalId())
+        .externalName(col.getExternalName())
+        .externalSlug(col.getExternalSlug())
+        .collectionType(col.getCollectionType())
+        .productCount(col.getProductCount())
+        .alreadyImported(alreadyMapped)   // NEW
+        .build()
+    );
+}
+```
+
+Frontend menampilkan collections dengan `alreadyImported: true` sebagai greyed-out chips
+dengan badge "already imported" dan `disabled` checkbox — tidak bisa dipilih ulang.
+
+#### 1.4 Deprecate `POST /organizations/{orgId}/category-origin`
+
+Endpoint ini tidak lagi dipakai oleh frontend. Tambahkan `@Deprecated` annotation dan
+log warning. Jangan hapus — data yang sudah ada di MongoDB tidak perlu dibersihkan.
+Field `categorySourceOrigin` dan `categoryOnboardedAt` di Organization entity bisa
+dibiarkan — tidak membahayakan, hanya tidak dipakai.
+
+```java
+@Deprecated(since = "Opsi A 2026-06-15", forRemoval = true)
+@PostMapping("/{orgId}/category-origin")
+public ResponseEntity<?> setCategoryOrigin(...) {
+    log.warn("[DEPRECATED] category-origin endpoint called. No longer enforced. org={}", orgId);
+    return ResponseEntity.ok().build();  // silent no-op
+}
 ```
 
 ### Cleanup Phase 1
 
-Tidak ada kode yang dihapus di Phase 1 — hanya ditambahkan guard.
-Import wizard endpoints tetap ada tapi dilindungi oleh `assertImportAllowed`.
+Tidak ada yang perlu dihapus segera. Yang sudah dilakukan:
 
-**Yang TIDAK boleh dilakukan:**
-- Jangan hapus `ImportWizardController` atau endpoint-nya sekarang
-- Jangan hapus `channel_category_mappings` documents yang punya `importedFrom: true`
-- Jangan ubah logika import yang sudah ada — hanya tambahkan guard di atas
+- `assertImportAllowed()` → hapus panggilan dari 3 import endpoints
+- `idx_category_source_origin` MongoDB index → dapat di-drop di maintenance window
+  (kecil, tidak kritikal)
+
+### ✅ Checklist Phase 1 (Opsi A)
+
+```
+Backend:
+[ ] assertImportAllowed() dihapus dari 3 import endpoints
+[ ] additive-only check di startImport() (skip jika existsByStoreIdAndExternalId)
+[ ] alreadyImported field di previewImport response
+[ ] POST /category-origin di-deprecate (no-op)
+[ ] skippedCount di startImport response
+
+Verifikasi:
+[ ] Import WooCommerce collections yang sudah ada → response: importedCount=0, skippedCount=N
+[ ] Import WooCommerce collections baru → response: importedCount=N, skippedCount=0
+[ ] Preview menampilkan alreadyImported: true untuk collections yang sudah di-import
+[ ] Platform categories yang sudah ada tidak tersentuh saat import ulang
+[ ] Frontend: collections dengan alreadyImported=true tampil greyed-out, tidak bisa dipilih
+```
 
 ---
 
@@ -336,137 +336,86 @@ Detail spec awal ada di `07-channel-category-api-config.md § Backend Recommenda
 
 ---
 
-## Phase 5 — Hapus Asumsi: Mapping Page = Hub Map Website Category ke Channel
+## Phase 5 — Hapus Asumsi: Mapping Page = Hub Map Website Category ke Channel ✅ SELESAI
 
-### Perubahan yang diperlukan
+**Status: Deployed 2026-06-16.**
 
-#### 5.1 `channel_category_mappings` collection — buat `categoryId` nullable
+**Frontend** (selesai 2026-06-15):
+- `ChannelCategoryMappingPage` sekarang punya dua tab: "Channel Rules" (primary) + "Platform Categories" (legacy).
+- Tab "Channel Rules" menampilkan ProductType × Channel grid, save via Phase 2 `PUT /product-types/{id}/channel-defaults/{channelType}`.
+- Import button dihapus dari UI (kode tetap ada di `ImportWizardModal`).
+- Import masih bisa diakses via Option A (additive-only) — tidak deprecated di backend karena keputusan Phase 1 Opsi A.
 
-Saat ini `categoryId` adalah FK required ke `product_categories`. Ubah menjadi optional:
+### Yang diimplementasikan
+
+#### ✅ 5.1 + 5.2 — Entity & index baru
+
+`ChannelCategoryMappingDocument` sekarang memiliki dua FK alternatif:
 
 ```java
-// ChannelCategoryMapping.java
-@Field("categoryId")
-private String categoryId;      // nullable setelah Phase 5 — FK ke product_categories
+private String categoryId;       // nullable — FK ke product_categories._id (existing, sekarang optional)
+private String categoryName;     // denormalized (existing)
 
-@Field("productTypeId")
-private String productTypeId;   // nullable — FK ke product_types (baru, Phase 5)
-
-// Validasi: salah satu harus diisi (di service layer, bukan entity)
+private String productTypeId;    // nullable — FK ke product_types._id  (NEW Phase 5)
+private String productTypeName;  // denormalized name                   (NEW Phase 5)
+private String externalFullPath; // "Pakaian > Pria > Atasan > Kaos"   (NEW Phase 5)
 ```
 
-**Validasi di service:**
+XOR validation di `linkByProductType()` service (categoryId XOR productTypeId).
+
+Indexes:
+```
+idx_category_store   → {categoryId, storeId}  unique, sparse=true  (sparse ditambah agar null categoryId diperbolehkan)
+idx_product_type_store → {productTypeId, storeId}  unique, sparse=true  (NEW)
+```
+
+Kedua index dibuat otomatis oleh Spring Data MongoDB via `@CompoundIndex` pada startup.
+
+#### ✅ 5.3 — Endpoint baru
+
+```
+POST /api/v1/admin/channel-category-mappings/product-type
+Body: { productTypeId, storeId, organizationId, externalId, externalName, externalFullPath }
+201: ChannelCategoryMappingDocument
+404: productType atau store tidak ditemukan
+409: (productTypeId × storeId) sudah ada
+```
+
+Validasi: productType exist check + store exist + org scope + duplicate guard.
+
+#### ✅ 5.4 — Repository methods untuk productTypeId
+
 ```java
-if (categoryId == null && productTypeId == null) {
-    throw new ValidationException("Either categoryId or productTypeId must be provided");
-}
-if (categoryId != null && productTypeId != null) {
-    throw new ValidationException("Provide either categoryId or productTypeId, not both");
-}
+findByProductTypeId(productTypeId)
+findByOrganizationIdAndProductTypeId(orgId, productTypeId)
+existsByProductTypeIdAndStoreId(productTypeId, storeId)
 ```
 
-#### 5.2 MongoDB migration script — tambah index baru
+`recomputeSyncSummary(categoryId)` diberi null guard — productType-based mappings
+(categoryId=null) tidak memicu recompute yang tidak perlu.
+
+#### ➡️ 5.5 — Import endpoints: TIDAK deprecated (superseded by Opsi A)
+
+Berdasarkan keputusan Phase 1 Opsi A, import boleh dijalankan kapan saja (additive-only).
+Import endpoints TIDAK deprecated dan TIDAK dihapus di Phase 6.
+Spec lama yang menyebut deprecation ini tidak berlaku lagi.
+
+### Cleanup Phase 5 — status
+
+#### ✅ CategorySyncJob push-out untuk Type 2 — sudah clean
+
+`ChannelCategoryPushService.pushSingle()` switch default = no-op untuk semua channel
+selain Shopify + WooCommerce. Tidak ada cleanup yang diperlukan.
+
+#### ✅ Query logic — consolidated
+
+Dua path query (by categoryId, by productTypeId) sudah menjadi named method terpisah
+di service. Tidak ada inline query duplikasi.
+
+#### ☐ Archive importedFrom=true docs — pending (background script)
 
 ```javascript
-// Jalankan sebelum deploy Phase 5
-db.channel_category_mappings.createIndex(
-  { productTypeId: 1, storeId: 1 },
-  { sparse: true, name: "idx_product_type_store" }
-)
-
-// Hapus existing NOT NULL constraint jika ada di validation layer
-// (MongoDB sendiri tidak enforce null constraint — pastikan di Java validation)
-```
-
-#### 5.3 Endpoint baru — mapping berbasis ProductType
-
-```
-POST /labamap/api/v1/admin/channel-category-mappings/product-type
-Body:
-{
-  "productTypeId":  "pt_smartphone",
-  "storeId":        "shopee-store-1",
-  "organizationId": "org_123",
-  "externalId":     "100001",
-  "externalName":   "Kaos",
-  "externalFullPath": "Pakaian > Pria > Atasan > Kaos"
-}
-
-Response 201: ChannelCategoryMapping document
-```
-
-#### 5.4 Update mapping query untuk support kedua FK
-
-Semua query yang sebelumnya lookup by `categoryId` harus diperluas:
-
-```java
-// Sebelum:
-Query query = new Query(Criteria.where("categoryId").is(categoryId));
-
-// Sesudah:
-Query query = new Query(new Criteria().orOperator(
-    Criteria.where("categoryId").is(categoryId),
-    Criteria.where("productTypeId").is(productTypeId)
-));
-```
-
-#### 5.5 Deprecate `ImportWizardController` endpoints
-
-Endpoint import tidak lagi bisa diakses oleh UI. Tambahkan:
-
-```java
-@Deprecated(since = "Phase 5", forRemoval = true)
-// Catat target removal: Phase 6 deployment
-@PostMapping("/import")
-public ResponseEntity<?> startImport(...) {
-    // Guard dari Phase 1 sudah di sini — akan menolak semua request normal
-    // Hanya super-admin yang bisa bypass untuk keperluan support
-    assertImportAllowed(orgId);
-    // ... existing logic ...
-}
-```
-
-Tambahkan log warning setiap kali endpoint ini dipanggil:
-```java
-log.warn("[DEPRECATED] Import endpoint called by org={}, user={}. " +
-         "This endpoint will be removed in Phase 6.", orgId, userId);
-```
-
-### Cleanup Phase 5 — aktif
-
-Ini adalah phase pertama dengan cleanup yang signifikan.
-
-#### Hapus: `CategorySyncJob` push-out logic untuk Type 2 channels
-
-`CategorySyncJob` yang melakukan push-out platform category changes ke channel hanya
-relevan untuk WooCommerce/Etsy (Type 1 channels). Untuk Shopify/Amazon/TikTok/eBay
-(Type 2), push-out adalah no-op karena taxonomy read-only.
-
-Verifikasi bahwa logic ini sudah di-guard oleh `ChannelAdapter.isImportCapable()`.
-Jika ada kode yang bypass guard ini → hapus.
-
-```java
-// Cari dan verifikasi — tidak boleh ada path yang sampai ke sync call untuk Type 2:
-// grep -r "CategorySyncJob" --include="*.java"
-// grep -r "pushCategoryToChannel" --include="*.java"
-```
-
-#### Hapus: Duplikasi category query logic
-
-Setelah Phase 5, ada kemungkinan ada dua path query untuk mapping:
-- Legacy: by `categoryId`  
-- Baru: by `productTypeId`
-
-Konsolidasikan ke satu method helper di service layer. Jangan biarkan inline query
-tersebar di multiple places.
-
-#### Archive: Dokumen `channel_category_mappings` dengan `importedFrom: true` lama
-
-Dokumen dengan `importedFrom: true` yang sudah lebih dari 1 tahun dan `syncStatus == UNMAPPED`
-bisa dipindahkan ke archive collection:
-
-```javascript
-// Jalankan sebagai background job, bukan satu kali sekaligus
+// Jalankan sebagai background job, bukan sekaligus
 db.channel_category_mappings.find({
   importedFrom: true,
   syncStatus: "UNMAPPED",
@@ -479,9 +428,89 @@ db.channel_category_mappings.find({
 
 ---
 
-## Phase 6 — Hapus Asumsi: Channel Category = Derivat dari Platform Taxonomy
+## Phase 6 — Hapus Asumsi: Channel Category = Derivat dari Platform Taxonomy ✅ SELESAI
 
-### Langkah 0 — Verifikasi dulu sebelum membangun
+**Status: Deployed 2026-06-16.**
+
+**Frontend sudah dilakukan:**
+- `BulkAssignTab.tsx` — tab "Bulk Assign" di `ChannelCategoryMappingPage`, product-first flow
+- `MasterProductService.bulkAssignChannelCategory()` — pre-wired ke endpoint backend baru
+
+### Yang diimplementasikan
+
+#### ✅ 6.1 + 6.2 — Dedicated fields di `ChannelProductData`
+
+```java
+// channel_product_data collection — 3 field baru:
+private String channelCategoryId;    // channel-native leaf ID
+private String channelCategoryName;  // denormalized display name
+private String channelCategoryPath;  // "Pakaian > Pria > Atasan > Kaos"
+```
+
+`ChannelStepSaveRequest` sekarang membawa 3 field ini secara eksplisit.
+`ChannelProductDataService.saveChannelData()` mempersist ke dedicated fields
+(bukan hanya ke `channelData` map generik).
+
+#### ✅ 6.1b — Endpoint baru `POST /api/v1/admin/master-products/bulk-channel-category`
+
+```
+Query: organizationId
+Body:  { productIds, storeId, channelType, categoryId, categoryName, categoryFullPath }
+200:   { updatedCount, failedIds }
+```
+
+Partial success OK — per-product failure dicatat di `failedIds` tanpa menghentikan batch.
+Implementasi: `ChannelProductDataService.bulkAssignChannelCategory()` via
+`repository.updateChannelCategory()` (`@Query + @Update` partial update per product).
+
+#### ✅ 6.4 — Publish pipeline injects dedicated field
+
+`loadAndMergeChannelData()` di `ChannelPublishService` sekarang:
+1. Merge `channelData` map (existing behavior)
+2. Override dengan `channelCategoryId/Name/Path` dari dedicated field jika non-null
+
+Priority: dedicated field > channelData map > null (tidak ada channel category).
+
+#### ✅ Storage path — already Ginee-like
+
+`CategoryTreePicker` di Step 2 menyimpan hasil ke `channel_product_data.channelData` (via
+`ChannelStepSaveRequest.channelData`). Publish pipeline sudah membaca dari `channelData` —
+TIDAK ada dependency pada `channel_category_mappings` di publish path.
+
+### Cleanup Phase 6 — status
+
+#### ☐ Data migration — optional, run as background script
+
+Migrate data lama dari `channelData["channelCategoryId"]` ke dedicated field:
+```javascript
+db.channel_product_data.find({ 
+  "channelData.channelCategoryId": { $exists: true },
+  "channelCategoryId": { $exists: false }
+}).forEach(doc => {
+  db.channel_product_data.updateOne(
+    { _id: doc._id },
+    { $set: {
+        channelCategoryId:   doc.channelData.channelCategoryId,
+        channelCategoryName: doc.channelData.channelCategoryName,
+        channelCategoryPath: doc.channelData.channelCategoryPath
+    }}
+  );
+});
+```
+
+#### ☐ Archive `channel_category_mappings` — pending (tidak kritikal)
+
+Collection ini tidak lagi dibaca oleh publish pipeline.
+Archive saat semua merchants selesai transisi (lihat Cleanup Phase 5).
+
+#### ➡️ ImportWizardController / CategoryImportService — tetap aktif (Opsi A)
+
+Berdasarkan keputusan Phase 1 Opsi A, import tetap aktif (additive-only).
+TIDAK dihapus di Phase 6.
+
+---
+
+### Langkah 0 — Verifikasi storage path (SELESAI 2026-06-16)
 
 Sebelum mulai Phase 6, verifikasi apakah `CategoryTreePicker` di Step 2 sudah menyimpan
 hasil pilihan ke channel listing record atau ke `channel_category_mappings`:
@@ -562,6 +591,68 @@ db.channel_category_mappings.find({ syncStatus: "MAPPED" }).forEach(mapping => {
     { upsert: false }  // jangan create baru — hanya update yang sudah ada
   );
 });
+```
+
+#### 6.1b Endpoint baru — `POST /admin/master-products/bulk-channel-category`
+
+**Frontend sudah pre-wired untuk endpoint ini. Backend perlu mengimplementasikan.**
+
+```java
+// MasterProductAdminController.java
+
+@PostMapping("/bulk-channel-category")
+public Mono<BulkChannelCategoryResponse> bulkAssignChannelCategory(
+    @RequestParam String organizationId,
+    @RequestBody BulkChannelCategoryRequest request
+) {
+    return masterProductService.bulkAssignChannelCategory(organizationId, request);
+}
+
+// BulkChannelCategoryRequest.java
+public record BulkChannelCategoryRequest(
+    List<String> productIds,
+    String storeId,
+    String channelType,
+    String categoryId,        // channel-native leaf node ID
+    String categoryName,
+    String categoryFullPath
+) {}
+
+// BulkChannelCategoryResponse.java
+public record BulkChannelCategoryResponse(
+    int updatedCount,
+    List<String> failedIds    // IDs yang gagal diupdate (partial success OK)
+) {}
+```
+
+**Logika:** Untuk setiap `productId`, upsert `channel_product_data` record dengan
+field `categoryId`, `categoryName`, `categoryFullPath`. Identik dengan
+`/channel-product-data/save` tapi batch. Gagal per-produk tidak menghentikan batch —
+simpan ke `failedIds`.
+
+```java
+// ChannelProductDataService.java
+public BulkChannelCategoryResponse bulkAssignChannelCategory(
+    String organizationId,
+    BulkChannelCategoryRequest req
+) {
+    List<String> created = new ArrayList<>();
+    List<String> failed  = new ArrayList<>();
+
+    for (String productId : req.productIds()) {
+        try {
+            channelProductDataRepository.upsertCategoryId(
+                productId, req.storeId(), req.channelType(),
+                req.categoryId(), req.categoryName(), req.categoryFullPath()
+            );
+            created.add(productId);
+        } catch (Exception e) {
+            log.warn("bulk-channel-category: failed for product={}", productId, e);
+            failed.add(productId);
+        }
+    }
+    return new BulkChannelCategoryResponse(created.size(), failed);
+}
 ```
 
 #### 6.4 Publish service — baca dari listing, bukan mapping table
@@ -764,68 +855,59 @@ Verifikasi:
 
 ---
 
-### ✅ Checklist Phase 5
+### ✅ Checklist Phase 5 — DEPLOYED 2026-06-16
 
 ```
-Setelah deploy Phase 5:
-
 Code:
-[ ] categoryId nullable di ChannelCategoryMapping entity
-[ ] productTypeId ditambahkan ke ChannelCategoryMapping entity
-[ ] Validasi: salah satu dari categoryId atau productTypeId harus diisi
-[ ] POST /channel-category-mappings/product-type endpoint tersedia
-[ ] Import endpoints punya @Deprecated annotation + log warning
-[ ] Semua query mapping support kedua FK (tidak hanya categoryId)
+[x] categoryId logically nullable di ChannelCategoryMappingDocument (sparse index memperbolehkan)
+[x] productTypeId + productTypeName + externalFullPath ditambahkan ke entity
+[x] Validasi XOR (categoryId XOR productTypeId) di linkByProductType() service
+[x] POST /api/v1/admin/channel-category-mappings/product-type endpoint tersedia
+    → 404 jika productType/store tidak ada, 409 jika duplicate
+[x] Import endpoints TIDAK deprecated — superseded oleh Opsi A (import tetap aktif, additive-only)
+[x] findByProductTypeId, findByOrgAndProductTypeId, existsByProductTypeIdAndStoreId di repository
 
-Cleanup yang harus dilakukan di Phase 5:
-[ ] Hapus/consolidate duplikasi category query logic
-[ ] Verifikasi CategorySyncJob tidak push ke Type 2 channels
-[ ] Archive channel_category_mappings dengan importedFrom=true dan age > 1 tahun
-[ ] Drop: any unused index dari pre-Phase 5 yang tidak lagi diperlukan
+Cleanup:
+[x] CategorySyncJob push-out sudah clean (ChannelCategoryPushService switch default = no-op)
+[x] Query logic consolidated — tidak ada inline duplication
+[ ] Archive importedFrom=true docs age > 1 tahun — pending background script
 
 Database:
-[ ] idx_product_type_store index terbuat di channel_category_mappings
+[x] @CompoundIndex idx_product_type_store (unique, sparse) pada ChannelCategoryMappingDocument
+[x] @CompoundIndex idx_category_store (unique, sparse=true) — ditambah sparse untuk null categoryId
 [ ] Script verifikasi: tidak ada document dengan categoryId=null DAN productTypeId=null
 
 Test:
-[ ] Integration test: create mapping dengan productTypeId saja (tanpa categoryId) → berhasil
-[ ] Integration test: import endpoint setelah grace period → 403 Forbidden
+[ ] Integration test: POST /product-type → 201, query by productTypeId → found
+[ ] (N/A) Integration test: import endpoint setelah grace period → dihapus (Opsi A)
 ```
 
 ---
 
-### ✅ Checklist Phase 6
+### ✅ Checklist Phase 6 — DEPLOYED 2026-06-16
 
 ```
-Setelah deploy Phase 6:
+Code:
+[x] channelCategoryId/Name/Path fields ditambahkan ke ChannelProductData entity
+[x] ChannelStepSaveRequest membawa 3 field eksplisit
+[x] saveChannelData() mempersist ke dedicated fields
+[x] repository.updateChannelCategory() (@Query+@Update partial update)
+[x] POST /api/v1/admin/master-products/bulk-channel-category endpoint tersedia
+[x] loadAndMergeChannelData() di ChannelPublishService inject dedicated fields
 
-Code yang HARUS dihapus (bukan deprecated, bukan disabled — dihapus):
-[ ] ImportWizardController.java — file dihapus
-[ ] CategoryImportService.java — file dihapus (verifikasi 0 caller dulu)
-[ ] ImportWizardRequest.java, ImportWizardResponse.java — file dihapus
-[ ] Semua channelCategoryMappingRepository.findByCategoryIdAndStoreId() calls di publish service — dihapus
-[ ] DriftDetectionJob.java — dihapus atau @ConditionalOnProperty disabled
-[ ] CategorySyncJob push-out logic — dihapus
+Verifikasi:
+[x] Publish pipeline TIDAK membaca channel_category_mappings (sudah clean sebelum Phase 6)
+[ ] Integration test: save Step 2 dengan channelCategoryId → publish mengirim channelCategoryId ke channel API
+[ ] Integration test: bulk-channel-category → updatedCount=N, failedIds=[]
 
-Database cleanup:
-[ ] Verifikasi 100% channel listing records punya channelCategoryId (tidak null)
-    → jika ada yang null: investigate dan fix sebelum hapus fallback code
-[ ] Rename channel_category_mappings → channel_category_mappings_archive_2026
+Database cleanup (pending — tidak blocking):
+[ ] Run migration script: channelData["channelCategoryId"] → dedicated field
+[ ] Archive channel_category_mappings → channel_category_mappings_archive_2026
 [ ] Set TTL 3 tahun pada archive collection
-[ ] Drop index-index lama yang hanya dipakai oleh mapping table
 
-Verifikasi tidak ada orphan:
-[ ] grep -r "channel_category_mappings" --include="*.java" | grep -v "archive\|test"
-    → harus 0 hasil
-[ ] grep -r "ImportWizard\|CategoryImport\|startImport\|confirmImport\|previewImport" \
-         --include="*.java" | grep -v "test\|archive"
-    → harus 0 hasil
-[ ] grep -r "DriftDetection\|CategorySyncJob" --include="*.java" | grep -v "test\|archive"
-    → harus 0 hasil (atau hanya di @ConditionalOnProperty disabled beans)
-
-Integration test setelah cleanup:
-[ ] Publish produk ke Shopee → channel category ter-set dari listing record (bukan mapping table)
-[ ] Verifikasi mapping table tidak di-write saat publish
+Import endpoints (Opsi A — tetap aktif, TIDAK dihapus):
+[ ] (N/A) ImportWizardController / CategoryImportService — tetap ada, Opsi A keputusan
+[ ] (N/A) DriftDetectionJob — tetap ada (masih relevan untuk import-capable channels)
 ```
 
 ---

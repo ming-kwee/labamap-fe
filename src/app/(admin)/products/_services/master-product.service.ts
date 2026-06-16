@@ -5,6 +5,7 @@ import type {
   MasterProductListParams,
   MasterProductListResponse,
   ChannelSyncStatus,
+  BulkChannelCategoryRequest,
 } from "../_types/master-product";
 
 const BASE      = "http://localhost:8888/labamap/api/v1/admin/master-products";
@@ -240,6 +241,31 @@ export const MasterProductService = {
    * Returns tags used by this org (for autocomplete).
    * Returns empty array gracefully when backend not deployed.
    */
+  /**
+   * POST /admin/master-products/bulk-channel-category?organizationId=...
+   * Phase 6: Set channel category directly on channel_product_data for multiple products.
+   * Mirrors the categoryId field saved by CategoryTreePicker in Step 2.
+   */
+  async bulkAssignChannelCategory(
+    organizationId: string,
+    req: BulkChannelCategoryRequest,
+  ): Promise<{ updatedCount: number; failedIds: string[] }> {
+    const res = await fetch(
+      `${BASE}/bulk-channel-category?organizationId=${encodeURIComponent(organizationId)}`,
+      { method: "POST", headers: JSON_HEADERS, body: JSON.stringify(req) },
+    );
+    if (!res.ok) {
+      let msg = res.statusText;
+      try { const b = await res.json(); msg = b.message ?? b.error ?? msg; } catch { /* ignore */ }
+      throw new Error(`[MasterProductService] bulk-channel-category: ${res.status} ${msg}`);
+    }
+    const data = await res.json().catch(() => ({})) as Record<string, unknown>;
+    return {
+      updatedCount: Number(data.updatedCount ?? 0),
+      failedIds: Array.isArray(data.failedIds) ? (data.failedIds as unknown[]).map(String) : [],
+    };
+  },
+
   async suggestTags(organizationId: string, prefix: string): Promise<string[]> {
     try {
       const qs = new URLSearchParams({ organizationId, prefix });

@@ -11,14 +11,12 @@ import { isImportCapable, isTreeCapable } from "../_types/channel-mapping";
 import { ChannelStoreService } from "@/modules/ecommerce-product-v2/step2-channel-fields/services/channelStore.service";
 import type { ChannelStoreConnection } from "@/modules/ecommerce-product-v2/step2-channel-fields/types/channelStore";
 import { useAuth } from "@/shared/contexts/AuthContext";
-import { CategoryOriginService } from "@/app/(admin)/channels/categories/_services/category-origin.service";
-import type { CategoryOriginInfo } from "@/app/(admin)/channels/categories/_types/category-origin";
-import { isImportLocked, formatOriginLabel } from "@/app/(admin)/channels/categories/_types/category-origin";
-import { CategoryOnboardingPanel } from "./CategoryOnboardingPanel";
 import { DriftResolutionModal } from "./DriftResolutionModal";
 import { ImportWizardModal } from "./ImportWizardModal";
 import { TaxonomyMapperModal } from "./TaxonomyMapperModal";
 import { CollectionMapperModal } from "./CollectionMapperModal";
+import { ProductTypeRulesTab } from "./ProductTypeRulesTab";
+import { BulkAssignTab } from "./BulkAssignTab";
 
 // ─── Icons ─────────────────────────────────────────────────────────────────────
 
@@ -26,11 +24,6 @@ const RefreshIcon = () => (
   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <polyline points="1 4 1 10 7 10"/><polyline points="23 20 23 14 17 14"/>
     <path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4-4.64 4.36A9 9 0 0 1 3.51 15"/>
-  </svg>
-);
-const ImportIcon = () => (
-  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
   </svg>
 );
 const SearchIcon = () => (
@@ -389,9 +382,6 @@ export default function ChannelCategoryMappingPage() {
   const { organization } = useAuth();
   const orgId = organization?.organizationId ?? "";
 
-  const [originInfo, setOriginInfo]   = useState<CategoryOriginInfo | null>(null);
-  const [originLoading, setOriginLoading] = useState(true);
-
   const [tree, setTree] = useState<ProductCategoryTree[]>([]);
   const [stores, setStores] = useState<ChannelStoreConnection[]>([]);
   const [mappings, setMappings] = useState<ChannelCategoryMapping[]>([]);
@@ -401,13 +391,12 @@ export default function ChannelCategoryMappingPage() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [toast, setToast] = useState<{ msg: string; type: "ok" | "err" } | null>(null);
   const [syncing, setSyncing] = useState(false);
+  const [activeTab, setActiveTab] = useState<"rules" | "bulk" | "legacy">("rules");
 
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<SyncStatus | "all">("all");
   const [storeFilter, setStoreFilter] = useState<string>("all");
-  const [showImportMenu, setShowImportMenu] = useState(false);
-
   // Modals
   const [driftModal, setDriftModal] = useState<{ mapping: ChannelCategoryMapping; categoryName: string } | null>(null);
   const [unmapModal, setUnmapModal] = useState<ChannelCategoryMapping | null>(null);
@@ -432,8 +421,6 @@ export default function ChannelCategoryMappingPage() {
 
   const loadAll = useCallback(async () => {
     if (!orgId) {
-      // Auth not yet resolved — clear loading states so the page isn't stuck on a spinner
-      setOriginLoading(false);
       setLoadingTree(false);
       setLoadingStores(false);
       setLoadingMappings(false);
@@ -441,25 +428,22 @@ export default function ChannelCategoryMappingPage() {
     }
     setLoadError(null);
     try {
-      const [treeData, storeData, mappingData, origin] = await Promise.all([
+      const [treeData, storeData, mappingData] = await Promise.all([
         CategoryService.getTree(orgId).finally(() => setLoadingTree(false)),
         ChannelStoreService.listAllStores(orgId)
           .then(all => all.filter(s => s.isActive && s.connectionStatus !== "INACTIVE"))
           .finally(() => setLoadingStores(false)),
         ChannelMappingService.listAll(orgId).finally(() => setLoadingMappings(false)),
-        CategoryOriginService.getOriginInfo(orgId).finally(() => setOriginLoading(false)),
       ]);
       setTree(treeData);
       setStores(storeData);
       setMappings(mappingData);
-      setOriginInfo(origin);
       setExpandedIds(new Set(treeData.map(n => n.id)));
     } catch (err) {
       setLoadError((err as Error).message);
       setLoadingTree(false);
       setLoadingStores(false);
       setLoadingMappings(false);
-      setOriginLoading(false);
     }
   }, [orgId]);
 
@@ -594,7 +578,6 @@ export default function ChannelCategoryMappingPage() {
   }, [tree, flatNodes, searchQuery]);
 
   const isLoading = loadingTree || loadingStores || loadingMappings;
-  const importLocked = isImportLocked(originInfo);
 
   const stats = useMemo(() => {
     const total   = mappings.length;
@@ -603,333 +586,255 @@ export default function ChannelCategoryMappingPage() {
     return { total, mapped, drifted };
   }, [mappings]);
 
-  // Onboarding: handler when merchant picks their category source
-  async function handleOriginChosen(origin: "import" | "template") {
-    const updated = await CategoryOriginService.setOrigin(orgId, origin);
-    setOriginInfo(updated);
-  }
-
-  // Grace period: merchant wants to change their choice → reset to null locally,
-  // onboarding panel reappears, setOrigin is called again with new choice
-  function handleChangeOrigin() {
-    CategoryOriginService.resetLocalForChange(orgId);
-    setOriginInfo(prev => prev ? { ...prev, categorySourceOrigin: null } : null);
-  }
-
-  // ── Conditional renders ───────────────────────────────────────────────────
-
-  if (originLoading) {
-    return (
-      <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center">
-        <span className="h-8 w-8 rounded-full border-2 border-brand-500 border-t-transparent animate-spin" />
-      </div>
-    );
-  }
-
-  // Network error fetching origin (different from "not yet chosen")
-  if (loadError && originInfo == null) {
-    return (
-      <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center px-6">
-        <div className="text-center max-w-sm">
-          <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Tidak dapat memuat halaman</p>
-          <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">{loadError}</p>
-          <button onClick={loadAll} className="px-4 py-2 text-sm font-medium rounded-xl bg-brand-600 text-white hover:bg-brand-700 transition-colors">
-            Coba lagi
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  if (originInfo?.categorySourceOrigin == null) {
-    return (
-      <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
-        <div className="bg-white dark:bg-gray-800/60 border-b border-gray-200 dark:border-gray-700/60 px-6 py-5">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-indigo-50 dark:bg-indigo-500/10 flex items-center justify-center text-indigo-600 dark:text-indigo-400">
-              <LinkIcon />
-            </div>
-            <div>
-              <h1 className="text-lg font-bold text-gray-900 dark:text-white">Channel Category Mapping</h1>
-              <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Setup awal diperlukan sebelum memulai</p>
-            </div>
-          </div>
-        </div>
-        <CategoryOnboardingPanel onChosen={handleOriginChosen} />
-      </div>
-    );
-  }
-
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
-      {/* Grace period banner */}
-      {originInfo.categoryGracePeriodActive && (
-        <div className="bg-blue-50 dark:bg-blue-500/10 border-b border-blue-200 dark:border-blue-500/30 px-6 py-2.5 flex items-center justify-between gap-4">
-          <div className="flex items-center gap-2">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-blue-500 flex-shrink-0"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
-            <p className="text-xs text-blue-700 dark:text-blue-400">
-              Sumber kategori:{" "}
-              <strong>{formatOriginLabel(originInfo.categorySourceOrigin)}</strong>.
-              {originInfo.categoryGracePeriodEndsAt && (
-                <> Bisa diganti hingga{" "}
-                  <strong>{new Date(originInfo.categoryGracePeriodEndsAt).toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" })}</strong>.
-                </>
-              )}
-            </p>
-          </div>
-          <button
-            onClick={handleChangeOrigin}
-            className="text-[11px] font-medium text-blue-600 dark:text-blue-400 hover:underline flex-shrink-0"
-          >
-            Ganti pilihan
-          </button>
-        </div>
-      )}
 
       {/* Page header */}
       <div className="bg-white dark:bg-gray-800/60 border-b border-gray-200 dark:border-gray-700/60 px-6 py-5">
-        <div className="flex items-center justify-between gap-4 flex-wrap">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-indigo-50 dark:bg-indigo-500/10 flex items-center justify-center text-indigo-600 dark:text-indigo-400 flex-shrink-0">
-              <LinkIcon />
-            </div>
-            <div>
-              <h1 className="text-lg font-bold text-gray-900 dark:text-white leading-tight">Channel Category Mapping</h1>
-              <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-                {isLoading ? "Loading…" : `${flatNodes.length} categories · ${stores.length} store${stores.length !== 1 ? "s" : ""} · ${stats.mapped} mapped · ${stats.drifted > 0 ? `${stats.drifted} drifted` : "no drift"}`}
-              </p>
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-indigo-50 dark:bg-indigo-500/10 flex items-center justify-center text-indigo-600 dark:text-indigo-400 flex-shrink-0">
+            <LinkIcon />
+          </div>
+          <div>
+            <h1 className="text-lg font-bold text-gray-900 dark:text-white leading-tight">Channel Category Mapping</h1>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+              {stores.length} store{stores.length !== 1 ? "s" : ""} connected
+            </p>
+          </div>
+        </div>
+
+        {/* Tab switcher */}
+        <div className="flex gap-1 mt-4 -mb-[1px]">
+          {(["rules", "bulk", "legacy"] as const).map(tab => (
+            <button
+              key={tab}
+              onClick={() => setActiveTab(tab)}
+              className={`px-4 py-2 text-sm font-medium rounded-t-lg border-b-2 transition-colors ${
+                activeTab === tab
+                  ? "border-brand-500 text-brand-600 dark:text-brand-400 bg-white dark:bg-gray-800/60"
+                  : "border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300"
+              }`}
+            >
+              {tab === "rules" ? "Channel Rules" : tab === "bulk" ? "Bulk Assign" : "Platform Categories"}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* ── Channel Rules tab (Phase 5 — primary view) ────────────────────────── */}
+      {activeTab === "rules" && (
+        <ProductTypeRulesTab stores={stores} storesLoading={loadingStores} orgId={orgId} />
+      )}
+
+      {/* ── Bulk Assign tab (Phase 6) ──────────────────────────────────────────── */}
+      {activeTab === "bulk" && (
+        <BulkAssignTab stores={stores} orgId={orgId} />
+      )}
+
+      {/* ── Platform Categories tab (legacy) ──────────────────────────────────── */}
+      {activeTab === "legacy" && (
+        <>
+          {/* Legacy banner */}
+          <div className="mx-6 mt-4 flex items-start gap-3 px-4 py-3 rounded-xl bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/30">
+            <AlertIcon />
+            <div className="text-sm text-amber-800 dark:text-amber-300">
+              <span className="font-semibold">Legacy view.</span> These mappings link platform categories to channel taxonomies.
+              For new products, set defaults directly on{" "}
+              <button onClick={() => setActiveTab("rules")} className="underline font-medium hover:text-amber-900 dark:hover:text-amber-200">
+                Channel Rules
+              </button>{" "}
+              (ProductType-based) instead.
             </div>
           </div>
-          <div className="flex items-center gap-2">
+
+          {/* Drift attention banner */}
+          {driftedCount > 0 && (
+            <div className="mx-6 mt-3 flex items-center gap-3 px-4 py-3 rounded-xl bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/30">
+              <AlertIcon />
+              <p className="text-sm text-amber-800 dark:text-amber-300 font-medium">
+                {driftedCount} channel categor{driftedCount !== 1 ? "ies have" : "y has"} drifted — click the amber badge to resolve.
+              </p>
+            </div>
+          )}
+
+          {/* Toolbar */}
+          <div className="bg-white dark:bg-gray-800/40 border-b border-gray-200 dark:border-gray-700/40 px-6 py-3 mt-3 flex items-center gap-3 flex-wrap">
+            {/* Search */}
+            <div className="relative flex-1 min-w-[180px] max-w-xs">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"><SearchIcon /></span>
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={e => setSearchQuery(e.target.value)}
+                placeholder="Search categories…"
+                className="w-full pl-8 pr-3 py-1.5 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-brand-500/30"
+              />
+            </div>
+
+            {/* Store filter */}
+            <select
+              value={storeFilter}
+              onChange={e => setStoreFilter(e.target.value)}
+              className="text-sm border border-gray-200 dark:border-gray-700 rounded-lg px-2.5 py-1.5 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 focus:outline-none"
+            >
+              <option value="all">All stores</option>
+              {stores.map(s => (
+                <option key={s.storeId} value={s.storeId}>
+                  {CHANNEL_EMOJI[s.channelType] ?? "🏪"} {s.storeName}
+                </option>
+              ))}
+            </select>
+
+            {/* Status filter */}
+            <div className="flex items-center gap-0 rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
+              {(["all", "MAPPED", "DRIFTED", "UNMAPPED"] as const).map(s => (
+                <button
+                  key={s}
+                  onClick={() => setStatusFilter(s)}
+                  className={`px-2.5 py-1.5 text-xs font-medium transition-colors ${
+                    statusFilter === s
+                      ? s === "DRIFTED" ? "bg-amber-500 text-white"
+                      : s === "UNMAPPED" ? "bg-gray-500 text-white"
+                      : "bg-brand-500 text-white"
+                      : "text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700"
+                  }`}
+                >
+                  {s === "all" ? "All" : s}
+                </button>
+              ))}
+            </div>
+
+            <span className="ml-auto text-xs text-gray-400 tabular-nums">
+              {flatNodes.length} categor{flatNodes.length !== 1 ? "ies" : "y"} · {stats.mapped} mapped
+            </span>
+
             <button
               onClick={handleSyncAll}
               disabled={syncing}
-              className="flex items-center gap-1.5 px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors disabled:opacity-50"
+              className="flex items-center gap-1.5 px-3 py-1.5 text-sm border border-gray-200 dark:border-gray-700 rounded-lg text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors disabled:opacity-50"
             >
               <RefreshIcon /> {syncing ? "Syncing…" : "Sync all"}
             </button>
+          </div>
 
-            {/* Import dropdown — hidden when locked */}
-            {!importLocked && (
-              <div className="relative">
-                <button
-                  onClick={() => setShowImportMenu(v => !v)}
-                  disabled={importableStores.length === 0}
-                  className="flex items-center gap-1.5 px-4 py-2 text-sm font-medium bg-brand-500 hover:bg-brand-600 text-white rounded-lg transition-colors shadow-sm shadow-brand-500/20 disabled:opacity-40 disabled:cursor-not-allowed"
-                >
-                  <ImportIcon />
-                  {originInfo.categoryGracePeriodActive ? "Import (Onboarding)" : "Import from channel"}
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="m6 9 6 6 6-6"/></svg>
-                </button>
-                {showImportMenu && importableStores.length > 0 && (
-                  <>
-                    <div className="fixed inset-0 z-10" onClick={() => setShowImportMenu(false)} />
-                    <div className="absolute right-0 top-full mt-1 z-20 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-lg min-w-[200px] py-1 overflow-hidden">
-                      {importableStores.map(store => (
-                        <button
-                          key={store.storeId}
-                          onClick={() => { setShowImportMenu(false); setImportModal({ initialStoreId: store.storeId }); }}
-                          className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors text-left"
-                        >
-                          <span>{CHANNEL_EMOJI[store.channelType] ?? "🏪"}</span>
-                          <div className="min-w-0">
-                            <p className="font-medium truncate">{store.storeName}</p>
-                            <p className="text-[11px] text-gray-400">{CHANNEL_LABEL[store.channelType] ?? store.channelType}</p>
-                          </div>
-                        </button>
-                      ))}
-                    </div>
-                  </>
-                )}
-                {importableStores.length === 0 && stores.length > 0 && (
-                  <p className="text-[11px] text-gray-400 dark:text-gray-500 mt-1">
-                    No import-capable stores (WooCommerce, Etsy, Wix)
-                  </p>
-                )}
+          {/* Error */}
+          {loadError && (
+            <div className="mx-6 mt-4 flex items-start gap-3 px-4 py-3 rounded-xl bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/30 text-sm text-red-700 dark:text-red-400">
+              <AlertIcon />
+              <div>
+                <p className="font-medium">Failed to load</p>
+                <p className="text-xs mt-0.5 opacity-80">{loadError}</p>
               </div>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* Drift attention banner */}
-      {driftedCount > 0 && (
-        <div className="mx-6 mt-4 flex items-center gap-3 px-4 py-3 rounded-xl bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/30">
-          <AlertIcon />
-          <p className="text-sm text-amber-800 dark:text-amber-300 font-medium">
-            {driftedCount} channel categor{driftedCount !== 1 ? "ies have" : "y has"} drifted — click the amber badge to resolve.
-          </p>
-        </div>
-      )}
-
-      {/* Toolbar */}
-      <div className="bg-white dark:bg-gray-800/40 border-b border-gray-200 dark:border-gray-700/40 px-6 py-3 flex items-center gap-3 flex-wrap">
-        {/* Search */}
-        <div className="relative flex-1 min-w-[180px] max-w-xs">
-          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"><SearchIcon /></span>
-          <input
-            type="text"
-            value={searchQuery}
-            onChange={e => setSearchQuery(e.target.value)}
-            placeholder="Search categories…"
-            className="w-full pl-8 pr-3 py-1.5 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-brand-500/30"
-          />
-        </div>
-
-        {/* Store filter */}
-        <select
-          value={storeFilter}
-          onChange={e => setStoreFilter(e.target.value)}
-          className="text-sm border border-gray-200 dark:border-gray-700 rounded-lg px-2.5 py-1.5 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 focus:outline-none"
-        >
-          <option value="all">All stores</option>
-          {stores.map(s => (
-            <option key={s.storeId} value={s.storeId}>
-              {CHANNEL_EMOJI[s.channelType] ?? "🏪"} {s.storeName}
-            </option>
-          ))}
-        </select>
-
-        {/* Status filter */}
-        <div className="flex items-center gap-0 rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
-          {(["all", "MAPPED", "DRIFTED", "UNMAPPED"] as const).map(s => (
-            <button
-              key={s}
-              onClick={() => setStatusFilter(s)}
-              className={`px-2.5 py-1.5 text-xs font-medium transition-colors ${
-                statusFilter === s
-                  ? s === "DRIFTED" ? "bg-amber-500 text-white"
-                  : s === "UNMAPPED" ? "bg-gray-500 text-white"
-                  : "bg-brand-500 text-white"
-                  : "text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700"
-              }`}
-            >
-              {s === "all" ? "All" : s}
-            </button>
-          ))}
-        </div>
-
-        <span className="ml-auto text-xs text-gray-400 tabular-nums">
-          {flatNodes.length} categor{flatNodes.length !== 1 ? "ies" : "y"}
-        </span>
-      </div>
-
-      {/* Error */}
-      {loadError && (
-        <div className="mx-6 mt-4 flex items-start gap-3 px-4 py-3 rounded-xl bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/30 text-sm text-red-700 dark:text-red-400">
-          <AlertIcon />
-          <div>
-            <p className="font-medium">Failed to load</p>
-            <p className="text-xs mt-0.5 opacity-80">{loadError}</p>
-          </div>
-          <button onClick={loadAll} className="ml-auto text-xs underline">Retry</button>
-        </div>
-      )}
-
-      {/* Empty: no stores */}
-      {!isLoading && !loadError && stores.length === 0 && (
-        <div className="flex flex-col items-center justify-center py-24 px-6 text-center">
-          <div className="w-16 h-16 rounded-2xl bg-gray-100 dark:bg-gray-800 flex items-center justify-center mb-4 text-3xl">🔌</div>
-          <h3 className="text-base font-semibold text-gray-900 dark:text-white mb-1">No connected stores</h3>
-          <p className="text-sm text-gray-500 dark:text-gray-400 max-w-xs leading-relaxed mb-6">
-            Connect a store to start mapping your platform categories to channel taxonomies.
-          </p>
-          <Link
-            href="/channels/stores"
-            className="inline-flex items-center gap-2 px-4 py-2.5 text-sm font-semibold bg-brand-500 hover:bg-brand-600 text-white rounded-xl transition-colors shadow-sm"
-          >
-            Connect a store →
-          </Link>
-        </div>
-      )}
-
-      {/* Mapping table */}
-      {!loadError && (stores.length > 0 || isLoading) && (
-        <div className="px-6 py-4 overflow-x-auto">
-          <div className="rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
-          <table className="w-full text-left border-separate border-spacing-0">
-            <thead>
-              <tr className="bg-gray-50 dark:bg-gray-800/60">
-                <th className="sticky left-0 z-10 bg-gray-50 dark:bg-gray-800/60 px-4 py-2.5 text-[11px] font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide border-b border-b-gray-200 dark:border-b-gray-700 border-r border-r-gray-200 dark:border-r-gray-700 min-w-[220px]">
-                  Platform Category
-                </th>
-                {stores.map(store => {
-                  const show = storeFilter === "all" || storeFilter === store.storeId;
-                  if (!show) return null;
-                  return (
-                    <th key={store.storeId} className="px-3 py-2.5 text-center border-b border-b-gray-200 dark:border-b-gray-700 min-w-[120px]">
-                      <div className="flex flex-col items-center gap-0.5">
-                        <span className="text-base leading-none">{CHANNEL_EMOJI[store.channelType] ?? "🏪"}</span>
-                        <span className="text-[10px] font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wide">
-                          {CHANNEL_LABEL[store.channelType] ?? store.channelType}
-                        </span>
-                        <span className="text-[10px] text-gray-400 truncate max-w-[100px]">{store.storeName}</span>
-                      </div>
-                    </th>
-                  );
-                })}
-              </tr>
-            </thead>
-            <tbody>
-              {isLoading ? (
-                Array.from({ length: 5 }, (_, i) => (
-                  <tr key={i} className="border-b border-gray-100 dark:border-gray-800">
-                    <td className="px-4 py-3">
-                      <div className="h-4 rounded bg-gray-200 dark:bg-gray-700 animate-pulse" style={{ width: `${60 + i * 8}%`, opacity: 1 - i * 0.12 }} />
-                    </td>
-                    {stores.map(s => (
-                      <td key={s.storeId} className="px-3 py-3 text-center">
-                        <div className="h-6 w-16 rounded-lg bg-gray-100 dark:bg-gray-800 animate-pulse mx-auto" />
-                      </td>
-                    ))}
-                  </tr>
-                ))
-              ) : displayTree.length === 0 ? (
-                <tr>
-                  <td colSpan={stores.length + 1} className="py-16 text-center">
-                    {tree.length === 0 ? (
-                      <div>
-                        <p className="text-sm font-medium text-gray-600 dark:text-gray-400 mb-3">No categories yet</p>
-                        <Link href="/omni-admin/product-categories" className="text-sm text-brand-600 dark:text-brand-400 hover:underline">
-                          Create categories →
-                        </Link>
-                      </div>
-                    ) : (
-                      <p className="text-sm text-gray-500 dark:text-gray-400">No categories match your search</p>
-                    )}
-                  </td>
-                </tr>
-              ) : (
-                displayTree.map(root => (
-                  <CategoryRow
-                    key={root.id}
-                    node={root}
-                    stores={stores}
-                    mappingIndex={mappingIndex}
-                    expandedIds={expandedIds}
-                    searchQuery={searchQuery}
-                    statusFilter={statusFilter}
-                    storeFilter={storeFilter}
-                    onToggleExpand={toggleExpand}
-                    onOpenDrift={(mapping, categoryName) => setDriftModal({ mapping, categoryName })}
-                    onOpenMap={handleOpenMap}
-                    onUnmap={handleUnmap}
-                  />
-                ))
-              )}
-            </tbody>
-          </table>
-          </div>
-
-          {/* Legend */}
-          {!isLoading && (
-            <div className="mt-4 flex items-center gap-4 text-[11px] text-gray-400 dark:text-gray-500">
-              <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-green-500" /> MAPPED — syncing normally</span>
-              <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-amber-400" /> DRIFTED — name mismatch, click to resolve</span>
-              <span className="flex items-center gap-1.5"><span className="inline-block w-4 h-3 border border-dashed border-gray-400 rounded" /> Map — not yet linked, click to map</span>
+              <button onClick={loadAll} className="ml-auto text-xs underline">Retry</button>
             </div>
           )}
-        </div>
+
+          {/* Empty: no stores */}
+          {!isLoading && !loadError && stores.length === 0 && (
+            <div className="flex flex-col items-center justify-center py-24 px-6 text-center">
+              <div className="w-16 h-16 rounded-2xl bg-gray-100 dark:bg-gray-800 flex items-center justify-center mb-4 text-3xl">🔌</div>
+              <h3 className="text-base font-semibold text-gray-900 dark:text-white mb-1">No connected stores</h3>
+              <p className="text-sm text-gray-500 dark:text-gray-400 max-w-xs leading-relaxed mb-6">
+                Connect a store to start mapping your platform categories to channel taxonomies.
+              </p>
+              <Link
+                href="/channels/stores"
+                className="inline-flex items-center gap-2 px-4 py-2.5 text-sm font-semibold bg-brand-500 hover:bg-brand-600 text-white rounded-xl transition-colors shadow-sm"
+              >
+                Connect a store →
+              </Link>
+            </div>
+          )}
+
+          {/* Mapping table */}
+          {!loadError && (stores.length > 0 || isLoading) && (
+            <div className="px-6 py-4 overflow-x-auto">
+              <div className="rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
+              <table className="w-full text-left border-separate border-spacing-0">
+                <thead>
+                  <tr className="bg-gray-50 dark:bg-gray-800/60">
+                    <th className="sticky left-0 z-10 bg-gray-50 dark:bg-gray-800/60 px-4 py-2.5 text-[11px] font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide border-b border-b-gray-200 dark:border-b-gray-700 border-r border-r-gray-200 dark:border-r-gray-700 min-w-[220px]">
+                      Platform Category
+                    </th>
+                    {stores.map(store => {
+                      const show = storeFilter === "all" || storeFilter === store.storeId;
+                      if (!show) return null;
+                      return (
+                        <th key={store.storeId} className="px-3 py-2.5 text-center border-b border-b-gray-200 dark:border-b-gray-700 min-w-[120px]">
+                          <div className="flex flex-col items-center gap-0.5">
+                            <span className="text-base leading-none">{CHANNEL_EMOJI[store.channelType] ?? "🏪"}</span>
+                            <span className="text-[10px] font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wide">
+                              {CHANNEL_LABEL[store.channelType] ?? store.channelType}
+                            </span>
+                            <span className="text-[10px] text-gray-400 truncate max-w-[100px]">{store.storeName}</span>
+                          </div>
+                        </th>
+                      );
+                    })}
+                  </tr>
+                </thead>
+                <tbody>
+                  {isLoading ? (
+                    Array.from({ length: 5 }, (_, i) => (
+                      <tr key={i} className="border-b border-gray-100 dark:border-gray-800">
+                        <td className="px-4 py-3">
+                          <div className="h-4 rounded bg-gray-200 dark:bg-gray-700 animate-pulse" style={{ width: `${60 + i * 8}%`, opacity: 1 - i * 0.12 }} />
+                        </td>
+                        {stores.map(s => (
+                          <td key={s.storeId} className="px-3 py-3 text-center">
+                            <div className="h-6 w-16 rounded-lg bg-gray-100 dark:bg-gray-800 animate-pulse mx-auto" />
+                          </td>
+                        ))}
+                      </tr>
+                    ))
+                  ) : displayTree.length === 0 ? (
+                    <tr>
+                      <td colSpan={stores.length + 1} className="py-16 text-center">
+                        {tree.length === 0 ? (
+                          <div>
+                            <p className="text-sm font-medium text-gray-600 dark:text-gray-400 mb-3">No categories yet</p>
+                            <Link href="/omni-admin/product-categories" className="text-sm text-brand-600 dark:text-brand-400 hover:underline">
+                              Create categories →
+                            </Link>
+                          </div>
+                        ) : (
+                          <p className="text-sm text-gray-500 dark:text-gray-400">No categories match your search</p>
+                        )}
+                      </td>
+                    </tr>
+                  ) : (
+                    displayTree.map(root => (
+                      <CategoryRow
+                        key={root.id}
+                        node={root}
+                        stores={stores}
+                        mappingIndex={mappingIndex}
+                        expandedIds={expandedIds}
+                        searchQuery={searchQuery}
+                        statusFilter={statusFilter}
+                        storeFilter={storeFilter}
+                        onToggleExpand={toggleExpand}
+                        onOpenDrift={(mapping, categoryName) => setDriftModal({ mapping, categoryName })}
+                        onOpenMap={handleOpenMap}
+                        onUnmap={handleUnmap}
+                      />
+                    ))
+                  )}
+                </tbody>
+              </table>
+              </div>
+
+              {/* Legend */}
+              {!isLoading && (
+                <div className="mt-4 flex items-center gap-4 text-[11px] text-gray-400 dark:text-gray-500">
+                  <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-green-500" /> MAPPED — syncing normally</span>
+                  <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-amber-400" /> DRIFTED — name mismatch, click to resolve</span>
+                  <span className="flex items-center gap-1.5"><span className="inline-block w-4 h-3 border border-dashed border-gray-400 rounded" /> Map — not yet linked, click to map</span>
+                </div>
+              )}
+            </div>
+          )}
+        </>
       )}
 
       {/* Toast */}

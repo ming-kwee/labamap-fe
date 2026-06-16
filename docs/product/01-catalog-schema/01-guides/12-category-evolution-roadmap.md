@@ -57,105 +57,50 @@ Tidak ada perubahan kode. Ini adalah fondasi untuk semua phase berikutnya.
 
 ## Phase 1 — Hapus Asumsi A: "Import = Migrasi Website Ongoing"
 
+**Status: Diimplementasi sebagai Opsi A — additive-only (2026-06-15)**
+
 **Asumsi storefront yang dihapus:**
 > "Merchant bisa import WooCommerce/Etsy/Wix collections sebagai platform categories kapan saja
 > karena ini sama seperti migrasi website — dan website bisa berubah terus."
 
 **Mengapa ini asumsi storefront:**
-Merchant yang punya website di WooCommerce memang butuh migrasi category tree website mereka
-ke platform baru kapan saja. Tapi platform ini tidak menggantikan website merchant. Tidak ada
-website yang perlu dimigrasi. Import hanya relevan sebagai bootstrap awal — setelah itu,
-platform categories adalah master dan tidak perlu sinkronisasi balik ke channel.
+Platform ini bukan storefront — tidak ada website yang perlu dimigrasi. Tapi import tetap
+berguna sebagai cara bulk-add categories. Yang perlu dicegah bukan frekuensi import-nya,
+melainkan **channel menjadi master**: import tidak boleh menimpa atau menggantikan categories
+yang sudah ada di platform.
 
-**Perilaku saat ini (storefront):**
+**Perilaku sebelumnya (lock + grace period — sudah dihapus):**
+
+~~Implementasi awal menggunakan 14-hari grace period lock dengan onboarding panel pilihan
+"Import dari Channel" vs "Platform Template". Ini terlalu membatasi merchant dan
+menciptakan friction yang tidak perlu untuk pure channel management tool.~~
+
+**Perilaku saat ini (Opsi A — additive-only):**
 
 ```
 Kapan saja → "Import from channel" button tersedia
 Merchant klik → ImportWizardModal terbuka
-WooCommerce collections → jadi platform categories (baru)
-Platform categories bergantung pada channel sebagai sumber kebenaran
+previewImport() → setiap collection di-mark alreadyImported: true/false
+Already-imported → ditampilkan greyed-out dengan badge, tidak bisa dipilih
+New collections → merchant pilih → Import
+Backend → createCategoryAndMapping() HANYA untuk collections yang belum ada
+Platform categories lama → tidak tersentuh sama sekali
 ```
 
-**Perilaku target (Ginee-like):**
+**Outcome:**
+Import boleh dijalankan kapan saja. Platform tetap master karena additive-only:
+tidak ada overwrite, tidak ada duplikasi, tidak ada sinkronisasi balik dari channel.
+Asumsi storefront A dihapus tanpa membatasi merchant.
 
-```
-Onboarding (sekali) → Merchant pilih: Import dari channel ATAU pakai template
-Setelah 14 hari grace period → "Import from channel" tidak bisa lagi
-Platform categories adalah master — channel tidak bisa lagi menciptakan categories baru
-```
+**File yang dihapus (Grace period → Opsi A):**
+- `CategoryOnboardingPanel.tsx`
+- `category-origin.ts` + `category-origin.service.ts`
+- `categorySourceOrigin` state, grace period banner, import lock di `ChannelCategoryMappingPage`
+- Origin banner di `MerchantCategoriesPage`
 
-**Priority:** 🔴 High  
-**Effort:** Medium (1–2 sprints)  
-**Breaking changes:** Tidak ada — merchant existing di-grandfather
+### Backend — Rekomendasi untuk Opsi A
 
-### Backend
-
-**1. Tambah field ke Organization**
-
-```java
-// Organization.java
-private String categorySourceOrigin;  // "import" | "template" | null
-private Instant categoryOnboardedAt;  // di-set saat origin pertama dipilih
-```
-
-**2. Endpoint set origin (hanya saat onboarding)**
-
-```
-POST /api/v1/organizations/{orgId}/category-origin
-Body: { "origin": "import" | "template" }
-
-Ditolak (409) jika: categorySourceOrigin sudah di-set
-                   DAN sudah lebih dari 14 hari sejak categoryOnboardedAt
-```
-
-**3. Expose di org response**
-
-`GET /api/v1/organizations/{orgId}` → tambahkan `categorySourceOrigin` dan `categoryOnboardedAt`.
-
-### Frontend
-
-**4. Onboarding choice UI**
-
-Ketika merchant pertama buka `/channels/categories` atau channel category mapping page
-dan `categorySourceOrigin == null`, tampilkan panel pilihan sebelum UI normal:
-
-```
-┌──────────────────────────────────────────────────────────┐
-│  Pilih cara setup kategori Anda (sekali saja)             │
-│                                                           │
-│  ┌───────────────────────┐  ┌───────────────────────────┐ │
-│  │  Import dari Channel  │  │  Platform Template         │ │
-│  │                       │  │                            │ │
-│  │  Saya sudah punya     │  │  Saya mulai dari nol.      │ │
-│  │  kategori di          │  │  Gunakan struktur standar  │ │
-│  │  WooCommerce / Etsy.  │  │  platform sebagai basis.   │ │
-│  │                       │  │                            │ │
-│  │  [Pilih Import]       │  │  [Pilih Template]          │ │
-│  └───────────────────────┘  └───────────────────────────┘ │
-│                                                           │
-│  ⚠ Keputusan ini tidak mudah diubah.                     │
-│  Anda punya 14 hari untuk menggantinya setelah memilih.   │
-└──────────────────────────────────────────────────────────┘
-```
-
-**5. Grace period banner (14 hari)**
-
-```
-ℹ️  Sumber kategori: Import dari WooCommerce (10 Jun 2026).
-    Bisa diganti hingga: 24 Jun 2026. [Ganti pilihan]
-```
-
-**6. Hapus akses "Import from channel" setelah grace period**
-
-Di `ChannelCategoryMappingPage.tsx`, header button "Import from channel":
-- `categorySourceOrigin == "template"` → sembunyikan tombol
-- `categorySourceOrigin == "import"` dan sudah lewat grace period → sembunyikan
-- Dalam grace period → tampilkan dengan label "Onboarding only"
-- `categorySourceOrigin == null` → arahkan ke onboarding choice panel
-
-**Outcome Phase 1:**
-Import tidak lagi bisa menjadi sumber kebenaran ongoing. Platform categories punya
-identitas yang stabil dan tidak berubah karena channel berubah. Asumsi storefront A dihapus.
+Detail lengkap di `02-api-reference/10-category-transition-backend.md §Phase 1 Opsi A`.
 
 ---
 
@@ -380,6 +325,8 @@ sebelum fallback `isTreeCapable()` dipanggil.
 
 ## Phase 5 — Hapus Asumsi E: "Mapping Page = Hub Utama Map Website Category ke Channel"
 
+**Status: Frontend diimplementasi (2026-06-15). Backend pending — lihat `02-api-reference/10-category-transition-backend.md §Phase 5`.**
+
 **Asumsi storefront yang dihapus:**
 > "Channel Category Mapping page adalah tempat platform admin me-mapping category website
 > ke masing-masing channel — ini adalah konfigurasi penting yang harus dilakukan sekali
@@ -391,7 +338,7 @@ yang berlaku untuk semua produk selamanya. Di pure channel management, tidak ada
 Yang dibutuhkan adalah rules berbasis ProductType: "semua Smartphone → Shopee category X."
 Ini adalah pola ChannelAdvisor "Profiles."
 
-**Perilaku saat ini (storefront):**
+**Perilaku sebelumnya (storefront):**
 
 ```
 Channel Category Mapping page:
@@ -401,28 +348,42 @@ Channel Category Mapping page:
   [Asumsi: semua produk di category ini pakai channel category yang sama]
 ```
 
-**Perilaku target (Ginee-like):**
+**Perilaku saat ini (Ginee-like — diimplementasi 2026-06-15):**
 
 ```
-Channel Category Mapping page → diubah menjadi "Channel Category Rules":
+Channel Category Mapping page → dua tab:
+
+Tab "Channel Rules" (PRIMARY, default):
   Baris = ProductType (Smartphone, Kaos Pria, Laptop, dsb.)
-  Kolom = Channel
+  Kolom = Channel (Shopee, Tokopedia, Lazada, dsb.)
   Cell = Default category untuk ProductType ini di channel ini
+  [Click "Set" → CategoryBrowseModal → simpan ke ProductType.channelCategoryDefaults]
   [Override per produk tetap bisa di Step 2]
+
+Tab "Platform Categories" (LEGACY):
+  Banner: "Legacy view — pertimbangkan migrasi ke Channel Rules"
+  Baris = Platform Category (existing behavior)
+  Kolom = Store per channel (existing behavior)
+  [Sync all button tersedia di sini]
 ```
 
-**Priority:** 🟢 Low (prerequisite: Phase 1 + 2 + 3 sudah mature)  
-**Effort:** High (3–4 sprints)  
-**Breaking changes:** Ya — perlu migration plan untuk existing mappings
+**Priority:** ✅ Diimplementasi  
+**Breaking changes:** Tidak ada — additive. Legacy tab mempertahankan semua perilaku lama.
 
-### Prerequisite
+### Yang sudah diimplementasikan
 
-- Phase 1 selesai: Import tidak lagi ongoing
-- Phase 2 selesai: ProductType sudah punya `channelCategoryDefaults`
-- Phase 3 selesai: Tags sudah dipakai sebagai organizational tool
-- Data menunjukkan mayoritas merchant menggunakan ProductType defaults
+**Frontend (2026-06-15):**
+- `ProductTypeRulesTab.tsx` — komponen baru, tabel ProductType × Channel dengan browse modal inline
+- `ChannelCategoryMappingPage.tsx` — dua tab: "Channel Rules" (default) + "Platform Categories" (legacy)
+- Import button dihapus dari UI (kode `ImportWizardModal` tetap ada untuk audit/super-admin)
+- Legacy banner di Platform Categories tab
+- Sync all button dipindahkan ke toolbar Platform Categories tab
 
-### Backend
+**File-file yang diubah:**
+- `_components/ChannelCategoryMappingPage.tsx` — tab switcher, restructure render
+- `_components/ProductTypeRulesTab.tsx` — BARU
+
+### Backend yang masih pending
 
 **1. Buat platform category assignment opsional di master product**
 
@@ -443,37 +404,16 @@ ChannelCategoryMapping:
 Dokumen yang sudah punya `categoryId` tidak perlu dimigrasikan. Migration hanya untuk
 merchant yang secara aktif beralih ke ProductType-based mapping.
 
-### Frontend
-
-**4. Repurpose `ChannelCategoryMappingPage` menjadi "Channel Category Rules"**
-
-```
-SEBELUM (storefront):              SESUDAH (Ginee-like):
-Baris = Platform Category          Baris = ProductType
-"Pakaian Pria"                     "Kaos Pria" (ProductType)
-  → Shopee: 100001                   → Shopee: 100001 [Edit]
-  → Tokopedia: 30045                 → Tokopedia: 30045 [Edit]
-  → Lazada: 7890                     → Lazada: 7890 [Edit]
-```
-
-**5. Sembunyikan (tidak hapus) platform category mapping untuk legacy accounts**
-
-Existing merchants yang masih menggunakan category-based mapping mendapat tampilan legacy
-dengan banner: "Anda menggunakan category mapping. Pertimbangkan migrasi ke ProductType
-rules untuk pengalaman yang lebih baik."
-
-**6. `ImportWizardModal` tidak bisa diakses dari UI production**
-
-Kode tidak dihapus (untuk audit), tapi tombol akses tidak ditampilkan di UI.
-Hanya bisa diakses oleh super-admin untuk keperluan support.
-
 **Outcome Phase 5:**
 Channel Category Mapping page tidak lagi merepresentasikan "mapping website category ke channel."
-Ia menjadi "rules per ProductType" — sepenuhnya Ginee-like. Asumsi storefront E dihapus.
+Primary tab (Channel Rules) adalah ProductType-based — sepenuhnya Ginee-like. Legacy tab
+mempertahankan backward compat. Asumsi storefront E dihapus (frontend).
 
 ---
 
 ## Phase 6 — Hapus Asumsi F: "Channel Category = Derivat dari Platform Taxonomy"
+
+**Status: Frontend diimplementasi (2026-06-16). Backend pending — lihat `02-api-reference/10-category-transition-backend.md §Phase 6`.**
 
 **Asumsi storefront yang dihapus:**
 > "Channel category sebuah produk ditentukan oleh platform category-nya melalui mapping table.
@@ -485,7 +425,7 @@ produk muncul di website category, dan website category di-map ke channel. Di pu
 management, tidak ada website. Channel category seharusnya menjadi atribut langsung
 dari channel listing — sama seperti harga, judul, dan deskripsi channel.
 
-**Perilaku saat ini (storefront):**
+**Perilaku sebelumnya (storefront):**
 
 ```
 MasterProduct
@@ -497,65 +437,102 @@ channel_category_mappings
 Channel category ID
 ```
 
-**Perilaku target (Ginee-like):**
+**Perilaku saat ini (Ginee-like — Step 2 sudah benar sejak awal):**
 
 ```
 MasterProduct
      ↓
-channel_listings.shopee.categoryId = 100001    ← atribut listing langsung
-channel_listings.tokopedia.categoryId = 30045  ← atribut listing langsung
-channel_listings.lazada.categoryId = 7890      ← atribut listing langsung
-
-[CategoryTreePicker di Step 2 sudah menyimpan ini — perlu verifikasi dan formalisasi]
+channel_product_data.categoryId = "100001"  ← disimpan langsung per produk per store
+                                               via CategoryTreePicker di Step 2
+                                               (= channel listing record, bukan mapping table)
 ```
 
-**Priority:** 🔵 Aspirational (prerequisite: Phase 5 sudah stable)  
-**Effort:** Very High (6+ sprints)  
-**Breaking changes:** Major — full data migration
+**Perilaku target (Phase 6 tambahan — Bulk Assign):**
 
-### Catatan penting: Step 2 sudah setengah jalan
+```
+Channel Category Mapping page → tab "Bulk Assign":
+  Pilih store → Browse category → Pilih produk → Apply
+  → POST /admin/master-products/bulk-channel-category
+  → channel_product_data.categoryId di-set untuk semua produk terpilih
+  [Tidak perlu melalui channel_category_mappings sama sekali]
+```
 
-`CategoryTreePicker` di Step 2 sudah menyimpan channel category per produk per channel.
-**Verifikasi terlebih dahulu:** apakah hasilnya disimpan di `channel_category_mappings`
-atau langsung di channel listing record? Jika sudah di listing record → Phase 6 adalah
-tentang menghapus dependensi pada mapping table, bukan membangun dari nol.
+### Temuan Task 1 — Storage path CategoryTreePicker (verified 2026-06-16)
 
-### Tasks
+`CategoryTreePicker` di Step 2 sudah menyimpan `categoryId` **langsung di `channel_product_data`**
+(= channel listing record), bukan di `channel_category_mappings`.
 
-**1. Verifikasi storage path CategoryTreePicker di Step 2**
+Bukti kode:
+- `ChannelStepSaveRequest.categoryId` → `POST /ecommerce/channel-product-data/save`
+- Response: `ChannelProductData` (tidak ada `categoryId` — ia disimpan ke backend record)
+- `channel_category_mappings` adalah tabel terpisah untuk platform category ↔ channel taxonomy mapping
 
-Cek apakah `CategoryTreePicker` result tersimpan di:
-- `channel_category_mappings` → butuh migration ke listing record
-- Channel listing record langsung → Phase 6 sudah sebagian selesai
+**Implikasi:** Phase 6 frontend dapat langsung memanggil endpoint yang sama (`channel-product-data/save` atau bulk equivalent). Tidak perlu migration dari mapping table untuk Step 2 data.
 
-**2. Formalisasi `channelListings[channelType].categoryId` sebagai primary field**
+### Yang sudah diimplementasikan (2026-06-16)
 
-Di channel listing schema, `categoryId` menjadi field first-class — bukan diturunkan
-dari mapping table.
+**Frontend:**
+- `BulkAssignTab.tsx` — tab baru "Bulk Assign" di `ChannelCategoryMappingPage`
+- `MasterProductService.bulkAssignChannelCategory()` — endpoint call (backend pending)
+- `BulkChannelCategoryRequest` type
 
-**3. `channel_category_mappings` menjadi optional fallback**
+**`BulkAssignTab` flow:**
+```
+1. Pilih store (dropdown eligible stores: treeCapable/taxonomyEnabled)
+2. Browse category → CategoryBrowseModal → pilih leaf node
+3. Search/filter produk (by name, tags, status)
+4. Centang produk yang ingin di-assign
+5. Klik "Apply to N" → POST bulk-channel-category → toast success/error
+6. Selection cleared — produk siap untuk assignment berikutnya
+```
 
-Untuk backward compatibility, mapping table tetap dibaca jika listing tidak punya
-`categoryId` langsung. Ini memungkinkan migration bertahap tanpa big-bang.
+**File baru/diubah:**
+- `_components/BulkAssignTab.tsx` — BARU
+- `_components/ChannelCategoryMappingPage.tsx` — tab ke-3 "Bulk Assign"
+- `products/_types/master-product.ts` — `BulkChannelCategoryRequest`
+- `products/_services/master-product.service.ts` — `bulkAssignChannelCategory()`
 
-**4. Data migration: mapping table → listing records**
+### Backend yang masih pending
 
-Script migration untuk copy `externalId` dari mapping documents ke channel listing records.
-Jalankan per batch. Tidak hapus mapping table sampai semua data terverifikasi.
+**Endpoint baru: `POST /admin/master-products/bulk-channel-category`**
 
-**5. Archive `channel_category_mappings`**
+```
+Request:
+  organizationId: string (query param)
+  Body: {
+    productIds:       string[],
+    storeId:          string,
+    channelType:      string,
+    categoryId:       string,   // channel-native leaf node ID
+    categoryName:     string,
+    categoryFullPath: string
+  }
 
-Setelah semua listing punya `categoryId` langsung, mapping table di-archive.
-Tidak dihapus — dipertahankan untuk audit history.
+Response:
+  { updatedCount: number, failedIds: string[] }
+```
 
-**6. Repurpose Channel Category Mapping page menjadi bulk assignment tool**
+Logika: untuk setiap `productId`, upsert `channel_product_data` record dengan `categoryId`.
+Sama seperti `/channel-product-data/save` tapi batch. Gagal per-produk tidak menghentikan batch.
 
-Tidak lagi ada "mapping table" untuk dilihat. Page ini menjadi:
-"Pilih produk → set channel category untuk semua produk terpilih sekaligus."
+**Tidak butuh migration data** untuk Step 2 path — `channel_product_data.categoryId` sudah
+tersimpan benar sejak CategoryTreePicker di Step 2.
 
-**Outcome Phase 6:**
-Full Ginee-like architecture. Channel category adalah atribut listing, bukan derivat dari
-platform taxonomy. Asumsi storefront F dihapus. Transisi selesai.
+**Cleanup `channel_category_mappings` sebagai primary lookup** saat publish — ini adalah
+backend refactor yang independent dari frontend Phase 6.
+
+### Remaining tasks (backend + future)
+
+| Task | Status |
+|---|---|
+| `POST /admin/master-products/bulk-channel-category` | Backend pending |
+| Archive `channel_category_mappings` tabel | Aspirational — setelah semua listing pakai direct categoryId |
+| Hapus dependency ke mapping table saat publish | Backend refactor — tidak blocking |
+| Hapus "Platform Categories" legacy tab | Setelah Phase 5 mature + data migrated |
+
+**Outcome Phase 6 (frontend complete):**
+Channel category bisa di-assign langsung ke produk tanpa melalui platform category mapping table.
+Asumsi storefront F dihapus dari frontend. Full Ginee-like architecture.
 
 ---
 
@@ -592,8 +569,8 @@ Phase 6 memerlukan Phase 5 sudah stable dan data sudah siap dimigrasikan.
 | 2 | B — Platform category wajib jembatani ke channel | Medium | ✅ Frontend selesai — backend pending |
 | 3 | C — Rigid hierarchy = organizational tool utama | Medium | ✅ Frontend selesai — backend pending |
 | 4 | (bukan hapus asumsi — aktifkan marketplace channels) | Done | ✅ Selesai |
-| 5 | E — Mapping page = hub map website category ke channel | High | 🟢 Low — prerequisite Phase 1+2+3 mature |
-| 6 | F — Channel category = derivat dari platform taxonomy | Very High | 🔵 Aspirational |
+| 5 | E — Mapping page = hub map website category ke channel | High | ✅ Frontend selesai — backend pending |
+| 6 | F — Channel category = derivat dari platform taxonomy | Very High | ✅ Frontend selesai — backend pending |
 
 ---
 

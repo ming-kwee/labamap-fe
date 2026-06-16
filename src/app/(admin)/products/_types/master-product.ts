@@ -83,6 +83,17 @@ export interface ChannelDistributionCard {
   completionPercentage: number;
 }
 
+/** Phase 6: Payload for POST /admin/master-products/bulk-channel-category */
+export interface BulkChannelCategoryRequest {
+  productIds: string[];
+  storeId: string;
+  channelType: string;
+  /** Channel-native category leaf node ID (same as ChannelStepSaveRequest.categoryId) */
+  categoryId: string;
+  categoryName: string;
+  categoryFullPath: string;
+}
+
 /** Full product detail returned by GET /admin/master-products/{id} combined with channel data */
 export interface MasterProductDetail {
   id: string;

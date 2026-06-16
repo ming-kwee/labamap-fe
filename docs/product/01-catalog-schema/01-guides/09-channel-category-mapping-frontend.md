@@ -1,6 +1,6 @@
 # Channel Category Mapping — Frontend Implementation
 
-## Status: Complete — Phase 1 (2026-06-15), Phase 4 backend deployed (2026-06-15)
+## Status: Complete — Phase 6 + Phase 5 + Additive-only import (2026-06-16), Phase 4 backend deployed (2026-06-15)
 
 All components are built and wired to the real API. The taxonomy browser child-level
 query issue is resolved (see Backend Fix Summary below).
@@ -13,66 +13,175 @@ query issue is resolved (see Backend Fix Summary below).
 |----------------------------------------------|--------------------------------------------------------------------|
 | `_types/channel-mapping.ts`                  | All TypeScript types + channel classification constants            |
 | `_services/channel-mapping.service.ts`       | API calls                                                          |
-| `_components/ChannelCategoryMappingPage.tsx` | Main matrix page + three-way routing + onboarding panel + import lock |
-| `_components/CategoryOnboardingPanel.tsx`    | One-time onboarding choice UI (import vs template)                 |
+| `_components/ChannelCategoryMappingPage.tsx` | Two-tab page: Channel Rules (primary) + Platform Categories (legacy) |
+| `_components/ProductTypeRulesTab.tsx`        | **Phase 5** — ProductType × Channel grid with inline browse modal  |
+| `_components/BulkAssignTab.tsx`              | **Phase 6** — Product picker + bulk channel category assignment    |
 | `_components/TaxonomyMapperModal.tsx`        | Batch mapper for Type 2 (taxonomy) and Type 3 (tree) channels      |
 | `_components/CollectionMapperModal.tsx`      | Link existing platform categories to channel collections           |
-| `_components/ImportWizardModal.tsx`          | Import wizard — onboarding only, hidden after grace period         |
+| `_components/ImportWizardModal.tsx`          | Additive-only import wizard (code kept, UI button hidden — Phase 5)|
 | `_components/DriftResolutionModal.tsx`       | Drift resolution for Type 1 channels                               |
-
-**Category origin types and service (shared with My Categories):**
-
-| File                                                           | Purpose                                      |
-|----------------------------------------------------------------|----------------------------------------------|
-| `channels/categories/_types/category-origin.ts`               | `CategoryOriginInfo`, helpers `isImportLocked`, `formatOriginLabel` |
-| `channels/categories/_services/category-origin.service.ts`    | `getOriginInfo()`, `setOrigin()` — graceful 404 fallback |
 
 All under `src/app/omni-admin/channel-category-mapping/`.
 
 ---
 
-## Phase 1: One-Time Onboarding (Implemented 2026-06-15)
+## Phase 5: Channel Rules Tab (ProductType-based — 2026-06-15)
 
-### categorySourceOrigin Gate
+### Desain
 
-`ChannelCategoryMappingPage` loads `CategoryOriginInfo` from
-`GET /organizations/{orgId}` on mount (via `CategoryOriginService.getOriginInfo()`).
+`ChannelCategoryMappingPage` sekarang memiliki dua tab:
 
-**Three states:**
+| Tab | Konten | Default |
+|---|---|---|
+| **Channel Rules** | ProductType × Channel grid — `channelCategoryDefaults` | ✅ Default |
+| **Platform Categories** | Legacy platform category → store matrix + legacy banner | — |
 
-| `categorySourceOrigin` | UI shown |
-|---|---|
-| `null` (not yet chosen) | `CategoryOnboardingPanel` — full screen, blocks normal UI |
-| `"import"` in grace period | Normal UI + blue grace period banner + "Import (Onboarding)" button visible |
-| `"import"` after grace period | Normal UI, import button hidden (`isImportLocked = true`) |
-| `"template"` | Normal UI, import button hidden (`isImportLocked = true`) |
+### `ProductTypeRulesTab`
 
-### CategoryOnboardingPanel
+```
+ProductType (baris) × Channel (kolom)
 
-Full-screen panel shown when `categorySourceOrigin == null`.
-Two choices: "Import dari Channel" or "Platform Template".
-On confirm → `CategoryOriginService.setOrigin(orgId, origin)` → `POST /organizations/{orgId}/category-origin`.
-After success → `originInfo` updated in state → normal UI shown.
+Shopee  Tokopedia  Lazada  Amazon
+Kaos Pria      [Set]    [Set]      Pakaian › Pria  [Set]
+Smartphone     HP › 100001  [Set]  [Set]          Electronics
+```
 
-Warning displayed: perubahan hanya bisa dilakukan dalam 14 hari.
+- Klik "Set" → CategoryBrowseModal → simpan ke `ProductType.channelCategoryDefaults`
+- Klik path yang ada → ubah default
+- Hover → trash icon → hapus default
+- Kolom = channelTypes dari stores yang `treeCapable` atau `taxonomyEnabled`
+- WooCommerce/Etsy/Wix tidak muncul di sini (pakai collection-import model)
+- Data dari `ProductTypeService.list()` + `ProductTypeService.setChannelDefault()` (Phase 2 API)
 
-### Import Button Lock
+### Import button — disembunyikan (Phase 5)
+
+Per Phase 5 spec, tombol "Import from channel" tidak ditampilkan di UI.
+`ImportWizardModal` code tetap ada untuk audit dan super-admin support.
+
+### Legacy banner di Platform Categories tab
+
+```
+"Legacy view. These mappings link platform categories to channel taxonomies.
+For new products, set defaults directly on Channel Rules (ProductType-based) instead."
+```
+
+### File yang diubah
+
+- `_components/ChannelCategoryMappingPage.tsx` — tiga tab, hapus import button, pindah sync-all ke toolbar legacy
+- `_components/ProductTypeRulesTab.tsx` — BARU (Phase 5)
+
+---
+
+## Phase 6: Bulk Assign Tab (product-level direct assignment — 2026-06-16)
+
+### Temuan kritis: CategoryTreePicker sudah menyimpan ke channel listing record
+
+`CategoryTreePicker` di Step 2 sudah menyimpan `categoryId` langsung ke
+`channel_product_data` (channel listing record) via `ChannelStepSaveRequest.categoryId` →
+`POST /ecommerce/channel-product-data/save`. Tidak melalui `channel_category_mappings`.
+
+Phase 6 bukan tentang migrasi data — ia tentang menyediakan **alternatif bulk assignment**
+untuk merchant yang ingin set channel category banyak produk sekaligus tanpa buka Step 2
+per produk.
+
+### `BulkAssignTab` — Product-first flow
+
+```
+1. Pick a channel store (treeCapable/taxonomyEnabled only)
+2. Browse and select a target category → CategoryBrowseModal
+3. Search/filter products (by name, tags)
+4. Check products to assign
+5. "Apply to N" → POST /admin/master-products/bulk-channel-category
+6. Toast: "N products updated" | "N updated · M failed"
+```
+
+### State management notes
+
+- Selection (`selectedIds: Set<string>`) persists across pagination — user can select
+  products from multiple pages before applying.
+- Selection is **cleared** when search query or tag filter changes (context shift).
+- Target store change clears target category (prevents stale category cross-channel).
+- Debounced search (400ms) to avoid excessive API calls.
+
+### Service method
 
 ```typescript
-const importLocked = isImportLocked(originInfo);
-// true when: categorySourceOrigin == "template"
-//         OR categorySourceOrigin == "import" AND !categoryGracePeriodActive
+// MasterProductService
+async bulkAssignChannelCategory(
+  organizationId: string,
+  req: BulkChannelCategoryRequest,
+): Promise<{ updatedCount: number; failedIds: string[] }>
+// → POST /admin/master-products/bulk-channel-category?organizationId=...
+```
 
-{!importLocked && (
-  <ImportButton ... label={gracePeriodActive ? "Import (Onboarding)" : "Import from channel"} />
+**Backend endpoint not yet deployed** — will throw on call. `BulkChannelCategoryRequest`
+type and method are pre-wired for when backend deploys.
+
+### File yang baru
+
+- `_components/BulkAssignTab.tsx` — BARU (Phase 6)
+- `products/_types/master-product.ts` — added `BulkChannelCategoryRequest`
+- `products/_services/master-product.service.ts` — added `bulkAssignChannelCategory()`
+
+---
+
+## Import: Additive-Only (Opsi A — 2026-06-15)
+
+### Desain
+
+Import dari channel (WooCommerce, Etsy, Wix) tersedia **kapan saja** selama ada importable
+stores yang terkoneksi. Tidak ada lock, tidak ada grace period, tidak ada onboarding gate.
+
+**Constraint satu-satunya: additive-only.**  
+Backend hanya membuat platform category baru untuk collections yang belum pernah diimport.
+Collections yang sudah punya mapping aktif di-skip (tidak ditimpa, tidak digandakan).
+
+```
+Merchant klik "Import from channel"
+    → ImportWizardModal terbuka
+    → previewImport() dipanggil
+    → Setiap collection di-mark: alreadyImported: true/false (dari backend)
+    → Already-imported items ditampilkan greyed-out dengan badge "already imported"
+    → Merchant pilih collection baru → Import
+    → Backend createCategoryAndMapping() hanya untuk yang belum ada
+    → Done — platform categories baru terbuat, yang lama tidak tersentuh
+```
+
+### `alreadyImported` di `ImportableCollection`
+
+```typescript
+export interface ImportableCollection {
+  externalId:      string;
+  externalName:    string;
+  externalSlug:    string;
+  collectionType:  "manual" | "smart";
+  productCount:    number | null;
+  alreadyImported: boolean;  // backend sets true = sudah ada mapping untuk store ini
+}
+```
+
+Default `false` saat field absent — graceful degradation untuk backend yang belum deploy
+additive-only check. Dalam kasus ini import berperilaku sama seperti sebelumnya tapi
+backend-side check masih memproteksi duplikasi.
+
+### Import button — selalu visible
+
+```typescript
+// Tidak ada lock. Tampil selama ada importable stores.
+{importableStores.length > 0 && (
+  <ImportDropdown stores={importableStores} />
 )}
 ```
 
-### MerchantCategoriesPage Banner
+### File yang dihapus (Phase 1 → Opsi A)
 
-`/channels/categories` also loads `CategoryOriginInfo` and shows a top banner:
-- Blue banner during grace period with origin name, grace period end date, "Ganti pilihan →" link
-- Grey info line after grace period (no action link)
+- ~~`_components/CategoryOnboardingPanel.tsx`~~ — dihapus
+- ~~`channels/categories/_types/category-origin.ts`~~ — dihapus
+- ~~`channels/categories/_services/category-origin.service.ts`~~ — dihapus
+- ~~`categorySourceOrigin` state di `ChannelCategoryMappingPage`~~ — dihapus
+- ~~Grace period banner~~ — dihapus
+- ~~Import lock logic~~ — dihapus
+- ~~Origin banner di `MerchantCategoriesPage`~~ — dihapus
 
 ---
 

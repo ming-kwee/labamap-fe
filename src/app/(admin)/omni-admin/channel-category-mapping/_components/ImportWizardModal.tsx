@@ -57,6 +57,7 @@ export function ImportWizardModal({ organizationId, importableStores, initialSto
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [importedCount, setImportedCount] = useState(0);
+  const [skippedCount,  setSkippedCount]  = useState(0);
 
   // Auto-load collections when store is selected and step is review
   useEffect(() => {
@@ -66,8 +67,10 @@ export function ImportWizardModal({ organizationId, importableStores, initialSto
       ChannelMappingService.previewImport(selectedStore.storeId, organizationId)
         .then(cols => {
           setCollections(cols);
-          // Default: select all manual, deselect smart
-          setSelectedIds(new Set(cols.filter(c => c.collectionType !== "smart").map(c => c.externalId)));
+          // Default-select: manual + not already imported
+          setSelectedIds(new Set(
+            cols.filter(c => c.collectionType !== "smart" && !c.alreadyImported).map(c => c.externalId)
+          ));
         })
         .catch(err => setError((err as Error).message))
         .finally(() => setLoading(false));
@@ -83,9 +86,12 @@ export function ImportWizardModal({ organizationId, importableStores, initialSto
   };
 
   const toggleAll = () => {
-    const manualIds = collections.filter(c => c.collectionType !== "smart").map(c => c.externalId);
-    const allSelected = manualIds.every(id => selectedIds.has(id));
-    setSelectedIds(allSelected ? new Set() : new Set(manualIds));
+    // Only selectable: manual + not already imported
+    const selectableIds = collections
+      .filter(c => c.collectionType !== "smart" && !c.alreadyImported)
+      .map(c => c.externalId);
+    const allSelected = selectableIds.every(id => selectedIds.has(id));
+    setSelectedIds(allSelected ? new Set() : new Set(selectableIds));
   };
 
   const handleImport = async () => {
@@ -104,6 +110,7 @@ export function ImportWizardModal({ organizationId, importableStores, initialSto
         categoryIds: result.categoryIds,
       });
       setImportedCount(result.importedCount);
+      setSkippedCount(result.skippedCount ?? 0);
       setStep("done");
     } catch (err) {
       setError((err as Error).message);
@@ -111,8 +118,8 @@ export function ImportWizardModal({ organizationId, importableStores, initialSto
     }
   };
 
-  const manualCount = collections.filter(c => c.collectionType !== "smart").length;
-  const smartCount  = collections.filter(c => c.collectionType === "smart").length;
+  const smartCount = collections.filter(c => c.collectionType === "smart").length;
+  const allDone    = collections.length > 0 && collections.every(c => c.alreadyImported || c.collectionType === "smart");
 
   return (
     <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4">
@@ -185,40 +192,56 @@ export function ImportWizardModal({ organizationId, importableStores, initialSto
                     <label className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-400 cursor-pointer">
                       <input
                         type="checkbox"
-                        checked={manualCount > 0 && collections.filter(c => c.collectionType !== "smart").every(c => selectedIds.has(c.externalId))}
+                        checked={
+                          collections.filter(c => c.collectionType !== "smart" && !c.alreadyImported).length > 0 &&
+                          collections.filter(c => c.collectionType !== "smart" && !c.alreadyImported).every(c => selectedIds.has(c.externalId))
+                        }
                         onChange={toggleAll}
                         className="h-3.5 w-3.5 rounded border-gray-300 text-brand-500"
                       />
-                      Select all manual ({manualCount})
+                      Select all new ({collections.filter(c => c.collectionType !== "smart" && !c.alreadyImported).length})
                     </label>
                     <span className="text-[11px] text-gray-400">{selectedIds.size} selected</span>
                   </div>
 
                   {collections.map(col => {
-                    const isSmart = col.collectionType === "smart";
-                    const isSelected = selectedIds.has(col.externalId);
+                    const isSmart          = col.collectionType === "smart";
+                    const isAlreadyImported = col.alreadyImported;
+                    const isDisabled       = isSmart || isAlreadyImported;
+                    const isSelected       = selectedIds.has(col.externalId);
                     return (
                       <label
                         key={col.externalId}
-                        className={`flex items-center gap-3 px-3 py-2.5 rounded-xl border cursor-pointer transition-all ${
-                          isSmart
-                            ? "border-dashed border-gray-200 dark:border-gray-700 opacity-60 cursor-not-allowed bg-gray-50 dark:bg-gray-800/30"
-                            : isSelected
-                              ? "border-brand-300 dark:border-brand-500/40 bg-brand-50 dark:bg-brand-500/10"
-                              : "border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600"
+                        className={`flex items-center gap-3 px-3 py-2.5 rounded-xl border transition-all ${
+                          isAlreadyImported
+                            ? "border-gray-100 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-800/20 cursor-default"
+                            : isSmart
+                              ? "border-dashed border-gray-200 dark:border-gray-700 opacity-60 cursor-not-allowed bg-gray-50 dark:bg-gray-800/30"
+                              : isSelected
+                                ? "border-brand-300 dark:border-brand-500/40 bg-brand-50 dark:bg-brand-500/10 cursor-pointer"
+                                : "border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600 cursor-pointer"
                         }`}
                       >
                         <input
                           type="checkbox"
                           checked={isSelected}
-                          disabled={isSmart}
-                          onChange={() => !isSmart && toggleId(col.externalId)}
+                          disabled={isDisabled}
+                          onChange={() => !isDisabled && toggleId(col.externalId)}
                           className="h-3.5 w-3.5 rounded border-gray-300 text-brand-500 flex-shrink-0"
                         />
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2">
-                            <span className="text-sm font-medium text-gray-800 dark:text-gray-200 truncate">{col.externalName}</span>
-                            {isSmart && (
+                            <span className={`text-sm font-medium truncate ${
+                              isAlreadyImported ? "text-gray-400 dark:text-gray-500" : "text-gray-800 dark:text-gray-200"
+                            }`}>
+                              {col.externalName}
+                            </span>
+                            {isAlreadyImported && (
+                              <span className="flex-shrink-0 text-[10px] font-medium px-1.5 py-0.5 rounded bg-green-50 text-green-600 dark:bg-green-500/10 dark:text-green-400">
+                                already imported
+                              </span>
+                            )}
+                            {isSmart && !isAlreadyImported && (
                               <span className="flex-shrink-0 text-[10px] font-medium px-1.5 py-0.5 rounded bg-amber-50 text-amber-600 dark:bg-amber-500/10 dark:text-amber-400">
                                 smart — skip
                               </span>
@@ -244,6 +267,15 @@ export function ImportWizardModal({ organizationId, importableStores, initialSto
               {!loading && !error && collections.length === 0 && (
                 <div className="py-12 text-center">
                   <p className="text-sm text-gray-500 dark:text-gray-400">No collections found on this store.</p>
+                </div>
+              )}
+
+              {!loading && !error && allDone && (
+                <div className="flex items-start gap-3 px-4 py-3 rounded-xl bg-green-50 dark:bg-green-500/10 border border-green-200 dark:border-green-500/30">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="text-green-600 dark:text-green-400 flex-shrink-0 mt-0.5"><polyline points="20 6 9 17 4 12"/></svg>
+                  <p className="text-sm text-green-700 dark:text-green-400">
+                    All collections from this store are already imported — nothing new to add.
+                  </p>
                 </div>
               )}
             </div>
@@ -289,6 +321,11 @@ export function ImportWizardModal({ organizationId, importableStores, initialSto
             <h3 className="text-base font-bold text-gray-900 dark:text-white mb-1">Import complete</h3>
             <p className="text-sm text-gray-500 dark:text-gray-400 mb-2">
               {importedCount} categor{importedCount !== 1 ? "ies" : "y"} created in platform
+              {skippedCount > 0 && (
+                <span className="ml-1 text-gray-400 dark:text-gray-500">
+                  · {skippedCount} skipped (already imported)
+                </span>
+              )}
             </p>
             <p className="text-xs text-gray-400 dark:text-gray-500 max-w-xs">
               Each is linked to its channel category (MAPPED). You can now assign Product Types to drive attribute forms.

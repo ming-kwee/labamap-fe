@@ -6,9 +6,6 @@ import { ProductCategory, ProductCategoryTree, flattenTree, countDescendants } f
 import { CategoryService } from "@/app/(admin)/omni-admin/product-categories/_services/category.service";
 import { AddEditCategoryModal } from "@/app/(admin)/omni-admin/product-categories/_components/AddEditCategoryModal";
 import { useAuth } from "@/shared/contexts/AuthContext";
-import { CategoryOriginService } from "../_services/category-origin.service";
-import type { CategoryOriginInfo } from "../_types/category-origin";
-import { formatOriginLabel } from "../_types/category-origin";
 
 // ─── Icons ────────────────────────────────────────────────────────────────────
 
@@ -305,8 +302,6 @@ export default function MerchantCategoriesPage() {
   const { organization } = useAuth();
   const orgId = organization?.organizationId ?? "";
 
-  const [originInfo, setOriginInfo] = useState<CategoryOriginInfo | null>(null);
-
   const [tree, setTree] = useState<ProductCategoryTree[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -329,12 +324,8 @@ export default function MerchantCategoriesPage() {
     setIsLoading(true);
     setLoadError(null);
     try {
-      const [data, origin] = await Promise.all([
-        CategoryService.getTree(orgId),
-        CategoryOriginService.getOriginInfo(orgId).catch(() => null),
-      ]);
+      const data = await CategoryService.getTree(orgId);
       setTree(data);
-      setOriginInfo(origin);
       setExpandedIds(new Set(data.map(n => n.id)));
     } catch (err) {
       setLoadError((err as Error).message);
@@ -477,39 +468,6 @@ export default function MerchantCategoriesPage() {
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
-
-      {/* Category source origin banner */}
-      {originInfo?.categorySourceOrigin && (
-        <div className={`border-b px-6 py-2.5 flex items-center justify-between gap-4 ${
-          originInfo.categoryGracePeriodActive
-            ? "bg-blue-50 dark:bg-blue-500/10 border-blue-200 dark:border-blue-500/30"
-            : "bg-gray-50 dark:bg-gray-800/40 border-gray-200 dark:border-gray-700"
-        }`}>
-          <div className="flex items-center gap-2 text-xs">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={originInfo.categoryGracePeriodActive ? "text-blue-500" : "text-gray-400"}>
-              <circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/>
-            </svg>
-            <span className={originInfo.categoryGracePeriodActive ? "text-blue-700 dark:text-blue-400" : "text-gray-500 dark:text-gray-400"}>
-              Sumber kategori:{" "}
-              <strong>{formatOriginLabel(originInfo.categorySourceOrigin)}</strong>
-              {originInfo.categoryOnboardedAt && (
-                <> · ditetapkan {new Date(originInfo.categoryOnboardedAt).toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" })}</>
-              )}
-              {originInfo.categoryGracePeriodActive && originInfo.categoryGracePeriodEndsAt && (
-                <> · grace period berakhir {new Date(originInfo.categoryGracePeriodEndsAt).toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" })}</>
-              )}
-            </span>
-          </div>
-          {originInfo.categoryGracePeriodActive && (
-            <Link
-              href="/omni-admin/channel-category-mapping"
-              className="text-[11px] font-medium text-blue-600 dark:text-blue-400 hover:underline flex-shrink-0"
-            >
-              Ganti pilihan →
-            </Link>
-          )}
-        </div>
-      )}
 
       {/* Header */}
       <div className="bg-white dark:bg-gray-800/60 border-b border-gray-200 dark:border-gray-700/60 px-6 py-5">
