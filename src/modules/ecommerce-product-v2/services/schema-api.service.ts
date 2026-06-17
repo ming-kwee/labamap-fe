@@ -12,7 +12,10 @@ export interface BackendContext {
   organizationId: string;
   userRole: 'BUSINESS_USER' | 'ADMIN' | 'DEVELOPER';
   targetChannels: string[];
+  /** @deprecated Use productTypeId. Kept for backward compat while backend migrates. */
   productCategory: string;
+  /** Primary routing parameter — backend prioritises this over productCategory. */
+  productTypeId?: string;
   permissions: string[];
   requestId?: string;
   timestamp?: number;
@@ -123,7 +126,8 @@ export function createBackendContext(
   userRole: 'BUSINESS_USER' | 'ADMIN' | 'DEVELOPER',
   targetChannels: string[],
   productCategory: string,
-  permissions: string[]
+  permissions: string[],
+  productTypeId?: string,
 ): BackendContext {
   return {
     userId,
@@ -131,6 +135,7 @@ export function createBackendContext(
     userRole,
     targetChannels,
     productCategory,
+    ...(productTypeId ? { productTypeId } : {}),
     permissions,
     requestId: `req_${Date.now()}`,
     timestamp: Date.now(),

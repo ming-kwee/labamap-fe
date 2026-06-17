@@ -187,7 +187,7 @@ export default function ProductCreateForm({
 
   // Load schema once on mount — always without category.
   // The essential (no-category) call returns all global fields (name, sku, price, …).
-  // The category-specific call returns ONLY category-specific fields and replaces the schema,
+  // The type-specific call returns ONLY type-specific fields and replaces the schema,
   // so in edit mode we skip it (see editCategoryLoadedRef below) to keep all global fields.
   useEffect(() => {
     loadSchema();
@@ -195,7 +195,7 @@ export default function ProductCreateForm({
   }, []);
 
   // Remove stale formData values for fields that no longer exist in the new schema.
-  // Runs on every schema replacement (including category change) to prevent old category-specific
+  // Runs on every schema replacement (including category change) to prevent old type-specific
   // values from silently persisting in formData and being submitted with the product.
   useEffect(() => {
     if (!schema?.fields) return;
@@ -280,6 +280,9 @@ export default function ProductCreateForm({
       const createdProduct = await submitProduct(product);
 
       if (createdProduct) {
+        if (mode !== 'edit' && productTypeId) {
+          try { sessionStorage.setItem(`productTypeId_${createdProduct.id}`, productTypeId); } catch { /**/ }
+        }
         if (mode === 'edit' && onProductSaved) {
           onProductSaved(createdProduct);
         } else if (onProductCreated) {
@@ -294,6 +297,7 @@ export default function ProductCreateForm({
       organizationDefaultCategory,
       organizationId,
       userId,
+      productTypeId,
       submitProduct,
       onProductCreated,
       targetChannels,
@@ -317,7 +321,7 @@ export default function ProductCreateForm({
           return (
             level === 'essential' ||
             level === 'basic' ||
-            (formStage === 'category-specific' && level === 'category-specific')
+            (formStage === 'type-specific' && level === 'type-specific')
           );
         case 'full':
         default:
@@ -361,8 +365,8 @@ export default function ProductCreateForm({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sortedSections, setExpandedSections, mode]);
 
-  // Phase 4 — edit mode: skip the category-specific schema reload entirely.
-  // The backend's category schema only returns category-specific fields and replaces the
+  // Phase 4 — edit mode: skip the type-specific schema reload entirely.
+  // The backend's category schema only returns type-specific fields and replaces the
   // essential schema when set, hiding global fields (name, sku, price, …). In edit mode
   // the essential schema already contains all the fields we need; the initialData pre-fills them.
   const editCategoryLoadedRef = useRef(mode === 'edit');
@@ -374,16 +378,16 @@ export default function ProductCreateForm({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode, schema, formData.category]);
 
-  // Fix 5: Auto-expand sections that received category-specific fields when category schema loads.
-  // Runs every time the schema changes while in category-specific stage so switching categories
+  // Fix 5: Auto-expand sections that received type-specific fields when category schema loads.
+  // Runs every time the schema changes while in type-specific stage so switching categories
   // also reveals the sections for the new category's fields.
   useEffect(() => {
-    if (formStage !== 'category-specific' || !schema?.fields) return;
+    if (formStage !== 'type-specific' || !schema?.fields) return;
 
     const sectionsWithCategoryFields = new Set<string>();
     for (const field of schema.fields) {
       const level = (field.displayLevel || 'basic').toLowerCase().replace(/_/g, '-');
-      if (level === 'category-specific') {
+      if (level === 'type-specific') {
         const sectionKey = normalizeSectionKey(field.section || 'product-info');
         sectionsWithCategoryFields.add(sectionKey);
       }
@@ -479,17 +483,15 @@ export default function ProductCreateForm({
         )}
       </div>
 
-      {/* Product Type info banner — shown while category-based field injection is being migrated.
-          Category selection is disabled; ProductType-specific attributes will be injected
-          automatically once backend migrates schema generation to productTypeId routing. */}
-      {formStage === 'essential' && !isAddingCategoryFields && (
-        <div className="flex items-start gap-3 px-4 py-3.5 rounded-xl bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 text-sm text-gray-500 dark:text-gray-400">
+      {/* Prompt: select a product type to load type-specific attributes */}
+      {formStage === 'essential' && !formData.category && !isAddingCategoryFields && (
+        <div className="flex items-start gap-3 px-4 py-3.5 rounded-xl bg-blue-50 dark:bg-blue-500/10 border border-blue-200 dark:border-blue-500/30 text-sm text-blue-700 dark:text-blue-300">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="flex-shrink-0 mt-0.5">
             <circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/>
           </svg>
           <p>
-            Fill in the global fields below. Product-type-specific attributes will be available
-            once your admin links this product type to the relevant attribute set.
+            <span className="font-semibold">Select a product type</span> to load the matching attribute set.
+            Only global fields are shown until a product type is chosen.
           </p>
         </div>
       )}

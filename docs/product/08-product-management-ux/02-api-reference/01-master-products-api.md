@@ -29,7 +29,7 @@ GET /admin/master-products
 | `channelType` | string | — | Filter by channel type (e.g. `shopify`, `wix`). Omit for all. |
 | `channelStatus` | string | — | Filter by worst-case sync status: `SYNCED`, `WARNING`, `FAILED`, `DRAFT`, `SYNCING`. Omit for all. |
 | `status` | string | — | Filter by master product status: `ACTIVE`, `DRAFT`, `ARCHIVED`. Omit for all. |
-| `categoryId` | string | — | Filter by internal category. Omit for all. |
+| `categoryId` | string | — | Filter by category slug or tag. **Deprecated** — use `tags[]` instead. Still accepted during transition period; matched against both `categoryId` field and `tags[]`. |
 
 ### Response — `200 OK`
 
@@ -43,8 +43,8 @@ Standard Spring Page wrapper:
       "organizationId": "org_123",
       "name":           "Wireless Earbuds",
       "sku":            "WE-001",
-      "categoryId":     "6632a00...",
-      "categoryName":   "Electronics",
+      "productTypeId":  "6623a1b2c3d4e5f6a7b8c9e1",
+      "tags":           ["electronics", "wireless"],
       "basePrice":      299000,
       "currency":       "IDR",
       "imageUrl":       "https://cdn.example.com/img/we-001.jpg",
@@ -78,6 +78,8 @@ Standard Spring Page wrapper:
   "size":          10
 }
 ```
+
+> **Deprecated fields:** `categoryId` and `categoryName` are deprecated and scheduled for removal in Sprint 4 after `CategoryToTagsMigration` (@Order 220) verifies all rows have been converted. These fields are no longer included in the list response. Use `productTypeId` and `tags[]` instead.
 
 **Field notes:**
 
@@ -155,8 +157,10 @@ Extend the existing master product collection with the new fields:
   organizationId: String,          // already present
   name:           String,          // already present
   sku:            String,
-  categoryId:     ObjectId,
-  categoryName:   String,          // denormalized for display
+  productTypeId:  ObjectId,        // promoted field, indexed
+  tags:           [String],        // replaces categoryId/categoryName
+  categoryId:     ObjectId,        // @deprecated → tags[] (removed Sprint 4)
+  categoryName:   String,          // @deprecated → tags[] (removed Sprint 4)
   basePrice:      Number,
   currency:       String,
   imageUrl:       String,          // first image URL, denormalized

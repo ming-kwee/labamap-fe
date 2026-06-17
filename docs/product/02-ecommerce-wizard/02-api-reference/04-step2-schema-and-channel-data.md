@@ -25,7 +25,18 @@ Generates the Step 2 schema — one `ChannelSchemaPerStore` per active connected
 **Response:** `ChannelStepSchemaResponse`
 ```json
 {
-  "stores": [
+  "step":            2,
+  "masterProductId": "prod_abc123",
+  "masterProduct": {
+    "productId":      "prod_abc123",
+    "name":           "Wireless Earbuds Pro",
+    "sku":            "WE-PRO-001",
+    "price":          29.99,
+    "productTypeId":  "6623a1b2c3d4e5f6a7b8c9e1",
+    "productTypeName":"Smartphone",
+    "variantDimensions": ["color", "storage"]
+  },
+  "channels": [
     {
       "storeId":    "shopify-us-store",
       "storeName":  "My Shopify US Store",
@@ -83,6 +94,10 @@ Generates the Step 2 schema — one `ChannelSchemaPerStore` per active connected
   ]
 }
 ```
+
+> **Sprint 3 integration point:** `masterProduct.productTypeId` is now returned in the response. The frontend should persist this value and pass it as `productTypeId` in the context of subsequent `/form-schema/generate` or `/form-schema/refresh` calls. This avoids the `product_categories` slug lookup and ensures type-scoped attributes are included correctly.
+>
+> **Note on `productTypeName`:** Previously `productTypeName` was only set when `variantDimensions` was non-null. As of Sprint 2 it is always set when a product type is resolved.
 
 ---
 

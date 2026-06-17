@@ -9,12 +9,50 @@ import type {
   MasterProductSnapshot,
 } from "../../types/channelStore";
 import { ChannelSchemaService, ChannelProductDataService } from "../../services/channelStore.service";
+import { ProductTypeService } from "@/app/(admin)/omni-admin/product-types/_services/product-type.service";
 import { isFieldVisible, isFieldRequired } from "../../hooks/useChannelFieldVisibility";
 import { useAuth } from "@/shared/contexts/AuthContext";
 import ChannelTypeBadge from "../stores/ChannelTypeBadge";
 import ChannelStoreTab from "./ChannelStoreTab";
 
 const BASE_API = "http://localhost:8888/labamap/api/v1";
+
+// ─── ProductType pre-fill helpers ─────────────────────────────────────────────
+
+// TikTok is stored as "tiktok" in ChannelType but some stores carry "tiktokshop".
+// Normalise both to "tiktok" for matching ProductType channelCategoryDefaults.
+function normaliseChannelType(ct: string): string {
+  return ct === "tiktokshop" ? "tiktok" : ct;
+}
+
+// Reconstruct breadcrumb path nodes from the denormalised categoryFullPath string.
+// "Apparel & Accessories › Clothing › Tops" → [{id, name: "Apparel …", hasChildren: true}, ...]
+// Only the leaf node carries the real categoryId. Ancestor nodes use placeholder IDs
+// because we don't store them — but CategoryTreePicker only uses ancestor entries for
+// display (the breadcrumb), not for API calls; actual navigation uses loadLevel(parentId).
+function buildPathNodes(
+  categoryId: string,
+  categoryFullPath: string,
+  isLeaf: boolean,
+): Array<{ id: string; name: string; hasChildren: boolean }> {
+  const sep = categoryFullPath.includes("›") ? "›" : ">";
+  const parts = categoryFullPath.split(sep).map(p => p.trim()).filter(Boolean);
+
+  if (parts.length <= 1 || !isLeaf) {
+    // Single segment or mid-node: use the LAST segment — that is the node categoryId refers to.
+    // parts[0] would be the root ancestor, not the node itself for multi-segment paths.
+    const name = parts[parts.length - 1] ?? categoryId;
+    return [{ id: categoryId, name, hasChildren: !isLeaf }];
+  }
+
+  // Multi-segment leaf: reconstruct ancestor chain.
+  // Ancestors get a synthetic id (path-based) sufficient for breadcrumb display.
+  return parts.map((name, i) => ({
+    id:          i === parts.length - 1 ? categoryId : `__ancestor_${i}_${name}`,
+    name,
+    hasChildren: i < parts.length - 1,
+  }));
+}
 
 // ─── Tab store form values ────────────────────────────────────────────────────
 
@@ -290,6 +328,58 @@ export default function ChannelFieldsWizard({ masterProductId }: Props) {
         }
       } catch {
         // Non-fatal — user can re-apply variant options manually
+      }
+
+      // Pre-fill CATEGORY_TREE fields from ProductType.channelCategoryDefaults (Phase 5/6).
+      // Works for ALL treeCapable channels: Shopify, Shopee, Amazon, TikTok, eBay, Lazada, etc.
+      //   isLeaf=true  → set selectedPath + channelData value (committed, picker shows breadcrumb)
+      //   isLeaf=false → set preFillPath (pre-navigation hint, merchant must still pick leaf)
+      try {
+        const sessionPtId =
+          typeof window !== "undefined"
+            ? sessionStorage.getItem(`productTypeId_${masterProductId}`)
+            : null;
+        const ptId = resp.masterProduct?.productTypeId ?? sessionPtId ?? null;
+        if (ptId) {
+          const pt = await ProductTypeService.get(ptId).catch(() => null);
+          if (pt && pt.channelCategoryDefaults.length > 0) {
+            const defaultByType = new Map(
+              pt.channelCategoryDefaults.map(d => [normaliseChannelType(d.channelType), d])
+            );
+
+            for (const ch of resp.channels) {
+              const normType = normaliseChannelType(ch.channelType);
+              const def = defaultByType.get(normType);
+              if (!def) continue;
+
+              const categoryField = ch.sections
+                .flatMap(s => s.fields ?? [])
+                .find(f => f.fieldType === "CATEGORY_TREE");
+              if (!categoryField?.categoryTreeConfig) continue;
+
+              const fn = categoryField.fieldName;
+              const existingValue = initValues[ch.storeId]?.channelData[fn];
+              if (existingValue) continue;
+
+              const pathNodes = buildPathNodes(def.categoryId, def.categoryFullPath, def.isLeaf);
+
+              if (def.isLeaf) {
+                categoryField.categoryTreeConfig.selectedPath = pathNodes;
+                initValues[ch.storeId] = {
+                  ...initValues[ch.storeId],
+                  channelData: {
+                    ...initValues[ch.storeId]?.channelData,
+                    [fn]: def.categoryId,
+                  },
+                };
+              } else {
+                categoryField.categoryTreeConfig.preFillPath = pathNodes;
+              }
+            }
+          }
+        }
+      } catch {
+        // Non-fatal — merchant can browse manually
       }
 
       // Set schema AFTER restoring saved state so field values are visible to CategoryTreePicker

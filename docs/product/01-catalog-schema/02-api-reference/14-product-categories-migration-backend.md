@@ -1,7 +1,8 @@
 # Backend Spec — Migrasi product_categories → Tags + ProductType
 
 **Untuk:** Backend Engineering Team  
-**Tanggal:** 2026-06-16  
+**Tanggal:** 2026-06-16 | **Diimplementasi:** 2026-06-17  
+**Status:** Sprint 1 ✅ | Sprint 2 ✅ | Sprint 3 ⏳ (menunggu frontend) | Sprint 4 ⏳  
 **Trigger:** Frontend telah menghapus `/omni-admin/product-categories`, `/channels/categories`,
 dan semua referensi `categoryId/categoryName/categorySlug/categoryObjectId` dari MasterProduct.
 
@@ -310,31 +311,45 @@ spring.data.mongodb.auto-index-creation=true  # masih perlu untuk collections la
 ## 8. Checklist Urutan Eksekusi
 
 ```
-Sprint 1 — Backend preparation:
-  [ ] Tambah productTypeId ke FormGenerationContext
-  [ ] Schema generation: prioritaskan productTypeId > productCategory
+Sprint 1 — Backend preparation (SELESAI 2026-06-17):
+  [x] Tambah productTypeId ke FormGenerationRequest
+  [x] Schema generation: prioritaskan productTypeId > productCategory (FormSchemaService.resolveCategory)
   [ ] Deploy — test: kirim productTypeId langsung → schema load correctly
-  [ ] Tambah applicableProductTypes ke MasterAttributeDocument
+  [x] EcommerceMasterAttributeDocument.productTypeIds sudah ada (tidak perlu tambah lagi)
 
-Sprint 2 — Data migration:
-  [ ] Jalankan migration: product.categoryId → tags
-  [ ] Jalankan migration: attribute.applicableCategories → applicableProductTypes
-  [ ] Verifikasi semua produk punya tags yang benar
-  [ ] Verifikasi semua attributes punya productTypeIds yang benar
+Sprint 2 — Data migration (SELESAI 2026-06-17):
+  [x] CategoryToTagsMigration @Order(220) — auto-run on startup, migrasi categoryId → tags[]
+  [x] MasterProductData.categoryId/categoryName/categoryObjectId ditandai @Deprecated
+  [x] listForAdmin() diperluas: filter categoryId juga match ke tags[] (backward compat)
+  [x] EcommerceMasterAttributeDocument.productTypeIds sudah dipakai (applicableCategories tidak ada)
+  [ ] Verifikasi di prod: db.master_product_data.countDocuments({categoryId:{$ne:null}}) == 0
 
-Sprint 3 — Frontend update (setelah backend Sprint 1):
+Sprint 3 — Frontend update (MENUNGGU):
   [ ] Ganti CategorySelectField stub → ProductTypeSelectField
-  [ ] Update createBackendContext: productTypeId, bukan productCategory
+  [ ] Update createBackendContext: kirim productTypeId bukan productCategory
   [ ] Hapus formStage 'category-specific' → 'type-specific'
 
-Sprint 4 — Cleanup:
-  [ ] Hapus ProductCategoryAdminController
+Sprint 4 — Cleanup (setelah Sprint 3 verified):
+  [ ] Hapus ProductCategoryAdminController (sudah @Deprecated(forRemoval=true))
   [ ] Hapus GET /admin/product-categories/slugs
-  [ ] Archive product_categories collection
-  [ ] Hapus PlatformCategoryTemplateDataLoader
-  [ ] Hapus @Deprecated legacy path di FormSchemaService
-  [ ] Hapus categoryIds dari MasterAttribute (setelah Sprint 3 verified)
+  [ ] Archive product_categories: db.product_categories.renameCollection("product_categories_archive_20260617")
+  [ ] Hapus PlatformCategoryTemplateDataLoader (sudah no-op)
+  [ ] Hapus @Deprecated legacy path di FormSchemaService.resolveCategory
+  [ ] Remove deprecated fields dari MasterProductData: categoryId, categoryName, categoryObjectId
 ```
+
+### File yang diubah (Sprint 1 + 2)
+
+| File | Perubahan |
+|---|---|
+| `ecommerce/formschema/dto/FormGenerationRequest.java` | Tambah `productTypeId`; `productCategory` ditandai `@Deprecated` |
+| `ecommerce/formschema/service/FormSchemaService.java` | `resolveCategory()` prioritaskan `productTypeId` langsung |
+| `ecommerce/formschema/service/DataDrivenSchemaGenerationService.java` | Gunakan `resolvedProductTypeId` jika sudah di-set |
+| `ecommerce/admin/controller/ProductCategoryAdminController.java` | Class ditandai `@Deprecated(forRemoval=true)` |
+| `ecommerce/category/loader/PlatformCategoryTemplateDataLoader.java` | Dikonversi ke no-op |
+| `ecommerce/category/loader/CategoryToTagsMigration.java` | **BARU** — one-time migration @Order(220) |
+| `ecommerce/masterproduct/model/entity/MasterProductData.java` | `categoryId/Name/ObjectId` ditandai `@Deprecated` |
+| `ecommerce/masterproduct/service/MasterProductDataService.java` | `categoryId` filter juga match `tags[]`; `@SuppressWarnings` pada methods yang akses deprecated fields |
 
 ---
 

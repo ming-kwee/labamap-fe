@@ -16,10 +16,13 @@ All form-schema and dynamic-product endpoints read input from a **`{ "context": 
     "userRole":        "BUSINESS_USER",
     "targetChannels":  ["shopify", "wix"],
     "productCategory": "electronics",
+    "productTypeId":   "6623a1b2c3d4e5f6a7b8c9e1",
     "permissions":     ["CREATE_PRODUCT"]
   }
 }
 ```
+
+> **Note:** Send `productTypeId` directly when known (Sprint 3+). `productCategory` slug is still accepted for backward compatibility. When `productTypeId` is present, the backend skips the `product_categories` lookup and queries `ProductTypeRepository` directly.
 
 `requestId` and `timestamp` are generated server-side and do not need to be sent.
 
@@ -38,12 +41,13 @@ Generates the product creation form schema. Called on initial load (empty catego
     "userRole":        "BUSINESS_USER",
     "targetChannels":  ["shopify", "wix"],
     "productCategory": "",
+    "productTypeId":   "6623a1b2c3d4e5f6a7b8c9e1",
     "permissions":     ["CREATE_PRODUCT"]
   }
 }
 ```
 
-Set `productCategory` to `""` for initial load (returns essential + basic fields). Set to a category slug (e.g. `"electronics"`) for category-specific load.
+Set `productCategory` to `""` for initial load (returns essential + basic fields). Set to a category slug (e.g. `"electronics"`) for category-specific load. Alternatively, send `productTypeId` directly when known (Sprint 3+) — preferred over `productCategory`.
 
 **Response:**
 ```json
@@ -94,6 +98,7 @@ Query-string variant of the generate endpoint for simple/debug use cases.
 | `organizationId` | `"default"` | |
 | `userRole` | `"BUSINESS_USER"` | `BUSINESS_USER` \| `ADMIN_USER` \| `DEVELOPER` \| `VIEW_ONLY` |
 | `category` | — | Category slug, e.g. `electronics` |
+| `productTypeId` | — | ProductType ObjectId. Preferred over `category` when known (Sprint 3+). Skips `product_categories` lookup. |
 | `channels` | — | Comma-separated, e.g. `shopify,amazon` |
 
 **Example:** `GET /ecommerce/form-schema/generate?userId=u1&organizationId=org_123&category=electronics`
@@ -104,9 +109,9 @@ Query-string variant of the generate endpoint for simple/debug use cases.
 
 ## POST `/ecommerce/form-schema/refresh`
 
-Refreshes the schema when the product category changes. Requires `productCategory` to be non-empty. Functionally equivalent to `POST /generate` with a category, but adds `changeType: "CATEGORY_BASED_REFRESH"` to the metadata.
+Refreshes the schema when the product category changes. Requires either `productCategory` or `productTypeId` to be set in context. Functionally equivalent to `POST /generate` with a category, but adds `changeType: "CATEGORY_BASED_REFRESH"` to the metadata.
 
-**Request body:** Same shape as `POST /generate` — `{ "context": { ..., "productCategory": "electronics" } }`.
+**Request body:** Same shape as `POST /generate` — `{ "context": { ..., "productCategory": "electronics" } }` or `{ "context": { ..., "productTypeId": "6623a1b2c3d4e5f6a7b8c9e1" } }`. Sending `productTypeId` is preferred when known (Sprint 3+).
 
 **Response:** Same shape as generate, with extra metadata:
 ```json
@@ -372,6 +377,11 @@ One document per created master product.
   "productId":  "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
   "organizationId": "org_123",
   "userId":     "user_abc",
+  "productTypeId": "6623a1b2c3d4e5f6a7b8c9e1",
+  "tags":       ["electronics", "smartphone"],
+  "categoryId":     "...",        // @deprecated → tags[]
+  "categoryName":   "Electronics",// @deprecated → tags[]
+  "categoryObjectId": "...",      // @deprecated → tags[]
   "productAttributes": {
     "name":        "Wireless Earbuds Pro",
     "sku":         "WE-PRO-001",
@@ -448,7 +458,9 @@ interface BackendContext {
   organizationId:  string;
   userRole:        'BUSINESS_USER' | 'ADMIN_USER' | 'DEVELOPER' | 'VIEW_ONLY';
   targetChannels:  string[];
+  /** @deprecated use productTypeId when known (Sprint 3+) */
   productCategory: string;
+  productTypeId?:  string;   // preferred over productCategory when known (Sprint 3+)
   permissions:     string[];
   // Fields below are frontend-generated; backend generates its own and ignores these
   requestId?:      string;   // "req_{Date.now()}"

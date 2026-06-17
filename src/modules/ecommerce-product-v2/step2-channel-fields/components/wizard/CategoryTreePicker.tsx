@@ -163,6 +163,22 @@ export default function CategoryTreePicker({ field, value, onChange, disabled }:
     if (isOpen) setTimeout(() => searchInputRef.current?.focus(), 50);
   }, [isOpen]);
 
+  // Auto-open at the preFillPath level when there is no committed value.
+  // preFillPath comes from ProductType.channelCategoryDefaults (isLeaf=false) — it is a
+  // pre-navigation hint that saves the merchant from browsing from root.
+  useEffect(() => {
+    const preFill = config.preFillPath;
+    if (!preFill || preFill.length === 0 || hasValue || isOpen) return;
+    const lastNode = preFill[preFill.length - 1];
+    setBrowsePath(preFill);
+    setSearchQuery("");
+    setSearchResults(null);
+    setIsOpen(true);
+    loadLevel(lastNode.id);
+  // Only run on mount — config.preFillPath is stable after schema load
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // ── Actions ────────────────────────────────────────────────────────────────
   function openPicker() {
     setBrowsePath([]);
@@ -247,26 +263,22 @@ export default function CategoryTreePicker({ field, value, onChange, disabled }:
               <path d="M12 9v4"/><path d="M12 17h.01"/>
             </svg>
             <div className="min-w-0">
-              <p className="text-sm font-semibold text-amber-800 dark:text-amber-300">Category not mapped</p>
+              <p className="text-sm font-semibold text-amber-800 dark:text-amber-300">No category selected</p>
               <p className="text-xs text-amber-700 dark:text-amber-400 mt-0.5 leading-relaxed">
-                This product&apos;s master category hasn&apos;t been linked to{" "}
-                <span className="font-medium">{field.label}</span> yet.
-                Map it once in Channel Category Mapping and every product in that category will be filled automatically.
+                Select the <span className="font-medium">{field.label}</span> for this product.
+                Set a default per Product Type in{" "}
+                <a href="/omni-admin/channel-category-mapping" target="_blank" rel="noopener noreferrer"
+                  className="underline hover:text-amber-900 dark:hover:text-amber-200">
+                  Channel Rules
+                </a>
+                {" "}to pre-fill this automatically.
               </p>
             </div>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
-            <a href="/omni-admin/channel-category-mapping" target="_blank" rel="noopener noreferrer"
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-amber-500 hover:bg-amber-600 text-white transition-colors">
-              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
-                <polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/>
-              </svg>
-              Go to Category Mapping
-            </a>
             <button type="button" onClick={openPicker} disabled={disabled}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border border-amber-300 dark:border-amber-500/40 text-amber-700 dark:text-amber-400 hover:bg-amber-100 dark:hover:bg-amber-500/20 transition-colors disabled:opacity-50">
-              Browse manually
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-amber-500 hover:bg-amber-600 text-white transition-colors disabled:opacity-50">
+              Browse category
             </button>
           </div>
         </div>

@@ -259,6 +259,12 @@ export interface CategoryTreeConfig {
    * When absent the picker falls back to filtering the currently-loaded level.
    */
   searchEndpoint?: string;
+  /**
+   * Pre-navigation hint from ProductType.channelCategoryDefaults (isLeaf=false).
+   * CategoryTreePicker opens the browse panel at this level when there is no committed
+   * selectedPath. Merchant still must pick a leaf — this is not a committed value.
+   */
+  preFillPath?: CategoryTreeNode[];
 }
 
 export interface ChannelFormField {
