@@ -406,7 +406,7 @@ export function BulkAssignTab({ stores, orgId }: Props) {
                 Tags
               </th>
               <th className="px-3 py-2.5 text-[11px] font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide border-b border-b-gray-200 dark:border-b-gray-700 hidden md:table-cell">
-                Platform Category
+                Tags
               </th>
             </tr>
           </thead>
@@ -502,11 +502,21 @@ export function BulkAssignTab({ stores, orgId }: Props) {
                       </div>
                     </td>
 
-                    {/* Platform category */}
+                    {/* ProductType / tags */}
                     <td className="px-3 py-2.5 hidden md:table-cell">
-                      <span className="text-xs text-gray-500 dark:text-gray-400 truncate max-w-[150px] block">
-                        {product.categoryName ?? <span className="text-gray-300 dark:text-gray-600">—</span>}
-                      </span>
+                      <div className="flex flex-wrap gap-1 max-w-[150px]">
+                        {(product.tags ?? []).slice(0, 2).map(tag => (
+                          <span key={tag} className="text-[10px] px-1.5 py-0.5 rounded-full bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400">
+                            {tag}
+                          </span>
+                        ))}
+                        {(product.tags?.length ?? 0) > 2 && (
+                          <span className="text-[10px] text-gray-400">+{(product.tags?.length ?? 0) - 2}</span>
+                        )}
+                        {(product.tags?.length ?? 0) === 0 && (
+                          <span className="text-gray-300 dark:text-gray-600">—</span>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 );

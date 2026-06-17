@@ -23,9 +23,17 @@ export interface CategoryBrowseModalProps {
   orgId: string;
   onSelect: (node: TaxonomyCategory, path: TaxonomyCategory[]) => void;
   onClose: () => void;
+  /**
+   * true  (default) — only leaf nodes can be selected. Correct for product listings
+   *        where channels require a leaf category.
+   * false — mid-tree nodes can also be selected as a "starting point" default.
+   *        Used by ProductTypeRulesTab where broad ProductTypes (e.g. "Toys") cannot
+   *        meaningfully map to a single leaf.
+   */
+  requireLeafOnly?: boolean;
 }
 
-export function CategoryBrowseModal({ channelType, store, orgId, onSelect, onClose }: CategoryBrowseModalProps) {
+export function CategoryBrowseModal({ channelType, store, orgId, onSelect, onClose, requireLeafOnly = true }: CategoryBrowseModalProps) {
   const [browsePath, setBrowsePath] = useState<TaxonomyCategory[]>([]);
   const [nodes, setNodes]           = useState<TaxonomyCategory[]>([]);
   const [loading, setLoading]       = useState(true);
@@ -76,7 +84,9 @@ export function CategoryBrowseModal({ channelType, store, orgId, onSelect, onClo
             <p className="text-sm font-semibold text-gray-900 dark:text-white">
               Browse {CHANNEL_LABEL[channelType] ?? channelType} Categories
             </p>
-            <p className="text-xs text-gray-400 mt-0.5">{store.storeName} · select a leaf category</p>
+            <p className="text-xs text-gray-400 mt-0.5">
+              {store.storeName} · {requireLeafOnly ? "select a leaf category" : "select a level or leaf"}
+            </p>
           </div>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 p-1">
             <XIcon />
@@ -131,20 +141,44 @@ export function CategoryBrowseModal({ channelType, store, orgId, onSelect, onClo
             <p className="px-4 py-5 text-sm text-gray-500 dark:text-gray-400">No sub-categories at this level.</p>
           )}
           {!loading && !error && nodes.map(node => (
-            <button
+            <div
               key={node.id}
-              onClick={() => handleNodeClick(node)}
-              className="w-full flex items-center justify-between px-4 py-3 text-sm text-left transition-colors border-b border-gray-100 dark:border-gray-800 last:border-b-0 hover:bg-gray-50 dark:hover:bg-gray-800/50 group"
+              className="group flex items-center border-b border-gray-100 dark:border-gray-800 last:border-b-0 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors"
             >
-              <span className="text-gray-900 dark:text-white">{node.name}</span>
-              {node.isLeaf ? (
-                <span className="text-brand-500 text-xs opacity-0 group-hover:opacity-100 transition-opacity font-medium">
-                  Select ✓
-                </span>
-              ) : (
-                <span className="text-gray-400 text-xs group-hover:text-brand-500 transition-colors">›</span>
-              )}
-            </button>
+              {/* Main click target: navigate deeper (non-leaf) or select (leaf) */}
+              <button
+                onClick={() => handleNodeClick(node)}
+                className="flex-1 px-4 py-3 text-sm text-left text-gray-900 dark:text-white"
+              >
+                {node.name}
+              </button>
+
+              {/* Right-side affordances — clicking this area mirrors the name button's action */}
+              <div
+                className="flex items-center gap-1.5 pr-4 py-3 cursor-pointer"
+                onClick={() => handleNodeClick(node)}
+              >
+                {/* "Use this level" — only for non-leaf when requireLeafOnly=false.
+                    stopPropagation so the outer div's navigate-deeper click doesn't also fire. */}
+                {!node.isLeaf && !requireLeafOnly && (
+                  <button
+                    onClick={e => { e.stopPropagation(); onSelect(node, [...browsePath, node]); }}
+                    title="Use this category level as a starting point for this ProductType"
+                    className="opacity-0 group-hover:opacity-100 transition-opacity text-[10px] px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 hover:bg-brand-50 dark:hover:bg-brand-500/10 hover:text-brand-600 dark:hover:text-brand-400"
+                  >
+                    Use ↙
+                  </button>
+                )}
+                {/* Leaf indicator / navigation arrow */}
+                {node.isLeaf ? (
+                  <span className="text-brand-500 text-xs opacity-0 group-hover:opacity-100 transition-opacity font-medium whitespace-nowrap">
+                    Select ✓
+                  </span>
+                ) : (
+                  <span className="text-gray-400 text-xs group-hover:text-brand-500 transition-colors">›</span>
+                )}
+              </div>
+            </div>
           ))}
         </div>
       </div>

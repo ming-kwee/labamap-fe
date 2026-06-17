@@ -89,6 +89,7 @@ function SetDefaultModal({ productType, stores, orgId, onSaved, onClose }: SetDe
         categoryId:       node.id,
         categoryName:     node.name,
         categoryFullPath: path.map(n => n.name).join(" › "),
+        isLeaf:           node.isLeaf,
       });
       onSaved(updated);
     } catch (err) {

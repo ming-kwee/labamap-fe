@@ -419,7 +419,7 @@ export default function PublishDashboard({ masterProductId }: Props) {
           name: detail.name,
           sku: detail.sku ?? "",
           price: detail.basePrice ?? 0,
-          category: detail.categorySlug ?? detail.categoryId ?? undefined,
+          category: undefined,
           mainImage: detail.imageUrl ?? undefined,
           description: detail.description ?? undefined,
           tags: detail.tags ?? undefined,

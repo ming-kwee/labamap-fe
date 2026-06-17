@@ -1,5 +1,11 @@
 # API Reference — Channel Category Mapping
 
+> **⚠️ DEPRECATION NOTICE (2026-06-16)**  
+> Platform Categories tab dihapus dari frontend (Phase 5+6 complete).  
+> Semua endpoint di dokumen ini **kecuali `/taxonomy/{channelType}/children`** tidak lagi
+> dipanggil oleh frontend dan dapat dihapus dari backend.  
+> Lihat rencana penghapusan lengkap: **`13-channel-category-mapping-backend-cleanup.md`**
+
 Base path: `/labamap/api/v1/admin/channel-category-mappings`
 Controller: `ChannelCategoryMappingAdminController`
 

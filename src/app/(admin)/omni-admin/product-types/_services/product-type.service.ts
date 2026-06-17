@@ -114,6 +114,7 @@ export const ProductTypeService = {
         categoryId:       String(raw.categoryId ?? ""),
         categoryName:     String(raw.categoryName ?? ""),
         categoryFullPath: String(raw.categoryFullPath ?? raw.categoryName ?? ""),
+        isLeaf:           raw.isLeaf !== false,
         updatedAt:        raw.updatedAt as string | undefined,
       };
     } catch {

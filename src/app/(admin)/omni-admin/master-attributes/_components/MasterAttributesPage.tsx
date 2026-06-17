@@ -4,7 +4,9 @@ import React, { useState, useRef, useCallback, useMemo, useEffect } from "react"
 import Link from "next/link";
 import { MasterAttribute, AttributeCategory, AttributeType, AttributeFilters } from "../_types/attribute";
 import { AttributeService } from "../_services/attribute.service";
-import { CategoryService } from "../../product-categories/_services/category.service";
+// CategoryService removed — product_categories migrated to tags (2026-06-16).
+// Attribute categoryIds will be migrated to productTypeIds in a future sprint.
+// See: docs/product/01-catalog-schema/02-api-reference/14-product-categories-migration-backend.md
 import { ProductTypeService } from "../../product-types/_services/product-type.service";
 import type { ProductType } from "../../product-types/_types/product-type";
 import { AddEditAttributeModal } from "./AddEditAttributeModal";
@@ -900,31 +902,12 @@ export default function MasterAttributesPage() {
   const [catsLoading, setCatsLoading] = useState(true);
   const [catsError, setCatsError] = useState(false);
 
-  // Level → accent color
-  const CAT_LEVEL_COLORS = ["#3b82f6", "#8b5cf6", "#10b981", "#f59e0b", "#6b7280"];
-
+  // product_categories removed (2026-06-16) — category sidebar is disabled.
+  // Next sprint: replace with ProductType-based scoping via ProductTypeService.list().
+  // See: docs/02-api-reference/14-product-categories-migration-backend.md §6
   const loadCats = useCallback(() => {
-    setCatsLoading(true);
-    setCatsError(false);
-    CategoryService.getSlugs(orgId)
-      .then(slugs => {
-        setCategories(
-          slugs
-            .sort((a, b) => a.path.localeCompare(b.path))
-            .map(s => ({
-              id:    s.id,
-              name:  s.name,
-              icon:  "",
-              color: CAT_LEVEL_COLORS[s.level] ?? CAT_LEVEL_COLORS[CAT_LEVEL_COLORS.length - 1],
-              level: s.level,
-              path:  s.path,
-              attributeCount: 0,
-            }))
-        );
-      })
-      .catch(() => setCatsError(true))
-      .finally(() => setCatsLoading(false));
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    setCatsLoading(false);
+    setCategories([]);
   }, []);
 
   useEffect(() => { loadCats(); }, [loadCats]);

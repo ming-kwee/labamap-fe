@@ -26,8 +26,6 @@ function mapProduct(r: Record<string, unknown>): MasterProduct {
     organizationId: String(r.organizationId ?? ""),
     name:           String(r.name ?? attrs.name ?? ""),
     sku:            (r.sku ?? attrs.sku) != null ? String(r.sku ?? attrs.sku) : null,
-    categoryId:     r.categoryId != null ? String(r.categoryId) : null,
-    categoryName:   (r.categoryName ?? attrs.category) != null ? String(r.categoryName ?? attrs.category) : null,
     basePrice:      (r.basePrice ?? attrs.price ?? attrs.basePrice) != null ? Number(r.basePrice ?? attrs.price ?? attrs.basePrice) : null,
     currency:       (r.currency ?? attrs.currency) != null ? String(r.currency ?? attrs.currency) : null,
     imageUrl:       (r.imageUrl ?? attrs.mainImage ?? attrs.imageUrl) != null ? String(r.imageUrl ?? attrs.mainImage ?? attrs.imageUrl) : null,
@@ -128,14 +126,10 @@ export const MasterProductService = {
       organizationId: String(raw.organizationId ?? ""),
       name:          String(raw.name ?? attrs.name ?? ""),
       sku:           (raw.sku ?? attrs.sku) != null ? String(raw.sku ?? attrs.sku) : null,
-      categoryId:    raw.categoryId   != null ? String(raw.categoryId)   : null,
-      categoryName:  raw.categoryName != null ? String(raw.categoryName) : null,
       basePrice:     (raw.basePrice ?? attrs.price ?? attrs.basePrice) != null ? Number(raw.basePrice ?? attrs.price ?? attrs.basePrice) : null,
       currency:      (raw.currency ?? attrs.currency) != null ? String(raw.currency ?? attrs.currency) : null,
       imageUrl:      (raw.imageUrl ?? attrs.mainImage ?? attrs.imageUrl) != null ? String(raw.imageUrl ?? attrs.mainImage ?? attrs.imageUrl) : null,
-      description:      attrs.description   != null ? String(attrs.description)   : null,
-      categorySlug:     attrs.category     != null ? String(attrs.category)     : null,
-      categoryObjectId: raw.categoryObjectId != null ? String(raw.categoryObjectId) : null,
+      description:   attrs.description != null ? String(attrs.description) : null,
       tags:          tags.length > 0 ? tags : null,
       images:        images.length > 0 ? images : null,
       variantCount:  Number(raw.variantCount ?? 0),
@@ -158,7 +152,6 @@ export const MasterProductService = {
       size:  String(params.size  ?? 10),
     });
     if (params.q)              qs.set("q",             params.q);
-    if (params.categoryId)     qs.set("categoryId",    params.categoryId);
     if (params.channelType)    qs.set("channelType",   params.channelType);
     if (params.tags?.length)   qs.set("tags",          params.tags.join(","));
     if (params.channelStatus && params.channelStatus !== "ALL")

@@ -19,8 +19,15 @@ export interface VariantDimension {
 export interface ChannelCategoryDefault {
   channelType: string;        // "shopee" | "tokopedia" | "lazada" | "shopify" | …
   categoryId: string;         // channel-native category ID (externalId)
-  categoryName: string;       // leaf node display name (denormalized)
+  categoryName: string;       // display name of the selected node (leaf or mid-node)
   categoryFullPath: string;   // "Pakaian › Pria › Atasan › Kaos" (denormalized, for display)
+  /**
+   * true  = leaf node — Step 2 pre-fills this as the committed channel category.
+   * false = mid-node — Step 2 pre-navigates the CategoryTreePicker to this level;
+   *         merchant must still pick the leaf per product.
+   * Defaults to true on old data that predates this field (backward compat).
+   */
+  isLeaf: boolean;
   updatedAt?: string;
 }
 
@@ -60,6 +67,7 @@ export interface ProductTypeDoc {
     categoryId: string;
     categoryName: string;
     categoryFullPath: string;
+    isLeaf?: boolean;
     updatedAt?: string;
   }>;
   attributeCount?: number;
@@ -94,6 +102,8 @@ export function docToProductType(doc: ProductTypeDoc): ProductType {
           categoryId:       String(d.categoryId ?? ""),
           categoryName:     String(d.categoryName ?? ""),
           categoryFullPath: String(d.categoryFullPath ?? d.categoryName ?? ""),
+          // Absent on old data → assume leaf (safe: old code only allowed leaf selection)
+          isLeaf:           d.isLeaf !== false,
           updatedAt:        d.updatedAt as string | undefined,
         }))
       : [],
@@ -123,6 +133,7 @@ export function productTypeToPayload(
       categoryId:       d.categoryId,
       categoryName:     d.categoryName,
       categoryFullPath: d.categoryFullPath,
+      isLeaf:           d.isLeaf,
     })),
     active: pt.active,
   };

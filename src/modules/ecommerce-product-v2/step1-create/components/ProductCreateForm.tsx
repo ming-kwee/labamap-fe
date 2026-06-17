@@ -30,7 +30,6 @@ import {
   getSectionMetadata,
   groupFieldsBySection,
   normalizeSectionKey,
-  validateProductCategory,
 } from '../../utils/form-utils';
 import { generateMasterProduct } from '../../utils/product-mapper';
 
@@ -277,17 +276,6 @@ export default function ProductCreateForm({
       e.preventDefault();
       if (!schema) return;
 
-      const categoryValidation = validateProductCategory(
-        formData.category || '',
-        assignedCategories,
-        organizationDefaultCategory
-      );
-
-      if (!categoryValidation.isValid && categoryValidation.warning) {
-        alert(categoryValidation.warning);
-        return;
-      }
-
       const product = generateMasterProduct({ formData, schema, organizationId, userId });
       const createdProduct = await submitProduct(product);
 
@@ -491,28 +479,17 @@ export default function ProductCreateForm({
         )}
       </div>
 
-      {/* Phase 1 — initial load prompt: no category selected yet */}
-      {formStage === 'essential' && !formData.category && !isAddingCategoryFields && (
-        <div className="flex items-start gap-3 px-4 py-3.5 rounded-xl bg-blue-50 dark:bg-blue-500/10 border border-blue-200 dark:border-blue-500/30 text-sm text-blue-700 dark:text-blue-300">
+      {/* Product Type info banner — shown while category-based field injection is being migrated.
+          Category selection is disabled; ProductType-specific attributes will be injected
+          automatically once backend migrates schema generation to productTypeId routing. */}
+      {formStage === 'essential' && !isAddingCategoryFields && (
+        <div className="flex items-start gap-3 px-4 py-3.5 rounded-xl bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 text-sm text-gray-500 dark:text-gray-400">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="flex-shrink-0 mt-0.5">
             <circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/>
           </svg>
           <p>
-            <span className="font-semibold">Select a product category</span> to load the matching attribute set.
-            Only global fields are shown until a category is chosen.
-          </p>
-        </div>
-      )}
-
-      {/* Category selected but no ProductType assigned — neutral hint */}
-      {formStage === 'category-specific' && selectedCategory && !productTypeId && !isAddingCategoryFields && (
-        <div className="flex items-start gap-3 px-4 py-3.5 rounded-xl bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/30 text-sm text-amber-700 dark:text-amber-300">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="flex-shrink-0 mt-0.5">
-            <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/>
-          </svg>
-          <p>
-            Category-specific fields loaded — no product type assigned to this category yet.
-            Contact your admin to assign a product type for stricter attribute filtering.
+            Fill in the global fields below. Product-type-specific attributes will be available
+            once your admin links this product type to the relevant attribute set.
           </p>
         </div>
       )}

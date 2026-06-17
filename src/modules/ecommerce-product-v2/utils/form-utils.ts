@@ -66,12 +66,6 @@ export function groupFieldsBySection(
   return fieldsBySection;
 }
 
-export interface CategoryValidationResult {
-  category: string;
-  isValid: boolean;
-  warning?: string;
-}
-
 export type BackendUserRole = 'BUSINESS_USER' | 'ADMIN' | 'DEVELOPER';
 
 // ============================================================================
@@ -167,59 +161,6 @@ export const getSectionMetadata = (sectionKey: string): SectionMetadata => {
     description: undefined,
     order: 999
   };
-};
-
-// ============================================================================
-// CATEGORY VALIDATION
-// ============================================================================
-
-export const KNOWN_CATEGORIES = [
-  'electronics',
-  'clothing',
-  'books',
-  'home-garden',
-  'sports',
-  'automotive',
-  'health-beauty',
-  'toys-games',
-  'food-beverage',
-  'general'
-] as const;
-
-export type KnownCategory = typeof KNOWN_CATEGORIES[number];
-
-export const validateProductCategory = (
-  category: string,
-  assignedCategories: string[] = [],
-  organizationDefaultCategory: string = 'general'
-): CategoryValidationResult => {
-  if (!category || category.trim() === '') {
-    return {
-      category: organizationDefaultCategory,
-      isValid: true,
-      warning: 'No category specified, using organization default'
-    };
-  }
-
-  const normalizedCategory = category.toLowerCase().trim();
-
-  if (assignedCategories.length > 0 && !assignedCategories.includes(normalizedCategory)) {
-    return {
-      category: assignedCategories[0] || organizationDefaultCategory,
-      isValid: false,
-      warning: `Access denied to category '${category}'. Using assigned category instead.`
-    };
-  }
-
-  if (!KNOWN_CATEGORIES.includes(normalizedCategory as KnownCategory)) {
-    return {
-      category: normalizedCategory,
-      isValid: true,
-      warning: `Unknown category '${category}' - may have limited field support`
-    };
-  }
-
-  return { category: normalizedCategory, isValid: true };
 };
 
 // ============================================================================

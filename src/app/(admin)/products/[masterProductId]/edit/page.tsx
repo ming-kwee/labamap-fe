@@ -45,7 +45,10 @@ export default function EditProductPage({ params }: Props) {
         price:         detail.basePrice  ?? undefined,
         currency:      detail.currency   ?? undefined,
         description:   detail.description ?? undefined,
-        category:      detail.categorySlug ?? detail.categoryName ?? detail.categoryId ?? undefined,
+        // category: intentionally omitted — product_categories removed (2026-06-16).
+        // Category-specific schema fields (brand, OS, storage, etc.) will not appear
+        // in edit mode until backend migrates /form-schema/generate to accept productTypeId.
+        // Tracked in: docs/02-api-reference/14-product-categories-migration-backend.md §Sprint 1
         // Map to both the schema field name AND the legacy key so either is pre-filled
         mainImage:     detail.imageUrl   ?? undefined,
         imageUrl:      detail.imageUrl   ?? undefined,

@@ -94,7 +94,6 @@ export {
   getSectionMetadata,
   groupFieldsBySection,
   mapUserRole,
-  validateProductCategory,
   normalizeSectionKey,
 } from './utils/form-utils';
 

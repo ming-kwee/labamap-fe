@@ -16,8 +16,6 @@ export interface MasterProduct {
   organizationId: string;
   name: string;
   sku?: string | null;
-  categoryId?: string | null;
-  categoryName?: string | null;
   basePrice?: number | null;
   currency?: string | null;
   imageUrl?: string | null;
@@ -43,8 +41,7 @@ export interface MasterProductListParams {
   page?: number;
   size?: number;
   q?: string;
-  categoryId?: string;
-  /** Phase 3: filter by tags (AND logic — all tags must match) */
+  /** Filter by tags (AND logic — all tags must match) */
   tags?: string[];
   channelType?: string;
   channelStatus?: ChannelSyncStatus | "ALL";
@@ -100,16 +97,10 @@ export interface MasterProductDetail {
   organizationId: string;
   name: string;
   sku?: string | null;
-  categoryId?: string | null;
-  categoryName?: string | null;
   basePrice?: number | null;
   currency?: string | null;
   imageUrl?: string | null;
   description?: string | null;
-  /** Original category slug stored in productAttributes */
-  categorySlug?: string | null;
-  /** Resolved MongoDB ObjectId of the product category — populated by backend since 2026-05-30 */
-  categoryObjectId?: string | null;
   tags?: string[] | null;
   images?: string[] | null;
   variantCount: number;

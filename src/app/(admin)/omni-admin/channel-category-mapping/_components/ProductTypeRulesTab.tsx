@@ -5,6 +5,7 @@ import Link from "next/link";
 import type { ProductType } from "../../product-types/_types/product-type";
 import { ProductTypeService } from "../../product-types/_services/product-type.service";
 import type { TaxonomyCategory } from "../_types/channel-mapping";
+import { isImportCapable } from "../_types/channel-mapping";
 import type { ChannelStoreConnection } from "@/modules/ecommerce-product-v2/step2-channel-fields/types/channelStore";
 import { CategoryBrowseModal } from "./CategoryBrowseModal";
 
@@ -65,6 +66,14 @@ export function ProductTypeRulesTab({ stores, storesLoading, orgId }: Props) {
     }, {}), [stores]);
   const channelTypes = useMemo(() => Object.keys(channelMap), [channelMap]);
 
+  // Stores that are connected but excluded from Channel Rules (import-capable: Wix, WooCommerce, Etsy).
+  // These use flat merchant collections, not a browsable category tree.
+  const excludedImportStores = useMemo(() =>
+    stores.filter(s =>
+      !channelMap[s.channelType] &&
+      (s.importCapable === true || (s.importCapable == null && isImportCapable(s.channelType)))
+    ), [stores, channelMap]);
+
   const [productTypes, setProductTypes] = useState<ProductType[]>([]);
   const [loading, setLoading]           = useState(true);
   const [error, setError]               = useState<string | null>(null);
@@ -100,6 +109,7 @@ export function ProductTypeRulesTab({ stores, storesLoading, orgId }: Props) {
         categoryId:       node.id,
         categoryName:     node.name,
         categoryFullPath: path.map(n => n.name).join(" › "),
+        isLeaf:           node.isLeaf,
       });
       setProductTypes(prev => prev.map(p => p.id === updated.id ? updated : p));
       showToast("Default saved");
@@ -126,19 +136,50 @@ export function ProductTypeRulesTab({ stores, storesLoading, orgId }: Props) {
 
   // ── No eligible channels ───────────────────────────────────────────────────
   if (!loading && !storesLoading && channelTypes.length === 0) {
+    const hasImportOnlyStores = excludedImportStores.length > 0;
+
     return (
-      <div className="flex flex-col items-center justify-center py-24 px-6 text-center">
-        <div className="w-14 h-14 rounded-2xl bg-gray-100 dark:bg-gray-800 flex items-center justify-center mb-4 text-2xl">🔌</div>
-        <h3 className="text-base font-semibold text-gray-900 dark:text-white mb-1">No eligible stores connected</h3>
-        <p className="text-sm text-gray-500 dark:text-gray-400 max-w-xs leading-relaxed mb-6">
-          Connect Shopee, Amazon, TikTok, eBay, Lazada, or Shopify to set channel category defaults per ProductType.
-        </p>
-        <Link
-          href="/channels/stores"
-          className="inline-flex items-center gap-2 px-4 py-2.5 text-sm font-semibold bg-brand-500 hover:bg-brand-600 text-white rounded-xl transition-colors shadow-sm"
-        >
-          Connect a store →
-        </Link>
+      <div className="flex flex-col items-center justify-center py-20 px-6 text-center">
+        <div className="w-14 h-14 rounded-2xl bg-gray-100 dark:bg-gray-800 flex items-center justify-center mb-4 text-2xl">
+          {hasImportOnlyStores ? "🏪" : "🔌"}
+        </div>
+
+        {hasImportOnlyStores ? (
+          <>
+            <h3 className="text-base font-semibold text-gray-900 dark:text-white mb-2">
+              Connected stores don't support Channel Rules
+            </h3>
+            <p className="text-sm text-gray-500 dark:text-gray-400 max-w-sm leading-relaxed mb-2">
+              {excludedImportStores.map(s => s.storeName).join(", ")}{" "}
+              {excludedImportStores.length === 1 ? "uses" : "use"} flat collections,
+              not a hierarchical category tree.
+            </p>
+            <p className="text-sm text-gray-500 dark:text-gray-400 max-w-sm leading-relaxed mb-6">
+              Channel Rules works with <strong className="text-gray-700 dark:text-gray-300">Shopee, Amazon, TikTok, eBay, Lazada, and Shopify</strong> — channels
+              with a fixed category taxonomy. For Wix / WooCommerce / Etsy, collections
+              are assigned per product in <strong className="text-gray-700 dark:text-gray-300">Step 2</strong>.
+            </p>
+            <Link
+              href="/channels/stores"
+              className="inline-flex items-center gap-2 px-4 py-2.5 text-sm font-semibold bg-brand-500 hover:bg-brand-600 text-white rounded-xl transition-colors shadow-sm"
+            >
+              Connect an eligible store →
+            </Link>
+          </>
+        ) : (
+          <>
+            <h3 className="text-base font-semibold text-gray-900 dark:text-white mb-1">No eligible stores connected</h3>
+            <p className="text-sm text-gray-500 dark:text-gray-400 max-w-xs leading-relaxed mb-6">
+              Connect Shopee, Amazon, TikTok, eBay, Lazada, or Shopify to set channel category defaults per ProductType.
+            </p>
+            <Link
+              href="/channels/stores"
+              className="inline-flex items-center gap-2 px-4 py-2.5 text-sm font-semibold bg-brand-500 hover:bg-brand-600 text-white rounded-xl transition-colors shadow-sm"
+            >
+              Connect a store →
+            </Link>
+          </>
+        )}
       </div>
     );
   }
@@ -147,13 +188,27 @@ export function ProductTypeRulesTab({ stores, storesLoading, orgId }: Props) {
     <div className="px-6 py-4">
 
       {/* Description */}
-      <p className="text-sm text-gray-500 dark:text-gray-400 mb-4 max-w-2xl leading-relaxed">
+      <p className="text-sm text-gray-500 dark:text-gray-400 mb-3 max-w-2xl leading-relaxed">
         Default channel categories per ProductType — these pre-fill the CategoryTreePicker in Step 2.
         Merchants can override per product. Manage ProductTypes at{" "}
         <Link href="/omni-admin/product-types" className="text-brand-600 dark:text-brand-400 hover:underline">
           Product Types
         </Link>.
       </p>
+
+      {/* Info: import-capable stores excluded from this view */}
+      {excludedImportStores.length > 0 && (
+        <div className="flex items-start gap-2 px-3 py-2.5 mb-4 rounded-lg bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 text-xs text-gray-500 dark:text-gray-400 max-w-2xl">
+          <AlertIcon />
+          <span>
+            <strong className="text-gray-600 dark:text-gray-300">
+              {excludedImportStores.map(s => `${s.storeName} (${s.channelType})`).join(", ")}
+            </strong>{" "}
+            {excludedImportStores.length === 1 ? "uses" : "use"} flat collections, not a category tree
+            — not shown here. Collections are assigned per product in Step 2.
+          </span>
+        </div>
+      )}
 
       {/* Error */}
       {error && (
@@ -239,14 +294,21 @@ export function ProductTypeRulesTab({ stores, storesLoading, orgId }: Props) {
                               {isSaving ? "Saving…" : "Clearing…"}
                             </span>
                           ) : def ? (
-                            <div className="group/cell inline-flex items-center gap-1 max-w-[140px]">
-                              <button
-                                onClick={() => setBrowseTarget({ pt, channelType: ct })}
-                                title={def.categoryFullPath || def.categoryName}
-                                className="text-[11px] text-gray-700 dark:text-gray-300 truncate hover:text-brand-600 dark:hover:text-brand-400 transition-colors text-left leading-snug"
-                              >
-                                {def.categoryFullPath || def.categoryName}
-                              </button>
+                            <div className="group/cell inline-flex items-center gap-1 max-w-[150px]">
+                              <div className="flex flex-col items-start min-w-0">
+                                <button
+                                  onClick={() => setBrowseTarget({ pt, channelType: ct })}
+                                  title={def.isLeaf ? def.categoryFullPath : `Starting point — merchant picks leaf in Step 2\n${def.categoryFullPath}`}
+                                  className="text-[11px] text-gray-700 dark:text-gray-300 truncate max-w-[120px] hover:text-brand-600 dark:hover:text-brand-400 transition-colors text-left leading-snug"
+                                >
+                                  {def.categoryFullPath || def.categoryName}
+                                </button>
+                                {!def.isLeaf && (
+                                  <span className="text-[9px] px-1 py-0.5 rounded bg-amber-50 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400 font-medium leading-none mt-0.5">
+                                    hint ↙
+                                  </span>
+                                )}
+                              </div>
                               <button
                                 onClick={() => handleClear(pt, ct)}
                                 title="Clear default"
@@ -276,9 +338,14 @@ export function ProductTypeRulesTab({ stores, storesLoading, orgId }: Props) {
 
       {/* Legend */}
       {!loading && productTypes.length > 0 && (
-        <p className="mt-3 text-[11px] text-gray-400 dark:text-gray-500">
-          Click a cell to set or change the default · hover a filled cell and click trash to clear
-        </p>
+        <div className="mt-3 flex items-center gap-4 text-[11px] text-gray-400 dark:text-gray-500 flex-wrap">
+          <span>Click a cell to set or change the default</span>
+          <span className="flex items-center gap-1">
+            <span className="px-1 py-0.5 rounded bg-amber-50 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400 font-medium text-[9px]">hint ↙</span>
+            mid-level starting point — merchant picks leaf in Step 2
+          </span>
+          <span>hover filled cell → trash to clear</span>
+        </div>
       )}
 
       {/* Category browse modal */}
@@ -289,6 +356,7 @@ export function ProductTypeRulesTab({ stores, storesLoading, orgId }: Props) {
           orgId={orgId}
           onSelect={handleSelect}
           onClose={() => setBrowseTarget(null)}
+          requireLeafOnly={false}
         />
       )}
 

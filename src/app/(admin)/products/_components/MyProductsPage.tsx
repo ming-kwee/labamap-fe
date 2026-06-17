@@ -511,7 +511,6 @@ export default function MyProductsPage() {
                 </th>
                 <th className="px-3 py-3 w-14" />
                 <th className="px-4 py-3 text-[11px] font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Product</th>
-                <th className="px-4 py-3 text-[11px] font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide hidden md:table-cell">Category</th>
                 <th className="px-4 py-3 text-[11px] font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide hidden sm:table-cell">
                   Publish status
                 </th>
@@ -606,12 +605,6 @@ export default function MyProductsPage() {
                     )}
                   </td>
 
-                  {/* Category */}
-                  <td className="px-4 py-3 hidden md:table-cell">
-                    <span className="text-sm text-gray-600 dark:text-gray-400 truncate max-w-[150px] block">
-                      {product.categoryName ?? <span className="text-gray-300 dark:text-gray-600">—</span>}
-                    </span>
-                  </td>
 
                   {/* Publish status — per-store badges */}
                   <td className="px-4 py-3 hidden sm:table-cell">

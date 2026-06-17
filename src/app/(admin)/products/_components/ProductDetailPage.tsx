@@ -406,7 +406,6 @@ function MasterDataPanel({
       <div className="space-y-3">
         <Field label="Name" value={product.name} />
         {product.sku && <Field label="SKU" value={product.sku} mono />}
-        {product.categoryName && <Field label="Category" value={product.categoryName} />}
         {product.basePrice != null && (
           <Field
             label="Base Price"
@@ -669,7 +668,6 @@ export default function ProductDetailPage({ masterProductId }: { masterProductId
             <h1 className="text-2xl font-bold text-gray-900 dark:text-white truncate">{product.name}</h1>
             <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5 flex flex-wrap items-center gap-x-2">
               {product.sku && <span>SKU: {product.sku}</span>}
-              {product.categoryName && <><span className="text-gray-300 dark:text-gray-600">·</span><span>{product.categoryName}</span></>}
               {product.updatedAt && <><span className="text-gray-300 dark:text-gray-600">·</span><span>Edited {formatRelativeTime(product.updatedAt)}</span></>}
             </p>
           </div>

@@ -50,7 +50,6 @@ const merchantNavItems: NavItem[] = [
     name: "Channel Platform",
     subItems: [
       { name: "Channel Stores", path: "/channels/stores", pro: false },
-      { name: "My Categories", path: "/channels/categories", pro: false },
       { name: "Channel Category Mapping", path: "/omni-admin/channel-category-mapping", pro: false },
 
       { name: "Inventory Sync", path: "/channels/inventory", pro: false },
@@ -72,7 +71,6 @@ const adminNavItems: NavItem[] = [
     subItems: [
       { name: "Product Types", path: "/omni-admin/product-types", pro: false },
       { name: "Master Attributes", path: "/omni-admin/master-attributes", pro: false },
-      { name: "Product Categories", path: "/omni-admin/product-categories", pro: false },
     ],
   },
   {

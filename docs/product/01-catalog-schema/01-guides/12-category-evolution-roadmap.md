@@ -203,7 +203,7 @@ bridge yang lebih ringan dan channel-agnostic. Asumsi storefront B dihapus.
 
 ## Phase 3 — Hapus Asumsi C: "Rigid Hierarchy = Organizational Tool Utama"
 
-**Status: Frontend complete (2026-06-15). Backend endpoints pending — see `02-api-reference/10-category-transition-backend.md §Phase 3`.**
+**Status: Frontend complete dan product_categories UI dihapus (2026-06-16). Backend migration pending — see `02-api-reference/14-product-categories-migration-backend.md`.**
 
 **Asumsi storefront yang dihapus:**
 > "Platform category tree harus dalam, hierarkis, dan dikurasi dengan baik karena ia adalah
