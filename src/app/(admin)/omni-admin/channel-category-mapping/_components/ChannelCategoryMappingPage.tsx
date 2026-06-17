@@ -46,7 +46,7 @@ export default function ChannelCategoryMappingPage() {
             <LinkIcon />
           </div>
           <div>
-            <h1 className="text-lg font-bold text-gray-900 dark:text-white leading-tight">Channel Category Mapping</h1>
+            <h1 className="text-lg font-bold text-gray-900 dark:text-white leading-tight">Channel Category Rules</h1>
             <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
               {stores.length} store{stores.length !== 1 ? "s" : ""} connected
             </p>

@@ -249,10 +249,12 @@ db.channel_category_api_config.updateMany({}, { $unset: { "importWizardConfig": 
 Migration ini membuat indexes pada `channel_category_cache` (bukan `channel_category_mappings`).
 `channel_category_cache` masih digunakan oleh taxonomy browser endpoint. Pertahankan.
 
-### `PlatformCategoryTemplateDataLoader` — JANGAN HAPUS
+### `PlatformCategoryTemplateDataLoader` — HAPUS
 
-Merchant categories (`/channels/categories`) masih ada. Template seeder masih dibutuhkan
-untuk onboarding merchant baru.
+~~Merchant categories (`/channels/categories`) masih ada.~~ **UPDATE 2026-06-17:** Merchant
+categories juga sudah dihapus. DataLoader sudah dikonversi no-op (Sprint 2 doc 14).
+Lihat `15-platform-admin-components-cleanup.md` untuk rekomendasi lengkap penghapusan
+`PlatformCategoryTemplateAdminController` + collection archiving.
 
 ---
 

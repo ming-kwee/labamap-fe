@@ -86,8 +86,8 @@ Platform Operator (internal tooling / Postman)
 | `channel_category_mappings` | `ChannelCategoryMappingAdminController` | `/admin/channel-category-mappings` |
 | `channel_field_value_mappings` | `ChannelMappingAdminController` | `/admin/channel-mappings` |
 | `ecommerce_master_attributes` | `MasterAttributeAdminController` | `/admin/master-attributes` |
-| `platform_category_templates` | `PlatformCategoryTemplateAdminController` | `/admin/platform-category-templates` |
-| `product_categories` | `ProductCategoryAdminController` | `/admin/product-categories` |
+| ~~`platform_category_templates`~~ | ~~`PlatformCategoryTemplateAdminController`~~ | ~~`/admin/platform-category-templates`~~ — **DIHAPUS 2026-06-17**, frontend removed, DataLoader no-op, backend cleanup di `15-platform-admin-components-cleanup.md` |
+| ~~`product_categories`~~ | ~~`ProductCategoryAdminController`~~ | ~~`/admin/product-categories`~~ — **DIHAPUS 2026-06-16**, migrated to tags + ProductType, lihat `14-product-categories-migration-backend.md` |
 | `product_types` | `ProductTypeAdminController` | `/admin/product-types` |
 
 ---

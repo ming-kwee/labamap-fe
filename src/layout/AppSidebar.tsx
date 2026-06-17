@@ -50,7 +50,7 @@ const merchantNavItems: NavItem[] = [
     name: "Channel Platform",
     subItems: [
       { name: "Channel Stores", path: "/channels/stores", pro: false },
-      { name: "Channel Category Mapping", path: "/omni-admin/channel-category-mapping", pro: false },
+      { name: "Channel Category Rules", path: "/omni-admin/channel-category-mapping", pro: false },
 
       { name: "Inventory Sync", path: "/channels/inventory", pro: false },
     ],
@@ -89,7 +89,6 @@ const adminNavItems: NavItem[] = [
       { name: "Channel Category API Configs", path: "/platform-admin/channel-category-api-configs", pro: false },
       // ── Onboarding setup (set once per new channel) ───────────────────────
       { name: "Channel Category Schemas", path: "/platform-admin/channel-category-schemas", pro: false },
-      { name: "Category Templates", path: "/platform-admin/category-templates", pro: false },
     ],
   },
   {
