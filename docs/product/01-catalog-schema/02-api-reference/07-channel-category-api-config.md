@@ -35,7 +35,7 @@ every application start.
 | `channelType` | String | Channel identifier, e.g. `"shopify"`, `"wix"`, `"lazada"`. Unique index. |
 | `label` | String | Human-readable name for logging and admin display. |
 | `enabled` | Boolean | If `false`, `GenericCategoryService` and `CategorySyncJob` skip this channel. |
-| `taxonomyEnabled` | Boolean | `true` = channel has a fixed, channel-owned global taxonomy tree fetched via **GraphQL** (currently Shopify only). Read by `ChannelTaxonomyService`. Independent of `importCapable`; Shopify is both. |
+| `taxonomyEnabled` | Boolean | `true` = channel has a fixed, channel-owned global taxonomy tree cached in `channel_taxonomy_cache` (shared across all stores). Supports `GRAPHQL` strategy (Shopify) and `REST` strategy (eBay). Read by `ChannelTaxonomyService`. Independent of `importCapable`; Shopify is both. |
 | `treeCapable` | Boolean | `true` = channel has a platform-defined category tree browseable via REST (`GenericCategoryService`). Covers Shopee, Amazon, TikTok, eBay, Lazada. |
 
 ---
@@ -159,16 +159,23 @@ how to map raw API response items to `ImportPreviewItem` and `ImportableCollecti
 
 Only populated when `taxonomyEnabled = true`. Tells `ChannelTaxonomyService` how to fetch
 and cache the channel's global taxonomy tree into `channel_taxonomy_cache`.
-`null` for all REST-based channels (Lazada, TikTok, Shopee, etc.) — they use `GenericCategoryService` instead.
+`null` for per-store channels (Lazada, TikTok, Shopee) — those use `channel_category_cache` via `GenericCategoryService`.
+
+Two fetch strategies are supported:
+
+**`GRAPHQL`** (e.g. Shopify): Two-phase fetch — Phase 1 fetches root nodes synchronously via `graphqlQuery`; Phase 2 BFS fetches child nodes in background batches via `batchFetchQuery`.
+
+**`REST`** (e.g. eBay): Delegates entirely to `GenericCategoryService.fetchFullTreeWithCreds()` which reads `treeApiConfig` from the same document. All nodes fetched in one call; `childrenIds`, `ancestorIds`, `isLeaf`, `isRoot`, and `level` are derived from the flat node list. No Phase 2 BFS needed.
 
 | Field | Type | Description |
 |---|---|---|
-| `fetchStrategy` | String | `"GRAPHQL"` or `"REST"`. Only `GRAPHQL` is implemented; `REST` reserved for future channels. |
-| `graphqlQuery` | String | Full GraphQL query string. Must use `$cursor: String` variable for cursor pagination. |
-| `apiVersion` | String | API version string substituted into `apiPath` as `{apiVersion}`. |
-| `apiPath` | String | URL path template, e.g. `"/admin/api/{apiVersion}/graphql.json"`. |
-| `dataPath` | String | Dot-notation to the paginated container in the response. The container must have `nodes[]` and `pageInfo.hasNextPage` + `pageInfo.endCursor`. |
-| `minCacheSize` | Long | Minimum node count to consider the cache complete. A partial cache (below this threshold) triggers a full re-fetch. Default `500` when null. Shopify has ~10,000 nodes. |
+| `fetchStrategy` | String | `"GRAPHQL"` or `"REST"`. |
+| `graphqlQuery` | String | *GRAPHQL only.* Full GraphQL query string for Phase 1 root fetch. Must use `$cursor: String` variable. |
+| `batchFetchQuery` | String | *GRAPHQL only.* GraphQL query for Phase 2 BFS batch node fetch. Must accept `$ids: [ID!]!`. If null, Phase 2 is skipped — only root nodes cached. |
+| `apiVersion` | String | *GRAPHQL only.* API version string substituted into `apiPath` as `{apiVersion}`. |
+| `apiPath` | String | *GRAPHQL only.* URL path template, e.g. `"/admin/api/{apiVersion}/graphql.json"`. |
+| `dataPath` | String | *GRAPHQL only.* Dot-notation to the paginated container in the response. Container must have `nodes[]` and `pageInfo.hasNextPage` + `pageInfo.endCursor`. |
+| `minCacheSize` | Long | Minimum node count to consider the cache complete. Partial cache (below threshold) triggers a background re-fetch. Default `500` when null. Shopify ~10K nodes, eBay ~25K nodes. |
 
 ---
 

@@ -265,9 +265,21 @@ AES-256-GCM dengan IV per-credential, stored sebagai `AES256GCM:<base64>` — im
 
 7-service pipeline dengan JOLT transformation → post-processing → channel-specific wrapping adalah arsitektur yang tepat untuk multi-channel publishing. Complexity di sini adalah *essential complexity* (tidak bisa dihindari).
 
-### 4.5 Category Transition (Phase 1–6)
+### 4.5 Category System (Phase 1–6 + Generic Overhaul 2026-06-18)
 
 Evolusi dari storefront pattern ke pure Ginee-like channel management sudah di-execute dengan benar. Phase 5 (productType-based mapping) dan Phase 6 (dedicated channelCategoryId field) adalah keputusan arsitektur yang tepat.
+
+**Pembaruan 2026-06-18 — Generalisasi taxonomy dan category cache:**
+
+Sistem kategori sekarang sepenuhnya data-driven dan channel-agnostic:
+
+- **Dua jalur routing** (taxonomy cache vs category cache) dikontrol oleh `taxonomyEnabled` di `channel_category_api_config` — tidak ada hardcoded `if channelType == "shopify"`
+- **Taxonomy system** (untuk fixed global trees) sekarang mendukung dua strategy: GRAPHQL (Shopify: Phase 1 roots + Phase 2 BFS) dan REST (eBay: delegate ke `GenericCategoryService`)
+- **Shopee fixes:** `display_category_name` (bukan `category_name`), normalisasi `parentId="0"` → `null`, platform `partnerId` injection otomatis dari `OAuthAppConfig`, sandbox URL configurable via `SHOPEE_API_BASE_URL`
+- **`gid://` check** di slug resolution digeneralisasi ke `"://"` — tidak Shopify-specific
+- **`batchFetchQuery`** dipindah dari hardcoded Java ke `TaxonomyFetchConfig` — GRAPHQL BFS sekarang configurable per channel
+
+Lihat `docs/product/08-channel-category-tree/` untuk dokumentasi lengkap.
 
 ### 4.6 Reactive Architecture
 

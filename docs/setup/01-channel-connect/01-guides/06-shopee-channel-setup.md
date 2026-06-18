@@ -600,3 +600,18 @@ sistem untuk proses publish, bukan field data produk.
 - API Reference Step 2: [`../02-api-reference/04-step2-schema-and-channel-data.md`](../02-api-reference/04-step2-schema-and-channel-data.md)
 - Credential Schema: [`02-per-channel-credentials.md`](02-per-channel-credentials.md)
 - OAuth Flow: [`03-oauth-flow.md`](03-oauth-flow.md)
+- **Category Tree (Shopee specifics):** [`../../../../docs/product/08-channel-category-tree/01-guides/02-shopee-integration.md`](../../../../docs/product/08-channel-category-tree/01-guides/02-shopee-integration.md)
+
+---
+
+## Catatan Category Tree (2026-06-18)
+
+Shopee category tree memiliki beberapa hal khusus yang perlu diperhatikan:
+
+- **Field nama:** `display_category_name` (bukan `category_name`)
+- **Root nodes:** ditandai `parent_category_id = 0` di API, disimpan sebagai `parentId = null` di cache
+- **`partner_id`:** platform-level credential, **tidak perlu** disimpan di store credentials — diinjeksi otomatis dari `app.oauth.channels.shopee.client-id`
+- **Sandbox URL:** `https://openplatform.sandbox.test-stable.shopee.sg` — set via env var `SHOPEE_API_BASE_URL`
+- **Production URL:** `https://partner.shopeemobile.com` (default kalau env var tidak di-set)
+
+Saat ganti antara sandbox dan production: hapus `channel_category_cache` untuk store yang bersangkutan karena data lama mungkin dari environment yang berbeda.

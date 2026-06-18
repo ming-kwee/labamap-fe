@@ -203,6 +203,28 @@ Module root (backend): `com.labamap.labamapomnichannelbe4fe.publishing`
 
 ---
 
+## 08-channel-category-tree
+
+Channel category tree system: generic data-driven architecture untuk browsing dan searching kategori dari berbagai channel marketplace. Mencakup dua jalur (taxonomy cache untuk fixed global trees vs category cache per-toko), HMAC signing untuk Shopee, dan cara menambah channel baru tanpa Java code.
+
+Module root (backend): `com.labamap.labamapomnichannelbe4fe.channel.category`
+
+### 01-guides/
+
+| File | What you learn |
+|------|---------------|
+| `01-architecture.md` | Two-path routing (taxonomy vs category cache), config fields, cara menambah channel baru |
+| `02-shopee-integration.md` | HMAC-SHA256 signing, sandbox vs production URL, `partnerId` injection, bug fixes 2026-06-18 |
+| `03-taxonomy-system.md` | Taxonomy cache untuk fixed global trees (Shopify GRAPHQL + eBay REST), Phase 1/2 BFS, cara menambah taxonomy channel |
+
+### 02-api-reference/
+
+| File | What it covers |
+|------|---------------|
+| `01-endpoints.md` | Category tree navigation + search + attributes endpoints, `channel_category_cache` + `channel_taxonomy_cache` schemas, config summary per channel, MongoDB maintenance guide |
+
+---
+
 ## Implementation Status (as of 2026-04-29)
 
 | Phase | What it introduced | Status |
