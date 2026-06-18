@@ -203,9 +203,10 @@ juga akan di-archive (doc 14), ini akan resolved secara otomatis.
 - Tidak ada hubungan dengan `product_categories` atau `platform_category_templates`
 
 ### `platform-admin/channel-category-schemas` — PERTAHANKAN
-- Per-channel per-category-slug API schema extensions
-- Deep-merged onto base APIs during JOLT spec generation
-- Tidak ada hubungan dengan platform categories
+- Per-channel per-category-slug API schema extensions untuk APM target schema
+- Deep-merged onto base `apiSchema` di `ChannelSchemaService.generateComplexTargetSchema()`
+- Category slugs yang dipakai ("electronics", "clothing") adalah APM-level — bukan dari `product_categories`
+- Tidak ada hubungan dengan platform categories yang dihapus
 
 ### `omni-admin/channel-category-mapping` (seluruh fitur) — PERTAHANKAN
 - **ProductTypeRulesTab** adalah core fitur untuk pre-fill `CATEGORY_TREE` di Step 2
@@ -216,24 +217,162 @@ juga akan di-archive (doc 14), ini akan resolved secara otomatis.
 
 ---
 
-## 4. Urutan Eksekusi yang Disarankan
+## Analisis Koleksi MongoDB yang Diverifikasi Aktif (2026-06-17)
+
+Setelah penghapusan `product_categories` dan `platform_category_templates`, dilakukan analisis
+menyeluruh terhadap koleksi-koleksi yang namanya mengandung "category" untuk memastikan
+tidak ada yang terdampak.
+
+### `channel_taxonomy_cache` — ✅ Aktif, tidak terkait
+
+- **Diisi oleh:** `ChannelTaxonomyService.fetchAndCacheTaxonomy()` via BFS dari Shopify API
+- **Dibaca oleh:** `CategorySearchService` (Shopify taxonomy path), `CategoryCacheServiceImpl`, `ChannelCategoryImportService`
+- **Fungsi:** Cache global Shopify product taxonomy (~10k nodes), TTL 7 hari
+- **Hubungan dengan product_categories:** Tidak ada. Ini adalah Shopify's own taxonomy, bukan merchant category tree.
+
+### `channel_category_cache` — ✅ Aktif, tidak terkait
+
+- **Diisi oleh:** `CategorySyncJob` (scheduled) + `CategoryCacheServiceImpl` (lazy on cache-miss)
+- **Dibaca oleh:** `CategoryController`, `MerchantDataController`, `ChannelProductDataService`, `ChannelStepSchemaService`, `CategorySearchService`
+- **Fungsi:** Per-store channel category tree untuk TikTok, Lazada, Shopee, eBay, Amazon — TTL 24 jam
+- **Hubungan dengan product_categories:** Tidak ada. Ini adalah channel-side taxonomy untuk `CATEGORY_TREE` picker.
+
+### `channel_category_api_schemas` — ✅ Aktif, tidak terkait
+
+- **Diisi oleh:** `ChannelCategoryApiSchemaDataLoader` @Order(115)
+- **Dibaca oleh:** `ChannelSchemaService.generateComplexTargetSchema()` → APM + PublishAnalysisService + ChannelController
+- **Fungsi:** Schema extension per `(channelType × categorySlug)` untuk memperkaya JOLT target schema dengan field kategori-spesifik (Amazon Electronics: ModelNumber, eBay Clothing: ItemSpecifics)
+- **Category slugs:** Generic APM slugs ("electronics", "clothing") — bukan dari `product_categories`
+- **Hubungan dengan product_categories:** Tidak ada.
+- **Side effect:** Setiap perubahan dokumen otomatis invalidate `channel_jolt_specs` via `deleteByChannelIdAndCategoryId()`
+
+### `channel_configurations.categoryRequirements` — ✅ Aktif, tidak terkait
+
+- **Dibaca oleh:** `ChannelStepSchemaService` — menambah required/recommended fields di Step 2 form
+- **Sumber categorySlug:** `ChannelProductData.channelData["categoryId"]` (Step 2 channel selection) atau Path B taxonomy resolution — bukan dari deprecated `MasterProductData.categoryId`
+- **Fungsi:** Menambah field wajib/rekomendasi per kategori channel (e.g., Shopify Clothing: material, care_instructions, size_type)
+- **Seeded oleh:** `ChannelCategoryRequirementsMigration` @Order(111) untuk Shopify, WIX, eBay
+- **Hubungan dengan product_categories:** Tidak ada. Driven by channel-side category picker.
+- **Referensi lengkap:** `setup/02-platform-admin/02-api-reference/05-channel-configurations.md` § `categoryRequirements`
+
+### `channel_configurations.fieldBoosts[].condition` — ✅ Aktif, tidak terkait
+
+- **Format:** `"condition": "category=clothing"` atau `"category=electronics|tech"`
+- **Dievaluasi oleh:** `KnowledgeBasedFieldMatchingService.matchesCondition()` selama APM
+- **categorySlug sumber:** Dari `PublishAnalysisService.request.getCategoryId()` (APM request) — bukan `product_categories`
+- **Hubungan dengan product_categories:** Tidak ada.
+
+---
+
+## 4. Urutan Eksekusi
 
 ```
-Sprint segera (dapat dilakukan parallel dengan Sprint 3 doc 14):
-  [ ] Tambahkan @Deprecated(forRemoval=true) + @Hidden ke PlatformCategoryTemplateAdminController
-  [ ] Monitor satu sprint — pastikan tidak ada WARN log dari endpoints tersebut
+SELESAI (2026-06-17):
+  [x] Hapus PlatformCategoryTemplateAdminController + service + repository + document
+  [x] Hapus semua DataLoader/Seeder yang sudah no-op
+  [x] Hapus OrgProvisioningListener + CategoryProvisioningService
+  [x] Compile bersih — BUILD SUCCESS tanpa error
 
-Sprint berikutnya (setelah monitoring clear):
-  [ ] Hapus PlatformCategoryTemplateAdminController
-  [ ] Hapus PlatformCategoryTemplateService + Repository + Document + Dto classes
-  [ ] Hapus PlatformCategoryTemplateDataLoader (sudah no-op tapi kode masih ada)
-  [ ] Archive platform_category_templates collection
-  [ ] Hapus referensi ke OrgProvisionStatus, ForceProvisionResult di codebase
+Tersisa (manual — MongoDB):
+  [ ] Archive platform_category_templates:
+      db.platform_category_templates.renameCollection("platform_category_templates_archive_20260617")
 ```
 
 ---
 
-## Checklist Ringkasan
+## 5. Koreksi Analisis Frontend — Verifikasi Backend (2026-06-17)
+
+Tiga claim yang dianalisis frontend diverifikasi langsung ke backend source code dan compile check (`mvn compile`: BUILD SUCCESS).
+
+---
+
+### Claim 1 — `productCategory: ''` diabaikan backend ✅ BENAR
+
+`FormSchemaService.resolveCategory()` cek `StringUtils.hasText(productCategory)` — empty string
+langsung ke `Mono.empty()`, tidak ada DB ops. `productTypeId` yang dipakai jika ada.
+Tidak ada side effect dari mengirim empty string ini.
+
+---
+
+### Claim 2 — `'category-specific'` mungkin masih di-return backend ⚠️ SEBAGIAN BENAR — dikoreksi
+
+**Yang sebenarnya terjadi:** Backend **tidak pernah** mengembalikan string `formStage` apapun
+dalam schema response — field ini tidak ada di `DynamicFormSchema`. Stale type `'category-specific'`
+di `form-schema.ts` bukan karena backend return string itu, tapi karena field `formStage` di type
+definition frontend memang tidak di-drive backend sama sekali.
+
+**Bug yang ditemukan backend saat investigasi ini:** `isCategorySpecific` dan `isInitialLoad`
+di `DataDrivenSchemaGenerationService` sebelumnya tidak cek `productTypeId` — keduanya sudah
+diperbaiki bersamaan dengan Sprint 3 backend work.
+
+**Action frontend (Sprint 3):** Hapus `'category-specific'` dari `form-schema.ts` type definitions
+(lines 97, 232) karena memang tidak pernah valid.
+
+```typescript
+// form-schema.ts — HAPUS 'category-specific' dari union:
+formStage?: 'essential' | 'type-specific';  // bukan 'essential' | 'category-specific'
+```
+
+---
+
+### Claim 3 — `assignedCategories` dead code di frontend prop chain ✅ BENAR untuk frontend, TAPI berbeda domain di backend
+
+**Frontend benar:** Prop chain `OrganizationContext → ProductCreatePage → ProductCreateForm →
+useCallback deps` memang dead code — `assignedCategories` tidak dipakai di callback body.
+Boleh dihapus dari prop chain ProductCreateForm saat Sprint 3 cleanup.
+
+**Yang penting dipahami:** `assignedCategories` di backend adalah **RBAC field**, bukan
+`product_categories` field. Dua domain yang berbeda:
+
+| | `product_categories` | `assignedCategories` |
+|---|---|---|
+| **Apa** | Merchant category tree | User permission scope |
+| **Dihapus?** | Ya (2026-06-16) | **Tidak** |
+| **Yang set** | Platform admin / provisioning | Admin set per-user |
+| **Dipakai untuk** | Form routing, attribute scoping | RBAC — user bisa akses category mana |
+| **Backend** | `ProductCategoryDocument` ← dihapus | `OrganizationUser.assignedCategories` ← aktif |
+| **Alur backend** | — | `AuthenticationResponse` → `UserManagementService` → `OrganizationUserService.hasAccess()` |
+
+**Masalah yang tersisa:** Setelah `product_categories` dihapus, nilai di `assignedCategories`
+(slugs seperti `"electronics"`, `"clothing"`) tidak bisa di-resolve ke dokumen apapun lagi.
+`hasAccess()` masih berjalan tapi tidak ada UI untuk assign categories ke user, dan slug
+yang tersimpan tidak merepresentasikan entity yang valid.
+
+**Perlu migrasi ke `assignedProductTypes` — scope sprint tersendiri, tidak blocking Sprint 3.**
+
+---
+
+### Future Sprint — `assignedCategories` → `assignedProductTypes` (RBAC Migration)
+
+Ini **bukan** bagian dari product_categories cleanup Sprint 3/4. Ini adalah RBAC domain migration
+yang perlu direncanakan terpisah.
+
+**Backend scope:**
+```java
+// OrganizationUser.java
+@Deprecated  // akan digantikan assignedProductTypes
+private List<String> assignedCategories = new ArrayList<>();  // category slugs — tidak valid lagi
+
+private List<String> assignedProductTypes = new ArrayList<>();  // NEW — ProductType IDs
+
+// OrganizationUserService.java
+// hasAccess(orgId, userId, categorySlug) → migrasi ke hasAccess(orgId, userId, productTypeId)
+```
+
+**Data migration:**
+```javascript
+// Untuk setiap OrganizationUser yang punya assignedCategories,
+// resolve slug ke ProductType, set assignedProductTypes
+// (membutuhkan mapping slug → ProductType yang mungkin perlu manual curation)
+```
+
+**Frontend scope:** Setelah backend deploy field baru:
+- `AuthContext.ts`: tambah `assignedProductTypes: string[]`
+- `OrganizationContext.ts`: tambah `getAssignedProductTypes()` method
+- Hapus prop chain `assignedCategories` dari `ProductCreatePage → ProductCreateForm`
+- Hapus `assignedCategories` dari `handleSubmit` useCallback deps
+
+---
 
 ```
 Frontend (selesai 2026-06-17):
@@ -243,9 +382,14 @@ Frontend (selesai 2026-06-17):
   [x] Rename page title: "Channel Category Mapping" → "Channel Category Rules"
   [x] Rename sidebar label: "Channel Category Mapping" → "Channel Category Rules"
 
-Backend (rekomendasi):
-  [ ] @Deprecated PlatformCategoryTemplateAdminController + @Hidden dari Swagger
-  [ ] Monitor satu sprint
-  [ ] Hapus controller + service + repository + document + DTOs
-  [ ] Archive platform_category_templates collection
+Backend (selesai 2026-06-17):
+  [x] Hapus PlatformCategoryTemplateAdminController (308 baris, semua endpoints)
+  [x] Hapus PlatformCategoryTemplateDataLoader (sudah no-op sejak Sprint 2, sekarang dihapus)
+  [x] Hapus ExistingOrgCategorySeeder (sudah no-op sejak Sprint 2, sekarang dihapus)
+  [x] Hapus ProductCategoryDataLoader (no-op stub)
+  [x] Hapus OrgProvisioningListener (provisioning org → category tree tidak lagi diperlukan)
+  [x] Hapus CategoryProvisioningService (copies platform_category_templates → product_categories)
+  [x] Hapus PlatformCategoryTemplateRepository
+  [x] Hapus PlatformCategoryTemplateDocument
+  [ ] Archive platform_category_templates collection (MongoDB, jalankan manual)
 ```

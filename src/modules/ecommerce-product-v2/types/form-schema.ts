@@ -94,7 +94,7 @@ export type FieldDisplayLevel =
   | 'basic'
   | 'advanced'
   | 'optional'
-  | 'category-specific';
+  | 'type-specific';
 
 // Form Field Definition
 export interface FormField {
@@ -229,13 +229,13 @@ export interface DynamicFormSchema {
     fieldCount: number;
     requiredFieldCount: number;
     conditionalFieldCount: number;
-    formStage?: 'essential' | 'category-specific';
+    formStage?: 'essential' | 'type-specific';
     variantScopedFields?: string[] | null;
     variantDimensions?: string[] | null;
     // Phase 4 / Section 10 fields
-    isInitialLoad?: boolean;       // true when no productCategory was in the request
-    isCategorySpecific?: boolean;  // true when category was resolved and Phase 4 filter applied
-    selectedCategory?: string | null; // the category slug the backend used
+    isInitialLoad?: boolean;       // true when no productTypeId was in the request
+    isCategorySpecific?: boolean;  // true when productTypeId was resolved and filter applied
+    selectedCategory?: string | null; // the productType slug/id the backend used
   };
 }
 

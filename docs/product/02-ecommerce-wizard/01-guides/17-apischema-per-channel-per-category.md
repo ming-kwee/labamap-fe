@@ -362,6 +362,28 @@ Target schema: {title, description, price, images, variants,
 
 ---
 
+## Catatan: Relevansi Setelah Penghapusan `product_categories` (2026-06-17)
+
+Dianalisis 2026-06-17 setelah `product_categories` dan `platform_category_templates` dihapus.
+
+**Konfirmasi: `channel_category_api_schemas` tidak terpengaruh sama sekali.**
+
+Category slugs yang dipakai sebagai key di koleksi ini ("electronics", "clothing", "food", dll.)
+adalah **APM-level generic slugs** — bukan dari `product_categories` collection:
+
+| Sumber slug | Sebelum | Sesudah |
+|---|---|---|
+| `PublishAnalysisService` | `request.getCategoryId()` — dari JOLT spec / APM request | Sama, tidak berubah |
+| `ChannelController` | `?categoryId=` query param | Sama, tidak berubah |
+| `fieldBoosts.condition` | `"category=electronics"` dievaluasi di APM | Sama, tidak berubah |
+
+Slugs di koleksi ini ("electronics", "clothing") adalah konsep platform-level untuk APM, bukan
+identifiers dari merchant product categories. Kedua sistem sepenuhnya terpisah.
+
+**Referensi:** `15-platform-admin-components-cleanup.md` § Analisis Koleksi MongoDB
+
+---
+
 ## Urutan Implementasi
 
 ### Fase 1 — Infrastruktur (tanpa mengubah perilaku APM) ✅

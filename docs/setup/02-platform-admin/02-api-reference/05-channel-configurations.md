@@ -161,7 +161,97 @@ Get only the `fieldBoosts` list for a channel.
 | `apiWrapperConfig` | Wrong rootKey breaks every publish — must go through code review |
 | `integrationConfig` | Contains credential schemas and auth flows |
 | `oauthConfig` | OAuth endpoints/scopes require app re-authorization |
+| `categoryRequirements` | Seeded by `ChannelCategoryRequirementsMigration` @Order(111); edit via future admin endpoint |
 | `isActive`, `isSystemDefault` | Managed by platform lifecycle, not ops tuning |
+
+---
+
+## `categoryRequirements` — Analisis & Relevansi
+
+> **Dianalisis 2026-06-17** setelah penghapusan `product_categories`. Konfirmasi: **masih aktif dan relevan**.
+
+### Apa itu `categoryRequirements`
+
+Map keyed by generic category slug (`"electronics"`, `"clothing"`, `"food"`, dll.) yang berisi dua list:
+
+- `additionalRequiredFields` — field tambahan yang wajib diisi ketika merchant memilih kategori tersebut di Step 2
+- `additionalRecommendedFields` — field yang direkomendasikan (dengan `recommendationScore`)
+
+```json
+"categoryRequirements": {
+  "clothing": {
+    "additionalRequiredFields": [
+      { "fieldName": "material",          "fieldType": "string" },
+      { "fieldName": "care_instructions", "fieldType": "string" },
+      { "fieldName": "size_type",         "fieldType": "string" }
+    ],
+    "additionalRecommendedFields": [
+      { "fieldName": "fit",           "recommendationScore": 0.75 },
+      { "fieldName": "sleeve_length", "recommendationScore": 0.70 }
+    ]
+  }
+}
+```
+
+### Sumber `categorySlug` — Bukan dari `product_categories`
+
+Ini poin kritis. `ChannelStepSchemaService.resolveCategorySlug()` mengambil slug dari **Step 2 channel data**, bukan dari merchant's `product_categories`:
+
+```
+Priority 1: ChannelProductData.channelData["categoryId"]
+            → slug yang merchant ketik/simpan langsung (e.g. "clothing")
+
+Priority 2: ChannelProductData.channelData["category"]
+            → fallback key
+
+Priority 3: Path B taxonomy resolution
+            → channelAttrsForSchema.categoryPath() = ["Apparel & Accessories", "Clothing"]
+            → slugFromLabel() → CATEGORY_SLUG_ALIASES.get("apparel") = "clothing"
+```
+
+Dengan kata lain: slug datang dari **channel-side category picker** di Step 2 wizard, bukan dari deprecated `product_categories` collection. Penghapusan `product_categories` tidak berdampak pada `categoryRequirements`.
+
+### Flow Lengkap
+
+```
+Merchant pilih CATEGORY_TREE field di Step 2 (e.g. Shopify taxonomy "Shirts")
+  ↓
+ChannelProductData.channelData["categoryId"] = "clothing"   (atau Path B resolved)
+  ↓
+ChannelStepSchemaService.resolveCategorySlug() = "clothing"
+  ↓
+channelConfig.getCategoryRequirements().get("clothing")
+  ↓
+effectiveRequired += [material, care_instructions, size_type]
+effectiveRecommended += [fit, sleeve_length, pattern]
+  ↓
+Section "required" + "recommended" di Step 2 form punya field tambahan
+```
+
+### Channel yang Menggunakan `categoryRequirements`
+
+Seeded oleh `ChannelCategoryRequirementsMigration` @Order(111) untuk:
+
+| Channel | Kategori yang Diseed |
+|---|---|
+| Shopify | clothing, electronics, home-garden, books, toys, sports, beauty, food |
+| WIX | clothing, electronics, home-living, beauty, food |
+| eBay | electronics, clothing, home-garden, sports, automotive, books |
+
+### Hubungan dengan `fieldBoosts.condition`
+
+`fieldBoosts` di dokumen yang sama juga menggunakan format `"condition": "category=clothing"`. Ini dievaluasi oleh `KnowledgeBasedFieldMatchingService.matchesCondition()` selama APM menggunakan `categorySlug` yang sama. Dua mekanisme ini bekerja dari sumber data yang sama — channel-side category selection.
+
+```json
+{
+  "sourcePattern": "material",
+  "targetPattern": ".*material.*",
+  "confidenceBoost": 8,
+  "condition": "category=clothing"
+}
+```
+
+Boost ini hanya aktif ketika product di-analyse dalam konteks kategori "clothing".
 
 ---
 

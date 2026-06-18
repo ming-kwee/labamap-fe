@@ -138,7 +138,13 @@ export function CategoryBrowseModal({ channelType, store, orgId, onSelect, onClo
             </div>
           )}
           {!loading && !error && nodes.length === 0 && (
-            <p className="px-4 py-5 text-sm text-gray-500 dark:text-gray-400">No sub-categories at this level.</p>
+            <div className="px-4 py-5 space-y-1">
+              <p className="text-sm text-gray-500 dark:text-gray-400">
+                {browsePath.length === 0
+                  ? "No categories available — the category cache for this channel may not be seeded yet. Check Platform Admin → Channel Category API Configs and ensure the CategorySyncJob has run."
+                  : "No sub-categories at this level."}
+              </p>
+            </div>
           )}
           {!loading && !error && nodes.map(node => (
             <div
