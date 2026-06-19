@@ -118,18 +118,26 @@ export class ProductApiService {
 
     const responseText = await response.text();
 
-    if (!response.ok) {
+    // Parse body first — backend returns non-2xx (e.g. 400) when validation fails
+    // but the body still contains the structured validation payload.
+    // Only throw when there is no parseable validation result.
+    let result: Record<string, unknown> | null = null;
+    if (responseText && responseText.trim()) {
+      try { result = JSON.parse(responseText); } catch { /* fall through to error */ }
+    }
+
+    if (!response.ok && !(result && result.validation)) {
       let errorMessage = response.statusText;
-      try {
-        const errorData = JSON.parse(responseText);
-        errorMessage = errorData.message || errorData.error || JSON.stringify(errorData);
-      } catch {
+      if (result) {
+        const r = result as Record<string, unknown>;
+        errorMessage = (r.message as string) || (r.error as string) || response.statusText;
+      } else {
         errorMessage = responseText || response.statusText;
       }
       throw new Error(`Enhanced validation failed: ${errorMessage}`);
     }
 
-    if (!responseText || responseText.trim() === '') {
+    if (!result) {
       return {
         valid: true,
         message: 'Validation passed (empty response)',
@@ -142,9 +150,7 @@ export class ProductApiService {
       };
     }
 
-    const result = JSON.parse(responseText);
-
-    if (result && typeof result === 'object' && Object.keys(result).length === 0) {
+    if (Object.keys(result).length === 0) {
       return {
         valid: true,
         message: 'Validation passed',
@@ -170,23 +176,33 @@ export class ProductApiService {
         violationType: 'SCHEMA_VALIDATION' as const
       }));
 
-      const transformedWarnings = warnings.map((warning: string, index: number) => ({
+      // Strip all backend-internal system notices — merchants never need to see these.
+      const SYSTEM_PATTERNS = [/system field/i, /processed without schema/i, /schema validation$/i];
+      const merchantWarnings = (warnings as string[]).filter(
+        (w: string) => !SYSTEM_PATTERNS.some(p => p.test(w))
+      );
+      const transformedWarnings = merchantWarnings.map((warning: string, index: number) => ({
         ruleId: `VALIDATION_WARNING_${index + 1}`,
         message: warning,
         affectedFields: [],
         suggestion: undefined
       }));
 
+      const errorCount = errors.length;
+      const message = backendValidation.valid
+        ? 'Validation passed'
+        : errorCount === 1
+          ? errors[0]
+          : `${errorCount} validation errors found`;
+
       return {
         valid: backendValidation.valid,
-        message: backendValidation.valid
-          ? 'Validation passed'
-          : errors.length > 0 ? errors[0] : 'Validation failed',
+        message,
         violations,
         warnings: transformedWarnings,
         rulesExecuted: backendValidation.metadata?.fieldsValidated || 0,
         executionTimeMs: 0,
-        validationScore: backendValidation.valid ? 100 : 0,
+        validationScore: backendValidation.valid ? 100 : Math.max(0, 100 - errorCount * 20),
         canSubmit: backendValidation.valid && violations.length === 0
       };
     }

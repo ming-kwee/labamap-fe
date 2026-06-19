@@ -107,6 +107,9 @@ export default function ProductCreateForm({
   const hasAutoExpandedRef = useRef(false);
   // Track field names from the previous schema so stale values can be removed on category change
   const prevSchemaFieldNamesRef = useRef<Set<string>>(new Set());
+  // Freeze the rendered sections while a new schema is in-flight so nothing on screen
+  // changes until the full new schema is ready. Updated every render when not loading.
+  const committedSectionsRef = useRef<[string, unknown[]][]>([]);
 
   // ── Hooks ──────────────────────────────────────────────────────────────────
 
@@ -340,6 +343,15 @@ export default function ProductCreateForm({
     );
   }, [schema, formData, formStage, viewLevel, getVisibleFields]);
 
+  // Commit new sections to the ref only when NOT in the middle of a schema fetch.
+  // During fetch (isAddingCategoryFields=true) the ref keeps its previous value so
+  // the rendered form stays frozen — no opacity flash, no field churn. When loading
+  // completes this line runs in the same render that flips isAddingCategoryFields=false,
+  // giving an atomic old→new swap with no intermediate state visible to the user.
+  if (!isAddingCategoryFields && sortedSections.length > 0) {
+    committedSectionsRef.current = sortedSections as [string, unknown[]][];
+  }
+
   // On initial schema load: in edit mode expand only sections that have at least one
   // pre-filled value so empty sections stay collapsed; in create mode open only the first.
   useEffect(() => {
@@ -406,7 +418,10 @@ export default function ProductCreateForm({
 
   // ── Loading / error states ─────────────────────────────────────────────────
 
-  if (isLoadingSchema) {
+  // Only block render on initial load (no schema yet).
+  // During product-type change, schema already exists — committedSectionsRef freezes
+  // sections so there is no visible change while the new schema is in-flight.
+  if (isLoadingSchema && !schema) {
     return (
       <div className="flex items-center justify-center min-h-96">
         <div className="text-center">
@@ -483,7 +498,10 @@ export default function ProductCreateForm({
         )}
       </div>
 
-      {/* Prompt: select a product type to load type-specific attributes */}
+      {/* Banner area — fixed min-height so appearing/disappearing doesn't shift sections.
+          Shows the "select a product type" hint before selection.
+          Tiny spinner goes inside the CategorySelectField (no layout impact here).
+          After a type is selected the area collapses to 0 — a one-time shift, not a blink. */}
       {formStage === 'essential' && !formData.category && !isAddingCategoryFields && (
         <div className="flex items-start gap-3 px-4 py-3.5 rounded-xl bg-blue-50 dark:bg-blue-500/10 border border-blue-200 dark:border-blue-500/30 text-sm text-blue-700 dark:text-blue-300">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="flex-shrink-0 mt-0.5">
@@ -506,43 +524,32 @@ export default function ProductCreateForm({
 
       {/* Validation results */}
       {showValidation && validationResult && (
-        <ValidationSummary result={validationResult} onClose={() => setShowValidation(false)} />
+        <ValidationSummary
+          result={validationResult}
+          fieldLabels={Object.fromEntries(
+            (schema?.fields ?? []).map((f: any) => [f.fieldName ?? f.name, f.label])
+          )}
+          onClose={() => setShowValidation(false)}
+        />
       )}
 
-      {/* Schema-driven sections — skeleton while category schema is loading */}
-      {isAddingCategoryFields ? (
-        <div className="space-y-4" aria-busy="true" aria-label="Loading category fields">
-          {[1, 2, 3].map(i => (
-            <div key={i} className="rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden animate-pulse" style={{ opacity: 1 - i * 0.2 }}>
-              <div className="h-12 bg-gray-100 dark:bg-gray-800 px-4 flex items-center gap-3">
-                <div className="h-4 w-4 rounded bg-gray-200 dark:bg-gray-700" />
-                <div className="h-3.5 w-32 rounded bg-gray-200 dark:bg-gray-700" />
-              </div>
-              <div className="p-4 space-y-3 bg-white dark:bg-gray-900">
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="h-9 rounded-lg bg-gray-100 dark:bg-gray-800" />
-                  <div className="h-9 rounded-lg bg-gray-100 dark:bg-gray-800" />
-                </div>
-                <div className="h-9 rounded-lg bg-gray-100 dark:bg-gray-800 w-3/4" />
-              </div>
-            </div>
-          ))}
-        </div>
-      ) : (
-        sortedSections.map(([sectionKey, fields]) =>
-          renderSection(sectionKey, {
-            sectionKey,
-            fields,
-            isExpanded: expandedSections.has(sectionKey),
-            onToggle: () => toggleSection(sectionKey),
-            formData,
-            fieldErrors,
-            organizationId,
-            productId,
-            onChange: handleFieldChange,
-            onBlur: handleFieldBlur,
-          })
-        )
+      {/* Schema-driven sections.
+          Renders committedSectionsRef — frozen while a new schema is in-flight so
+          the form stays visually stable. The ref is updated atomically in the same
+          render that clears isAddingCategoryFields, giving a direct old→new swap. */}
+      {(committedSectionsRef.current as [string, unknown[]][]).map(([sectionKey, fields]) =>
+        renderSection(sectionKey, {
+          sectionKey,
+          fields,
+          isExpanded: expandedSections.has(sectionKey),
+          onToggle: () => toggleSection(sectionKey),
+          formData,
+          fieldErrors,
+          organizationId,
+          productId,
+          onChange: handleFieldChange,
+          onBlur: handleFieldBlur,
+        })
       )}
 
       {/* Variants section (special rendering) */}

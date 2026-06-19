@@ -1,205 +1,86 @@
 'use client';
 
-/**
- * ValidationSummary
- * Displays enhanced validation results (violations, warnings, score)
- */
-
 import React from 'react';
-import { Alert, AlertDescription } from '@/shared/ui/alert/AlertComponents';
-import { AlertCircle, CheckCircle2, Clock, Star } from '@/shared/ui/icons/Icons';
-import { Card, CardContent, CardHeader, CardTitle } from '@/shared/ui/card/Card';
-import Badge from '@/shared/ui/badge/Badge';
-import type { EnhancedValidationResult, ValidationViolation } from '../../types/form-schema';
+import type { EnhancedValidationResult } from '../../types/form-schema';
 
 interface ValidationSummaryProps {
   result: EnhancedValidationResult;
+  /** Labels from the rendered schema — maps fieldName → label as shown in the form */
+  fieldLabels?: Record<string, string>;
   onClose?: () => void;
   className?: string;
 }
 
-export default function ValidationSummary({ result, onClose, className = '' }: ValidationSummaryProps) {
-  const getSeverityIcon = (severity: ValidationViolation['severity']) => {
-    switch (severity) {
-      case 'ERROR': return <AlertCircle className="h-5 w-5 text-red-500" />;
-      case 'WARNING': return <AlertCircle className="h-5 w-5 text-yellow-500" />;
-      default: return <AlertCircle className="h-5 w-5 text-blue-500" />;
-    }
-  };
+function label(fieldName: string, fieldLabels?: Record<string, string>): string {
+  // Prefer the label from the live schema; fall back to title-casing the field name
+  return fieldLabels?.[fieldName]
+    ?? fieldName.replace(/([A-Z])/g, ' $1').replace(/^./, s => s.toUpperCase());
+}
 
-  const getSeverityColor = (severity: ValidationViolation['severity']) => {
-    switch (severity) {
-      case 'ERROR': return 'error';
-      case 'WARNING': return 'warning';
-      default: return 'info';
-    }
-  };
+function friendlyMessage(raw: string, fieldLabels?: Record<string, string>): string {
+  return raw
+    .replace(/Field '([^']+)' does not match required pattern/i, (_, f) =>
+      `${label(f, fieldLabels)} does not match the required format`)
+    .replace(/Required field '([^']+)' is missing/i, (_, f) =>
+      `${label(f, fieldLabels)} is required`)
+    .replace(/Field '([^']+)' must be at least (\d+) characters?/i, (_, f, n) =>
+      `${label(f, fieldLabels)} must be at least ${n} characters`)
+    .replace(/Field '([^']+)' must be at most (\d+) characters?/i, (_, f, n) =>
+      `${label(f, fieldLabels)} must be no more than ${n} characters`)
+    .replace(/Field '([^']+)'/i, (_, f) => label(f, fieldLabels));
+}
 
-  const getScoreColor = (score: number) =>
-    score >= 80 ? 'text-green-600' : score >= 60 ? 'text-yellow-600' : 'text-red-600';
-
-  const getScoreBg = (score: number) =>
-    score >= 80 ? 'bg-green-50' : score >= 60 ? 'bg-yellow-50' : 'bg-red-50';
+export default function ValidationSummary({ result, fieldLabels, onClose, className = '' }: ValidationSummaryProps) {
+  const errors = result.violations.filter(v => v.severity === 'ERROR');
 
   return (
-    <div className={`space-y-4 ${className}`}>
-      {/* Overall status */}
-      <Card className={result.valid ? 'border-green-200 bg-green-50' : 'border-red-200 bg-red-50'}>
-        <CardContent className="pt-6">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-3">
-              {result.valid
-                ? <CheckCircle2 className="h-8 w-8 text-green-600" />
-                : <AlertCircle className="h-8 w-8 text-red-600" />}
-              <div>
-                <h3 className={`text-lg font-semibold ${result.valid ? 'text-green-900' : 'text-red-900'}`}>
-                  {result.message}
-                </h3>
-                <p className="text-sm text-gray-600">
-                  {result.violations.length} violation{result.violations.length !== 1 ? 's' : ''},{' '}
-                  {result.warnings.length} warning{result.warnings.length !== 1 ? 's' : ''}
-                </p>
-              </div>
-            </div>
-            {onClose && (
-              <button onClick={onClose} className="text-gray-400 hover:text-gray-600" aria-label="Close">
-                <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
-            )}
-          </div>
-        </CardContent>
-      </Card>
+    <div className={`rounded-xl border ${result.valid ? 'border-success-200 dark:border-success-500/30 bg-success-50 dark:bg-success-500/10' : 'border-error-200 dark:border-error-500/30 bg-error-50 dark:bg-error-500/10'} overflow-hidden ${className}`}>
 
-      {/* Metrics */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <Card className={getScoreBg(result.validationScore)}>
-          <CardContent className="pt-6">
-            <div className="flex items-center space-x-2">
-              <Star className={`h-5 w-5 ${getScoreColor(result.validationScore)}`} />
-              <div>
-                <p className="text-sm text-gray-600">Validation Score</p>
-                <p className={`text-2xl font-bold ${getScoreColor(result.validationScore)}`}>
-                  {result.validationScore.toFixed(1)}%
-                </p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center space-x-2">
-              <CheckCircle2 className="h-5 w-5 text-blue-500" />
-              <div>
-                <p className="text-sm text-gray-600">Rules Executed</p>
-                <p className="text-2xl font-bold text-blue-600">{result.rulesExecuted}</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center space-x-2">
-              <Clock className="h-5 w-5 text-purple-500" />
-              <div>
-                <p className="text-sm text-gray-600">Execution Time</p>
-                <p className="text-2xl font-bold text-purple-600">{result.executionTimeMs}ms</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+      {/* Header */}
+      <div className="flex items-start justify-between gap-3 px-4 py-3 border-b border-inherit">
+        <div className="flex items-center gap-2">
+          {result.valid ? (
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-success-600 dark:text-success-400 flex-shrink-0">
+              <polyline points="20 6 9 17 4 12"/>
+            </svg>
+          ) : (
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-error-600 dark:text-error-400 flex-shrink-0 mt-0.5">
+              <circle cx="12" cy="12" r="10"/><path d="M12 8v4"/><path d="M12 16h.01"/>
+            </svg>
+          )}
+          <p className="text-sm font-semibold text-error-700 dark:text-error-300">
+            {result.valid
+              ? 'All checks passed'
+              : errors.length === 1
+                ? 'Please fix 1 issue before submitting'
+                : `Please fix ${errors.length} issues before submitting`}
+          </p>
+        </div>
+        {onClose && (
+          <button
+            onClick={onClose}
+            className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 flex-shrink-0 transition-colors"
+            aria-label="Dismiss"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M18 6 6 18M6 6l12 12"/>
+            </svg>
+          </button>
+        )}
       </div>
 
-      {/* Violations */}
-      {result.violations.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center space-x-2">
-              <AlertCircle className="h-5 w-5 text-red-500" />
-              <span>Violations ({result.violations.length})</span>
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-3">
-              {result.violations.map((violation, index) => (
-                <Alert key={index} variant={getSeverityColor(violation.severity) as any}>
-                  <div className="flex items-start space-x-3">
-                    {getSeverityIcon(violation.severity)}
-                    <div className="flex-1">
-                      <div className="flex items-center space-x-2 mb-1">
-                        <span className="font-semibold">{violation.message}</span>
-                        <Badge variant="light" color={getSeverityColor(violation.severity) as any}>
-                          {violation.severity}
-                        </Badge>
-                      </div>
-                      {violation.affectedFields.length > 0 && (
-                        <p className="text-sm text-gray-600 mb-1">
-                          Affected fields: {violation.affectedFields.join(', ')}
-                        </p>
-                      )}
-                      {violation.suggestion && (
-                        <p className="text-sm text-gray-700 mt-2 italic">
-                          Suggestion: {violation.suggestion}
-                        </p>
-                      )}
-                      <p className="text-xs text-gray-500 mt-1">
-                        Rule: {violation.ruleId} • Type: {violation.violationType}
-                      </p>
-                    </div>
-                  </div>
-                </Alert>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
+      {/* Errors */}
+      {errors.length > 0 && (
+        <ul className="px-4 py-3 space-y-1.5">
+          {errors.map((v, i) => (
+            <li key={i} className="flex items-start gap-2 text-sm text-error-700 dark:text-error-300">
+              <span className="mt-0.5 flex-shrink-0 h-1.5 w-1.5 rounded-full bg-error-500 dark:bg-error-400" />
+              {friendlyMessage(v.message, fieldLabels)}
+            </li>
+          ))}
+        </ul>
       )}
 
-      {/* Warnings */}
-      {result.warnings.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center space-x-2">
-              <AlertCircle className="h-5 w-5 text-yellow-500" />
-              <span>Warnings ({result.warnings.length})</span>
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-3">
-              {result.warnings.map((warning, index) => (
-                <Alert key={index} variant="warning">
-                  <div className="flex items-start space-x-3">
-                    <AlertCircle className="h-5 w-5 text-yellow-500" />
-                    <div className="flex-1">
-                      <p className="font-semibold">{warning.message}</p>
-                      {warning.affectedFields.length > 0 && (
-                        <p className="text-sm text-gray-600 mt-1">
-                          Affected fields: {warning.affectedFields.join(', ')}
-                        </p>
-                      )}
-                      {warning.suggestion && (
-                        <p className="text-sm text-gray-700 mt-2 italic">
-                          Suggestion: {warning.suggestion}
-                        </p>
-                      )}
-                      <p className="text-xs text-gray-500 mt-1">Rule: {warning.ruleId}</p>
-                    </div>
-                  </div>
-                </Alert>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {!result.canSubmit && (
-        <Alert variant="destructive">
-          <AlertCircle className="h-5 w-5" />
-          <AlertDescription>
-            <strong>Cannot Submit:</strong> Please resolve all ERROR severity violations before submitting.
-          </AlertDescription>
-        </Alert>
-      )}
     </div>
   );
 }
