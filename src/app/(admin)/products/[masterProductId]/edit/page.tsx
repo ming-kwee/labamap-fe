@@ -56,16 +56,38 @@ export default function EditProductPage({ params }: Props) {
       };
 
       // variantConfigurator: wrap variants in the shape the form expects.
-      // Use variantCount > 1 as a fallback signal when the GET endpoint omits the
-      // variants array (a count of 1 is the default "no user variants" state).
-      const hasVariants =
-        (detail.variants && detail.variants.length > 0) || detail.variantCount > 1;
+      // Source priority for variant data:
+      //   1. detail.variants from backend GET (ideal — often empty due to backend gap)
+      //   2. sessionStorage — written by create flow, ChannelFieldsWizard.handlePreviousStep
+      // hasVariants toggle is also driven by ?hasVariants=1 URL param set by
+      // ChannelFieldsWizard when the product's schema contains a variant_overrides section,
+      // which is reliable even when the backend GET returns variantCount=0/1.
+      let variantsForForm: Record<string, unknown>[] = detail.variants ?? [];
+      if (variantsForForm.length === 0 && typeof window !== "undefined") {
+        try {
+          const stored = sessionStorage.getItem(`product_${masterProductId}`);
+          if (stored) {
+            const parsed = JSON.parse(stored) as { variants?: Record<string, unknown>[] };
+            if (Array.isArray(parsed.variants) && parsed.variants.length > 0) {
+              variantsForForm = parsed.variants;
+            }
+          }
+        } catch { /**/ }
+      }
+
+      // URL param set by ChannelFieldsWizard.handlePreviousStep when the schema
+      // contained a variant_overrides section — reliable fallback when backend
+      // returns variantCount=0/1 for a product that does have variants.
+      const hasVariantsFromUrl = typeof window !== "undefined"
+        ? new URLSearchParams(window.location.search).get("hasVariants") === "1"
+        : false;
+
+      const hasVariants = variantsForForm.length > 0 || detail.variantCount > 1 || hasVariantsFromUrl;
       if (hasVariants) {
         attrs.hasVariants = true;
         // VariantConfigurator expects a JSON string — JSON.parse(value) is called internally.
-        // Passing a plain object causes JSON.parse to silently fail, leaving the table empty.
-        if (detail.variants && detail.variants.length > 0) {
-          attrs.variantConfigurator = JSON.stringify({ variants: detail.variants });
+        if (variantsForForm.length > 0) {
+          attrs.variantConfigurator = JSON.stringify({ variants: variantsForForm });
         }
       }
 

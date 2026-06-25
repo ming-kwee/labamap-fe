@@ -125,6 +125,20 @@ export function generateMasterProduct(options: ProductGenerationOptions): Master
   for (const [key, value] of Object.entries(formData)) {
     if (!mappedFields.has(key) && value !== null && value !== undefined && value !== '') {
       if (key.startsWith('_') || key === 'hasVariants') continue;
+
+      // variantConfigurator may not be in schema.fields (backend doesn't generate it as an
+      // attribute field) so it never enters mappedFields. Extract variants here as a fallback
+      // so they reach product.variants regardless of whether the schema included the field.
+      if (key === 'variantConfigurator') {
+        try {
+          const cfg = typeof value === 'string' ? JSON.parse(value as string) : value;
+          if (cfg?.variants && Array.isArray(cfg.variants) && cfg.variants.length > 0) {
+            (product as any).variants = cfg.variants;
+          }
+        } catch { /**/ }
+        continue; // never store the raw JSON string in customAttributes
+      }
+
       (product.customAttributes as any)[key] = value;
     }
   }

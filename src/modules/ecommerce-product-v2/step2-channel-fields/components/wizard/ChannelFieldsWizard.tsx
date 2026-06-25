@@ -1,5 +1,5 @@
 "use client";
-import React, { useEffect, useState, useCallback, useRef } from "react";
+import React, { useEffect, useState, useCallback, useRef, useMemo } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import type {
@@ -253,13 +253,35 @@ export default function ChannelFieldsWizard({ masterProductId }: Props) {
       // for top-level product fields, session variants always win.
       const sessionSnap = getMasterSnapshotFromSession(masterProductId);
       const backendSnap = resp.masterProduct ?? null;
+      const mergedVariants = sessionSnap?.variants ?? backendSnap?.variants;
       if (sessionSnap || backendSnap) {
         setMasterProductSnapshot({
           ...(sessionSnap ?? {}),
           ...(backendSnap ?? {}),
           // Session variants carry the actual field values — always prefer them
-          variants: sessionSnap?.variants ?? backendSnap?.variants,
+          variants: mergedVariants,
         } as MasterProductSnapshot);
+      }
+
+      // Persist the best available variant data back to sessionStorage so that
+      // edit/page.tsx can restore VariantConfigurator when the user navigates back.
+      // Runs only when the schema API returned variants and sessionStorage was empty
+      // (My Products → channel-fields flow where create flow never ran).
+      if (
+        mergedVariants?.length &&
+        !sessionSnap?.variants?.length &&
+        typeof window !== "undefined"
+      ) {
+        try {
+          const existing = sessionStorage.getItem(`product_${masterProductId}`);
+          const base = existing ? (JSON.parse(existing) as Record<string, unknown>) : {};
+          sessionStorage.setItem(`product_${masterProductId}`, JSON.stringify({
+            ...base,
+            name:     backendSnap?.name     ?? base.name,
+            mainImage: backendSnap?.mainImage ?? base.mainImage,
+            variants: mergedVariants,
+          }));
+        } catch { /**/ }
       }
 
       // Initialize values from schema's currentValue
@@ -382,6 +404,32 @@ export default function ChannelFieldsWizard({ masterProductId }: Props) {
         // Non-fatal — merchant can browse manually
       }
 
+      // Restore selectedPath for CATEGORY_TREE fields that already have a saved category.
+      // When navigating from My Products → channel-fields, the schema is freshly fetched.
+      // The backend embeds categoryAttributeSection (with categoryName + categoryPath) when
+      // a category is already saved — use those labels to reconstruct the breadcrumb so
+      // CategoryTreePicker shows "Apparel › Clothing › Shirts" instead of the raw GID.
+      for (const ch of resp.channels) {
+        if (!ch.categoryAttributeSection) continue;
+        const { categoryId, categoryName, categoryPath } = ch.categoryAttributeSection;
+        const categoryField = ch.sections
+          .flatMap(s => s.fields ?? [])
+          .find(f => f.fieldType === "CATEGORY_TREE");
+        if (!categoryField?.categoryTreeConfig) continue;
+        if (categoryField.categoryTreeConfig.selectedPath?.length) continue;
+        // Skip when backend didn't resolve name (name === id = raw GID).
+        // CategoryTreePicker will resolve via search endpoint instead.
+        const nameIsUnresolved = categoryName === categoryId;
+        if (nameIsUnresolved) continue;
+        const ancestorNodes = (categoryPath ?? []).map((name, i) => ({
+          id: `__ancestor_${i}_${name}`,
+          name,
+          hasChildren: true,
+        }));
+        const leafNode = { id: categoryId, name: categoryName, hasChildren: false };
+        categoryField.categoryTreeConfig.selectedPath = [...ancestorNodes, leafNode];
+      }
+
       // Set schema AFTER restoring saved state so field values are visible to CategoryTreePicker
       setSchemaResponse(resp);
       setStoreValues(initValues);
@@ -445,6 +493,61 @@ export default function ChannelFieldsWizard({ masterProductId }: Props) {
     }
   }, [masterProductId, orgId, storeValues]);
 
+  // Called by ChannelStoreTab when the /category-attributes endpoint fails.
+  // Triggers an immediate save (so the backend records the categoryId) then does a
+  // targeted schema refresh to get categoryAttributeSection via the schema endpoint.
+  const handleCategoryAttributesFailed = useCallback(async (storeId: string, channel: ChannelSchemaPerStore) => {
+    if (saveTimers.current[storeId]) clearTimeout(saveTimers.current[storeId]);
+    await saveStore(storeId, channel);
+
+    // Regenerate schema — after save, the schema endpoint embeds category-specific fields
+    // BOTH in the main sections (required/optional) AND in categoryAttributeSection.
+    // We must replace the ENTIRE channel schema (not just categoryAttributeSection) so that
+    // the section renderer shows the actual input fields (material, size_type, etc.).
+    try {
+      const masterVariants = getMasterVariantsFromSession(masterProductId);
+      const updated = await ChannelSchemaService.generateChannelStepSchema({
+        masterProductId,
+        organizationId: orgId,
+        ...(masterVariants.length > 0 && { masterVariants }),
+      });
+      const updatedChannel = updated.channels.find(c => c.storeId === storeId);
+      if (!updatedChannel) return;
+      // Merge any new field currentValues from the refreshed schema into storeValues.
+      // (material/size_type/care_instructions now have currentValue from the schema if
+      //  the user already filled them in a previous session.)
+      const newChannelData: Record<string, unknown> = {};
+      for (const section of updatedChannel.sections) {
+        if (section.sectionName === "variant_overrides" || section.sectionName === "master_overrides") continue;
+        for (const field of section.fields ?? []) {
+          if (field.currentValue !== undefined && field.currentValue !== null) {
+            newChannelData[field.fieldName] = field.currentValue;
+          }
+        }
+      }
+      setStoreValues(prev => {
+        const existing = prev[storeId] ?? { masterOverrides: {}, channelData: {}, variantOverrides: {} };
+        return {
+          ...prev,
+          [storeId]: {
+            ...existing,
+            // Existing user-typed values win; schema defaults fill in any new fields
+            channelData: { ...newChannelData, ...existing.channelData },
+          },
+        };
+      });
+      setSchemaResponse(prev => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          channels: prev.channels.map(ch =>
+            ch.storeId === storeId ? updatedChannel : ch
+          ),
+        };
+      });
+    } catch { /* silent — user can still proceed */ }
+  }, [masterProductId, orgId, saveStore]);
+
   function scheduleAutosave(storeId: string, channel: ChannelSchemaPerStore) {
     dirtyStores.current.add(storeId);
     if (saveTimers.current[storeId]) clearTimeout(saveTimers.current[storeId]);
@@ -482,7 +585,55 @@ export default function ChannelFieldsWizard({ masterProductId }: Props) {
 
   async function handlePreviousStep() {
     await flushDirtyStores();
-    router.push(`/products/${masterProductId}/edit`);
+
+    // ── Collect variant data from all available sources ──────────────────────
+    const snapVariants = masterProductSnapshot?.variants as Record<string, unknown>[] | undefined;
+
+    let schemaVariants: Record<string, unknown>[] = [];
+    let variantOverrideSectionExists = false;
+    if (schemaResponse) {
+      for (const ch of schemaResponse.channels) {
+        const section = ch.sections.find((s) => s.sectionName === "variant_overrides");
+        if (section) {
+          variantOverrideSectionExists = true;
+          if (section.variants && section.variants.length > 0) {
+            schemaVariants = section.variants.map((v) => ({
+              id: v.sku, sku: v.sku, variantLabel: v.variantLabel,
+            }));
+          }
+          break;
+        }
+      }
+    }
+
+    const variantsToStore = snapVariants?.length ? snapVariants : schemaVariants;
+
+    // Write variant data to sessionStorage (only if better than what's already stored)
+    if (variantsToStore.length > 0 && typeof window !== "undefined") {
+      try {
+        const existing = sessionStorage.getItem(`product_${masterProductId}`);
+        const base = existing ? (JSON.parse(existing) as Record<string, unknown>) : {};
+        const hasStored = Array.isArray(base.variants) && (base.variants as unknown[]).length > 0;
+        if (!hasStored) {
+          sessionStorage.setItem(`product_${masterProductId}`, JSON.stringify({
+            ...base,
+            name:     masterProductSnapshot?.name     ?? base.name,
+            mainImage: masterProductSnapshot?.mainImage ?? base.mainImage,
+            variants: variantsToStore,
+          }));
+        }
+      } catch { /**/ }
+    }
+
+    // ── URL param: hasVariants signal ─────────────────────────────────────────
+    // The edit page uses detail.variantCount from the backend GET endpoint to decide
+    // whether to show the toggle. If the backend returns variantCount=0/1 (a known gap),
+    // the toggle would be OFF even for products with variants. Passing ?hasVariants=1
+    // gives the edit page a reliable signal independent of the backend response.
+    // Signal is set when: schema has a variant_overrides section, OR snapshot has variants.
+    const hasVariantsSignal = variantOverrideSectionExists || (snapVariants?.length ?? 0) > 0;
+    const dest = `/products/${masterProductId}/edit${hasVariantsSignal ? "?hasVariants=1" : ""}`;
+    router.push(dest);
   }
 
   async function handleNext() {
@@ -506,9 +657,26 @@ export default function ChannelFieldsWizard({ masterProductId }: Props) {
       const missingLabels: string[] = [];
       const missingNames: string[] = [];
       const channelData = vals?.channelData ?? {};
+      const variantOverrides = vals?.variantOverrides ?? {};
       for (const section of ch.sections) {
-        if (section.sectionName === "variant_overrides") continue;
         if (section.sectionName === "master_overrides") continue;
+
+        // Variant required fields: check every required variantField across all SKUs
+        if (section.sectionName === "variant_overrides") {
+          for (const field of section.variantFields ?? []) {
+            if (!field.required) continue;
+            for (const variant of section.variants ?? []) {
+              const v = variantOverrides[variant.sku]?.[field.fieldName];
+              if (v === undefined || v === null || v === "") {
+                const label = `${field.label} (${variant.variantLabel || variant.sku})`;
+                missingLabels.push(label);
+                missingNames.push(field.fieldName);
+              }
+            }
+          }
+          continue;
+        }
+
         for (const field of section.fields ?? []) {
           // Scenario E: skip fields that are hidden or not required given current values
           if (!isFieldVisible(field, channelData)) continue;
@@ -530,12 +698,14 @@ export default function ChannelFieldsWizard({ masterProductId }: Props) {
     // Stores with zero required fields are excluded from this check — they are always
     // "trivially complete" and must not mask stores that have unfilled required fields.
     const storesWithRequired = schemaResponse.channels.filter((ch) =>
-      ch.sections.some(
-        (s) =>
-          s.sectionName !== "variant_overrides" &&
-          s.sectionName !== "master_overrides" &&
-          (s.fields ?? []).some((f) => f.required)
-      )
+      ch.sections.some((s) => {
+        if (s.sectionName === "master_overrides") return false;
+        if (s.sectionName === "variant_overrides") {
+          // Has required variant fields AND at least one variant SKU to fill
+          return (s.variantFields ?? []).some(f => f.required) && (s.variants ?? []).length > 0;
+        }
+        return (s.fields ?? []).some((f) => f.required);
+      })
     );
     // If no store defines any required fields, always allow continuation.
     const hasCompleteStore =
@@ -581,6 +751,44 @@ export default function ChannelFieldsWizard({ masterProductId }: Props) {
       })
     );
   }
+
+  // ── Local per-store completion — reactive, no save round-trip needed ────────
+  // Mirrors the logic in ChannelStoreTab so the tab bar badges update on every keystroke.
+  // Category attribute fields (Scenario D) are omitted here — they live in ChannelStoreTab
+  // state and are not accessible from ChannelFieldsWizard; the tab bar is a summary indicator
+  // so the approximation from schema sections is sufficient.
+  const localPctByStore = useMemo(() => {
+    if (!schemaResponse) return {} as Record<string, number>;
+    const result: Record<string, number> = {};
+    for (const ch of schemaResponse.channels) {
+      const channelData = storeValues[ch.storeId]?.channelData ?? {};
+      const variantOverrides = storeValues[ch.storeId]?.variantOverrides ?? {};
+      let required = 0, filled = 0;
+      for (const section of ch.sections) {
+        if (section.sectionName === "master_overrides") continue;
+        if (section.sectionName === "variant_overrides") {
+          for (const field of section.variantFields ?? []) {
+            if (!field.required) continue;
+            for (const variant of section.variants ?? []) {
+              const v = variantOverrides[variant.sku]?.[field.fieldName];
+              required++;
+              if (v !== undefined && v !== null && v !== "") filled++;
+            }
+          }
+          continue;
+        }
+        for (const field of section.fields ?? []) {
+          if (!isFieldVisible(field, channelData)) continue;
+          if (!isFieldRequired(field, channelData)) continue;
+          required++;
+          const v = channelData[field.fieldName];
+          if (v !== undefined && v !== null && v !== "") filled++;
+        }
+      }
+      result[ch.storeId] = required === 0 ? 100 : Math.round((filled / required) * 100);
+    }
+    return result;
+  }, [schemaResponse, storeValues]);
 
   // ── Render ────────────────────────────────────────────────────────────────
 
@@ -656,8 +864,9 @@ export default function ChannelFieldsWizard({ masterProductId }: Props) {
           const comp = storeCompletion[ch.storeId] ?? { pct: ch.completionPercentage, status: ch.completionStatus };
           const isActive = idx === activeStoreIndex;
           const hasNoRequired = (ch.completionStats?.requiredTotal ?? 0) === 0;
-          const isDone = comp.status === "PUBLISHED" || comp.pct === 100 || hasNoRequired;
-          const isPartial = !isDone && comp.pct > 0;
+          const livePct = localPctByStore[ch.storeId] ?? comp.pct;
+          const isDone = comp.status === "PUBLISHED" || livePct === 100 || hasNoRequired;
+          const isPartial = !isDone && livePct > 0;
           return (
             <button
               key={ch.storeId}
@@ -678,7 +887,7 @@ export default function ChannelFieldsWizard({ masterProductId }: Props) {
                   ? "bg-warning-50 dark:bg-warning-500/15 text-warning-700 dark:text-warning-400"
                   : "bg-gray-100 dark:bg-gray-800 text-gray-400 dark:text-gray-500"
               }`}>
-                {isDone ? "✓" : `${comp.pct}%`}
+                {isDone ? "✓" : `${livePct}%`}
               </span>
             </button>
           );
@@ -702,8 +911,8 @@ export default function ChannelFieldsWizard({ masterProductId }: Props) {
           lastSaved={lastSaved[activeStoreId]}
           masterProduct={masterProductSnapshot ?? undefined}
           fieldErrors={activeTabFieldErrors}
-          savedCompletionPct={storeCompletion[activeStoreId]?.pct}
           orgId={orgId}
+          onCategoryAttributesFailed={() => handleCategoryAttributesFailed(activeStoreId, activeChannel)}
         />
       </div>
 

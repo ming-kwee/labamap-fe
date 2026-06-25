@@ -56,6 +56,73 @@ export default function CategoryTreePicker({ field, value, onChange, disabled }:
     config.selectedPath ?? []
   );
 
+  // Sync when selectedPath is populated after mount (ChannelFieldsWizard reconstruction).
+  useEffect(() => {
+    if (config.selectedPath?.length && committedPath.length === 0) {
+      setCommittedPath(config.selectedPath);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [config.selectedPath]);
+
+  // Path persistence — localStorage keyed by fieldName + rootEndpoint suffix.
+  // Saved when user commits a selection; restored on mount when path is unknown.
+  const pathStorageKey = `catpath_${field.fieldName}_${(config.rootEndpoint ?? '').slice(-30)}`;
+
+  useEffect(() => {
+    if (committedPath.length > 0 || !value) return;
+
+    // 1. Try localStorage first (fastest, works offline)
+    try {
+      const raw = localStorage.getItem(pathStorageKey);
+      if (raw) {
+        const saved = JSON.parse(raw) as { id: unknown; path: CategoryTreeNode[] };
+        if (saved.id === value && Array.isArray(saved.path) && saved.path.length > 0) {
+          setCommittedPath(saved.path);
+          return;
+        }
+      }
+    } catch { /**/ }
+
+    // 2. Fallback: search endpoint to resolve GID → human-readable breadcrumb.
+    // Handles transition period: stale cache entries on backend may still return GID as name.
+    // After backend cache invalidation (CategoryCacheServiceImpl stale-entry detection),
+    // selectedPath will be reconstructed correctly by ChannelFieldsWizard and this path
+    // won't be needed. We search using the leaf ID portion of the GID (e.g. "aa-1-13-7").
+    if (!config.searchEndpoint) return;
+    const gid = String(value);
+    const leafId = gid.includes('/') ? gid.split('/').pop()! : gid;
+    fetch(`${BASE}${config.searchEndpoint}?q=${encodeURIComponent(leafId)}`)
+      .then(r => r.ok ? r.json() : null)
+      .then((data: unknown) => {
+        if (!data) return;
+        const nodes = normalizeNodes(data);
+        // runServerSearch-style mapping to extract pathNodes
+        const results: SearchResult[] = nodes.map((n: unknown) => {
+          const node = n as Record<string, unknown>;
+          const names: string[] = Array.isArray(node.fullName)
+            ? node.fullName
+            : typeof node.fullName === 'string'
+              ? node.fullName.split(/\s*[›>]\s*/)
+              : [String(node.name ?? '')];
+          const ancestorIds: string[] = Array.isArray(node.ancestorIds) ? node.ancestorIds as string[] : [];
+          const allIds = [...ancestorIds, String(node.id ?? '')];
+          const pathNodes: CategoryTreeNode[] = names.length === allIds.length
+            ? allIds.map((id, i) => ({ id, name: names[i], hasChildren: i < allIds.length - 1 }))
+            : [{ id: String(node.id ?? ''), name: String(node.name ?? ''), hasChildren: false }];
+          return { id: String(node.id ?? ''), name: String(node.name ?? ''), hasChildren: Boolean(node.hasChildren), pathNodes };
+        });
+        const match = results.find(r => r.id === gid);
+        if (match && match.pathNodes.length > 0) {
+          setCommittedPath(match.pathNodes);
+          config.selectedPath = match.pathNodes;
+          try { localStorage.setItem(pathStorageKey, JSON.stringify({ id: gid, path: match.pathNodes })); } catch { /**/ }
+        }
+      })
+      .catch(() => { /* silent — raw value shown as fallback */ });
+  // Run once on mount
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // ── Picker panel ───────────────────────────────────────────────────────────
   const [isOpen, setIsOpen]               = useState(false);
   const [browsePath, setBrowsePath]       = useState<CategoryTreeNode[]>([]);
@@ -197,18 +264,22 @@ export default function CategoryTreePicker({ field, value, onChange, disabled }:
     loadLevel(newPath.at(-1)?.id);
   }
 
+  function persistPath(id: unknown, path: CategoryTreeNode[]) {
+    try { localStorage.setItem(pathStorageKey, JSON.stringify({ id, path })); } catch { /**/ }
+  }
+
   function selectNode(node: CategoryTreeNode, fullPath?: CategoryTreeNode[]) {
     if (node.hasChildren && !fullPath) {
-      // Drill into this node in browse mode
       setSearchQuery("");
       setSearchResults(null);
       const newPath = [...browsePath, node];
       setBrowsePath(newPath);
       loadLevel(node.id);
     } else {
-      // Leaf node (or explicit full-path commit from search result)
       const path = fullPath ?? [...browsePath, node];
       setCommittedPath(path);
+      config.selectedPath = path;
+      persistPath(node.id, path);
       onChange(field.fieldName, node.id);
       setIsOpen(false);
     }
@@ -216,7 +287,10 @@ export default function CategoryTreePicker({ field, value, onChange, disabled }:
 
   function handleAcceptSuggestion() {
     const sug = suggestion!;
-    setCommittedPath([{ id: String(sug.suggestedValue), name: sug.suggestedLabel, hasChildren: false }]);
+    const path = [{ id: String(sug.suggestedValue), name: sug.suggestedLabel, hasChildren: false }];
+    setCommittedPath(path);
+    config.selectedPath = path;
+    persistPath(sug.suggestedValue, path);
     onChange(field.fieldName, sug.suggestedValue);
     setSuggestionDismissed(true);
   }

@@ -9,7 +9,25 @@ export default function CreateProductV2Page() {
   const router = useRouter();
 
   const handleProductCreated = (product: MasterProduct, _availableChannels: string[]) => {
-    sessionStorage.setItem(`product_${product.id}`, JSON.stringify(product));
+    // Merge with existing sessionStorage entry — ProductCreateForm pre-writes form-derived
+    // variants before calling this callback, since the backend create response may not echo
+    // them back. Merging here preserves those variants instead of overwriting with empty.
+    try {
+      const key = `product_${product.id}`;
+      const existing = sessionStorage.getItem(key);
+      const existingVariants = existing
+        ? (JSON.parse(existing) as Record<string, unknown>).variants
+        : undefined;
+      const productVariants = (product as unknown as Record<string, unknown>).variants;
+      const variants = Array.isArray(productVariants) && (productVariants as unknown[]).length > 0
+        ? productVariants
+        : Array.isArray(existingVariants) && (existingVariants as unknown[]).length > 0
+          ? existingVariants
+          : [];
+      sessionStorage.setItem(key, JSON.stringify({ ...product, variants }));
+    } catch {
+      sessionStorage.setItem(`product_${product.id}`, JSON.stringify(product));
+    }
     router.push(`/products/${product.id}/channel-fields`);
   };
 

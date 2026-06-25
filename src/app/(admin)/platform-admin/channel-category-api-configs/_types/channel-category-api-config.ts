@@ -1,6 +1,6 @@
 // Channel Category API Config types
 // Corresponds to `channel_category_api_config` collection.
-// importConfig and taxonomyConfig are read-only (code-managed, not editable via admin API).
+// taxonomyConfig is read-only (code-managed, not editable via admin API).
 
 export interface CategoryTreeApiConfig {
   baseUrl?: string;
@@ -59,14 +59,6 @@ export interface TaxonomyConfig {
   fetchConfig?: TaxonomyFetchConfig;
 }
 
-export interface ImportConfig {
-  capable: boolean;
-  slugField?: string;
-  productCountField?: string;
-  collectionType?: string;
-  [key: string]: unknown;
-}
-
 export interface ChannelCategoryApiConfig {
   id?: string;
   channelType: string;
@@ -74,7 +66,6 @@ export interface ChannelCategoryApiConfig {
   treeApiConfig?: CategoryTreeApiConfig;
   attributeConfig?: AttributeApiConfig;
   taxonomyConfig?: TaxonomyConfig;
-  importConfig?: ImportConfig;
   enabled: boolean;
   updatedAt?: string;
 }
@@ -98,7 +89,6 @@ export function mapRawConfig(raw: unknown): ChannelCategoryApiConfig {
     treeApiConfig:   r.treeApiConfig as CategoryTreeApiConfig | undefined,
     attributeConfig: r.attributeConfig as AttributeApiConfig | undefined,
     taxonomyConfig:  r.taxonomyConfig as TaxonomyConfig | undefined,
-    importConfig:    r.importConfig as ImportConfig | undefined,
     enabled:         Boolean(r.enabled ?? true),
     updatedAt:       r.updatedAt as string | undefined,
   };

@@ -278,7 +278,11 @@ export default function MyProductsPage() {
   const [orgStores, setOrgStores]   = useState<ChannelStoreConnection[]>([]);
   const [totalElements, setTotalElements] = useState(0);
   const [totalPages, setTotalPages] = useState(0);
+  // isLoading: true only on the very first fetch (shows skeleton rows).
+  // isFetching: true on every subsequent fetch (shows subtle opacity on existing rows).
   const [isLoading, setIsLoading]   = useState(true);
+  const [isFetching, setIsFetching] = useState(false);
+  const hasLoadedOnce = React.useRef(false);
   const [loadError, setLoadError]   = useState<string | null>(null);
 
   // ── Filter state ────────────────────────────────────────────────────────────
@@ -321,36 +325,51 @@ export default function MyProductsPage() {
     setTagSuggestions(s);
   }, [orgId]);
 
-  // ── Load org stores once ─────────────────────────────────────────────────────
-  useEffect(() => {
-    if (!orgId) return;
-    ChannelStoreService.listStores(orgId)
-      .then(stores => setOrgStores(stores.filter(s => s.isActive)))
-      .catch(() => {/* non-fatal */});
-  }, [orgId]);
+  // Stores rarely change — fetch once per session and cache in a ref.
+  // This prevents a double-render blink: if stores were fetched separately,
+  // the table would paint with empty orgStores then repaint when stores arrived.
+  const storesLoadedRef = React.useRef(false);
 
-  // ── Load products ───────────────────────────────────────────────────────────
+  // ── Load products (+ stores on first call) ──────────────────────────────────
   const load = useCallback(async () => {
     if (!orgId) return;
-    setIsLoading(true);
+    if (!hasLoadedOnce.current) {
+      setIsLoading(true);   // initial load → show skeletons
+    } else {
+      setIsFetching(true);  // subsequent loads → dim existing rows, no skeleton flash
+    }
     setLoadError(null);
     try {
-      const res = await MasterProductService.list({
-        organizationId: orgId,
-        page,
-        size:  PAGE_SIZE,
-        q:     debouncedSearch || undefined,
-        tags:  debouncedTagFilter.length > 0 ? debouncedTagFilter : undefined,
-        channelType:   channelFilter !== "ALL" ? channelFilter  : undefined,
-        channelStatus: statusFilter  !== "ALL" ? statusFilter   : undefined,
-      });
+      const storesFetch = storesLoadedRef.current
+        ? Promise.resolve(null)
+        : ChannelStoreService.listStores(orgId).catch(() => [] as ChannelStoreConnection[]);
+
+      const [res, stores] = await Promise.all([
+        MasterProductService.list({
+          organizationId: orgId,
+          page,
+          size:  PAGE_SIZE,
+          q:     debouncedSearch || undefined,
+          tags:  debouncedTagFilter.length > 0 ? debouncedTagFilter : undefined,
+          channelType:   channelFilter !== "ALL" ? channelFilter  : undefined,
+          channelStatus: statusFilter  !== "ALL" ? statusFilter   : undefined,
+        }),
+        storesFetch,
+      ]);
+
+      if (stores !== null) {
+        setOrgStores((stores as ChannelStoreConnection[]).filter(s => s.isActive));
+        storesLoadedRef.current = true;
+      }
       setProducts(res.content);
       setTotalElements(res.totalElements);
       setTotalPages(res.totalPages);
+      hasLoadedOnce.current = true;
     } catch (err) {
       setLoadError((err as Error).message);
     } finally {
       setIsLoading(false);
+      setIsFetching(false);
     }
   }, [orgId, page, debouncedSearch, debouncedTagFilter, channelFilter, statusFilter]);
 
@@ -501,7 +520,7 @@ export default function MyProductsPage() {
 
       {/* Table */}
       <div className="px-6 py-4">
-        <div className="rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden bg-white dark:bg-gray-900">
+        <div className={`rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden bg-white dark:bg-gray-900 transition-opacity duration-150 ${isFetching ? "opacity-60 pointer-events-none" : "opacity-100"}`}>
           <table className="w-full text-left">
             <thead>
               <tr className="bg-gray-50 dark:bg-gray-800/60 border-b border-gray-200 dark:border-gray-700">

@@ -35,6 +35,12 @@ interface Props {
   savedCompletionPct?: number;
   /** Real organization ID from auth context — required for merchant-data API calls. */
   orgId?: string;
+  /**
+   * Called when the category-attributes endpoint fails (e.g. 404 — backend pending).
+   * ChannelFieldsWizard handles this by doing an immediate save + schema refresh so
+   * categoryAttributeSection comes back via the schema endpoint instead.
+   */
+  onCategoryAttributesFailed?: () => void;
 }
 
 // ── SVG chevron — animated rotation via className ─────────────────────────────
@@ -357,7 +363,7 @@ function VariantOptionSuggestionsPanel({
 
 // ── Main component ────────────────────────────────────────────────────────────
 
-export default function ChannelStoreTab({ schema, values, onChange, isSaving, lastSaved, masterProduct, fieldErrors, savedCompletionPct, orgId = "" }: Props) {
+export default function ChannelStoreTab({ schema, values, onChange, isSaving, lastSaved, masterProduct, fieldErrors, orgId = "", onCategoryAttributesFailed }: Props) {
   const [optionalExpanded, setOptionalExpanded] = useState(false);
 
   // ── Scenario D: Category-Dependent Dynamic Field Injection ────────────────
@@ -374,9 +380,18 @@ export default function ChannelStoreTab({ schema, values, onChange, isSaving, la
     ? ((values.channelData[mainCategoryField.fieldName] as string | undefined) ?? null)
     : null;
 
+  // "Unchanged" only when schema has proper required fields already embedded.
+  // Guards against schema endpoint returning categoryAttributeSection with empty requiredFields
+  // (possible when schema was generated before the MERGE strategy fix was deployed).
+  // When false, the violet mid-session section renders using categoryAttrs from the direct
+  // endpoint which now correctly returns both requiredFields + optionalFields.
+  const schemaHasRequiredFields =
+    (schema.categoryAttributeSection?.requiredFields?.length ?? 0) > 0;
+
   const categoryIsUnchangedFromSchema =
     schema.categoryAttributeSection != null &&
-    categoryId === schema.categoryAttributeSection.categoryId;
+    categoryId === schema.categoryAttributeSection.categoryId &&
+    schemaHasRequiredFields;
 
   const [categoryAttrs, setCategoryAttrs] = useState<CategoryAttributeSection | null>(
     schema.categoryAttributeSection ?? null
@@ -385,8 +400,16 @@ export default function ChannelStoreTab({ schema, values, onChange, isSaving, la
   const [catAttrsError, setCatAttrsError] = useState<string | null>(null);
   const [catOptionalExpanded, setCatOptionalExpanded] = useState(false);
 
+  // Capture the categoryId present at mount — used to distinguish initial load (My Products
+  // edit, category pre-filled) from user-initiated changes so we don't trigger a save+refresh
+  // (onCategoryAttributesFailed) unnecessarily on page load.
+  const initialCategoryIdRef = useRef<string | null>(categoryId);
+
+  // Skip fetch only when schema already has proper required fields for this category.
+  // Forces a re-fetch when schema has empty requiredFields so categoryAttrs is always
+  // populated with the correct data from the direct endpoint (MERGE strategy now active).
   const lastFetchedCategoryId = useRef<string | null>(
-    schema.categoryAttributeSection?.categoryId ?? null
+    schemaHasRequiredFields ? (schema.categoryAttributeSection?.categoryId ?? null) : null
   );
 
   useEffect(() => {
@@ -401,13 +424,46 @@ export default function ChannelStoreTab({ schema, values, onChange, isSaving, la
         if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
         return res.json() as Promise<CategoryAttributeSection>;
       })
-      .then(setCategoryAttrs)
-      .catch((err: unknown) =>
-        setCatAttrsError(err instanceof Error ? err.message : "Failed to load category fields")
-      )
+      .then((data) => {
+        setCategoryAttrs(data);
+        const hasRequired = (data.requiredFields?.length ?? 0) > 0;
+        // Only trigger save+refresh fallback when user ACTIVELY changed the category
+        // mid-session (not on initial page load from My Products where category is pre-filled).
+        // On initial load, the violet section will display whatever categoryAttrs has (optional
+        // Shopify taxonomy fields); required fields from categoryRequirements remain in
+        // the schema's required section above.
+        // Fallback: if required fields still empty (e.g. network error, endpoint unavailable),
+        // trigger save+schema refresh ONLY when user actively changed category mid-session.
+        // Not triggered on initial page load to avoid unnecessary saves.
+        const isUserChange = categoryId !== initialCategoryIdRef.current;
+        if (!hasRequired && isUserChange) {
+          onCategoryAttributesFailed?.();
+        }
+      })
+      .catch(() => {
+        setCatAttrsError(null);
+        onCategoryAttributesFailed?.();
+      })
       .finally(() => setCatAttrsLoading(false));
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [categoryId]);
+
+  // Sync categoryAttrs when schema.categoryAttributeSection is updated by the parent
+  // (e.g. after ChannelFieldsWizard does a schema refresh following a failed/empty fetch).
+  // Also handles the case where /category-attributes returned empty fields but the schema
+  // endpoint has the proper configured fields.
+  useEffect(() => {
+    if (!schema.categoryAttributeSection) return;
+    const schemaFields = (schema.categoryAttributeSection.requiredFields?.length ?? 0) +
+                         (schema.categoryAttributeSection.optionalFields?.length ?? 0);
+    const currentFields = (categoryAttrs?.requiredFields?.length ?? 0) +
+                          (categoryAttrs?.optionalFields?.length ?? 0);
+    if (schemaFields > currentFields || !categoryAttrs) {
+      setCategoryAttrs(schema.categoryAttributeSection);
+      lastFetchedCategoryId.current = schema.categoryAttributeSection.categoryId;
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [schema.categoryAttributeSection]);
 
   // ── Phase 2: Pre-fill CATEGORY_TREE from ProductType channel default ─────────
   // Only fires once when the tab first mounts AND the category field is empty.
@@ -493,6 +549,21 @@ export default function ChannelStoreTab({ schema, values, onChange, isSaving, la
     if (value === null) { delete next[fieldName]; } else { next[fieldName] = value; }
     onChange({ ...values, masterOverrides: next });
   }
+
+  // ── Category field deduplication ─────────────────────────────────────────
+  // Backend embeds category-specific required fields (material, size_type, care_instructions)
+  // in BOTH schema.sections.required (technical labels from categoryRequirements config) AND
+  // categoryAttributeSection.requiredFields (proper Shopify labels from MERGE strategy).
+  // To avoid duplication and label inconsistency, we filter these fields OUT of schema sections
+  // so they render ONLY from categoryAttrs in the violet CATEGORY section (consistent with
+  // create flow where categoryIsUnchangedFromSchema = FALSE).
+  const categorySpecificFieldNames = useMemo(() => {
+    if (!categoryAttrs) return new Set<string>();
+    return new Set([
+      ...(categoryAttrs.requiredFields ?? []).map(f => f.fieldName),
+      ...(categoryAttrs.optionalFields ?? []).map(f => f.fieldName),
+    ]);
+  }, [categoryAttrs]);
 
   // ── Scenario E: collect all fields and evaluate conditional rules ─────────
   const allFields = useMemo(() => {
@@ -648,7 +719,11 @@ export default function ChannelStoreTab({ schema, values, onChange, isSaving, la
     }
 
     // Generic: "required", "optional", and any other section names
-    const fields = section.fields ?? [];
+    // Filter out category-specific fields — they render in the violet CATEGORY section
+    // from categoryAttrs (with proper Shopify labels), not here (technical labels from config).
+    const fields = (section.fields ?? []).filter(
+      f => !categorySpecificFieldNames.has(f.fieldName)
+    );
     if (fields.length === 0) return null;
 
     const isOptional = section.sectionName === "optional";
@@ -780,9 +855,10 @@ export default function ChannelStoreTab({ schema, values, onChange, isSaving, la
       setOptionalExpanded(true);
     }
 
-    // Category unchanged from schema load — fields already rendered inside form sections.
-    // Show only a compact info banner to avoid duplication, then the suggestions panel if present.
-    if (categoryIsUnchangedFromSchema) {
+    // When schema has category fields pre-embedded (categoryIsUnchangedFromSchema = TRUE)
+    // AND categoryAttrs has no required fields to show, display a compact info banner.
+    // Otherwise fall through to the full violet section (consistent with mid-session path).
+    if (categoryIsUnchangedFromSchema && requiredFields.length === 0) {
       return (
         <div className="space-y-3">
           <div className="flex items-start gap-3 px-4 py-3 border-l-4 border-l-violet-400 dark:border-l-violet-500 border border-violet-200/60 dark:border-violet-500/20 bg-violet-50/40 dark:bg-violet-500/5 rounded-xl">
@@ -794,7 +870,7 @@ export default function ChannelStoreTab({ schema, values, onChange, isSaving, la
                 Category-specific fields applied
               </p>
               <p className="text-xs text-violet-600 dark:text-violet-400 mt-0.5 truncate">
-                {breadcrumb} — {requiredFields.length} required, {optionalFields.length} optional
+                {breadcrumb} — {optionalFields.length} optional
               </p>
             </div>
           </div>
@@ -896,10 +972,77 @@ export default function ChannelStoreTab({ schema, values, onChange, isSaving, la
 
   // ── Render ─────────────────────────────────────────────────────────────────
 
-  const stats = schema.completionStats;
-  // savedCompletionPct reflects the last save; fall back to schema value on first load.
-  const pct = savedCompletionPct ?? schema.completionPercentage;
-  const hasNoRequired = (stats?.requiredTotal ?? 0) === 0;
+  // Compute completion locally so the progress bar updates on every keystroke,
+  // instead of waiting for the 30-second autosave round-trip.
+  // Uses the same visibility/required logic as the field renderer (Scenario E aware).
+  const localStats = useMemo(() => {
+    let chRequired = 0, chFilled = 0;
+    let catRequired = 0, catFilled = 0;
+    let recTotal = 0, recFilled = 0;
+
+    const cd = values.channelData;
+
+    for (const section of schema.sections) {
+      if (section.sectionName === "master_overrides") continue;
+
+      // Variant required fields: count per-SKU × per-required-variantField.
+      // A required variant field (e.g. Inventory Policy) must be filled for EVERY variant SKU.
+      if (section.sectionName === "variant_overrides") {
+        for (const field of section.variantFields ?? []) {
+          if (!field.required) continue;
+          for (const variant of section.variants ?? []) {
+            const v = values.variantOverrides[variant.sku]?.[field.fieldName];
+            chRequired++;
+            if (v !== undefined && v !== null && v !== "") chFilled++;
+          }
+        }
+        continue;
+      }
+
+      for (const field of section.fields ?? []) {
+        // Skip fields owned by categoryAttrs — counted separately below to avoid double-count
+        if (categorySpecificFieldNames.has(field.fieldName)) continue;
+        if (!visibility.isVisible(field.fieldName)) continue;
+        const v = cd[field.fieldName];
+        const filled = v !== undefined && v !== null && v !== "";
+        if (visibility.isRequired(field.fieldName)) {
+          chRequired++;
+          if (filled) chFilled++;
+        } else if (section.sectionName === "recommended") {
+          recTotal++;
+          if (filled) recFilled++;
+        }
+      }
+    }
+
+    if (categoryAttrs) {
+      for (const field of categoryAttrs.requiredFields) {
+        if (!visibility.isVisible(field.fieldName)) continue;
+        catRequired++;
+        const v = cd[field.fieldName];
+        if (v !== undefined && v !== null && v !== "") catFilled++;
+      }
+    }
+
+    const requiredTotal = chRequired + catRequired;
+    const requiredFilled = chFilled + catFilled;
+    return {
+      requiredTotal,
+      requiredFilled,
+      channelRequiredTotal:   chRequired,
+      channelRequiredFilled:  chFilled,
+      categoryRequiredTotal:  catRequired,
+      categoryRequiredFilled: catFilled,
+      recommendedTotal:  recTotal,
+      recommendedFilled: recFilled,
+    };
+  }, [schema.sections, values.channelData, values.variantOverrides, visibility, categoryAttrs, categorySpecificFieldNames]);
+
+  const stats = localStats;
+  const pct = localStats.requiredTotal === 0
+    ? 100
+    : Math.round((localStats.requiredFilled / localStats.requiredTotal) * 100);
+  const hasNoRequired = localStats.requiredTotal === 0;
 
   return (
     <div className="space-y-5">

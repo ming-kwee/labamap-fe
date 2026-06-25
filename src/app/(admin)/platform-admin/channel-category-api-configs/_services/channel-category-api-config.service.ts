@@ -2,7 +2,7 @@
  * Channel Category API Config Admin Service
  * Wraps /api/v1/admin/channel-category-api-configs
  * Supports: list, get, create, update tree-api sub-doc, update attribute-api sub-doc, enable/disable.
- * importConfig and taxonomyConfig are read-only — no update endpoints.
+ * taxonomyConfig is read-only — no update endpoint.
  */
 
 import {
@@ -109,10 +109,7 @@ export const ChannelCategoryApiConfigService = {
     return handleResponse<AttributeApiConfig>(res);
   },
 
-  /**
-   * PUT /admin/channel-category-api-configs/{channelType}/disable
-   * CategorySyncJob and CategoryDriftPollingJob will skip this channel.
-   */
+  /** PUT /admin/channel-category-api-configs/{channelType}/disable */
   async disableChannel(channelType: string): Promise<ChannelCategoryApiConfig> {
     const res = await fetch(`${BASE}/${encodeURIComponent(channelType)}/disable`, {
       method: "PUT", headers: JSON_HEADERS,

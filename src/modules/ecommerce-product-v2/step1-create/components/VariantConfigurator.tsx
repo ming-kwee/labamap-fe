@@ -12,6 +12,15 @@ import VariantMultiImageUpload from './VariantMultiImageUpload';
 import SkuMatrixPreview from './SkuMatrixPreview';
 import type { VariantDimension as ProductTypeVariantDimension } from '@/app/(admin)/omni-admin/product-types/_types/product-type';
 
+// Module-level constant — must not be inside the component or a useMemo,
+// because it is referenced by useState initializers that run before any hook.
+const NON_DIMENSION_KEYS = new Set([
+  'id', '_id', 'sku', 'SKU', 'price', 'comparePrice', 'compareAtPrice',
+  'inventory', 'quantity', 'stock', 'stockQuantity', 'costPrice',
+  'barcode', 'weight', 'variantImages', 'images', 'galleryImages',
+  'variantLabel', 'variantOptions',
+]);
+
 interface VariantOption {
   id: string;
   [key: string]: any;
@@ -187,9 +196,93 @@ const VariantConfigurator: React.FC<VariantConfiguratorProps> = ({
     return variantDimensions;
   }, [variantDimensions, productTypeDimensions, dimensionOptions]);
 
-  const [selectedOptions, setSelectedOptions] = useState<Record<string, string[]>>({});
-  const [variants, setVariants] = useState<VariantOption[]>([]);
+  // Parse value prop once synchronously so variants and selectedOptions are available
+  // on the FIRST render (avoiding the effect-delay that caused derivedDimensions to be
+  // empty until after the first paint).
+  function parseValue(v: string | undefined): { variants: VariantOption[]; options: Record<string, string[]> | null } {
+    if (!v) return { variants: [], options: null };
+    try {
+      const parsed = typeof v === 'string' ? JSON.parse(v) : v;
+      const rawArr = Array.isArray(parsed?.variants) ? parsed.variants as VariantOption[] : [];
+      // Normalise: ensure every variant has an `id` so React keys and updateVariant() work.
+      const variantArr = rawArr.map((variant, idx) => {
+        if (variant.id) return variant;
+        // Derive id from sku, or from dimension values, or index fallback
+        const skuVal = variant.sku as string | undefined;
+        const dimId = Object.entries(variant)
+          .filter(([k]) => !NON_DIMENSION_KEYS.has(k))
+          .map(([, val]) => String(val).toLowerCase().replace(/\s+/g, '-'))
+          .join('-');
+        return { ...variant, id: dimId || skuVal || `variant-${idx}` };
+      });
+      return { variants: variantArr, options: parsed?.options ?? null };
+    } catch {
+      return { variants: [], options: null };
+    }
+  }
+
+  const [selectedOptions, setSelectedOptions] = useState<Record<string, string[]>>(() => {
+    const { variants: initVars, options } = parseValue(value);
+    if (options) return options;
+    // Derive from variants when options not explicitly stored (edit mode)
+    const derived: Record<string, string[]> = {};
+    for (const v of initVars) {
+      for (const [key, val] of Object.entries(v)) {
+        if (NON_DIMENSION_KEYS.has(key)) continue;
+        if (val == null || typeof val !== 'string' || !val.trim()) continue;
+        if (!derived[key]) derived[key] = [];
+        if (!derived[key].includes(val as string)) derived[key].push(val as string);
+      }
+    }
+    return derived;
+  });
+  const [variants, setVariants] = useState<VariantOption[]>(() => parseValue(value).variants);
   const [lastCategory, setLastCategory] = useState<string | undefined>(formData?.category);
+
+  // Derive dimensions from existing variant data when schema/ProductType don't provide them.
+  // This is the edit-mode path: essential schema has no type-specific SELECT fields, but the
+  // backend GET now returns the saved variants with dimension values at the top level (color,
+  // size, etc.). Collecting unique values per non-standard field reconstructs the option axes.
+  const derivedDimensions = useMemo((): VariantDimension[] => {
+    if (activeDimensions.length > 0 || variants.length === 0) return [];
+    const dimMap = new Map<string, Set<string>>();
+    for (const variant of variants) {
+      for (const [key, val] of Object.entries(variant)) {
+        if (NON_DIMENSION_KEYS.has(key)) continue;
+        if (val == null || typeof val !== 'string' || !val.trim()) continue;
+        if (!dimMap.has(key)) dimMap.set(key, new Set());
+        dimMap.get(key)!.add(val as string);
+      }
+    }
+    return Array.from(dimMap.entries()).map(([name, values]) => ({
+      name,
+      label: name.charAt(0).toUpperCase() + name.slice(1),
+      options: Array.from(values),
+    }));
+  }, [activeDimensions, variants]);
+
+  // Effective dimensions: prefer schema/ProductType; fall back to variant-derived.
+  const effectiveDimensions = activeDimensions.length > 0 ? activeDimensions : derivedDimensions;
+
+  // Effective variant table columns — inject dimension columns when schema didn't include them.
+  // In edit mode, schema is essential (no type-specific fields), so variantConfig has no
+  // dimension columns (Color, Size, Material). effectiveDimensions derives them from variant
+  // data. We prepend them here so the table shows the correct columns.
+  const effectiveVariantConfig = useMemo(() => {
+    if (effectiveDimensions.length === 0) return variantConfig;
+    const existingDimNames = new Set(
+      (variantConfig as Array<{ name: string; label: string; type: string }>)
+        .filter(f => effectiveDimensions.some(d => d.name === f.name))
+        .map(f => f.name)
+    );
+    // Already has dimension columns — schema provided them
+    if (existingDimNames.size > 0) return variantConfig;
+    // Prepend dimension columns before the non-dimension columns
+    const dimCols = effectiveDimensions.map(dim => ({ name: dim.name, label: dim.label, type: 'select' }));
+    const nonDimCols = (variantConfig as Array<{ name: string; label: string; type: string }>)
+      .filter(f => !effectiveDimensions.some(d => d.name === f.name));
+    return [...dimCols, ...nonDimCols];
+  }, [variantConfig, effectiveDimensions]);
 
   React.useEffect(() => {
     const currentCategory = formData?.category;
@@ -208,11 +301,29 @@ const VariantConfigurator: React.FC<VariantConfiguratorProps> = ({
       const parsed = typeof value === 'string' ? JSON.parse(value) : value;
       if (parsed?.variants && Array.isArray(parsed.variants) && parsed.variants.length > 0) {
         setVariants(parsed.variants);
-        if (parsed.options) setSelectedOptions(parsed.options);
+        if (parsed.options) {
+          // Stored options (from original create flow)
+          setSelectedOptions(parsed.options);
+        } else {
+          // Edit mode: options not in stored JSON — derive selected values from variant data.
+          // Each dimension key holds the set of values actually used across all variants.
+          const derived: Record<string, string[]> = {};
+          for (const variant of parsed.variants as VariantOption[]) {
+            for (const [key, val] of Object.entries(variant)) {
+              if (NON_DIMENSION_KEYS.has(key)) continue;
+              if (val == null || typeof val !== 'string' || !val.trim()) continue;
+              if (!derived[key]) derived[key] = [];
+              if (!derived[key].includes(val as string)) derived[key].push(val as string);
+            }
+          }
+          if (Object.keys(derived).length > 0) setSelectedOptions(derived);
+        }
       }
     } catch {
       // ignore malformed JSON
     }
+  // NON_DIMENSION_KEYS is a stable Set created in useMemo — safe to include
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [value]);
 
   const updateParent = (newVariants: VariantOption[], selections: Record<string, string[]>) => {
@@ -241,7 +352,7 @@ const VariantConfigurator: React.FC<VariantConfiguratorProps> = ({
   };
 
   const generateVariants = () => {
-    const dimsWithSelections = activeDimensions.filter(dim =>
+    const dimsWithSelections = effectiveDimensions.filter(dim =>
       selectedOptions[dim.name] && selectedOptions[dim.name].length > 0
     );
     if (dimsWithSelections.length === 0) return;
@@ -274,7 +385,7 @@ const VariantConfigurator: React.FC<VariantConfiguratorProps> = ({
         weight: existing?.weight || 0
       };
 
-      variantConfig.forEach((field: any) => {
+      effectiveVariantConfig.forEach((field: any) => {
         if (!Object.prototype.hasOwnProperty.call(variant, field.name)) {
           const existingValue = existing?.[field.name];
           variant[field.name] = field.type === 'number' ? (existingValue || 0) : (existingValue || '');
@@ -293,13 +404,13 @@ const VariantConfigurator: React.FC<VariantConfiguratorProps> = ({
     updateParent(updated, selectedOptions);
   };
 
-  const totalCombinations = activeDimensions.reduce((total, dim) => {
+  const totalCombinations = effectiveDimensions.reduce((total, dim) => {
     const selectedCount = selectedOptions[dim.name]?.length || 0;
     return selectedCount > 0 ? total * selectedCount : total;
   }, 1);
 
   // Dimensions shaped for SkuMatrixPreview
-  const matrixDimensions = activeDimensions.map(dim => ({
+  const matrixDimensions = effectiveDimensions.map(dim => ({
     name: dim.name,
     label: dim.label,
     selectedOptions: selectedOptions[dim.name] ?? [],
@@ -317,9 +428,9 @@ const VariantConfigurator: React.FC<VariantConfiguratorProps> = ({
           </svg>
           <span className="text-xs text-brand-700 dark:text-brand-300">
             Variant axes driven by <strong>{productTypeName}</strong> product type
-            {activeDimensions.length > 0 && (
+            {effectiveDimensions.length > 0 && (
               <span className="ml-1 font-normal text-brand-600 dark:text-brand-400">
-                — {activeDimensions.map(d => d.label).join(' × ')}
+                — {effectiveDimensions.map(d => d.label).join(' × ')}
               </span>
             )}
           </span>
@@ -328,7 +439,7 @@ const VariantConfigurator: React.FC<VariantConfiguratorProps> = ({
 
       {/* Option selectors */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {activeDimensions.map(dimension => (
+        {effectiveDimensions.map(dimension => (
           <div key={dimension.name}>
             <h4 className="font-medium mb-3">
               {dimension.label}
@@ -366,15 +477,15 @@ const VariantConfigurator: React.FC<VariantConfiguratorProps> = ({
           className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50"
         >
           Confirm Variants
-          {activeDimensions.length > 0 && (
+          {effectiveDimensions.length > 0 && (
             <span className="ml-2">
-              ({activeDimensions.map(dim => selectedOptions[dim.name]?.length || 0).join(' × ')} = {totalCombinations} SKUs)
+              ({effectiveDimensions.map(dim => selectedOptions[dim.name]?.length || 0).join(' × ')} = {totalCombinations} SKUs)
             </span>
           )}
         </button>
-        {activeDimensions.length > 0 && (
+        {effectiveDimensions.length > 0 && (
           <div className="text-sm text-gray-600">
-            {activeDimensions.length} option{activeDimensions.length !== 1 ? 's' : ''} available
+            {effectiveDimensions.length} option{effectiveDimensions.length !== 1 ? 's' : ''} available
           </div>
         )}
       </div>
@@ -387,16 +498,16 @@ const VariantConfigurator: React.FC<VariantConfiguratorProps> = ({
             <table className="w-full border-collapse border border-gray-300">
               <thead className="bg-gray-50">
                 <tr>
-                  {variantConfig.map((field: any) => (
+                  {effectiveVariantConfig.map((field: any) => (
                     <th key={field.name} className="border border-gray-300 px-3 py-2 text-left">{field.label}</th>
                   ))}
                   <th className="border border-gray-300 px-3 py-2 text-left">Actions</th>
                 </tr>
               </thead>
               <tbody>
-                {variants.map(variant => (
-                  <tr key={variant.id} className="hover:bg-gray-50">
-                    {variantConfig.map((field: any) => (
+                {variants.map((variant, idx) => (
+                  <tr key={variant.id ?? variant.sku ?? idx} className="hover:bg-gray-50">
+                    {effectiveVariantConfig.map((field: any) => (
                       <td key={field.name} className="border border-gray-300 px-3 py-2">
                         {field.type === 'images' ? (
                           <VariantMultiImageUpload
@@ -454,13 +565,13 @@ const VariantConfigurator: React.FC<VariantConfiguratorProps> = ({
 
           <div className="p-3 bg-blue-50 rounded border">
             <div className="text-sm text-blue-800">
-              {variants.length} SKU{variants.length !== 1 ? 's' : ''} · {activeDimensions.length} option{activeDimensions.length !== 1 ? 's' : ''} ({activeDimensions.map(d => d.label).join(', ')})
+              {variants.length} SKU{variants.length !== 1 ? 's' : ''} · {effectiveDimensions.length} option{effectiveDimensions.length !== 1 ? 's' : ''} ({effectiveDimensions.map(d => d.label).join(', ')})
             </div>
           </div>
         </div>
       )}
 
-      {activeDimensions.length === 0 && (
+      {effectiveDimensions.length === 0 && (
         <div className="p-3 bg-gray-50 border border-gray-200 rounded dark:bg-gray-800 dark:border-gray-700">
           {isLoadingVariantOptions ? (
             <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">

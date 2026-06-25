@@ -133,11 +133,24 @@ export const MasterProductService = {
       tags:          tags.length > 0 ? tags : null,
       images:        images.length > 0 ? images : null,
       variantCount:  Number(raw.variantCount ?? 0),
-      variants:      Array.isArray(raw.variants) && raw.variants.length > 0
-                       ? raw.variants as Record<string, unknown>[]
-                       : Array.isArray(attrs.variants)
-                         ? attrs.variants as Record<string, unknown>[]
-                         : [],
+      variants:      (() => {
+                       // Check every plausible location the backend might store variants.
+                       const candidates: unknown[] = [
+                         raw.variants,           // standard top-level (may be null after backend fix)
+                         raw.variantGroups,       // CreateMasterProductRequestDTO field name
+                         raw.variantList,         // alternative name
+                         raw.productVariants,     // alternative name
+                         attrs.variants,          // productAttributes.variants (legacy path)
+                         attrs.variantGroups,     // productAttributes.variantGroups
+                         attrs.variantList,       // productAttributes.variantList
+                       ];
+                       for (const c of candidates) {
+                         if (Array.isArray(c) && (c as unknown[]).length > 0) {
+                           return c as Record<string, unknown>[];
+                         }
+                       }
+                       return [];
+                     })(),
       status:        (raw.status as MasterProductDetail["status"]) ?? "ACTIVE",
       createdAt:     String(raw.createdAt ?? ""),
       updatedAt:     String(raw.updatedAt ?? ""),

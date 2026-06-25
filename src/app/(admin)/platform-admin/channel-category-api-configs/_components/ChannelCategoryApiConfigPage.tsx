@@ -311,10 +311,9 @@ function ChannelConfigCard({
                   <rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>
                 </svg>
                 <p className="text-xs text-amber-700 dark:text-amber-400">
-                  <strong>Code-managed fields.</strong>{" "}
-                  <code className="font-mono">taxonomyConfig</code> and <code className="font-mono">importConfig</code> are
-                  tightly coupled to <code className="font-mono">ChannelTaxonomyService</code> and{" "}
-                  <code className="font-mono">ChannelCategoryImportService</code>. Changes require a code review and deployment.
+                  <strong>Code-managed field.</strong>{" "}
+                  <code className="font-mono">taxonomyConfig</code> is tightly coupled to{" "}
+                  <code className="font-mono">ChannelTaxonomyService</code>. Changes require a code review and deployment.
                 </p>
               </div>
 
@@ -330,19 +329,6 @@ function ChannelConfigCard({
                   <FieldTable data={config.taxonomyConfig as unknown as Record<string, unknown>} />
                 ) : (
                   <p className="text-xs text-gray-400 italic">Not configured — channel uses REST category tree only.</p>
-                )}
-              </div>
-
-              <div>
-                <h4 className="text-xs font-semibold text-gray-700 dark:text-gray-300 mb-2">
-                  importConfig {config.importConfig?.capable ? (
-                    <span className="ml-2 px-1.5 py-0.5 text-xs bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 rounded">capable</span>
-                  ) : null}
-                </h4>
-                {config.importConfig ? (
-                  <FieldTable data={config.importConfig as unknown as Record<string, unknown>} />
-                ) : (
-                  <p className="text-xs text-gray-400 italic">Not configured.</p>
                 )}
               </div>
             </div>
@@ -472,12 +458,10 @@ export default function ChannelCategoryApiConfigPage() {
           </p>
           <p>
             <strong>Read-only (code-managed):</strong>{" "}
-            <code className="font-mono">taxonomyConfig</code> and <code className="font-mono">importConfig</code>{" "}
-            are tightly coupled to backend service parsing logic.
+            <code className="font-mono">taxonomyConfig</code> is tightly coupled to backend service parsing logic.
           </p>
           <p>
-            <strong>Enable / Disable</strong> controls whether <code className="font-mono">CategorySyncJob</code>{" "}
-            and <code className="font-mono">CategoryDriftPollingJob</code> include this channel.
+            <strong>Enable / Disable</strong> controls whether <code className="font-mono">CategorySyncJob</code> includes this channel.
           </p>
         </div>
       </div>

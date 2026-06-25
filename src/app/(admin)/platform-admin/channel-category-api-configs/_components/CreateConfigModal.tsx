@@ -169,8 +169,8 @@ export default function CreateConfigModal({ onSave, onClose }: Props) {
             {/* Note about non-editable fields */}
             <div className="px-4 py-2.5 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg text-xs text-amber-700 dark:text-amber-400">
               <strong>Note:</strong>{" "}
-              <code className="font-mono">taxonomyConfig</code> and <code className="font-mono">importConfig</code> are code-managed.
-              Set them via backend seed data or direct DB patch — they are not editable via this admin API.
+              <code className="font-mono">taxonomyConfig</code> is code-managed.
+              Set it via backend seed data or direct DB patch — not editable via this admin API.
             </div>
 
             {/* Tree API Config */}
