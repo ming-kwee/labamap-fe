@@ -7,7 +7,8 @@
  * to section components.
  */
 
-import React, { useEffect, useMemo, useCallback, useRef } from 'react';
+import React, { useEffect, useMemo, useCallback, useRef, useState } from 'react';
+import { v4 as uuidv4 } from 'uuid';
 import { Alert, AlertDescription } from '@/shared/ui/alert/AlertComponents';
 import { Loader2, AlertCircle } from '@/shared/ui/icons/Icons';
 import { Card, CardContent, CardHeader, CardTitle } from '@/shared/ui/card/Card';
@@ -101,8 +102,11 @@ export default function ProductCreateForm({
   initialProductId,
   onProductSaved,
 }: ProductCreateFormProps) {
-  // Stable temp product ID for image uploads before product is saved
-  const tempProductIdRef = useRef(`temp_${Date.now()}`);
+  // Client-assigned UUID v4 — generated once per create session, sent to backend as
+  // context.productId so master_product_data._id === channel_product_data.masterProductId.
+  // In edit mode, the real productId from the URL is used instead (initialProductId).
+  const [clientProductId] = useState(() => mode === 'create' ? uuidv4() : (initialProductId ?? ''));
+
   // Track whether we've already auto-expanded sections (runs once after first schema load)
   const hasAutoExpandedRef = useRef(false);
   // Track field names from the previous schema so stale values can be removed on category change
@@ -163,6 +167,7 @@ export default function ProductCreateForm({
     category: formData.category || organizationDefaultCategory,
     mode,
     productId: initialProductId,
+    clientProductId,
   });
 
   const handleCategoryChange = useCallback(
@@ -279,7 +284,7 @@ export default function ProductCreateForm({
       e.preventDefault();
       if (!schema) return;
 
-      const product = generateMasterProduct({ formData, schema, organizationId, userId });
+      const product = generateMasterProduct({ formData, schema, organizationId, userId, productId: clientProductId });
       const createdProduct = await submitProduct(product);
 
       if (createdProduct) {
@@ -432,7 +437,9 @@ export default function ProductCreateForm({
     }
   }, [schema, formStage, setExpandedSections]);
 
-  const productId = (mode === 'edit' && initialProductId) ? initialProductId : (formData.id || tempProductIdRef.current);
+  // In create mode, use clientProductId (UUID v4) so image uploads are stored under the same
+  // ID that will become master_product_data._id — no orphaned images after save.
+  const productId = (mode === 'edit' && initialProductId) ? initialProductId : clientProductId;
 
   // ── Loading / error states ─────────────────────────────────────────────────
 

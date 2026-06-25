@@ -40,8 +40,12 @@ export class ProductApiService {
 
     const backendResponse = await response.json();
 
+    // Spread productData first, then override id explicitly so that productData.id
+    // (which may be the client's temp "prod_..." value echoed back) does not override
+    // the real UUID returned by the backend in productId.
     const transformedProduct: MasterProduct = {
-      id: backendResponse.productId || backendResponse.masterProduct?.id,
+      ...backendResponse.productData,
+      id: backendResponse.productId || backendResponse.masterProduct?.id || backendResponse.productData?.id,
       sku: backendResponse.productData?.sku || '',
       name: backendResponse.productData?.name || '',
       description: backendResponse.productData?.description,
@@ -54,7 +58,6 @@ export class ProductApiService {
             ? backendResponse.productData.inventory
             : parseFloat(backendResponse.productData.inventory))
         : undefined,
-      ...backendResponse.productData
     };
 
     return transformedProduct;

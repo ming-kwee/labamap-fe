@@ -41,6 +41,9 @@ export interface UseProductSubmitOptions {
   mode?: 'create' | 'edit';
   /** Phase 4: required when mode === "edit" */
   productId?: string;
+  /** Client-assigned UUID v4 — sent as context.productId so backend uses it as master_product_data._id,
+   *  ensuring channel_product_data.masterProductId is consistent across create and edit flows. */
+  clientProductId?: string;
 }
 
 export interface UseProductSubmitReturn {
@@ -55,7 +58,7 @@ export interface UseProductSubmitReturn {
 }
 
 export function useProductSubmit(options: UseProductSubmitOptions): UseProductSubmitReturn {
-  const { userId, organizationId, userRole, targetChannels, category, permissions = [], mode = 'create', productId } = options;
+  const { userId, organizationId, userRole, targetChannels, category, permissions = [], mode = 'create', productId, clientProductId } = options;
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -97,6 +100,10 @@ export function useProductSubmit(options: UseProductSubmitOptions): UseProductSu
 
     try {
       const context = createBackendContext(userId, organizationId, userRole, targetChannels, category, permissions);
+      // Attach client-assigned UUID for create mode so backend uses it as master_product_data._id
+      if (mode !== 'edit' && clientProductId) {
+        context.productId = clientProductId;
+      }
 
       const validation = await validateProduct(product);
 

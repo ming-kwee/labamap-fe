@@ -12,13 +12,16 @@ export interface ProductGenerationOptions {
   schema: any;
   organizationId: string;
   userId: string;
+  /** Client-assigned UUID v4 — passed to backend as context.productId so master_product_data._id
+   *  matches channel_product_data.masterProductId across create and edit flows. */
+  productId?: string;
 }
 
 /**
  * Generates a MasterProduct object from form data using schema configuration
  */
 export function generateMasterProduct(options: ProductGenerationOptions): MasterProduct {
-  const { formData, schema, organizationId, userId } = options;
+  const { formData, schema, organizationId, userId, productId } = options;
 
   if (!schema || !schema.fields || !Array.isArray(schema.fields)) {
     throw new Error('Invalid schema provided to product generation - no fields found');
@@ -26,7 +29,7 @@ export function generateMasterProduct(options: ProductGenerationOptions): Master
 
   const now = new Date().toISOString();
   const product: Partial<MasterProduct> = {
-    id: `prod_${Date.now()}`,
+    id: productId || `prod_${Date.now()}`,
     sku: formData.sku as string || `SKU_${Date.now()}`,
     name: formData.name as string || '',
     price: Number(formData.price) || 0,

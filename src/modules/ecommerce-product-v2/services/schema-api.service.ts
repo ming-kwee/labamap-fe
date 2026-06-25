@@ -21,6 +21,13 @@ export interface BackendContext {
   timestamp?: number;
   environment?: string;
   metadata?: Record<string, any>;
+  /**
+   * Client-assigned UUID v4 for the product being created.
+   * Backend uses this as master_product_data._id so channel_product_data.masterProductId
+   * stays consistent across create and edit flows.
+   * Backend validates: valid UUID → used as _id; prod_timestamp/null → backend generates UUID.
+   */
+  productId?: string;
 }
 
 // POST /api/v1/ecommerce/form-schema/generate

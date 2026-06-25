@@ -331,7 +331,7 @@ const VariantConfigurator: React.FC<VariantConfiguratorProps> = ({
       variants: newVariants,
       options: selections,
       totalVariants: newVariants.length,
-      dimensions: activeDimensions.map(dim => ({
+      dimensions: effectiveDimensions.map(dim => ({
         name: dim.name,
         label: dim.label,
         selectedCount: selections[dim.name]?.length || 0,
@@ -396,6 +396,7 @@ const VariantConfigurator: React.FC<VariantConfiguratorProps> = ({
     });
 
     setVariants(newVariants);
+    updateParent(newVariants, selectedOptions);
   };
 
   const updateVariant = (id: string, field: string, newValue: any) => {
