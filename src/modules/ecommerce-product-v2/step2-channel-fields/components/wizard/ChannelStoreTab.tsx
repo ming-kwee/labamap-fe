@@ -35,12 +35,6 @@ interface Props {
   savedCompletionPct?: number;
   /** Real organization ID from auth context — required for merchant-data API calls. */
   orgId?: string;
-  /**
-   * Called when the category-attributes endpoint fails (e.g. 404 — backend pending).
-   * ChannelFieldsWizard handles this by doing an immediate save + schema refresh so
-   * categoryAttributeSection comes back via the schema endpoint instead.
-   */
-  onCategoryAttributesFailed?: () => void;
 }
 
 // ── SVG chevron — animated rotation via className ─────────────────────────────
@@ -363,7 +357,7 @@ function VariantOptionSuggestionsPanel({
 
 // ── Main component ────────────────────────────────────────────────────────────
 
-export default function ChannelStoreTab({ schema, values, onChange, isSaving, lastSaved, masterProduct, fieldErrors, orgId = "", onCategoryAttributesFailed }: Props) {
+export default function ChannelStoreTab({ schema, values, onChange, isSaving, lastSaved, masterProduct, fieldErrors, orgId = "" }: Props) {
   const [optionalExpanded, setOptionalExpanded] = useState(false);
 
   // ── Scenario D: Category-Dependent Dynamic Field Injection ────────────────
@@ -381,17 +375,10 @@ export default function ChannelStoreTab({ schema, values, onChange, isSaving, la
     : null;
 
   // "Unchanged" only when schema has proper required fields already embedded.
-  // Guards against schema endpoint returning categoryAttributeSection with empty requiredFields
-  // (possible when schema was generated before the MERGE strategy fix was deployed).
-  // When false, the violet mid-session section renders using categoryAttrs from the direct
-  // endpoint which now correctly returns both requiredFields + optionalFields.
-  const schemaHasRequiredFields =
-    (schema.categoryAttributeSection?.requiredFields?.length ?? 0) > 0;
-
   const categoryIsUnchangedFromSchema =
     schema.categoryAttributeSection != null &&
     categoryId === schema.categoryAttributeSection.categoryId &&
-    schemaHasRequiredFields;
+    (schema.categoryAttributeSection.requiredFields?.length ?? 0) > 0;
 
   const [categoryAttrs, setCategoryAttrs] = useState<CategoryAttributeSection | null>(
     schema.categoryAttributeSection ?? null
@@ -400,16 +387,9 @@ export default function ChannelStoreTab({ schema, values, onChange, isSaving, la
   const [catAttrsError, setCatAttrsError] = useState<string | null>(null);
   const [catOptionalExpanded, setCatOptionalExpanded] = useState(false);
 
-  // Capture the categoryId present at mount — used to distinguish initial load (My Products
-  // edit, category pre-filled) from user-initiated changes so we don't trigger a save+refresh
-  // (onCategoryAttributesFailed) unnecessarily on page load.
-  const initialCategoryIdRef = useRef<string | null>(categoryId);
-
-  // Skip fetch only when schema already has proper required fields for this category.
-  // Forces a re-fetch when schema has empty requiredFields so categoryAttrs is always
-  // populated with the correct data from the direct endpoint (MERGE strategy now active).
+  // Skip fetch when category already has proper required fields from schema.
   const lastFetchedCategoryId = useRef<string | null>(
-    schemaHasRequiredFields ? (schema.categoryAttributeSection?.categoryId ?? null) : null
+    categoryIsUnchangedFromSchema ? (schema.categoryAttributeSection?.categoryId ?? null) : null
   );
 
   useEffect(() => {
@@ -426,23 +406,10 @@ export default function ChannelStoreTab({ schema, values, onChange, isSaving, la
       })
       .then((data) => {
         setCategoryAttrs(data);
-        const hasRequired = (data.requiredFields?.length ?? 0) > 0;
-        // Only trigger save+refresh fallback when user ACTIVELY changed the category
-        // mid-session (not on initial page load from My Products where category is pre-filled).
-        // On initial load, the violet section will display whatever categoryAttrs has (optional
-        // Shopify taxonomy fields); required fields from categoryRequirements remain in
-        // the schema's required section above.
-        // Fallback: if required fields still empty (e.g. network error, endpoint unavailable),
-        // trigger save+schema refresh ONLY when user actively changed category mid-session.
-        // Not triggered on initial page load to avoid unnecessary saves.
-        const isUserChange = categoryId !== initialCategoryIdRef.current;
-        if (!hasRequired && isUserChange) {
-          onCategoryAttributesFailed?.();
-        }
       })
       .catch(() => {
+        // Endpoint unreachable — silent, categoryAttrs stays as schema value
         setCatAttrsError(null);
-        onCategoryAttributesFailed?.();
       })
       .finally(() => setCatAttrsLoading(false));
   // eslint-disable-next-line react-hooks/exhaustive-deps

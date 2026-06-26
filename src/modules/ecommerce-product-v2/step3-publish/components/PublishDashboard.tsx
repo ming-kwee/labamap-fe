@@ -201,6 +201,149 @@ function MatchingStrategyBreakdown({ metadata, fieldMappings: _fm }: MatchingStr
   );
 }
 
+// ─── JOLT Readiness Panel ─────────────────────────────────────────────────────
+
+interface ConflictItem {
+  type: "ERROR" | "WARNING";
+  target: string;
+  sources: string;
+  description: string;
+}
+
+function parseConflict(line: string): ConflictItem | null {
+  const m = line.match(/\[(JOLT-CONFLICT (ERROR|WARNING))\]\s+target='([^']+)'\s+sources=\[([^\]]+)\]\s+[—-]+\s*(.*)/);
+  if (!m) return null;
+  return {
+    type:        m[2] as "ERROR" | "WARNING",
+    target:      m[3],
+    sources:     m[4],
+    description: m[5],
+  };
+}
+
+function JoltReadinessPanel({ warnings }: { warnings?: string[] }) {
+  if (!warnings?.length) return null;
+
+  const statusLine = warnings.find(w => w.includes("[JOLT-READINESS]"));
+  const isNotReady = !!statusLine?.includes("NOT_READY");
+  const hasWarnings = !isNotReady && !!statusLine?.includes("WARNINGS");
+  const isReady = !isNotReady && !hasWarnings;
+
+  // Categorise lines
+  const conflicts:  ConflictItem[] = [];
+  const checks:     string[] = [];
+  const infoLines:  string[] = [];
+
+  for (const w of warnings) {
+    if (w.includes("[JOLT-READINESS]")) continue;
+    const conflict = parseConflict(w);
+    if (conflict) { conflicts.push(conflict); continue; }
+    if (w.startsWith("✓") || w.startsWith("⚠")) { checks.push(w); continue; }
+    infoLines.push(w);
+  }
+
+  const statusBg    = isNotReady ? "bg-error-50 dark:bg-error-500/10 border-error-200 dark:border-error-500/30"
+                    : hasWarnings ? "bg-warning-50 dark:bg-warning-500/10 border-warning-200 dark:border-warning-500/30"
+                    : "bg-success-50 dark:bg-success-500/10 border-success-200 dark:border-success-500/30";
+  const statusIcon  = isNotReady ? "✗" : hasWarnings ? "⚠" : "✓";
+  const statusText  = isNotReady ? "Not Ready — publishing blocked" : hasWarnings ? "Warnings — review before publishing" : "Ready to publish";
+  const statusCls   = isNotReady ? "text-error-700 dark:text-error-400"
+                    : hasWarnings ? "text-warning-700 dark:text-warning-400"
+                    : "text-success-700 dark:text-success-400";
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <Code className="h-5 w-5" />
+          JOLT Readiness Check
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+
+        {/* Status banner */}
+        <div className={`flex items-center gap-3 rounded-xl border px-4 py-3 ${statusBg}`}>
+          <span className={`text-lg font-bold flex-shrink-0 ${statusCls}`}>{statusIcon}</span>
+          <span className={`text-sm font-semibold ${statusCls}`}>{statusText}</span>
+        </div>
+
+        {/* Info messages (unmapped %, injected fields, persistence result) */}
+        {infoLines.length > 0 && (
+          <div className="space-y-1.5">
+            {infoLines.map((line, i) => {
+              const isFinal = line.toLowerCase().includes("not persisted") || line.toLowerCase().includes("persist");
+              return (
+                <p key={i} className={`text-xs ${isFinal ? "font-medium text-error-600 dark:text-error-400" : "text-gray-600 dark:text-gray-400"}`}>
+                  {line}
+                </p>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Conflict cards */}
+        {conflicts.length > 0 && (
+          <div className="space-y-2">
+            <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">
+              Target Conflicts ({conflicts.length})
+            </p>
+            {conflicts.map((c, i) => (
+              <div key={i} className={`rounded-lg border px-3 py-2.5 space-y-1.5 ${
+                c.type === "ERROR"
+                  ? "bg-error-50/60 dark:bg-error-500/10 border-error-200 dark:border-error-500/30"
+                  : "bg-warning-50/60 dark:bg-warning-500/10 border-warning-200 dark:border-warning-500/30"
+              }`}>
+                <div className="flex items-center gap-2">
+                  <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
+                    c.type === "ERROR"
+                      ? "bg-error-100 dark:bg-error-500/20 text-error-700 dark:text-error-300"
+                      : "bg-warning-100 dark:bg-warning-500/20 text-warning-700 dark:text-warning-300"
+                  }`}>{c.type}</span>
+                  <code className="text-xs font-mono font-semibold text-gray-800 dark:text-gray-200">{c.target}</code>
+                </div>
+                <p className="text-xs text-gray-500 dark:text-gray-400">
+                  Sources: <code className="font-mono text-gray-700 dark:text-gray-300">[{c.sources}]</code>
+                </p>
+                <p className="text-xs text-gray-600 dark:text-gray-400 leading-relaxed">{c.description}</p>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* 4-layer check results */}
+        {checks.length > 0 && (
+          <div className="space-y-1.5">
+            <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">
+              Readiness Checks
+            </p>
+            <div className="rounded-xl border border-gray-200 dark:border-gray-700 divide-y divide-gray-100 dark:divide-gray-800 overflow-hidden">
+              {checks.map((line, i) => {
+                const isOk   = line.startsWith("✓");
+                const isWarn = line.startsWith("⚠");
+                const icon   = isOk ? "✓" : isWarn ? "⚠" : "✗";
+                const text   = line.slice(line.indexOf(" ") + 1);
+                const rowCls = isOk   ? "bg-success-50/40 dark:bg-success-500/5"
+                             : isWarn ? "bg-warning-50/40 dark:bg-warning-500/5"
+                             :          "bg-error-50/40 dark:bg-error-500/5";
+                const iconCls = isOk   ? "text-success-600 dark:text-success-400"
+                              : isWarn ? "text-warning-600 dark:text-warning-400"
+                              :          "text-error-600 dark:text-error-400";
+                return (
+                  <div key={i} className={`flex items-start gap-3 px-3 py-2 ${rowCls}`}>
+                    <span className={`text-sm font-bold flex-shrink-0 mt-0.5 ${iconCls}`}>{icon}</span>
+                    <p className="text-xs text-gray-700 dark:text-gray-300 leading-relaxed">{text}</p>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+      </CardContent>
+    </Card>
+  );
+}
+
 // ─── Field Mappings Table ─────────────────────────────────────────────────────
 
 function FieldMappingsTable({ fieldMappings, channelLabel }: { fieldMappings: FieldMapping[]; channelLabel: string }) {
@@ -1087,6 +1230,9 @@ export default function PublishDashboard({ masterProductId }: Props) {
                       metadata={currentAnalysis.matchingMetadata}
                       fieldMappings={currentAnalysis.fieldMappings ?? []}
                     />
+
+                    {/* JOLT Readiness */}
+                    <JoltReadinessPanel warnings={currentAnalysis.matchingMetadata?.warnings} />
 
                     {/* Field Mappings Table */}
                     <FieldMappingsTable

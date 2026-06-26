@@ -567,23 +567,6 @@ export default function ProductDetailPage({ masterProductId }: { masterProductId
 
   useEffect(() => { load(); }, [load]);
 
-  // Sync product to sessionStorage only when the backend returns a non-empty variants array.
-  // Skipping the write when variants: [] prevents overwriting good sessionStorage data
-  // that was written by the create flow (which has the full VariantOption format).
-  useEffect(() => {
-    if (!product || typeof window === "undefined") return;
-    if (!product.variants || product.variants.length === 0) return;
-    try {
-      sessionStorage.setItem(`product_${product.id}`, JSON.stringify({
-        name:        product.name,
-        description: product.description ?? undefined,
-        price:       product.basePrice   ?? undefined,
-        mainImage:   product.imageUrl    ?? undefined,
-        variants:    product.variants,
-      }));
-    } catch { /**/ }
-  }, [product]);
-
   // Auto-dismiss toast
   useEffect(() => {
     if (!toast) return;

@@ -10,6 +10,10 @@ export interface JoltMetadata {
   strategyBreakdown?: Record<string, number>;
   confidence?: number | null;
   supersetSchemaHash?: string | null;
+  /** 4-layer JOLT readiness check warnings from APM analyze.
+   *  Includes "[JOLT-READINESS] Overall: READY|WARNINGS|NOT_READY" and per-check details.
+   *  Present when spec was last regenerated after bff-v6 deploy. */
+  warnings?: string[];
 }
 
 export interface ChannelJoltSpec {
@@ -78,6 +82,7 @@ export function mapRawJoltSpec(raw: unknown): ChannelJoltSpec {
                               : undefined,
       confidence:           meta.confidence != null ? Number(meta.confidence) : null,
       supersetSchemaHash:   meta.supersetSchemaHash as string | null | undefined,
+      warnings:             Array.isArray(meta.warnings) ? (meta.warnings as string[]) : undefined,
     },
     supersetSchema: (r.supersetSchema as Record<string, unknown> | null) ?? null,
     description:    r.description as string | null | undefined,

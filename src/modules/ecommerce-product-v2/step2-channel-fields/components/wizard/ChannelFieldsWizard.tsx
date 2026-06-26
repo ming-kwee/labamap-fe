@@ -89,104 +89,6 @@ function extractInitialValues(schema: ChannelSchemaPerStore): StoreFormValues {
   return { masterOverrides, channelData, variantOverrides };
 }
 
-// ─── Read master product data from sessionStorage ─────────────────────────────
-// The create page stores the full product as JSON under `product_${id}`.
-// Two helpers:
-//   getMasterVariantsFromSession — extracts {sku, label} for the schema API call
-//   getMasterSnapshotFromSession — builds a full MasterProductSnapshot so the
-//     variant table can show inherited values (price, barcode, quantity, etc.)
-//     without relying on the backend to echo them back in the schema response.
-
-type StoredVariant = {
-  sku: string;
-  options?: Record<string, string>;
-  price?: number;
-  compareAtPrice?: number;
-  quantity?: number;
-  barcode?: string;
-  weight?: number;
-  [key: string]: unknown;
-};
-
-type StoredProduct = {
-  name?: string;
-  description?: string;
-  price?: number;
-  compareAtPrice?: number;
-  quantity?: number;
-  sku?: string;
-  weight?: number;
-  dimensions?: { length: number; width: number; height: number; unit: string };
-  mainImage?: string;
-  variants?: StoredVariant[];
-};
-
-function getMasterVariantsFromSession(
-  masterProductId: string
-): Array<{ sku: string; label: string }> {
-  if (typeof window === "undefined") return [];
-  try {
-    const raw = sessionStorage.getItem(`product_${masterProductId}`);
-    if (!raw) return [];
-    const product = JSON.parse(raw) as StoredProduct;
-    return (product.variants ?? []).map((v) => ({
-      sku: v.sku,
-      label: v.options && Object.keys(v.options).length > 0
-        ? Object.values(v.options).join(" / ")
-        : v.sku,
-    }));
-  } catch {
-    return [];
-  }
-}
-
-/**
- * Builds a MasterProductSnapshot from the product stored in sessionStorage.
- * The backend schema response may not include variant field values (price,
- * barcode, quantity, etc.) because the schema call only forwards {sku, label}.
- * Reading directly from session guarantees the full data is available for the
- * variant table's inherited-value display.
- *
- * If the backend also returns a masterProduct snapshot, callers should merge:
- *   { ...sessionSnapshot, ...backendSnapshot, variants: sessionSnapshot.variants }
- * so backend wins for top-level fields but session supplies the variant values.
- */
-function getMasterSnapshotFromSession(
-  masterProductId: string
-): MasterProductSnapshot | null {
-  if (typeof window === "undefined") return null;
-  try {
-    const raw = sessionStorage.getItem(`product_${masterProductId}`);
-    if (!raw) return null;
-    const p = JSON.parse(raw) as StoredProduct;
-    return {
-      name: p.name ?? "",
-      description: p.description,
-      price: p.price ?? 0,
-      compareAtPrice: p.compareAtPrice,
-      quantity: p.quantity,
-      sku: p.sku,
-      weight: p.weight,
-      dimensions: p.dimensions,
-      mainImage: p.mainImage,
-      variants: (p.variants ?? []).map((v) => {
-        // Spread every field on the stored variant so any fieldName lookup works.
-        const { options, ...rest } = v;
-        return {
-          ...rest,
-          variantLabel: options && Object.keys(options).length > 0
-            ? Object.values(options).join(" / ")
-            : v.sku,
-          // Preserve structured options so Step 2's Apply can auto-populate
-          // per-variant option{n} values (e.g. { Color: "Black", Size: "XS" }).
-          variantOptions: options ?? {},
-        };
-      }),
-    };
-  } catch {
-    return null;
-  }
-}
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 
@@ -240,48 +142,16 @@ export default function ChannelFieldsWizard({ masterProductId }: Props) {
     setLoading(true);
     setLoadError(null);
     try {
-      const masterVariants = getMasterVariantsFromSession(masterProductId);
+      // Backend fetches variants directly from DB — masterVariants not needed.
       const resp = await ChannelSchemaService.generateChannelStepSchema({
         masterProductId,
         organizationId: orgId,
-        ...(masterVariants.length > 0 && { masterVariants }),
       });
       // Build the master product snapshot for the variant table.
-      // Session storage has full variant field data (price, barcode, quantity, etc.)
-      // that we can't guarantee the backend echoes back in the schema response.
-      // Merge strategy: session supplies the base (variant values), backend wins
-      // for top-level product fields, session variants always win.
-      const sessionSnap = getMasterSnapshotFromSession(masterProductId);
+      // Backend now always returns masterProduct.variants from DB — no sessionStorage merge needed.
       const backendSnap = resp.masterProduct ?? null;
-      const mergedVariants = sessionSnap?.variants ?? backendSnap?.variants;
-      if (sessionSnap || backendSnap) {
-        setMasterProductSnapshot({
-          ...(sessionSnap ?? {}),
-          ...(backendSnap ?? {}),
-          // Session variants carry the actual field values — always prefer them
-          variants: mergedVariants,
-        } as MasterProductSnapshot);
-      }
-
-      // Persist the best available variant data back to sessionStorage so that
-      // edit/page.tsx can restore VariantConfigurator when the user navigates back.
-      // Runs only when the schema API returned variants and sessionStorage was empty
-      // (My Products → channel-fields flow where create flow never ran).
-      if (
-        mergedVariants?.length &&
-        !sessionSnap?.variants?.length &&
-        typeof window !== "undefined"
-      ) {
-        try {
-          const existing = sessionStorage.getItem(`product_${masterProductId}`);
-          const base = existing ? (JSON.parse(existing) as Record<string, unknown>) : {};
-          sessionStorage.setItem(`product_${masterProductId}`, JSON.stringify({
-            ...base,
-            name:     backendSnap?.name     ?? base.name,
-            mainImage: backendSnap?.mainImage ?? base.mainImage,
-            variants: mergedVariants,
-          }));
-        } catch { /**/ }
+      if (backendSnap) {
+        setMasterProductSnapshot(backendSnap as MasterProductSnapshot);
       }
 
       // Initialize values from schema's currentValue
@@ -493,60 +363,6 @@ export default function ChannelFieldsWizard({ masterProductId }: Props) {
     }
   }, [masterProductId, orgId, storeValues]);
 
-  // Called by ChannelStoreTab when the /category-attributes endpoint fails.
-  // Triggers an immediate save (so the backend records the categoryId) then does a
-  // targeted schema refresh to get categoryAttributeSection via the schema endpoint.
-  const handleCategoryAttributesFailed = useCallback(async (storeId: string, channel: ChannelSchemaPerStore) => {
-    if (saveTimers.current[storeId]) clearTimeout(saveTimers.current[storeId]);
-    await saveStore(storeId, channel);
-
-    // Regenerate schema — after save, the schema endpoint embeds category-specific fields
-    // BOTH in the main sections (required/optional) AND in categoryAttributeSection.
-    // We must replace the ENTIRE channel schema (not just categoryAttributeSection) so that
-    // the section renderer shows the actual input fields (material, size_type, etc.).
-    try {
-      const masterVariants = getMasterVariantsFromSession(masterProductId);
-      const updated = await ChannelSchemaService.generateChannelStepSchema({
-        masterProductId,
-        organizationId: orgId,
-        ...(masterVariants.length > 0 && { masterVariants }),
-      });
-      const updatedChannel = updated.channels.find(c => c.storeId === storeId);
-      if (!updatedChannel) return;
-      // Merge any new field currentValues from the refreshed schema into storeValues.
-      // (material/size_type/care_instructions now have currentValue from the schema if
-      //  the user already filled them in a previous session.)
-      const newChannelData: Record<string, unknown> = {};
-      for (const section of updatedChannel.sections) {
-        if (section.sectionName === "variant_overrides" || section.sectionName === "master_overrides") continue;
-        for (const field of section.fields ?? []) {
-          if (field.currentValue !== undefined && field.currentValue !== null) {
-            newChannelData[field.fieldName] = field.currentValue;
-          }
-        }
-      }
-      setStoreValues(prev => {
-        const existing = prev[storeId] ?? { masterOverrides: {}, channelData: {}, variantOverrides: {} };
-        return {
-          ...prev,
-          [storeId]: {
-            ...existing,
-            // Existing user-typed values win; schema defaults fill in any new fields
-            channelData: { ...newChannelData, ...existing.channelData },
-          },
-        };
-      });
-      setSchemaResponse(prev => {
-        if (!prev) return prev;
-        return {
-          ...prev,
-          channels: prev.channels.map(ch =>
-            ch.storeId === storeId ? updatedChannel : ch
-          ),
-        };
-      });
-    } catch { /* silent — user can still proceed */ }
-  }, [masterProductId, orgId, saveStore]);
 
   function scheduleAutosave(storeId: string, channel: ChannelSchemaPerStore) {
     dirtyStores.current.add(storeId);
@@ -585,55 +401,8 @@ export default function ChannelFieldsWizard({ masterProductId }: Props) {
 
   async function handlePreviousStep() {
     await flushDirtyStores();
-
-    // ── Collect variant data from all available sources ──────────────────────
-    const snapVariants = masterProductSnapshot?.variants as Record<string, unknown>[] | undefined;
-
-    let schemaVariants: Record<string, unknown>[] = [];
-    let variantOverrideSectionExists = false;
-    if (schemaResponse) {
-      for (const ch of schemaResponse.channels) {
-        const section = ch.sections.find((s) => s.sectionName === "variant_overrides");
-        if (section) {
-          variantOverrideSectionExists = true;
-          if (section.variants && section.variants.length > 0) {
-            schemaVariants = section.variants.map((v) => ({
-              id: v.sku, sku: v.sku, variantLabel: v.variantLabel,
-            }));
-          }
-          break;
-        }
-      }
-    }
-
-    const variantsToStore = snapVariants?.length ? snapVariants : schemaVariants;
-
-    // Write variant data to sessionStorage (only if better than what's already stored)
-    if (variantsToStore.length > 0 && typeof window !== "undefined") {
-      try {
-        const existing = sessionStorage.getItem(`product_${masterProductId}`);
-        const base = existing ? (JSON.parse(existing) as Record<string, unknown>) : {};
-        const hasStored = Array.isArray(base.variants) && (base.variants as unknown[]).length > 0;
-        if (!hasStored) {
-          sessionStorage.setItem(`product_${masterProductId}`, JSON.stringify({
-            ...base,
-            name:     masterProductSnapshot?.name     ?? base.name,
-            mainImage: masterProductSnapshot?.mainImage ?? base.mainImage,
-            variants: variantsToStore,
-          }));
-        }
-      } catch { /**/ }
-    }
-
-    // ── URL param: hasVariants signal ─────────────────────────────────────────
-    // The edit page uses detail.variantCount from the backend GET endpoint to decide
-    // whether to show the toggle. If the backend returns variantCount=0/1 (a known gap),
-    // the toggle would be OFF even for products with variants. Passing ?hasVariants=1
-    // gives the edit page a reliable signal independent of the backend response.
-    // Signal is set when: schema has a variant_overrides section, OR snapshot has variants.
-    const hasVariantsSignal = variantOverrideSectionExists || (snapVariants?.length ?? 0) > 0;
-    const dest = `/products/${masterProductId}/edit${hasVariantsSignal ? "?hasVariants=1" : ""}`;
-    router.push(dest);
+    // Backend GET now reliably returns variants[] and variantCount — no workarounds needed.
+    router.push(`/products/${masterProductId}/edit`);
   }
 
   async function handleNext() {
@@ -912,7 +681,6 @@ export default function ChannelFieldsWizard({ masterProductId }: Props) {
           masterProduct={masterProductSnapshot ?? undefined}
           fieldErrors={activeTabFieldErrors}
           orgId={orgId}
-          onCategoryAttributesFailed={() => handleCategoryAttributesFailed(activeStoreId, activeChannel)}
         />
       </div>
 

@@ -455,6 +455,7 @@ export interface ChannelStepSchemaResponse {
 export interface ChannelStepRequest {
   masterProductId: string;
   organizationId: string;
+  /** @deprecated Backend now fetches variants from DB using masterProductId. No longer sent. */
   masterVariants?: Array<{ sku: string; label: string }>;
 }
 

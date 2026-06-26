@@ -291,24 +291,6 @@ export default function ProductCreateForm({
         if (mode !== 'edit' && productTypeId) {
           try { sessionStorage.setItem(`productTypeId_${createdProduct.id}`, productTypeId); } catch { /**/ }
         }
-
-        // Write form-derived variants to sessionStorage BEFORE calling the callback.
-        // The backend create/update response often does not echo productData.variants back,
-        // so the callback (create/page.tsx) would write a product object with no variants.
-        // By pre-writing here, we ensure the variant data survives the callback's write
-        // (which merges rather than overwrites when it sees existing sessionStorage).
-        if (mode !== 'edit') {
-          const formVariants = (product as unknown as Record<string, unknown>).variants;
-          if (Array.isArray(formVariants) && formVariants.length > 0) {
-            try {
-              sessionStorage.setItem(`product_${createdProduct.id}`, JSON.stringify({
-                ...createdProduct,
-                variants: formVariants,
-              }));
-            } catch { /**/ }
-          }
-        }
-
         if (mode === 'edit' && onProductSaved) {
           onProductSaved(createdProduct);
         } else if (onProductCreated) {

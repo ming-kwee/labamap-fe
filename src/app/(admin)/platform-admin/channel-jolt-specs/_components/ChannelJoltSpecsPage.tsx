@@ -89,6 +89,27 @@ const STRATEGY_COLORS: Record<string, string> = {
 
 // ─── Spec row ──────────────────────────────────────────────────────────────────
 
+// ─── JOLT readiness helpers ───────────────────────────────────────────────────
+
+type ReadinessStatus = "READY" | "WARNINGS" | "NOT_READY" | "UNKNOWN";
+
+function parseReadiness(warnings: string[] | undefined): ReadinessStatus {
+  if (!warnings?.length) return "UNKNOWN";
+  const line = warnings.find(w => w.includes("[JOLT-READINESS]"));
+  if (!line) return "UNKNOWN";
+  if (line.includes("NOT_READY")) return "NOT_READY";
+  if (line.includes("WARNINGS"))  return "WARNINGS";
+  if (line.includes("READY"))     return "READY";
+  return "UNKNOWN";
+}
+
+const READINESS_BADGE: Record<ReadinessStatus, { cls: string; label: string }> = {
+  READY:     { cls: "bg-success-50 text-success-700 dark:bg-success-500/10 dark:text-success-400",    label: "✓ Ready"    },
+  WARNINGS:  { cls: "bg-warning-50 text-warning-700 dark:bg-warning-500/10 dark:text-warning-400",    label: "⚠ Warnings" },
+  NOT_READY: { cls: "bg-error-50 text-error-700 dark:bg-error-500/10 dark:text-error-400",            label: "✗ Not Ready" },
+  UNKNOWN:   { cls: "bg-gray-50 text-gray-500 dark:bg-gray-800 dark:text-gray-500",                    label: "— No check"  },
+};
+
 function SpecRow({
   spec, onEdit, onDelete,
 }: {
@@ -99,8 +120,10 @@ function SpecRow({
   const [expanded, setExpanded]         = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
 
-  const meta     = spec.joltMetadata;
-  const isLocked = meta.isManuallyConfigured === true;
+  const meta      = spec.joltMetadata;
+  const isLocked  = meta.isManuallyConfigured === true;
+  const readiness = parseReadiness(meta.warnings);
+  const badge     = READINESS_BADGE[readiness];
 
   function formatDate(s?: string) {
     if (!s) return "—";
@@ -167,6 +190,9 @@ function SpecRow({
                 auto
               </span>
             )}
+            <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium ${badge.cls}`}>
+              {badge.label}
+            </span>
           </div>
         </td>
 
@@ -239,6 +265,34 @@ function SpecRow({
             <pre className="text-xs font-mono bg-white dark:bg-gray-950 border border-gray-200 dark:border-gray-700 rounded-lg p-3 overflow-x-auto max-h-80 text-gray-800 dark:text-gray-200">
               {JSON.stringify(spec.joltSpec, null, 2)}
             </pre>
+            {/* JOLT Readiness Warnings */}
+            {meta.warnings && meta.warnings.length > 0 && (
+              <div className="mt-3">
+                <div className="flex items-center gap-2 mb-1.5">
+                  <span className={`text-xs font-semibold px-2 py-0.5 rounded ${badge.cls}`}>
+                    JOLT Readiness: {readiness}
+                  </span>
+                </div>
+                <div className="space-y-1">
+                  {meta.warnings.map((w, i) => {
+                    const isHeader   = w.includes("[JOLT-READINESS]");
+                    const isError    = w.startsWith("✗") || w.includes("NOT_READY") || w.includes("CONFLICT");
+                    const isWarning  = w.startsWith("⚠") || w.includes("WARNINGS");
+                    const isOk       = w.startsWith("✓") || w.includes("READY") && !isError;
+                    const textCls    = isError   ? "text-error-700 dark:text-error-400"
+                                     : isWarning ? "text-warning-700 dark:text-warning-400"
+                                     : isOk      ? "text-success-700 dark:text-success-400"
+                                     :             "text-gray-600 dark:text-gray-400";
+                    return (
+                      <p key={i} className={`text-xs font-mono ${isHeader ? "font-bold " + textCls : textCls}`}>
+                        {w}
+                      </p>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
             {spec.supersetSchema && (
               <details className="mt-2">
                 <summary className="text-xs text-gray-500 dark:text-gray-400 cursor-pointer hover:text-gray-700 dark:hover:text-gray-300 select-none">
