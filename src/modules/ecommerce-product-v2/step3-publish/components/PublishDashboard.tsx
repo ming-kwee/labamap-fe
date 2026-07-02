@@ -730,18 +730,21 @@ export default function PublishDashboard({ masterProductId }: Props) {
         variantOverrides: store?.variantOverrides ?? {},
         masterOverrides: store?.masterOverrides ?? {},
       });
+      // Backend returns status "COMPLETED" (workflow terminal state) or "PUBLISHED".
+      // Both indicate success — treat either as PUBLISHED on the frontend.
+      const isSuccess = result.status === "PUBLISHED" || result.status === "COMPLETED";
       setPublishResults((prev) => ({
         ...prev,
         [storeId]: {
           storeId,
-          status: result.status === "PUBLISHED" ? "PUBLISHED" : "FAILED",
+          status: isSuccess ? "PUBLISHED" : "FAILED",
           publishedAt: result.publishedAt,
         },
       }));
       setStoreData((prev) =>
         prev.map((d) =>
           d.storeId === storeId
-            ? { ...d, status: (result.status === "PUBLISHED" ? "PUBLISHED" : "FAILED") as ChannelProductStatus, publishedAt: result.publishedAt }
+            ? { ...d, status: (isSuccess ? "PUBLISHED" : "FAILED") as ChannelProductStatus, publishedAt: result.publishedAt }
             : d
         )
       );
@@ -782,7 +785,8 @@ export default function PublishDashboard({ masterProductId }: Props) {
         prev.map((d) => {
           const r = resultsMap[d.storeId];
           if (!r) return d;
-          return { ...d, status: r.status, publishedAt: r.publishedAt, publishError: r.error };
+          const normalizedStatus = (r.status === "PUBLISHED" || r.status === "COMPLETED") ? "PUBLISHED" : r.status;
+          return { ...d, status: normalizedStatus, publishedAt: r.publishedAt, publishError: r.error };
         })
       );
     } catch (err) {
@@ -796,7 +800,7 @@ export default function PublishDashboard({ masterProductId }: Props) {
 
   const readyCount = storeData.filter((d) => d.status === "READY" || d.completionPercentage === 100).length;
   const publishedCount = storeData.filter(
-    (d) => d.status === "PUBLISHED" || publishResults[d.storeId]?.status === "PUBLISHED"
+    (d) => d.status === "PUBLISHED" || publishResults[d.storeId]?.status === "PUBLISHED" || publishResults[d.storeId]?.status === "COMPLETED"
   ).length;
   const failedCount = storeData.filter(
     (d) => d.status === "FAILED" || publishResults[d.storeId]?.status === "FAILED"
@@ -813,7 +817,7 @@ export default function PublishDashboard({ masterProductId }: Props) {
   const currentPublishStatus: ChannelProductStatus = (() => {
     if (!selectedStoreId) return "DRAFT";
     const r = publishResults[selectedStoreId];
-    if (r) return r.status === "PUBLISHED" ? "PUBLISHED" : "FAILED";
+    if (r) return (r.status === "PUBLISHED" || r.status === "COMPLETED") ? "PUBLISHED" : "FAILED";
     return currentStoreData?.status ?? "DRAFT";
   })();
 

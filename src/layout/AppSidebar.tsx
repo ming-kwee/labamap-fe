@@ -92,6 +92,27 @@ const adminNavItems: NavItem[] = [
     ],
   },
   {
+    icon: <PieChartIcon />,
+    name: "AI Console",
+    subItems: [
+      // ── Phase 1 · P0 operational console (Agentic AI + RAG) ────────────────
+      { name: "AI Health & Config", path: "/platform-admin/ai-health", pro: false },
+      { name: "RAG Index Management", path: "/platform-admin/ai-rag-index", pro: false },
+      { name: "RAG Search Playground", path: "/platform-admin/ai-search", pro: false },
+      { name: "Recommendations Review", path: "/platform-admin/ai-recommendations", pro: false },
+      // ── Phase 2 · P1 observability & tuning ────────────────────────────────
+      { name: "Agent Sessions", path: "/platform-admin/ai-sessions", pro: false },
+      { name: "JOLT Generation Console", path: "/platform-admin/ai-generate", pro: false },
+      { name: "Field Mappings", path: "/platform-admin/channel-field-mappings", pro: false },
+      { name: "Learning Dashboard", path: "/platform-admin/ai-learning", pro: false },
+      { name: "Config & Cascade", path: "/platform-admin/ai-config", pro: false },
+      // ── Phase 3 · P2 supporting data managers ──────────────────────────────
+      { name: "JOLT Specs", path: "/platform-admin/channel-jolt-specs", pro: false },
+      { name: "Semantic Knowledge", path: "/platform-admin/field-semantic-knowledge", pro: false },
+      { name: "Value Mappings", path: "/platform-admin/channel-value-mappings", pro: false },
+    ],
+  },
+  {
     icon: <TaskIcon />,
     name: "Business Rules",
     path: "/business-rules",

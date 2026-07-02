@@ -505,7 +505,8 @@ export interface PublishSingleRequest {
 export interface StorePublishResult {
   storeId: string;
   storeName?: string;
-  status: "PUBLISHED" | "FAILED";
+  /** Backend may return "COMPLETED" (workflow terminal state) — treat same as "PUBLISHED" */
+  status: "PUBLISHED" | "COMPLETED" | "FAILED";
   publishedAt?: string;
   error?: string;
 }

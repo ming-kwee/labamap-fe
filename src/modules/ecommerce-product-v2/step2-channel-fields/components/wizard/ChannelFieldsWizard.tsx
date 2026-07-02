@@ -131,6 +131,11 @@ export default function ChannelFieldsWizard({ masterProductId }: Props) {
   const [lastSaved, setLastSaved] = useState<Record<string, Date>>({});
   const saveTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
   const dirtyStores = useRef<Set<string>>(new Set());
+  // In-flight save guard: prevents duplicate concurrent saves for the same store
+  // (e.g. autosave timer fires while flushDirtyStores is already running).
+  // Backend is idempotent (upsert), but concurrent saves waste resources and
+  // can cause a stale completion% to overwrite the latest one.
+  const savingInFlight = useRef<Set<string>>(new Set());
 
   // Navigation warning + field-level errors for the active tab
   const [continueWarning, setContinueWarning] = useState<string | null>(null);
@@ -330,6 +335,9 @@ export default function ChannelFieldsWizard({ masterProductId }: Props) {
   const saveStore = useCallback(async (storeId: string, channel: ChannelSchemaPerStore) => {
     const values = storeValues[storeId];
     if (!values) return;
+    // Skip if a save for this store is already in flight
+    if (savingInFlight.current.has(storeId)) return;
+    savingInFlight.current.add(storeId);
     dirtyStores.current.delete(storeId);
     setSavingStoreId(storeId);
     try {
@@ -359,6 +367,7 @@ export default function ChannelFieldsWizard({ masterProductId }: Props) {
     } catch {
       // silent — user can retry by saving via navigation
     } finally {
+      savingInFlight.current.delete(storeId);
       setSavingStoreId(null);
     }
   }, [masterProductId, orgId, storeValues]);

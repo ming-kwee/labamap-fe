@@ -1,0 +1,70 @@
+/**
+ * Types for P1-E (Agent Sessions / Observability) and P1-F (JOLT Generation).
+ * Shapes verified against live `/admin/ai/sessions` (2026-07-01). Note: live
+ * sessions are all FAILED (Gemini quota), so ragContext/agentSteps/summary/
+ * totalTokensUsed arrive null — the populated shape follows the doc (§P1-E).
+ */
+
+// ─── GET /admin/ai/sessions (channelId REQUIRED) · /sessions/{id} ────────────
+
+export interface RagContext {
+  retrievedJoltSpecs?: number;
+  retrievedFieldMappings?: number;
+  topSimilarityScore?: number;
+  [k: string]: unknown;
+}
+
+/** One tool-call in the agent's reasoning trace. Shape kept flexible. */
+export type AgentStep = Record<string, unknown>;
+
+export type SessionStatus = "COMPLETED" | "FAILED" | "RUNNING" | string;
+
+export interface AiAgentSession {
+  id: string;
+  triggerType: string; // e.g. "JOLT_GENERATION"
+  channelId: string;
+  categoryId?: string | null;
+  status: SessionStatus;
+  ragContext?: RagContext | null; // grounding proof (null on early failure)
+  agentSteps?: AgentStep[] | null;
+  summary?: unknown;
+  totalTokensUsed?: number | null; // cost
+  durationMs?: number | null;
+  errorMessage?: string | null;
+  createdAt?: string;
+  completedAt?: string;
+  [k: string]: unknown;
+}
+
+export interface SessionListParams {
+  channelId: string; // REQUIRED — backend 400s without it
+  triggerType?: string;
+  page?: number;
+  size?: number;
+}
+
+// ─── POST /admin/ai/generate-jolt (P1-F) ────────────────────────────────────
+
+export type GenerateStatus =
+  | "AUTO_APPLIED"
+  | "RECOMMENDATION_CREATED"
+  | "MANUAL_REVIEW_REQUIRED"
+  | "AGENT_FAILED"
+  | string;
+
+export interface GenerateJoltResult {
+  status: GenerateStatus;
+  confidenceScore?: number;
+  proposedJoltSpec?: unknown;
+  explanation?: string;
+  validationSummary?: unknown;
+  agentSessionId?: string;
+  errorMessage?: string;
+  [k: string]: unknown;
+}
+
+export interface GenerateJoltParams {
+  channelId: string;
+  categoryId: string;
+  product: unknown; // master product JSON (request body)
+}

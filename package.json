@@ -11,6 +11,9 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui",
+    "test:e2e:report": "playwright show-report",
     "test:api": "node -e \"console.log('Use devTest.setupStaging() in browser console to test APIs')\""
   },
   "dependencies": {
@@ -40,6 +43,7 @@
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3",
+    "@playwright/test": "^1.61.1",
     "@svgr/webpack": "^8.1.0",
     "@types/node": "^20",
     "@types/react": "^19",
@@ -48,6 +52,7 @@
     "@types/uuid": "^10.0.0",
     "eslint": "^9",
     "eslint-config-next": "15.1.3",
+    "playwright": "^1.61.1",
     "postcss": "^8",
     "tailwindcss": "^4.0.0",
     "typescript": "^5"
