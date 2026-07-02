@@ -132,7 +132,30 @@ P2-K dibangun baru mengikuti konvensi platform-admin (`_types/_services/_compone
 - Data-path live: **21 assertion lolos** (list+filter shape, entry fields, fallback enum; P2-I/P2-J reachable).
 - P2-K render dengan data live (15 mappings, 139 values, 6 channels), 0 page error.
 - **E2E:** `tests/e2e/ai-console-phase3.spec.ts` (4 test: list+expand, filter, create+POST, delete+confirm).
-  Total suite **22 test lulus** (`npm run test:e2e`).
+
+---
+
+## ✅ Addendum 2026-07-02 (SELESAI)
+
+Implementasi dari [`FRONTEND-ADDENDUM-2026-07-02.md`](./FRONTEND-ADDENDUM-2026-07-02.md) — temuan saat agent
+berjalan end-to-end. Sebagian besar §1 sudah terpenuhi sejak Phase 1–2 (kontrak baru). Net-baru:
+
+| Item | Yang dikerjakan |
+|------|-----------------|
+| **§2 Taksonomi error agent** | `classifyLlmError` (shared, dipakai P1-E & P1-F) diperbaiki jadi kind: `quota_zero` (`limit: 0` → model tak ada di plan), `rate_limit` (retries/429/quota), `no_output` (No JSON found), `key_missing`, `known_fixed` (contains dots), `config`, `unknown`. Tiap kind → pesan actionable; `errorMessage` mentah tetap ditampilkan. |
+| **§1 `joltSpecId`** | P1-F: AUTO_APPLIED → judul "Applied JOLT spec" + tampilkan `joltSpecId`. Tipe `GenerateJoltResult.joltSpecId` ditambah. |
+| **§4 P1-M Cascade Outcome** | `CascadeOutcomeBadge` (self-contained) + resolver murni `cascadeOutcome.ts`. Badge "engine yang menyelesaikan": APM / AI (auto) / AI→perlu review / AI timeout→fallback APM / AI gagal + chip AI-enriched + link sesi/review. Di-render di `PublishDashboard` (pemanggil APM). Tipe `AdaptivePatternMatchingResponse` diperluas dengan blok cascade. |
+| **§4 P1-N Cascade settings** | Config Panel (P1-L): hint mode `sync` (blok sampai `escalationTimeoutSeconds`, free-tier ~90s → risiko FALLBACK_APM) vs `async` (balas segera) + env hints. |
+| **§6 (dilarang)** | TIDAK dibangun: UI saran mapping baru, threshold per-channel, auth granular. |
+
+**Verifikasi addendum:** tsc 0 error · lint 0 warning · route publish & ai-config compile (HTTP 200,
+0 error marker) · config P1-N render live 0 page error · **E2E +13 test** (`cascade-outcome.spec.ts` 6 unit
+resolver + `ai-console-addendum.spec.ts` 7: 4 varian error taxonomy, joltSpecId, 2 config hint).
+**Total suite 35 test lulus** (`npm run test:e2e`).
+
+> Catatan jujur: `CascadeOutcomeBadge` divalidasi via 6 unit test resolver + tsc + compile PublishDashboard.
+> Cascade `enabled=false` di env live, jadi badge benar-benar **tidak render** di publish flow live (perilaku
+> benar — resolver balik `null` tanpa data cascade); tampilan tiap varian tercakup unit test.
 
 ---
 

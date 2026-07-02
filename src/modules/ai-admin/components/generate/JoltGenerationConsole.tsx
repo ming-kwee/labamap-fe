@@ -189,8 +189,16 @@ export default function JoltGenerationConsole() {
               )}
 
               {result.proposedJoltSpec != null && (
-                <SectionCard title="Proposed JOLT spec" subtitle="hasil transformasi yang diusulkan">
+                <SectionCard
+                  title={result.status === "AUTO_APPLIED" ? "Applied JOLT spec" : "Proposed JOLT spec"}
+                  subtitle={result.status === "AUTO_APPLIED" ? "spec yang ditulis agent (langsung dipakai)" : "hasil transformasi yang diusulkan"}
+                >
                   <JsonViewer label="joltSpec" value={result.proposedJoltSpec} defaultOpen />
+                  {result.status === "AUTO_APPLIED" && result.joltSpecId && (
+                    <div className="mt-2">
+                      <KeyValue label="joltSpecId" value={result.joltSpecId} mono labelWidth="w-24" />
+                    </div>
+                  )}
                   {result.status === "RECOMMENDATION_CREATED" && (
                     <Link href="/platform-admin/ai-recommendations" className="inline-block mt-2 text-xs text-blue-500 hover:underline">
                       Buka di Review Queue untuk approve →

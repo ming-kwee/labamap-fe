@@ -435,19 +435,80 @@ export function JsonViewer({
 }
 
 // ─── LLM error classifier (shared by sessions + generate console) ────────────
+//
+// Taxonomy per docs/ai/frontend/FRONTEND-ADDENDUM-2026-07-02.md §2. Every
+// AGENT_FAILED carries a very different real cause in errorMessage; the UI must
+// translate it into an actionable message (this was the costliest debugging
+// lesson). Order matters: "limit: 0" (model unavailable on plan) must be checked
+// BEFORE the generic quota/rate-limit branch.
 
-export function classifyLlmError(message?: string | null): { tone: Tone; label: string; hint: string } {
+export type LlmErrorKind = "quota_zero" | "rate_limit" | "no_output" | "key_missing" | "known_fixed" | "config" | "unknown";
+
+export function classifyLlmError(
+  message?: string | null,
+): { kind: LlmErrorKind; tone: Tone; label: string; hint: string } {
   const m = (message ?? "").toLowerCase();
-  if (m.includes("retries exhausted") || m.includes("429") || m.includes("quota") || m.includes("resource_exhausted")) {
-    return { tone: "amber", label: "Kuota LLM habis", hint: "Rate-limit / kuota provider terlampaui — coba lagi nanti atau ganti provider (mis. Anthropic)." };
+
+  // Model has no quota on this account (distinct from rate-limit).
+  if (m.includes("limit: 0") || m.includes("limit:0") || /quota[^.]*limit\s*[:=]?\s*0\b/.test(m)) {
+    return {
+      kind: "quota_zero",
+      tone: "red",
+      label: "Model tak tersedia di plan ini",
+      hint: "Model chat ini tak punya jatah di akun Anda — ganti GEMINI_MODEL (mis. gemini-2.5-flash) atau aktifkan billing.",
+    };
   }
+  // Quota / rate-limit exhausted.
+  if (m.includes("retries exhausted") || m.includes("429") || m.includes("resource_exhausted") || m.includes("rate limit") || m.includes("ratelimit") || m.includes("quota")) {
+    return {
+      kind: "rate_limit",
+      tone: "amber",
+      label: "Kuota LLM habis",
+      hint: "Rate-limit / kuota provider terlampaui — coba lagi nanti, atau ganti provider/model. (Free-tier: reset harian.)",
+    };
+  }
+  // Model produced no structured output (transient).
+  if (m.includes("no json found") || m.includes("no text output") || m.includes("returned no text") || m.includes("empty response")) {
+    return {
+      kind: "no_output",
+      tone: "amber",
+      label: "Output model tak valid",
+      hint: "Model gagal menghasilkan JSON valid — masalah sementara, coba ulang.",
+    };
+  }
+  // API key not configured.
+  if (m.includes("api_key") || m.includes("api key") || (m.includes("key") && (m.includes("blank") || m.includes("missing") || m.includes("not set") || m.includes("not configured")))) {
+    return {
+      kind: "key_missing",
+      tone: "red",
+      label: "LLM belum dikonfigurasi",
+      hint: "API key LLM belum di-set — lihat Config Panel (P1-L), set key + restart backend.",
+    };
+  }
+  // Known-fixed backend bug — should not appear anymore.
+  if (m.includes("contains dots") || m.includes("map key")) {
+    return {
+      kind: "known_fixed",
+      tone: "gray",
+      label: "Bug lama (sudah diperbaiki)",
+      hint: "Error ini sudah diperbaiki di backend — seharusnya tak muncul lagi. Laporkan jika berulang.",
+    };
+  }
+  // Generic config / bad request.
   if (m.includes("400") || m.includes("invalid") || m.includes("config")) {
-    return { tone: "red", label: "Konfigurasi", hint: "Kemungkinan model/parameter salah — cek Config Panel (P1-L)." };
+    return {
+      kind: "config",
+      tone: "red",
+      label: "Konfigurasi",
+      hint: "Kemungkinan model/parameter salah — cek Config Panel (P1-L).",
+    };
   }
-  if (m.includes("key") && (m.includes("blank") || m.includes("missing") || m.includes("not set"))) {
-    return { tone: "red", label: "API key belum di-set", hint: "Set LLM API key + restart backend." };
-  }
-  return { tone: "gray", label: "Error", hint: message || "Penyebab tidak diketahui — lihat log backend." };
+  return {
+    kind: "unknown",
+    tone: "gray",
+    label: "Agent gagal",
+    hint: message || "Penyebab tidak diketahui — lihat errorMessage / log backend.",
+  };
 }
 
 // ─── Page header ─────────────────────────────────────────────────────────────

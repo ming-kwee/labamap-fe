@@ -89,6 +89,7 @@ import {
 } from "../../step2-channel-fields/services/channelStore.service";
 import { useAuth } from "@/shared/contexts/AuthContext";
 import ChannelTypeBadge from "../../step2-channel-fields/components/stores/ChannelTypeBadge";
+import { CascadeOutcomeBadge } from "@/modules/ai-admin/components/shared/CascadeOutcomeBadge";
 import type { MasterProduct } from "@/modules/ecommerce-product-v2/types/product";
 import type {
   AdaptivePatternMatchingResponse,
@@ -1199,9 +1200,11 @@ export default function PublishDashboard({ masterProductId }: Props) {
                     {/* Overall Confidence — 3-col KPI */}
                     <Card>
                       <CardHeader>
-                        <CardTitle className="flex items-center gap-2">
+                        <CardTitle className="flex items-center gap-2 flex-wrap">
                           <TrendingUp className="h-5 w-5" />
                           Pattern Matching Analysis
+                          {/* P1-M · which engine resolved this (APM / AI / fallback) */}
+                          <CascadeOutcomeBadge outcome={currentAnalysis} showDetail />
                         </CardTitle>
                       </CardHeader>
                       <CardContent className="space-y-4">

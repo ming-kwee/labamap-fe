@@ -55,7 +55,8 @@ export type GenerateStatus =
 export interface GenerateJoltResult {
   status: GenerateStatus;
   confidenceScore?: number;
-  proposedJoltSpec?: unknown;
+  proposedJoltSpec?: unknown; // AUTO_APPLIED now includes this (addendum §1)
+  joltSpecId?: string; // id of the written spec when AUTO_APPLIED
   explanation?: string;
   validationSummary?: unknown;
   agentSessionId?: string;

@@ -64,6 +64,20 @@ export interface AdaptivePatternMatchingResponse {
     processingTimeMs: number;
     warnings?: string[];
   };
+
+  // ── Cascade block (APM → Agent) — addendum §4 (P1-M) ──────────────────────
+  // Present when AI_CASCADE_ENABLED. Consumed by CascadeOutcomeBadge.
+  escalatedToAgent?: boolean;
+  agentStatus?: string; // AUTO_APPLIED | RECOMMENDATION_CREATED | MANUAL_REVIEW_REQUIRED | AGENT_FAILED | FALLBACK_APM
+  agentJoltSpecId?: string;
+  aiAgentSessionId?: string;
+  // Phase-2 enrichment (when aiEnriched):
+  aiEnriched?: boolean;
+  aiConfidenceDelta?: number;
+  aiCorrectedFields?: string[];
+  aiGapsFilled?: string[];
+  aiChannelRequiredUnmapped?: string[];
+  aiWarnings?: string[];
 }
 
 // ============================================================================

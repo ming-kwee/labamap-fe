@@ -174,6 +174,26 @@ export default function AiConfigPanel() {
                 dijalankan manual (P1-F) atau saat publish gagal.
               </p>
             )}
+            {/* P1-N · sync vs async behaviour + env hints */}
+            <div className="mt-3 rounded-lg bg-gray-50 dark:bg-gray-800/50 border border-gray-100 dark:border-gray-700 px-3 py-2.5 space-y-1.5 text-xs text-gray-600 dark:text-gray-400">
+              {config.cascade.mode === "sync" ? (
+                <p>
+                  <strong className="text-gray-700 dark:text-gray-200">mode sync</strong> — respons publish/analyze bisa{" "}
+                  <strong>terblok sampai {config.cascade.escalationTimeoutSeconds}s</strong> menunggu agent. Free-tier LLM sering butuh
+                  ~90s; kalau sering timeout → hasilnya <span className="font-mono">FALLBACK_APM</span>.
+                </p>
+              ) : (
+                <p>
+                  <strong className="text-gray-700 dark:text-gray-200">mode async</strong> — APM membalas segera, agent menyempurnakan
+                  di background. Tidak memblok respons.
+                </p>
+              )}
+              <p className="text-gray-400">
+                Env: <code className="font-mono">AI_CASCADE_ENABLED</code> · <code className="font-mono">AI_CASCADE_MODE</code> ·{" "}
+                <code className="font-mono">AI_CASCADE_TIMEOUT_SECONDS</code>. Badge “engine yang menyelesaikan” (APM/AI/fallback) muncul
+                di hasil analisa publish (P1-M).
+              </p>
+            </div>
           </SectionCard>
 
           {/* Agent runtime */}
