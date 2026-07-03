@@ -109,6 +109,7 @@ const adminNavItems: NavItem[] = [
       // ── P1 · observability & tuning ────────────────────────────────────────
       { name: "Agent Sessions", path: "/platform-admin/ai-sessions", pro: false },
       { name: "JOLT Generation Console", path: "/platform-admin/ai-generate", pro: false },
+      { name: "Publish Diagnostics", path: "/platform-admin/publish-diagnostics", pro: false },
       { name: "Learning Dashboard", path: "/platform-admin/ai-learning", pro: false },
       { name: "Config & Cascade", path: "/platform-admin/ai-config", pro: false },
     ],

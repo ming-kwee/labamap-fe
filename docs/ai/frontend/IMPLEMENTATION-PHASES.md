@@ -189,6 +189,29 @@ Sidebar "AI Console" kini **13 item** (+API Schema Manager). **Tidak** dibangun 
 
 ---
 
+## ✅ Merchant/admin split — Step 3 publish + Publish Diagnostics (SELESAI 2026-07-03)
+
+Step 3 (`PublishDashboard`) itu halaman **merchant** tapi membocorkan internal engine
+(APM/JOLT/confidence/cascade/field-mappings/JSON). Dipisah: **outcome untuk merchant,
+mechanism untuk admin**.
+
+- **Merchant (Step 3):** semua section engine diganti kartu **"Kesiapan Publish"** (status
+  Siap/Hampir/Belum + isu bahasa awam + CTA Lengkapi). `deriveReadiness()` menerjemahkan sinyal
+  APM/JOLT → bahasa merchant. 0 engine-term leak. Net −338 baris.
+- **Admin (baru): `Publish Diagnostics`** → `/platform-admin/publish-diagnostics` (grup AI Console).
+  `src/modules/ai-admin/components/diagnostics/PublishDiagnosticsPage.tsx`. Input produk JSON +
+  channel/category → jalankan pipeline `analyze` yang SAMA (persistJolt=false, forceReanalyze) →
+  render penuh: **CascadeOutcomeBadge (engine mana), confidence, 5-tier breakdown, field mappings +
+  confidence + strategy, unmapped, JOLT readiness, JOLT spec (JsonViewer)**. Timer+Cancel+timeout 120s
+  (cascade sync bisa eskalasi ke agent/429). `analyzePatternMatching()` diberi param `AbortSignal` opsional.
+  CascadeOutcomeBadge (P1-M) kini punya rumah yang benar di sini.
+
+Verified live: analyze berjalan (shopify/clothing → APM resolve 95%, tanpa eskalasi), full breakdown
+render, 0 page error. E2E `tests/e2e/publish-diagnostics.spec.ts` (2). Total suite **56 lulus**.
+Sidebar AI Console = 9 item (P1 +Publish Diagnostics).
+
+---
+
 ## ✅ Polish opsional §3.1 + §5.3 (SELESAI 2026-07-03)
 
 - **§3.1 · Health Dashboard "LLM: rate-limited":** badge amber di ProviderStatusCard bila **aktivitas agent

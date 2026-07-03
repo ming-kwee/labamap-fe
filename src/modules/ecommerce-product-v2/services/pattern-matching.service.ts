@@ -34,12 +34,14 @@ function transformChannelConfig(backend: ChannelConfigurationBackend): ChannelCo
  * POST /api/v1/adaptive-pattern-matching/analyze
  */
 export async function analyzePatternMatching(
-  request: AdaptivePatternMatchingRequest
+  request: AdaptivePatternMatchingRequest,
+  signal?: AbortSignal
 ): Promise<AdaptivePatternMatchingResponse> {
   const response = await fetch(`${BASE_URL}/adaptive-pattern-matching/analyze`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(request),
+    signal,
   });
 
   if (!response.ok) {
