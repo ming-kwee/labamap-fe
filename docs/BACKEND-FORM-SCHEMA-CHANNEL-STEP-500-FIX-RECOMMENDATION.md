@@ -1,4 +1,4 @@
-# Backend Bug Report — `form-schema/channel-step` returns 500 for products with null `productTypeId`
+# Backend Fix Recommendation — `form-schema/channel-step` returns 500 for products with null `productTypeId`
 
 **Date:** 2026-07-03
 **Author:** Frontend Team
