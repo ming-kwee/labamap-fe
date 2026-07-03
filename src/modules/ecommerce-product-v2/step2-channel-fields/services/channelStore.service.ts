@@ -24,6 +24,24 @@ import type {
 
 const BASE = "http://localhost:8888/labamap/api/v1";
 
+/**
+ * Typed API error carrying the HTTP status and a machine `code` when the backend
+ * embeds one as a leading `CODE: ...` prefix in the message (e.g. the
+ * form-schema/channel-step contract: 422 `PRODUCT_TYPE_MISSING: ...`, 404
+ * `Master product not found: ...`). Extends Error so existing
+ * `err instanceof Error` / `err.message` handling keeps working.
+ */
+export class ChannelApiError extends Error {
+  readonly status: number;
+  readonly code?: string;
+  constructor(message: string, status: number, code?: string) {
+    super(message);
+    this.name = "ChannelApiError";
+    this.status = status;
+    this.code = code;
+  }
+}
+
 /** Parse the most useful message out of a non-2xx response body. */
 async function parseErrorMessage(res: Response): Promise<string> {
   try {
@@ -44,13 +62,20 @@ async function parseErrorMessage(res: Response): Promise<string> {
   }
 }
 
+/** Build a typed error from a non-2xx response, extracting any `CODE:` prefix. */
+async function buildApiError(res: Response): Promise<ChannelApiError> {
+  const message = await parseErrorMessage(res);
+  const code = /^([A-Z][A-Z0-9_]{2,}):/.exec(message.trim())?.[1];
+  return new ChannelApiError(message, res.status, code);
+}
+
 async function handleResponse<T>(res: Response): Promise<T> {
-  if (!res.ok) throw new Error(await parseErrorMessage(res));
+  if (!res.ok) throw await buildApiError(res);
   return res.json() as Promise<T>;
 }
 
 async function handleEmptyResponse(res: Response): Promise<void> {
-  if (!res.ok) throw new Error(await parseErrorMessage(res));
+  if (!res.ok) throw await buildApiError(res);
 }
 
 /**

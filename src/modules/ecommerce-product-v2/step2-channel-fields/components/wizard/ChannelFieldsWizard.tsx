@@ -8,7 +8,7 @@ import type {
   ChannelProductStatus,
   MasterProductSnapshot,
 } from "../../types/channelStore";
-import { ChannelSchemaService, ChannelProductDataService } from "../../services/channelStore.service";
+import { ChannelSchemaService, ChannelProductDataService, ChannelApiError } from "../../services/channelStore.service";
 import { ProductTypeService } from "@/app/(admin)/omni-admin/product-types/_services/product-type.service";
 import { isFieldVisible, isFieldRequired } from "../../hooks/useChannelFieldVisibility";
 import { useAuth } from "@/shared/contexts/AuthContext";
@@ -107,6 +107,9 @@ export default function ChannelFieldsWizard({ masterProductId }: Props) {
   const [schemaResponse, setSchemaResponse] = useState<ChannelStepSchemaResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
+  // Machine code from the backend (e.g. PRODUCT_TYPE_MISSING) so we can render an
+  // actionable state instead of a raw error string.
+  const [loadErrorCode, setLoadErrorCode] = useState<string | null>(null);
 
   // Master product snapshot — session data merged with backend snapshot.
   // Session supplies variant field values (price, barcode, quantity, etc.) that the
@@ -146,6 +149,7 @@ export default function ChannelFieldsWizard({ masterProductId }: Props) {
     if (!orgId) return;
     setLoading(true);
     setLoadError(null);
+    setLoadErrorCode(null);
     try {
       // Backend fetches variants directly from DB — masterVariants not needed.
       const resp = await ChannelSchemaService.generateChannelStepSchema({
@@ -317,6 +321,7 @@ export default function ChannelFieldsWizard({ masterProductId }: Props) {
       }
     } catch (err) {
       setLoadError(err instanceof Error ? err.message : "Failed to load channel schema");
+      setLoadErrorCode(err instanceof ChannelApiError ? err.code ?? null : null);
     } finally {
       setLoading(false);
     }
@@ -576,6 +581,35 @@ export default function ChannelFieldsWizard({ masterProductId }: Props) {
         <div className="text-center">
           <div className="inline-block h-10 w-10 rounded-full border-4 border-brand-500 border-t-transparent animate-spin mb-4" />
           <p className="text-sm text-gray-500 dark:text-gray-400">Loading channel fields…</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Actionable state: the product has no Product Type, so Step 2 can't build a
+  // form yet. Backend returns 422 PRODUCT_TYPE_MISSING (not a raw 500). Route the
+  // merchant back to Step 1 instead of showing an error dead-end.
+  if (loadErrorCode === "PRODUCT_TYPE_MISSING") {
+    return (
+      <div className="rounded-2xl bg-warning-50 dark:bg-warning-500/10 border border-warning-200 dark:border-warning-500/30 px-6 py-5">
+        <p className="font-medium text-warning-700 dark:text-warning-400">Produk ini belum punya Product Type</p>
+        <p className="text-sm text-warning-600 dark:text-warning-300 mt-1">
+          Channel Fields (Step 2) dibentuk dari <strong>Product Type</strong> produk. Tetapkan Product Type di{" "}
+          <strong>Step 1 (Master Product)</strong> dulu, lalu kembali ke sini.
+        </p>
+        <div className="mt-3 flex items-center gap-2">
+          <Link
+            href={`/products/${masterProductId}/edit`}
+            className="px-4 py-2 rounded-lg text-sm font-medium bg-warning-500 text-white hover:bg-warning-600 transition-colors"
+          >
+            Ke Step 1: Master Product
+          </Link>
+          <button
+            onClick={loadSchema}
+            className="px-4 py-2 rounded-lg text-sm font-medium bg-warning-100 dark:bg-warning-500/20 text-warning-700 dark:text-warning-400 hover:bg-warning-200 transition-colors"
+          >
+            Coba lagi
+          </button>
         </div>
       </div>
     );

@@ -2,9 +2,17 @@
 
 **Date:** 2026-07-03
 **Author:** Frontend Team
-**Status:** 🔴 Open — backend fix required (frontend can only mitigate, not fix root cause)
-**Severity:** High — Step 2 (Channel Fields) unusable for any product without a Product Type; dead-ends the merchant with an unactionable "Internal Server Error".
+**Status:** ✅ **RESOLVED (2026-07-03)** — backend shipped graceful 4xx; frontend handling done & verified live.
+**Severity:** High — Step 2 (Channel Fields) unusable for any product without a Product Type; dead-ended the merchant with an unactionable "Internal Server Error".
 **Endpoint:** `POST /api/v1/ecommerce/form-schema/channel-step`
+
+> **Resolution:** Backend now returns **`422 PRODUCT_TYPE_MISSING`** (null product type) and
+> **`404 Master product not found`** (unknown id), each with a JSON body
+> `{status, error, message, path}` (`server.error.include-message: always`). Verified live 2026-07-03.
+> Frontend: `channelStore.service.ts` throws typed `ChannelApiError {status, code}`;
+> `ChannelFieldsWizard` renders an actionable "Produk ini belum punya Product Type" card with a
+> **"Ke Step 1: Master Product"** button instead of the raw-error dead-end. E2E:
+> `channel-fields-product-type-missing.spec.ts` (2).
 
 ---
 
