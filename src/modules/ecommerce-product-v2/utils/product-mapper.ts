@@ -287,3 +287,82 @@ export async function generateMappingRequest(
     forceReanalyze: options.forceReanalyze,
   };
 }
+
+/**
+ * Convert a products-module MasterProductDetail (from MasterProductService.getById)
+ * into the ecommerce MasterProduct shape that generateMappingRequest expects.
+ * Mirrors the inline conversion the merchant publish flow uses, so both paths feed
+ * the analyzer identical products. `detail` is loosely typed to avoid a cross-module
+ * type import.
+ */
+export function masterDetailToProduct(detail: Record<string, unknown>): MasterProduct {
+  const status = String(detail.status ?? "draft").toLowerCase();
+  return {
+    id: String(detail.id ?? ""),
+    name: String(detail.name ?? ""),
+    sku: String(detail.sku ?? ""),
+    price: Number(detail.basePrice ?? 0),
+    category: (detail.category as string | undefined) ?? undefined,
+    mainImage: (detail.imageUrl as string | undefined) ?? undefined,
+    description: (detail.description as string | undefined) ?? undefined,
+    tags: (detail.tags as string[] | undefined) ?? undefined,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    variants: (detail.variants ?? []) as any[],
+    hasVariants: Number(detail.variantCount ?? 0) > 0,
+    customAttributes: {
+      _organizationId: String(detail.organizationId ?? ""),
+      _createdBy: "",
+      ...(detail.currency ? { currency: detail.currency } : {}),
+    },
+    status: (status === "active" || status === "archived" ? status : "draft") as "draft" | "active" | "archived",
+    createdAt: String(detail.createdAt ?? ""),
+    updatedAt: String(detail.updatedAt ?? ""),
+  } as unknown as MasterProduct;
+}
+
+/** Step-2 per-store data merged into the analyze source schema. */
+export interface StoreOverrideData {
+  channelData?: Record<string, unknown>;
+  masterOverrides?: Record<string, unknown>;
+  variantOverrides?: Record<string, Record<string, unknown>>;
+}
+
+/**
+ * Merge a store's Step-2 overrides into an analyze request's sourceSchema so the
+ * matcher sees the exact publish picture: master fields + channel fields the user
+ * filled + master overrides + variant overrides (variant_-prefixed). Mutates and
+ * returns the request. Shared by the merchant publish flow AND Publish Diagnostics
+ * so both replicate the identical source data.
+ */
+export function mergeStoreOverridesIntoRequest<T extends { sourceSchema: Record<string, unknown> }>(
+  request: T,
+  store: StoreOverrideData | null | undefined,
+): T {
+  if (!store) return request;
+
+  const channelFields = store.channelData ?? {};
+  if (Object.keys(channelFields).length > 0) {
+    request.sourceSchema = { ...request.sourceSchema, ...channelFields };
+  }
+
+  const masterOverrides = store.masterOverrides ?? {};
+  if (Object.keys(masterOverrides).length > 0) {
+    request.sourceSchema = { ...request.sourceSchema, ...masterOverrides };
+  }
+
+  // Flatten variant overrides with a variant_ prefix; first non-null value wins per field.
+  const variantOverrides = store.variantOverrides ?? {};
+  const flatVariantFields: Record<string, unknown> = {};
+  for (const skuOverrides of Object.values(variantOverrides)) {
+    for (const [fieldName, value] of Object.entries(skuOverrides)) {
+      if (value != null && !(fieldName in flatVariantFields)) {
+        flatVariantFields[`variant_${fieldName}`] = value;
+      }
+    }
+  }
+  if (Object.keys(flatVariantFields).length > 0) {
+    request.sourceSchema = { ...request.sourceSchema, ...flatVariantFields };
+  }
+
+  return request;
+}

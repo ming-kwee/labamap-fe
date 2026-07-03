@@ -14,17 +14,25 @@
  * escalate to the agent and take up to ~90s / hit 429 → elapsed timer + Cancel.
  */
 
-import React, { useCallback, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AiApiError } from "../../types/common";
 import {
   AdaptivePatternMatchingResponse,
   FieldMapping,
 } from "@/modules/ecommerce-product-v2/types/channel-mapping";
 import { MasterProduct } from "@/modules/ecommerce-product-v2/types/product";
+import { ChannelProductData } from "@/modules/ecommerce-product-v2/step2-channel-fields/types/channelStore";
+import { ChannelProductDataService } from "@/modules/ecommerce-product-v2/step2-channel-fields/services/channelStore.service";
 import { analyzePatternMatching } from "@/modules/ecommerce-product-v2/services/pattern-matching.service";
-import { generateMappingRequest } from "@/modules/ecommerce-product-v2/utils/product-mapper";
+import {
+  generateMappingRequest,
+  masterDetailToProduct,
+  mergeStoreOverridesIntoRequest,
+} from "@/modules/ecommerce-product-v2/utils/product-mapper";
+import { MasterProductService } from "@/app/(admin)/products/_services/master-product.service";
+import { useAuth } from "@/shared/contexts/AuthContext";
 import { CascadeOutcomeBadge } from "../shared/CascadeOutcomeBadge";
-import { ActivityIcon, GitBranchIcon, PlayIcon, SearchIcon, TerminalIcon } from "../shared/icons";
+import { ActivityIcon, GitBranchIcon, PlayIcon, RefreshIcon, SearchIcon, TerminalIcon } from "../shared/icons";
 import {
   Badge,
   Card,
@@ -70,10 +78,29 @@ const TIER_META: Array<{ key: keyof AdaptivePatternMatchingResponse["matchingMet
   { key: "patternMatches", label: "Pattern", band: "~75%", tone: "violet" },
 ];
 
+type Mode = "product" | "json";
+
 export default function PublishDiagnosticsPage() {
+  const { organization } = useAuth();
+  const orgId = organization?.organizationId ?? "";
+
+  const [mode, setMode] = useState<Mode>("product");
+
+  // ── Product mode state ──────────────────────────────────────────────────
+  const [products, setProducts] = useState<Array<{ id: string; name: string }>>([]);
+  const [productsLoading, setProductsLoading] = useState(false);
+  const [productsError, setProductsError] = useState<string | null>(null);
+  const [selectedProductId, setSelectedProductId] = useState("");
+  const [stores, setStores] = useState<ChannelProductData[]>([]);
+  const [storesLoading, setStoresLoading] = useState(false);
+  const [selectedStoreId, setSelectedStoreId] = useState("");
+
+  // ── JSON mode state ─────────────────────────────────────────────────────
   const [channelId, setChannelId] = useState("shopify");
   const [categoryId, setCategoryId] = useState("clothing");
   const [productText, setProductText] = useState(JSON.stringify(SAMPLE_PRODUCT, null, 2));
+
+  // ── Shared run state ────────────────────────────────────────────────────
   const [running, setRunning] = useState(false);
   const [elapsed, setElapsed] = useState(0);
   const [result, setResult] = useState<AdaptivePatternMatchingResponse | null>(null);
@@ -93,6 +120,41 @@ export default function PublishDiagnosticsPage() {
     }
   }, [productText]);
 
+  // Load My Products (org-scoped) for the picker.
+  const loadProducts = useCallback(async () => {
+    if (!orgId) return;
+    setProductsLoading(true);
+    setProductsError(null);
+    try {
+      const res = await MasterProductService.list({ organizationId: orgId, page: 0, size: 200 });
+      setProducts(res.content.map((p) => ({ id: p.id, name: p.name })));
+    } catch (e) {
+      setProductsError((e as Error).message);
+    } finally {
+      setProductsLoading(false);
+    }
+  }, [orgId]);
+
+  useEffect(() => {
+    if (mode === "product") loadProducts();
+  }, [mode, loadProducts]);
+
+  // When a product is chosen, load its connected stores (with Step-2 overrides).
+  useEffect(() => {
+    setSelectedStoreId("");
+    setStores([]);
+    if (!selectedProductId) return;
+    let alive = true;
+    setStoresLoading(true);
+    ChannelProductDataService.getAllStoreData(selectedProductId)
+      .then((data) => { if (alive) setStores(data); })
+      .catch(() => { if (alive) setStores([]); })
+      .finally(() => { if (alive) setStoresLoading(false); });
+    return () => { alive = false; };
+  }, [selectedProductId]);
+
+  const selectedStore = stores.find((s) => s.storeId === selectedStoreId) ?? null;
+
   const clearTimers = useCallback(() => {
     if (timeoutRef.current) clearTimeout(timeoutRef.current);
     if (tickRef.current) clearInterval(tickRef.current);
@@ -100,13 +162,26 @@ export default function PublishDiagnosticsPage() {
     tickRef.current = null;
   }, []);
 
+  useEffect(() => {
+    return () => {
+      abortRef.current?.abort();
+      clearTimers();
+    };
+  }, [clearTimers]);
+
   const cancel = useCallback(() => {
     timedOutRef.current = false;
     abortRef.current?.abort();
   }, []);
 
+  const canRun =
+    !running &&
+    (mode === "json"
+      ? !jsonError && !!categoryId.trim()
+      : !!selectedProductId && !!selectedStoreId);
+
   async function run() {
-    if (jsonError || running || !categoryId.trim()) return;
+    if (!canRun) return;
     const controller = new AbortController();
     abortRef.current = controller;
     timedOutRef.current = false;
@@ -121,14 +196,37 @@ export default function PublishDiagnosticsPage() {
     }, RUN_TIMEOUT_MS);
 
     try {
-      const product = JSON.parse(productText) as MasterProduct;
+      let product: MasterProduct;
+      let channel: string;
+      let category: string;
+      let store = null as import("@/modules/ecommerce-product-v2/utils/product-mapper").StoreOverrideData | null;
+
+      if (mode === "json") {
+        product = JSON.parse(productText) as MasterProduct;
+        channel = channelId;
+        category = categoryId.trim();
+      } else {
+        // Product mode: fetch the real product + replicate the exact publish input
+        // for the chosen store (channelType + Step-2 overrides).
+        const detail = await MasterProductService.getById(selectedProductId, orgId);
+        product = masterDetailToProduct(detail as unknown as Record<string, unknown>);
+        const st = selectedStore!;
+        channel = st.channelType;
+        category = product.category ?? "default";
+        store = st;
+      }
+
       // Diagnostic only — never persist to production JOLT; force a fresh run.
-      const request = await generateMappingRequest(product, channelId, {
+      const request = await generateMappingRequest(product, channel, {
         confidenceThreshold: 70,
-        categoryId: categoryId.trim(),
+        categoryId: category,
+        organizationId: orgId,
         persistJolt: false,
         forceReanalyze: true,
       });
+      // Replicate the merchant's exact source picture (Step-2 overrides) in product mode.
+      mergeStoreOverridesIntoRequest(request, store);
+
       setResult(await analyzePatternMatching(request, controller.signal));
     } catch (e) {
       if ((e as Error)?.name === "AbortError" || (e instanceof AiApiError && e.kind === "aborted")) {
@@ -151,6 +249,7 @@ export default function PublishDiagnosticsPage() {
   }
 
   const elapsedLabel = `${Math.floor(elapsed / 60)}:${String(elapsed % 60).padStart(2, "0")}`;
+  const runChannel = mode === "json" ? channelId : selectedStore?.channelType ?? channelId;
 
   return (
     <div className="p-6 space-y-5">
@@ -171,41 +270,108 @@ export default function PublishDiagnosticsPage() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
         {/* Input */}
         <Card className="p-4 space-y-4">
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="text-xs text-gray-500 dark:text-gray-400">Channel</label>
-              <select value={channelId} onChange={(e) => setChannelId(e.target.value)}
-                className="mt-1 w-full border border-gray-200 dark:border-gray-700 rounded-lg px-2.5 py-1.5 text-xs bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300">
-                {CHANNEL_OPTIONS.map((c) => <option key={c} value={c}>{CHANNEL_LABELS[c] ?? c}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="text-xs text-gray-500 dark:text-gray-400">Category ID</label>
-              <input value={categoryId} onChange={(e) => setCategoryId(e.target.value)} placeholder="mis. clothing"
-                className="mt-1 w-full border border-gray-200 dark:border-gray-700 rounded-lg px-2.5 py-1.5 text-xs bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300" />
-            </div>
+          {/* Mode toggle */}
+          <div className="flex items-center border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden w-fit">
+            {(["product", "json"] as Mode[]).map((m) => (
+              <button key={m} onClick={() => setMode(m)}
+                className={`px-3 py-1.5 text-xs font-medium transition-colors ${
+                  mode === m ? "bg-violet-600 text-white" : "text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800"
+                }`}>
+                {m === "product" ? "Dari My Products" : "Paste JSON"}
+              </button>
+            ))}
           </div>
 
-          <div>
-            <div className="flex items-center justify-between mb-1">
-              <label className="text-xs text-gray-500 dark:text-gray-400">Master product (JSON)</label>
-              <button onClick={() => setProductText(JSON.stringify(SAMPLE_PRODUCT, null, 2))} className="text-[11px] text-blue-500 hover:underline">reset ke contoh</button>
+          {mode === "product" ? (
+            <div className="space-y-3">
+              {/* Product picker */}
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-xs text-gray-500 dark:text-gray-400">Produk</label>
+                  <button onClick={loadProducts} disabled={productsLoading}
+                    className="inline-flex items-center gap-1 text-[11px] text-blue-500 hover:underline disabled:opacity-50">
+                    {productsLoading ? <Spinner size={10} /> : <RefreshIcon size={10} />} refresh
+                  </button>
+                </div>
+                <select value={selectedProductId} onChange={(e) => setSelectedProductId(e.target.value)}
+                  disabled={productsLoading}
+                  className="w-full border border-gray-200 dark:border-gray-700 rounded-lg px-2.5 py-2 text-xs bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300">
+                  <option value="">{productsLoading ? "Memuat produk…" : "Pilih produk…"}</option>
+                  {products.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                </select>
+                {productsError && <p className="text-[11px] text-red-500 mt-1">{productsError}</p>}
+                {!productsLoading && !productsError && products.length === 0 && (
+                  <p className="text-[11px] text-gray-400 mt-1">Tidak ada produk di organisasi ini.</p>
+                )}
+              </div>
+
+              {/* Store picker */}
+              <div>
+                <label className="text-xs text-gray-500 dark:text-gray-400">Channel store</label>
+                <select value={selectedStoreId} onChange={(e) => setSelectedStoreId(e.target.value)}
+                  disabled={!selectedProductId || storesLoading}
+                  className="mt-1 w-full border border-gray-200 dark:border-gray-700 rounded-lg px-2.5 py-2 text-xs bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 disabled:opacity-50">
+                  <option value="">
+                    {!selectedProductId ? "Pilih produk dulu…" : storesLoading ? "Memuat store…" : "Pilih store…"}
+                  </option>
+                  {stores.map((s) => (
+                    <option key={s.storeId} value={s.storeId}>
+                      {s.storeId} · {CHANNEL_LABELS[s.channelType] ?? s.channelType} · {s.completionPercentage}%
+                    </option>
+                  ))}
+                </select>
+                {selectedProductId && !storesLoading && stores.length === 0 && (
+                  <p className="text-[11px] text-gray-400 mt-1">Produk ini belum terhubung ke store mana pun (Step 2).</p>
+                )}
+              </div>
+
+              {selectedStore && (
+                <div className="rounded-lg bg-gray-50 dark:bg-gray-800/50 border border-gray-100 dark:border-gray-700 px-3 py-2 text-[11px] text-gray-500 dark:text-gray-400">
+                  Mendiagnosa input publish <strong className="text-gray-700 dark:text-gray-300">persis</strong> untuk store ini —
+                  channel <strong>{CHANNEL_LABELS[selectedStore.channelType] ?? selectedStore.channelType}</strong>, kategori{" "}
+                  <strong>dari produk</strong>, plus override Step-2 (channel fields, master/variant overrides). persistJolt=false.
+                </div>
+              )}
             </div>
-            <textarea
-              value={productText}
-              onChange={(e) => setProductText(e.target.value)}
-              spellCheck={false}
-              rows={18}
-              className={`w-full font-mono text-[11px] border rounded-lg px-3 py-2 bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100 focus:outline-none focus:ring-2 ${
-                jsonError ? "border-red-400 focus:ring-red-400" : "border-gray-200 dark:border-gray-700 focus:ring-violet-400"
-              }`}
-            />
-            {jsonError ? (
-              <p className="text-[11px] text-red-500 mt-1">JSON tidak valid: {jsonError}</p>
-            ) : (
-              <p className="text-[11px] text-gray-400 mt-1">JSON valid ✓</p>
-            )}
-          </div>
+          ) : (
+            <>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs text-gray-500 dark:text-gray-400">Channel</label>
+                  <select value={channelId} onChange={(e) => setChannelId(e.target.value)}
+                    className="mt-1 w-full border border-gray-200 dark:border-gray-700 rounded-lg px-2.5 py-1.5 text-xs bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300">
+                    {CHANNEL_OPTIONS.map((c) => <option key={c} value={c}>{CHANNEL_LABELS[c] ?? c}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-xs text-gray-500 dark:text-gray-400">Category ID</label>
+                  <input value={categoryId} onChange={(e) => setCategoryId(e.target.value)} placeholder="mis. clothing"
+                    className="mt-1 w-full border border-gray-200 dark:border-gray-700 rounded-lg px-2.5 py-1.5 text-xs bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300" />
+                </div>
+              </div>
+
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-xs text-gray-500 dark:text-gray-400">Master product (JSON)</label>
+                  <button onClick={() => setProductText(JSON.stringify(SAMPLE_PRODUCT, null, 2))} className="text-[11px] text-blue-500 hover:underline">reset ke contoh</button>
+                </div>
+                <textarea
+                  value={productText}
+                  onChange={(e) => setProductText(e.target.value)}
+                  spellCheck={false}
+                  rows={16}
+                  className={`w-full font-mono text-[11px] border rounded-lg px-3 py-2 bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100 focus:outline-none focus:ring-2 ${
+                    jsonError ? "border-red-400 focus:ring-red-400" : "border-gray-200 dark:border-gray-700 focus:ring-violet-400"
+                  }`}
+                />
+                {jsonError ? (
+                  <p className="text-[11px] text-red-500 mt-1">JSON tidak valid: {jsonError}</p>
+                ) : (
+                  <p className="text-[11px] text-gray-400 mt-1">JSON valid ✓ — produk hipotetis, tanpa override store.</p>
+                )}
+              </div>
+            </>
+          )}
 
           {running ? (
             <div className="flex items-stretch gap-2">
@@ -218,7 +384,7 @@ export default function PublishDiagnosticsPage() {
               </button>
             </div>
           ) : (
-            <button onClick={run} disabled={!!jsonError || !categoryId.trim()}
+            <button onClick={run} disabled={!canRun}
               className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-violet-600 hover:bg-violet-700 text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-60">
               <PlayIcon size={14} /> Jalankan Diagnostics
             </button>
@@ -236,7 +402,7 @@ export default function PublishDiagnosticsPage() {
               <p className="text-xs text-gray-400 mt-1">Fetch target schema → matching → cascade. Bisa lama bila eskalasi ke agent.</p>
             </Card>
           ) : result ? (
-            <DiagnosticsResult result={result} channelId={channelId} />
+            <DiagnosticsResult result={result} channelId={runChannel} />
           ) : (
             <Card className="p-8 flex flex-col items-center justify-center text-center">
               <div className="p-3 bg-gray-100 dark:bg-gray-800 rounded-xl mb-3 text-gray-400"><SearchIcon size={22} /></div>

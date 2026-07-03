@@ -199,12 +199,17 @@ mechanism untuk admin**.
   Siap/Hampir/Belum + isu bahasa awam + CTA Lengkapi). `deriveReadiness()` menerjemahkan sinyal
   APM/JOLT → bahasa merchant. 0 engine-term leak. Net −338 baris.
 - **Admin (baru): `Publish Diagnostics`** → `/platform-admin/publish-diagnostics` (grup AI Console).
-  `src/modules/ai-admin/components/diagnostics/PublishDiagnosticsPage.tsx`. Input produk JSON +
-  channel/category → jalankan pipeline `analyze` yang SAMA (persistJolt=false, forceReanalyze) →
-  render penuh: **CascadeOutcomeBadge (engine mana), confidence, 5-tier breakdown, field mappings +
-  confidence + strategy, unmapped, JOLT readiness, JOLT spec (JsonViewer)**. Timer+Cancel+timeout 120s
-  (cascade sync bisa eskalasi ke agent/429). `analyzePatternMatching()` diberi param `AbortSignal` opsional.
+  `src/modules/ai-admin/components/diagnostics/PublishDiagnosticsPage.tsx`. Jalankan pipeline `analyze`
+  yang SAMA (persistJolt=false, forceReanalyze) → render penuh: **CascadeOutcomeBadge (engine mana),
+  confidence, 5-tier breakdown, field mappings + confidence + strategy, unmapped, JOLT readiness, JOLT
+  spec (JsonViewer)**. Timer+Cancel+timeout 120s. `analyzePatternMatching()` diberi param `AbortSignal`.
   CascadeOutcomeBadge (P1-M) kini punya rumah yang benar di sini.
+  - **Level 2 (2 mode input):** **"Dari My Products"** (default) — picker produk (org-scoped
+    `MasterProductService.list`) → picker **channel store** (`getAllStoreData`) → replikasi input publish
+    PERSIS: channelType + kategori dari produk + **override Step-2** (channelData/master/variant) via helper
+    bersama `mergeStoreOverridesIntoRequest` (dipakai merchant flow juga → dijamin identik). Plus
+    **"Paste JSON"** untuk produk hipotetis. Helper baru di product-mapper: `masterDetailToProduct`,
+    `mergeStoreOverridesIntoRequest`.
 
 Verified live: analyze berjalan (shopify/clothing → APM resolve 95%, tanpa eskalasi), full breakdown
 render, 0 page error. E2E `tests/e2e/publish-diagnostics.spec.ts` (2). Total suite **56 lulus**.

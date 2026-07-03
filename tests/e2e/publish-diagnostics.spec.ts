@@ -27,6 +27,13 @@ const ANALYZE_RESULT = {
   escalatedToAgent: false,
 };
 
+// Product-mode fixtures.
+const PRODUCTS = { content: [{ productId: "p-1", name: "Classic Cotton T-Shirt", basePrice: 19.99, variantCount: 2 }], totalElements: 1, totalPages: 1, page: 0, size: 200 };
+const PRODUCT_DETAIL = { id: "p-1", organizationId: "org-e7dac9f8-6353-4168-b9a1-6a7791d71b02", name: "Classic Cotton T-Shirt", sku: "ACME-1", basePrice: 19.99, currency: "USD", category: "clothing", variantCount: 2, variants: [], status: "ACTIVE", createdAt: "2026-01-01", updatedAt: "2026-01-01", channelDistribution: [] };
+const STORES = [
+  { masterProductId: "p-1", storeId: "shopify-01", channelType: "shopify", organizationId: "o", status: "DRAFT", masterOverrides: { name: "Shopify Tee" }, channelData: { vendor: "Acme" }, variantOverrides: {}, completionPercentage: 100, readyToPublish: true, savedAt: "2026-01-01" },
+];
+
 test.describe("Publish Diagnostics", () => {
   test.beforeEach(async ({ page }) => {
     await page.route("**/channels/*/schema/complex**", (r) =>
@@ -35,13 +42,15 @@ test.describe("Publish Diagnostics", () => {
     await page.route("**/adaptive-pattern-matching/analyze", (r) => r.fulfill(json(ANALYZE_RESULT)));
   });
 
-  test("runs analyze and shows the full technical breakdown", async ({ page }) => {
+  test("JSON mode: runs analyze and shows the full technical breakdown", async ({ page }) => {
     const pageErrors: string[] = [];
     page.on("pageerror", (e) => pageErrors.push(e.message));
 
     await page.goto("/platform-admin/publish-diagnostics");
     await expect(page.getByRole("heading", { name: "Publish Diagnostics" })).toBeVisible();
 
+    // Switch to Paste JSON mode.
+    await page.getByRole("button", { name: "Paste JSON" }).click();
     await page.getByRole("button", { name: /Jalankan Diagnostics/ }).click();
 
     // Engine outcome + confidence + cascade badge (APM, since escalatedToAgent=false).
@@ -61,10 +70,38 @@ test.describe("Publish Diagnostics", () => {
     expect(pageErrors).toEqual([]);
   });
 
-  test("blocks run on invalid product JSON", async ({ page }) => {
+  test("JSON mode: blocks run on invalid product JSON", async ({ page }) => {
     await page.goto("/platform-admin/publish-diagnostics");
+    await page.getByRole("button", { name: "Paste JSON" }).click();
     await page.locator("textarea").fill("{ broken ");
     await expect(page.getByText(/JSON tidak valid/)).toBeVisible();
     await expect(page.getByRole("button", { name: /Jalankan Diagnostics/ })).toBeDisabled();
+  });
+
+  test("Product mode: pick product + store replicates the publish input and runs", async ({ page }) => {
+    await page.route("**/admin/master-products?**", (r) => r.fulfill(json(PRODUCTS)));
+    await page.route("**/admin/master-products/p-1?**", (r) => r.fulfill(json(PRODUCT_DETAIL)));
+    await page.route("**/ecommerce/channel-product-data/p-1", (r) => r.fulfill(json(STORES)));
+    let analyzeBody: Record<string, unknown> | null = null;
+    await page.route("**/adaptive-pattern-matching/analyze", (r) => {
+      analyzeBody = r.request().postDataJSON();
+      return r.fulfill(json(ANALYZE_RESULT));
+    });
+
+    await page.goto("/platform-admin/publish-diagnostics");
+    // Product mode is default. Run button disabled until product+store chosen.
+    await expect(page.getByRole("button", { name: /Jalankan Diagnostics/ })).toBeDisabled();
+
+    await page.getByRole("combobox").first().selectOption("p-1");
+    await page.getByRole("combobox").nth(1).selectOption("shopify-01");
+    await expect(page.getByText(/Mendiagnosa input publish/)).toBeVisible();
+    await expect(page.getByRole("button", { name: /Jalankan Diagnostics/ })).toBeEnabled();
+
+    await page.getByRole("button", { name: /Jalankan Diagnostics/ }).click();
+    await expect(page.getByText("Keputusan engine")).toBeVisible();
+
+    // The analyze request must carry the Step-2 override (masterOverrides.name) merged in.
+    expect(JSON.stringify(analyzeBody)).toContain("Shopify Tee");
+    expect(JSON.stringify(analyzeBody)).toContain("\"persistJolt\":false");
   });
 });

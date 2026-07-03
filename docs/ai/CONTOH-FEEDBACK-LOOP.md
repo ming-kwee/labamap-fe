@@ -7,15 +7,15 @@
 
 ## Mekanisme yang membuat loop ini nyata (terverifikasi di kode)
 
-Sebelum ke cerita, ini 3 "roda gigi" yang berputar — semua sudah ada di kode Anda:
+Sebelum ke cerita, ini 3 mekanisme yang berputar — semua sudah ada di kode Anda:
 
-| Roda gigi                         | Kode yang menjalankan                                                                                                                    | Yang terjadi                                                                                        |
-|-----------------------------------|------------------------------------------------------------------------------------------------------------------------------------------|-----------------------------------------------------------------------------------------------------|
-| **A. Simpan hasil AI → RAG**      | `AiRecommendationService.approve()` (baris ~231: `ragEmbeddingService::embedJoltSpec`) **dan** agent AUTO_APPLIED → `channel_jolt_specs` | JOLT baru langsung di-embed ke RAG begitu disetujui/auto-apply                                      |
-| **B. Belajar dari hasil publish** | `ChannelPublishService` → `LearningFeedbackService.updateMappingCounters()`                                                              | Publish sukses → `successCount++`; gagal → `failureCount++` (Beta distribution) + EMA `successRate` |
-| **C. Perawatan berkala**          | `AiMaintenanceScheduler` (`@Scheduled` — harian 04:00 refresh embedding basi, Minggu 05:00 hapus orphan)                                 | RAG tetap segar & bersih otomatis                                                                   |
+| Mekanisme | Kode yang menjalankan | Yang terjadi |
+|-----------|----------------------|--------------|
+| **RAG Sync** (simpan hasil AI → RAG) | `AiRecommendationService.approve()` (baris ~231: `ragEmbeddingService::embedJoltSpec`) **dan** agent AUTO_APPLIED → `channel_jolt_specs` | JOLT baru langsung di-embed ke RAG begitu disetujui/auto-apply |
+| **Publish Learning** (belajar dari hasil publish) | `ChannelPublishService` → `LearningFeedbackService.updateMappingCounters()` | Publish sukses → `successCount++`; gagal → `failureCount++` (Beta distribution) + EMA `successRate` |
+| **Scheduled Maintenance** (perawatan berkala) | `AiMaintenanceScheduler` (`@Scheduled` — harian 04:00 refresh embedding basi, Minggu 05:00 hapus orphan) | RAG tetap segar & bersih otomatis |
 
-**Kunci:** roda A membuat "pengalaman baru" tersedia untuk di-cari; roda B menempelkan "bukti sukses/gagal" ke tiap mapping; roda C menjaga kebersihan. Ketiganya berputar tanpa developer campur tangan.
+**Kunci:** **RAG Sync** membuat "pengalaman baru" tersedia untuk di-cari; **Publish Learning** menempelkan "bukti sukses/gagal" ke tiap mapping; **Scheduled Maintenance** menjaga kebersihan. Ketiganya berputar tanpa developer campur tangan.
 
 ---
 
@@ -185,10 +185,10 @@ Publish furniture ke-N   │ Siapa menyelesaikan        │ Biaya  │ Confidenc
                     │  (jadi contoh baru)        successCount/failureCount
                     │        │                            │  │
                     └────────┴──── memperkaya RAG ────────┴──┘
-                          (roda A)              (roda B)
+                        (RAG Sync)         (Publish Learning)
 ```
 
-Setiap putaran: kasus sulit ditangani AI **sekali**, hasilnya disimpan, lalu kasus serupa berikutnya jadi **mudah** (ditangani APM/RAG gratis). Roda B (successRate) membuat mapping yang benar makin dipercaya, yang buruk makin ditinggalkan.
+Setiap putaran: kasus sulit ditangani AI **sekali**, hasilnya disimpan, lalu kasus serupa berikutnya jadi **mudah** (ditangani APM/RAG gratis). **Publish Learning** (successRate) membuat mapping yang benar makin dipercaya, yang buruk makin ditinggalkan.
 
 ---
 

@@ -91,7 +91,7 @@ Dari `GET /admin/ai/config` → blok `cascade`: `enabled`, `escalationThreshold`
 ## 5. Konsep yang sebaiknya tercermin di UX (dari diskusi hari ini)
 
 1. **"Kematangan kategori" (feedback loop).** Kategori baru → ditangani AI (mahal) → JOLT tersimpan → publish berikutnya ditangani APM (gratis). UI bisa menampilkan, per (channel, kategori): apakah sudah ada stored JOLT (`channel-jolt-specs`), berapa `usageCount`, kapan terakhir dipakai — agar operator melihat kategori "mendewasa". (Konsep di [`CONTOH-FEEDBACK-LOOP.md`](../CONTOH-FEEDBACK-LOOP.md).)
-2. **successRate = bukti dari publish, bukan input manual.** Saat menampilkan health mapping, jelaskan bahwa successRate/successCount berasal dari **hasil publish nyata** (roda B), bukan tebakan. Ini membangun kepercayaan pada angka.
+2. **successRate = bukti dari publish, bukan input manual.** Saat menampilkan health mapping, jelaskan bahwa successRate/successCount berasal dari **hasil publish nyata** (Publish Learning), bukan tebakan. Ini membangun kepercayaan pada angka.
 3. **RAG = pencarian makna, bukan ejaan.** Di Search Playground, tampilkan bahwa hasil diurut berdasarkan **similarity makna** (bukan kecocokan huruf) — bantu operator memahami kenapa `weight` bisa menemukan `grams`.
 
 ---
@@ -130,20 +130,54 @@ Kalau salah satu ini dibangun nanti, addendum akan diperbarui.
 
 ---
 
-## 8. Tambahan — 3 kapabilitas backend BARU (Q2/Q3 apiSchema + Jalur C enrich mapping)
+## 8. Tambahan — kapabilitas backend BARU (Q2/Q3 apiSchema + AI Mapping Enrichment)
+
+> **Istilah:** fitur "AI membuat/menambah field mapping dari JOLT yang diterapkan" kini bernama
+> **AI Mapping Enrichment** (dulu disebut internal "Jalur C" — istilah itu tidak lagi dipakai).
+> Konsisten dengan flag `app.ai.recommendation.enrichMappings` / env `AI_ENRICH_MAPPINGS`.
 
 > Ditambahkan setelah §1–§7: tiga kemampuan baru diimplementasikan hari ini yang punya implikasi UI langsung.
 
-### 8.1 · Jalur C — AI kini MEMBUAT field mapping baru (P1-G harus dibedakan)
+### 8.1 · AI Mapping Enrichment — AI kini MEMBUAT field mapping baru (P1-G harus membedakannya)
 Ketika JOLT di-AUTO_APPLY, agent otomatis membuat `ChannelFieldMapping` baru (source→target dari JOLT) agar APM heuristik membaik. **Terverifikasi live:** kategori baru → muncul mapping `createdBy: ai-agent-v1`, `mappingStrategy: AI_GENERATED`, `verificationTier: UNVERIFIED`, `successCount: 0`.
 
 **Enhancement untuk P1-G (Field Mappings Manager)** — field ini **sudah** ada di respons (`createdBy`, `mappingStrategy`, `verificationTier`, `successCount`, `failureCount`):
 - **Badge asal-usul:** bedakan `AI_GENERATED` / `UNVERIFIED` (kuning "AI, belum terverifikasi") vs seeded/verified (hijau). Operator harus tahu mana buatan AI.
-- **Kolom bukti (Beta):** tampilkan `successCount` / `failureCount` — "mapping AI ini sudah sukses N kali, gagal M kali". Ini menunjukkan mapping AI **sedang mendapatkan kepercayaan** (roda B). Mapping UNVERIFIED dengan failureCount tinggi = kandidat hapus.
-- **Aksi review:** tombol **"Promosikan"** (naikkan verificationTier setelah terbukti) dan **"Hapus"** (buang mapping AI yang salah). Keduanya pakai endpoint yang sudah ada (`PUT /{id}`, `DELETE /{id}`).
+- **Kolom bukti (Beta):** tampilkan `successCount` / `failureCount` — "mapping AI ini sudah sukses N kali, gagal M kali". Ini menunjukkan mapping AI **sedang mendapatkan kepercayaan** (Publish Learning). Mapping UNVERIFIED dengan failureCount tinggi = kandidat hapus.
+- **Aksi review:** tombol **"Promosikan"** dan **"Hapus"** (buang mapping AI yang salah, `DELETE /{id}`).
+  - **Promote (endpoint khusus + guard) — ✅ TERVERIFIKASI LIVE (2026-07-03):**
+    `PUT /admin/channel-field-mappings/{id}/promote?tier=VERIFIED_PRODUCTION&promotedBy=alice`.
+    Tangga tier (ceiling confidence): `UNVERIFIED`(60) → `MANUALLY_TESTED`(75) → `VERIFIED_PRODUCTION`(90) → `CERTIFIED_HIGH_VOLUME`(99).
+
+    **Aturan guard (terbukti dari uji live), `netSuccess = successCount − failureCount`:**
+
+    | Kasus | Contoh | Hasil |
+    |-------|--------|-------|
+    | Naik ke tier ber-bukti, bukti KURANG | UNVERIFIED→VERIFIED_PRODUCTION, netSuccess 0 (<5) | `422` PROMOTE_REJECTED |
+    | Naik ke MANUALLY_TESTED (tak butuh bukti) | UNVERIFIED→MANUALLY_TESTED | `200` OK |
+    | Mundur / menyamping | MANUALLY_TESTED→UNVERIFIED | `422` "must move UP" |
+    | Tier tak valid | `SUPER_DUPER` | `422` "Invalid tier" + daftar valid |
+    | id tak ada | — | `404` |
+
+    Ambang bukti: **VERIFIED_PRODUCTION `netSuccess≥5`**, **CERTIFIED_HIGH_VOLUME `≥50`**, MANUALLY_TESTED = 0 (manusia menjamin).
+
+    **Bentuk respons nyata (dari uji live):**
+    ```jsonc
+    // 200 sukses → mapping ter-update (verificationTier baru)
+    { "id":"...", "verificationTier":"MANUALLY_TESTED", "createdBy":"ai-agent-v1", ... }
+    // 422 ditolak
+    { "error":"PROMOTE_REJECTED",
+      "reason":"Insufficient evidence to reach VERIFIED_PRODUCTION: need net successes ≥ 5 but have 0 (successCount=0, failureCount=0). Let it prove itself in production first." }
+    ```
+
+    **Panduan UI (penting):**
+    - Hitung `netSuccess` di klien → untuk target ber-bukti, **disable tombol Promote + tampilkan progres "bukti 0/5"** bila belum cukup (jangan biarkan operator menekan lalu kena 422).
+    - Bila tetap `422`, **tampilkan `reason` apa adanya** — sudah ditulis actionable.
+    - MANUALLY_TESTED selalu boleh (aksi "Tandai sudah dites manual") — cocok untuk mapping yang di-review manusia tanpa menunggu publish.
+  - *(`PUT /{id}` biasa tetap bisa ubah tier bebas TANPA guard — untuk koreksi/override admin. Promote adalah jalur ber-guard yang direkomendasikan untuk kenaikan normal.)*
 - **Filter "buatan AI":** ✅ backend list kini punya param `createdBy` + `verificationTier`. Contoh: `GET /admin/channel-field-mappings?channelId=shopify&createdBy=ai-agent-v1&verificationTier=UNVERIFIED&page=0&size=20` → hanya mapping buatan AI yang belum terverifikasi.
 
-> **Alasan:** Jalur C membuat AI menulis ke tabel yang dipakai APM. Operator butuh **jendela** untuk mengawasi & mengoreksi tulisan AI itu — kalau tidak, mapping salah bisa menyebar diam-diam. Ini human-in-the-loop untuk enrichment.
+> **Alasan:** AI Mapping Enrichment membuat AI menulis ke tabel yang dipakai APM. Operator butuh **jendela** untuk mengawasi & mengoreksi tulisan AI itu — kalau tidak, mapping salah bisa menyebar diam-diam. Ini human-in-the-loop untuk enrichment.
 
 ### 8.2 · Q2/Q3 — layar baru: Channel Category API Schema Manager
 Agent kini membaca `apiSchema` (base dari `channel_configuration` + ekstensi per-kategori dari `channel_category_api_schemas`) untuk grounding channel/kategori baru. Data grounding ini perlu **dikelola & di-preview** operator.
@@ -156,10 +190,12 @@ Agent kini membaca `apiSchema` (base dari `channel_configuration` + ekstensi per
 > **Alasan:** Kualitas JOLT untuk channel baru kini **bergantung** pada kelengkapan apiSchema. Kalau agent menghasilkan JOLT buruk untuk suatu kategori, operator perlu cek: "apakah apiSchema untuk kategori ini lengkap?" Layar ini + preview memberi jawabannya. Untuk channel BARU tanpa mapping, ini satu-satunya sumber grounding.
 
 ### 8.3 · Observability (P1-E) — apiSchema kini terlihat di step
-Batas simpan output tool dinaikkan (300→4000 char), jadi step `get_channel_schema` di sesi kini menampilkan **`apiSchema` penuh** (path target yang diterima agent). UI Sessions harus me-render output panjang ini (JSON viewer collapsible). Sesi yang sukses juga akan menghasilkan mapping baru (Jalur C) — pertimbangkan tautkan sesi → mapping yang ia buat.
+Batas simpan output tool dinaikkan (300→4000 char), jadi step `get_channel_schema` di sesi kini menampilkan **`apiSchema` penuh** (path target yang diterima agent). UI Sessions harus me-render output panjang ini (JSON viewer collapsible). Sesi yang sukses juga akan menghasilkan mapping baru (AI Mapping Enrichment) — pertimbangkan tautkan sesi → mapping yang ia buat.
 
-### 8.4 · Config Panel (P1-L) — tampilkan flag enrichment
-✅ `GET /admin/ai/config` → `recommendation.enrichMappings` (env `AI_ENRICH_MAPPINGS`, default true). Tampilkan sebagai status read-only: "AI enrich field mappings: ON/OFF".
+### 8.4 · Config Panel (P1-L) — flag enrichment (kini TOGGLE nyata)
+- **Baca:** ✅ `GET /admin/ai/config` → `recommendation.enrichMappings` (env `AI_ENRICH_MAPPINGS`, default true).
+- **Toggle runtime (baru):** ✅ `PUT /admin/ai/config/enrich-mappings?enabled=false` → kill-switch AI Mapping Enrichment **tanpa restart** (berlaku pada AUTO_APPLY berikutnya). Respons: `{enrichMappings, scope:"runtime", note:"Reverts to AI_ENRICH_MAPPINGS on restart"}`.
+- UI: badge ON/OFF + **switch**. Beri catatan "override runtime — kembali ke nilai env saat restart". Ini kontrol operasional agar operator bisa menjeda AI-menulis-mapping (mis. saat audit) tanpa mematikan seluruh agent.
 
 ### 8.5 · Feedback-loop maturity — sinyal konkret baru
 Konsep "kematangan kategori" (§5.1) kini punya metrik nyata: **jumlah mapping `createdBy: ai-agent` per channel** + berapa yang sudah "dipromosikan" (verificationTier naik) + successRate-nya. Dashboard bisa menampilkan tren ini: "AI telah menyumbang N mapping; M terbukti (successRate>0.8)". Ini bukti visual bahwa sistem **benar-benar belajar**.
@@ -172,30 +208,9 @@ Konsep "kematangan kategori" (§5.1) kini punya metrik nyata: **jumlah mapping `
 | **P2** | §8.3 Sessions render apiSchema panjang | Observability grounding agent |
 | **P3** | §8.4/8.5 flag enrichment + metrik maturity | Transparansi & bukti pembelajaran |
 
-> **Gap backend (8.1/8.4) — ✅ SUDAH DITUTUP (2026-07-02):** (a) filter `createdBy` + `verificationTier` ditambahkan ke list field-mappings; (b) `enrichMappings` diekspos di `GET /admin/ai/config`. Frontend bisa langsung memakainya tanpa workaround.
-
----
-
-## ✅ Status implementasi frontend §8 (2026-07-02)
-
-Semua §8 **sudah diimplementasikan** (detail: [`IMPLEMENTATION-PHASES.md`](./IMPLEMENTATION-PHASES.md)):
-
-- **§8.1 (P1-G):** `channel-field-mappings` — tipe diperluas (`createdBy`, `verificationTier`,
-  `successCount/failureCount`, strategy `AI_GENERATED` dll); OriginBadge "🤖 AI · Unverified", kolom
-  bukti Beta (✓success ✗failure), tombol **Promote** (naikkan tier via PUT), filter **Origin** (AI/human),
-  banner Jalur C, stat "AI-made (unverified)". Filter service `createdBy`+`verificationTier`.
-  **Bonus fix:** service `listMappings` dulu hanya ambil 20 dari 92 (default page size) — kini `size=100`
-  → semua mapping (termasuk buatan AI) tampil.
-- **§8.2 (P2-O):** `channel-category-schemas` — tombol **Preview** per baris → modal "Merged schema"
-  (target path yang dilihat agent, via `GET /channels/{ch}/schema?categorySlug=`), + link sidebar
-  "API Schema Manager".
-- **§8.3:** Sessions — apiSchema panjang ter-render (JsonViewer collapsible); sesi COMPLETED punya link
-  ke mapping buatan AI channel-nya (deep-link `?channelId=&origin=ai`).
-- **§8.4:** Config Panel — badge "AI enrich field mappings: ON/OFF" (guarded — hanya render bila backend
-  mengekspos `recommendation.enrichMappings`).
-- **§8.5:** Learning Dashboard — seksi "Kematangan AI enrichment (Jalur C)": jumlah mapping AI, dipromosikan,
-  UNVERIFIED, avg successRate live, breakdown per-channel.
-
-**Verifikasi:** tsc 0 error · lint 0 warning · 4 mapping AI live tampil dengan badge+Promote · schema preview
-& maturity render live (0 page error) · **E2E +7 test** (`ai-console-addendum-p8.spec.ts`). Total suite **42 lulus**.
-§6/§8 yang dilarang (UI approve saran mapping, threshold per-channel, auth granular) **tidak** dibangun.
+> **Status backend untuk §8 — ✅ SEMUA SIAP & TERVERIFIKASI LIVE (2026-07-03):**
+> - filter `createdBy` + `verificationTier` di list field-mappings (live: 4 mapping AI terfilter tepat);
+> - `enrichMappings` di `GET /admin/ai/config` (live: `true`) + runtime toggle `PUT /admin/ai/config/enrich-mappings?enabled=` (live: round-trip);
+> - `PUT /{id}/promote?tier=&promotedBy=` dengan guard bukti (live: 5 skenario — reject-no-evidence, allow-manual, reject-downgrade, reject-invalid, 404).
+>
+> Frontend bisa langsung memakai semuanya tanpa workaround. Endpoint hanya butuh server pada build terbaru (sudah live saat verifikasi).

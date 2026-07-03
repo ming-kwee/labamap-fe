@@ -89,6 +89,7 @@ import {
 } from "@/modules/ecommerce-product-v2/services/pattern-matching.service";
 import {
   generateMappingRequest,
+  mergeStoreOverridesIntoRequest,
   transformMasterProductToSourceSchema,
 } from "@/modules/ecommerce-product-v2/utils/product-mapper";
 import { MasterProductService } from "@/app/(admin)/products/_services/master-product.service";
@@ -411,36 +412,10 @@ export default function PublishDashboard({ masterProductId }: Props) {
         persistConfidenceThreshold: 80,
       });
 
-      // Merge Step-2 channel-specific fields into sourceSchema so the pattern matcher
-      // sees the complete data picture: master product fields + channel fields the user
-      // already filled in. Without this, Step-2 fields appear as unmapped source fields.
-      const channelFields = store.channelData ?? {};
-      if (Object.keys(channelFields).length > 0) {
-        request.sourceSchema = { ...request.sourceSchema, ...channelFields };
-      }
-
-      // Merge master-level overrides so the pattern matcher sees overridden values
-      // (e.g. a Shopify-specific title) rather than the original master value.
-      const masterOverrides = store.masterOverrides ?? {};
-      if (Object.keys(masterOverrides).length > 0) {
-        request.sourceSchema = { ...request.sourceSchema, ...masterOverrides };
-      }
-
-      // Flatten variant overrides into sourceSchema with a variant_ prefix so the
-      // pattern matcher can discover mappings for barcode, inventory_policy, etc.
-      // First non-null value wins per field across all SKUs.
-      const variantOverrides = store.variantOverrides ?? {};
-      const flatVariantFields: Record<string, unknown> = {};
-      for (const skuOverrides of Object.values(variantOverrides)) {
-        for (const [fieldName, value] of Object.entries(skuOverrides)) {
-          if (value != null && !(fieldName in flatVariantFields)) {
-            flatVariantFields[`variant_${fieldName}`] = value;
-          }
-        }
-      }
-      if (Object.keys(flatVariantFields).length > 0) {
-        request.sourceSchema = { ...request.sourceSchema, ...flatVariantFields };
-      }
+      // Merge Step-2 overrides (channel fields + master/variant overrides) into the
+      // source schema so the matcher sees the complete publish picture. Shared with
+      // Publish Diagnostics via the same helper — both replicate identical input.
+      mergeStoreOverridesIntoRequest(request, store);
 
       const result = await analyzePatternMatching(request);
 
