@@ -67,7 +67,11 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
       ...init,
       headers: { ...JSON_HEADERS, ...authHeaders(), ...(init?.headers ?? {}) },
     });
-  } catch {
+  } catch (e) {
+    // Cancelled by the caller (Cancel button) or a client-side timeout.
+    if (e instanceof DOMException && e.name === "AbortError") {
+      throw new AiApiError("Permintaan dibatalkan", "aborted");
+    }
     // TypeError: Failed to fetch → backend unreachable.
     throw new AiApiError("AI server unreachable", "server_down");
   }
@@ -289,12 +293,17 @@ export const AiAdminService = {
 
   // ─── P1-F · JOLT Generation Console ───────────────────────────────────────
 
-  /** Slow (10–20s): agent tool-loop + retry. body = master product JSON. */
-  generateJolt(params: GenerateJoltParams): Promise<GenerateJoltResult> {
+  /**
+   * Slow: agent tool-loop + LLM retry/backoff can take minutes when the LLM is
+   * rate-limited (429). Pass an AbortSignal to support timeout / user-cancel.
+   * body = master product JSON.
+   */
+  generateJolt(params: GenerateJoltParams, signal?: AbortSignal): Promise<GenerateJoltResult> {
     const qs = buildQs({ channelId: params.channelId, categoryId: params.categoryId });
     return request<GenerateJoltResult>(`${BASE}/generate-jolt${qs}`, {
       method: "POST",
       body: JSON.stringify(params.product),
+      signal,
     });
   },
 };

@@ -90,9 +90,13 @@ ke backend live (2026-07-01).
 - **P1-E:** channel selector (list `sessions` **wajib** `channelId`); tabel status/grounding/durasi/token;
   drawer detail = ragContext (bukti grounding) + agentSteps + summary; FAILED → error diklasifikasi
   (kuota/config/key). Deep-link `?sessionId=` dari P0-D (detail tak butuh channelId).
-- **P1-F:** editor JSON produk (validasi live) + channel/category; async 10–20 dtk (spinner, tak blok);
+- **P1-F:** editor JSON produk (validasi live) + channel/category; async (spinner, tak blok);
   hasil = status (AUTO_APPLIED/RECOMMENDATION_CREATED/MANUAL_REVIEW/AGENT_FAILED) + proposedJoltSpec
   (JSON viewer) + link ke sesi; AGENT_FAILED → penyebab yang bisa ditindaklanjuti (kuota → coba Anthropic).
+  **Robustness (2026-07-03):** backend bisa makan menit saat LLM 429 (retry/backoff) → elapsed timer hidup,
+  hard timeout 120s + tombol Batalkan (AbortController, kind error `aborted`), banner pra-jalan bila sesi
+  agent terakhir di channel itu gagal-kuota (via getMostRecentSession). Bukan loop — satu request panjang.
+  E2E `tests/e2e/ai-generate-robustness.spec.ts` (2).
 - **P1-H:** KPI (avg success, total/low mappings, pending, index size) + day selector 7/30/90; empty-state
   eksplisit untuk `channels`/`calibration` (sering kosong).
 - **P1-L:** config efektif read-only (provider + `keyConfigured`, threshold penentu perilaku, cascade

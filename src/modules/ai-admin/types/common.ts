@@ -48,6 +48,7 @@ export type AiErrorKind =
   | "auth" // 401 / 403 — token invalid or missing
   | "not_found" // 404
   | "http" // other 4xx / 5xx with a message
+  | "aborted" // request cancelled by the caller or client-side timeout
   | "unknown";
 
 export class AiApiError extends Error {
@@ -70,6 +71,8 @@ export class AiApiError extends Error {
         return "Sesi berakhir atau tidak diizinkan. Silakan masuk kembali sebagai admin.";
       case "not_found":
         return this.message || "Data tidak ditemukan.";
+      case "aborted":
+        return this.message || "Permintaan dibatalkan.";
       default:
         return this.message;
     }

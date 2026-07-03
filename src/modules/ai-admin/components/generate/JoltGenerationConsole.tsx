@@ -4,13 +4,16 @@
  * P1-F · JOLT Generation Console ("Coba Agent").
  *
  * Run the agent manually for one sample product — the concrete "AI helps" demo.
- * Slow (10–20s: tool-loop + retry) → optimistic spinner, never block. On
- * AGENT_FAILED, show an actionable cause (e.g. Gemini quota → try later/Anthropic).
+ * The backend can take MINUTES when the LLM is rate-limited (429 → retry/backoff
+ * + tool-loop), so this screen shows an honest elapsed timer, a hard client-side
+ * timeout, and a Cancel button (AbortController) — never an endless spinner.
+ * On AGENT_FAILED, show an actionable cause (e.g. Gemini quota → try later/Anthropic).
  * Spec: docs/ai/frontend/FRONTEND-ADMIN-RECOMMENDATIONS.md §P1-F
  */
 
 import Link from "next/link";
-import React, { useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { AiApiError } from "../../types/common";
 import { GenerateJoltResult } from "../../types/session";
 import { AiAdminService } from "../../services/aiAdmin.service";
 import { PlayIcon, SparklesIcon, TerminalIcon } from "../shared/icons";
@@ -29,6 +32,10 @@ import {
   Spinner,
   Tone,
 } from "../shared/ui";
+
+/** Hard client-side ceiling — beyond this the backend is almost certainly stuck
+ *  on LLM rate-limit retries; abort and tell the operator rather than spin forever. */
+const RUN_TIMEOUT_MS = 120_000;
 
 const SAMPLE_PRODUCT = JSON.stringify(
   {
@@ -62,6 +69,13 @@ export default function JoltGenerationConsole() {
   const [running, setRunning] = useState(false);
   const [result, setResult] = useState<GenerateJoltResult | null>(null);
   const [error, setError] = useState<unknown>(null);
+  const [elapsed, setElapsed] = useState(0); // seconds since run started
+  const [preflightRateLimited, setPreflightRateLimited] = useState(false);
+
+  const abortRef = useRef<AbortController | null>(null);
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const tickRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const timedOutRef = useRef(false); // distinguish timeout-abort from user-cancel
 
   const jsonError = useMemo(() => {
     try {
@@ -72,20 +86,80 @@ export default function JoltGenerationConsole() {
     }
   }, [productText]);
 
+  const clearTimers = useCallback(() => {
+    if (timeoutRef.current) clearTimeout(timeoutRef.current);
+    if (tickRef.current) clearInterval(tickRef.current);
+    timeoutRef.current = null;
+    tickRef.current = null;
+  }, []);
+
+  // Clean up on unmount (abort any in-flight request + timers).
+  useEffect(() => {
+    return () => {
+      abortRef.current?.abort();
+      clearTimers();
+    };
+  }, [clearTimers]);
+
+  // Pre-flight (§3): warn if the latest agent session on this channel failed on quota.
+  useEffect(() => {
+    let alive = true;
+    setPreflightRateLimited(false);
+    AiAdminService.getMostRecentSession([channelId])
+      .then((s) => {
+        if (!alive || !s || s.status !== "FAILED") return;
+        const kind = classifyLlmError(s.errorMessage).kind;
+        if (kind === "rate_limit" || kind === "quota_zero") setPreflightRateLimited(true);
+      })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, [channelId]);
+
+  const cancel = useCallback(() => {
+    timedOutRef.current = false;
+    abortRef.current?.abort();
+  }, []);
+
   async function run() {
-    if (jsonError) return;
+    if (jsonError || running) return;
+    const controller = new AbortController();
+    abortRef.current = controller;
+    timedOutRef.current = false;
     setRunning(true);
     setError(null);
     setResult(null);
+    setElapsed(0);
+
+    tickRef.current = setInterval(() => setElapsed((s) => s + 1), 1000);
+    timeoutRef.current = setTimeout(() => {
+      timedOutRef.current = true;
+      controller.abort();
+    }, RUN_TIMEOUT_MS);
+
     try {
       const product = JSON.parse(productText);
-      setResult(await AiAdminService.generateJolt({ channelId, categoryId, product }));
+      setResult(await AiAdminService.generateJolt({ channelId, categoryId, product }, controller.signal));
     } catch (e) {
-      setError(e);
+      if (e instanceof AiApiError && e.kind === "aborted") {
+        setError(
+          new AiApiError(
+            timedOutRef.current
+              ? `Timeout setelah ${Math.round(RUN_TIMEOUT_MS / 1000)}s — agent kemungkinan masih menunggu kuota LLM (429 retry/backoff). Coba lagi nanti atau pakai model/provider berbayar.`
+              : "Dibatalkan. Agent dihentikan sebelum selesai.",
+            "aborted",
+          ),
+        );
+      } else {
+        setError(e);
+      }
     } finally {
+      clearTimers();
+      abortRef.current = null;
       setRunning(false);
     }
   }
+
+  const elapsedLabel = `${Math.floor(elapsed / 60)}:${String(elapsed % 60).padStart(2, "0")}`;
 
   const meta = result ? STATUS_META[result.status] ?? { tone: "gray" as Tone, label: result.status, desc: "" } : null;
   const isFailed = result?.status === "AGENT_FAILED";
@@ -101,8 +175,9 @@ export default function JoltGenerationConsole() {
 
       <InfoBanner tone="amber">
         <p>
-          Ini <strong>memanggil agent LLM sungguhan</strong> (memakai kuota) dan bisa memakan{" "}
-          <strong>10–20 detik</strong> (tool-loop + retry). Hasilnya juga tercatat sebagai sesi — lihat di{" "}
+          Ini <strong>memanggil agent LLM sungguhan</strong> (memakai kuota). Biasanya{" "}
+          <strong>10–20 detik</strong>, tapi bisa sampai <strong>~2 menit</strong> saat LLM rate-limited
+          (429 → retry/backoff). Ada tombol Batalkan & timeout otomatis. Hasilnya tercatat sebagai sesi — lihat di{" "}
           <Link href="/platform-admin/ai-sessions" className="underline">Agent Sessions</Link>.
         </p>
       </InfoBanner>
@@ -146,13 +221,44 @@ export default function JoltGenerationConsole() {
             )}
           </div>
 
-          <button
-            onClick={run}
-            disabled={running || !!jsonError || !categoryId.trim()}
-            className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-violet-600 hover:bg-violet-700 text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-60"
-          >
-            {running ? <><Spinner size={15} /> Menjalankan agent… (10–20s)</> : <><PlayIcon size={14} /> Jalankan Agent</>}
-          </button>
+          {/* §3 · pre-flight rate-limit warning */}
+          {preflightRateLimited && !running && (
+            <InfoBanner tone="amber">
+              <p>
+                <strong>LLM sedang rate-limited</strong> untuk {CHANNEL_LABELS[channelId] ?? channelId} — sesi agent
+                terakhir gagal karena kuota. Menjalankan sekarang kemungkinan besar juga gagal (429). Coba lagi nanti
+                atau pakai model/provider berbayar.
+              </p>
+            </InfoBanner>
+          )}
+
+          {running ? (
+            <div className="flex items-stretch gap-2">
+              <div className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-violet-600/90 text-white text-sm font-medium rounded-lg">
+                <Spinner size={15} /> Menjalankan agent… <span className="font-mono tabular-nums">{elapsedLabel}</span>
+              </div>
+              <button
+                onClick={cancel}
+                className="px-4 py-2.5 border border-red-300 dark:border-red-800 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 text-sm font-medium rounded-lg transition-colors"
+              >
+                Batalkan
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={run}
+              disabled={!!jsonError || !categoryId.trim()}
+              className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-violet-600 hover:bg-violet-700 text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-60"
+            >
+              <PlayIcon size={14} /> Jalankan Agent
+            </button>
+          )}
+          {running && (
+            <p className="text-[11px] text-gray-400 text-center">
+              Bisa sampai ~2 menit saat kuota LLM sibuk (agent retry/backoff). Otomatis berhenti di{" "}
+              {Math.round(RUN_TIMEOUT_MS / 1000)}s.
+            </p>
+          )}
         </Card>
 
         {/* Output */}
@@ -162,8 +268,15 @@ export default function JoltGenerationConsole() {
           ) : running ? (
             <Card className="p-8 flex flex-col items-center justify-center text-center">
               <Spinner size={28} />
-              <p className="text-sm text-gray-600 dark:text-gray-300 mt-3">Agent sedang bekerja…</p>
+              <p className="text-sm text-gray-600 dark:text-gray-300 mt-3">
+                Agent sedang bekerja… <span className="font-mono tabular-nums">{elapsedLabel}</span>
+              </p>
               <p className="text-xs text-gray-400 mt-1">Retrieval RAG → tool-loop → validasi. Jangan tutup halaman.</p>
+              {elapsed >= 25 && (
+                <p className="text-xs text-amber-600 dark:text-amber-400 mt-2 max-w-xs">
+                  Lebih lama dari biasa — kemungkinan LLM sedang rate-limited (429) dan agent menunggu backoff.
+                </p>
+              )}
             </Card>
           ) : result && meta ? (
             <>
