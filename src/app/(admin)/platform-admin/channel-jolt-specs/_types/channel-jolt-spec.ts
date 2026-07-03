@@ -94,3 +94,50 @@ export function mapRawJoltSpec(raw: unknown): ChannelJoltSpec {
 function isStringNumberMap(v: unknown): boolean {
   return v !== null && typeof v === "object" && !Array.isArray(v);
 }
+
+// ─── Provenance / audit helpers (who applied this JOLT to production) ─────────
+
+export type SpecOrigin = "AI_AGENT" | "APM" | "MANUAL";
+
+export const ORIGIN_LABELS: Record<SpecOrigin, string> = {
+  AI_AGENT: "AI agent",
+  APM: "APM",
+  MANUAL: "Manual",
+};
+
+/** confidence threshold (%) at/above which a generated spec is auto-applied (config: autoApplyThreshold 0.92). */
+export const AUTO_APPLY_CONFIDENCE = 92;
+
+/**
+ * Normalize confidence to a 0–100 percentage. joltMetadata stores it in TWO
+ * scales depending on the writer (verified live): APM writes 0–100 (92.8),
+ * the AI agent writes 0–1 (0.95). Coerce both to a percentage.
+ */
+export function confidencePct(spec: ChannelJoltSpec): number | null {
+  const c = spec.joltMetadata.confidence;
+  if (c == null) return null;
+  return c <= 1 ? c * 100 : c;
+}
+
+/**
+ * Classify who produced a spec, from joltMetadata.
+ * - Manual: isManuallyConfigured=true (human-locked).
+ * - AI agent: generatedBy mentions "agent"/"ai"/"llm"/"jolt-generation".
+ * - APM: everything else auto-generated (adaptive-pattern-matching).
+ */
+export function specOrigin(spec: ChannelJoltSpec): SpecOrigin {
+  const meta = spec.joltMetadata;
+  if (meta.isManuallyConfigured) return "MANUAL";
+  const by = (meta.generatedBy ?? "").toLowerCase();
+  if (by.includes("agent") || by.startsWith("ai") || by.includes("llm") || by.includes("jolt-generation")) {
+    return "AI_AGENT";
+  }
+  return "APM";
+}
+
+/** Auto-applied = generated (non-manual) at confidence ≥ threshold (scale-normalized). */
+export function isAutoApplied(spec: ChannelJoltSpec): boolean {
+  if (spec.joltMetadata.isManuallyConfigured) return false;
+  const pct = confidencePct(spec);
+  return pct != null && pct >= AUTO_APPLY_CONFIDENCE;
+}
