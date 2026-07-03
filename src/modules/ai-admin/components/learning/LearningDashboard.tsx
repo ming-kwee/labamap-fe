@@ -14,7 +14,7 @@
 
 import Link from "next/link";
 import React, { useCallback, useEffect, useState } from "react";
-import { LearningStats } from "../../types/health";
+import { AiMappingMaturity, LearningStats } from "../../types/health";
 import { AiAdminService } from "../../services/aiAdmin.service";
 import { ActivityIcon, DatabaseIcon, RefreshIcon, SparklesIcon } from "../shared/icons";
 import {
@@ -33,6 +33,7 @@ const DAY_OPTIONS = [7, 30, 90] as const;
 export default function LearningDashboard() {
   const [days, setDays] = useState<number>(30);
   const [data, setData] = useState<LearningStats | null>(null);
+  const [maturity, setMaturity] = useState<AiMappingMaturity | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<unknown>(null);
 
@@ -46,6 +47,10 @@ export default function LearningDashboard() {
     } finally {
       setLoading(false);
     }
+    // Maturity is best-effort — never block the main dashboard on it.
+    AiAdminService.getAiMappingMaturity()
+      .then(setMaturity)
+      .catch(() => setMaturity(null));
   }, []);
 
   useEffect(() => {
@@ -183,6 +188,45 @@ export default function LearningDashboard() {
               </div>
             )}
           </SectionCard>
+
+          {/* AI enrichment maturity (addendum §8.5 · Jalur C) */}
+          {maturity && maturity.total > 0 && (
+            <SectionCard
+              title="Kematangan AI enrichment (Jalur C)"
+              subtitle="bukti sistem belajar — mapping buatan AI & yang terbukti"
+              icon={<SparklesIcon size={16} />}
+              right={
+                <Link href="/platform-admin/channel-field-mappings" className="text-xs text-blue-500 hover:underline">
+                  Kelola →
+                </Link>
+              }
+            >
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+                <StatTile label="Mapping buatan AI" value={maturity.total} tone="violet" />
+                <StatTile label="Dipromosikan" value={maturity.promoted} tone="green" hint="tier > UNVERIFIED" />
+                <StatTile label="Masih UNVERIFIED" value={maturity.unverified} tone={maturity.unverified > 0 ? "amber" : "gray"} />
+                <StatTile label="Avg successRate (live)" value={`${maturity.provenSuccessRate.toFixed(0)}%`} tone="blue" />
+              </div>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">
+                AI telah menyumbang <strong>{maturity.total}</strong> mapping;{" "}
+                <strong>{maturity.promoted}</strong> terbukti & dipromosikan. Kategori “mendewasa” saat mapping AI
+                naik tier dan publish ditangani APM (gratis), bukan agent (mahal).
+              </p>
+              {maturity.byChannel.length > 0 && (
+                <div className="space-y-1.5">
+                  {maturity.byChannel.map((c) => (
+                    <div key={c.channelId} className="flex items-center justify-between gap-3 py-1 border-b border-gray-100 dark:border-gray-800 last:border-0">
+                      <ChannelBadge channelId={c.channelId} />
+                      <span className="text-xs text-gray-500 dark:text-gray-400">
+                        <strong className="text-gray-700 dark:text-gray-200">{c.total}</strong> mapping ·{" "}
+                        <span className="text-green-600 dark:text-green-400">{c.promoted} dipromosikan</span>
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </SectionCard>
+          )}
         </>
       ) : null}
     </div>

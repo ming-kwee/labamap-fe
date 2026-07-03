@@ -7,9 +7,9 @@
 > **Home layar Phase 1–2:** `src/app/(admin)/platform-admin/ai-*` (route tipis) →
 > komponen di modul `src/modules/ai-admin/`. Layar Phase 3 (data managers) mengikuti
 > konvensi platform-admin (`_types/_services/_components`).
-> **Sidebar:** grup **"AI Console"** di `src/layout/AppSidebar.tsx` — **12 item** (P0×4, P1×5, P2×3).
+> **Sidebar:** grup **"AI Console"** di `src/layout/AppSidebar.tsx` — **13 item** (P0×4, P1×5, P2×4).
 >
-> **✅ SEMUA 3 FASE SELESAI (2026-07-02).** 22 e2e test lulus (`npm run test:e2e`).
+> **✅ SEMUA fase + addendum §1–§8 + polish §3.1/§5.3 SELESAI (2026-07-03).** 47 e2e test lulus (`npm run test:e2e`).
 
 ---
 
@@ -156,6 +156,44 @@ resolver + `ai-console-addendum.spec.ts` 7: 4 varian error taxonomy, joltSpecId,
 > Catatan jujur: `CascadeOutcomeBadge` divalidasi via 6 unit test resolver + tsc + compile PublishDashboard.
 > Cascade `enabled=false` di env live, jadi badge benar-benar **tidak render** di publish flow live (perilaku
 > benar — resolver balik `null` tanpa data cascade); tampilan tiap varian tercakup unit test.
+
+---
+
+## ✅ Addendum §8 — Jalur C & apiSchema (SELESAI 2026-07-02)
+
+Gelombang berikutnya dari addendum (kapabilitas backend baru: agent menulis mapping + apiSchema grounding).
+
+| Item | Layar | Yang dikerjakan |
+|------|-------|-----------------|
+| **§8.1** | Field Mappings (`/platform-admin/channel-field-mappings`) | Bedakan & review mapping buatan-AI: `OriginBadge` (🤖 AI · tier), bukti Beta ✓success/✗failure, tombol **Promote** (nextTier via PUT), filter **Origin**, banner Jalur C, stat AI-unverified. Tipe+service diperluas (`createdBy`/`verificationTier`/counts, filter params). Fix: `size=100` agar semua 92 mapping ter-load (dulu 20). |
+| **§8.2** | API Schema Manager (`/platform-admin/channel-category-schemas`) | Tombol **Preview** → modal merged targetSchema (`GET /channels/{ch}/schema?categorySlug=`) + link sidebar. |
+| **§8.3** | Agent Sessions | apiSchema panjang via JsonViewer; sesi COMPLETED → link ke mapping AI channel (deep-link `?channelId=&origin=ai`). |
+| **§8.4** | Config & Cascade | **toggle runtime berfungsi** — switch ON/OFF via `PUT /admin/ai/config/enrich-mappings?enabled=` (kill-switch Jalur C) + konfirmasi + toast note "revert saat restart". (Backend expose flag + endpoint sejak 2026-07-03; sebelumnya badge read-only guarded.) |
+| **§8.5** | Learning Dashboard | seksi Kematangan AI enrichment: total/promoted/unverified/avg-successRate + per-channel. |
+
+Sidebar "AI Console" kini **13 item** (+API Schema Manager). **Tidak** dibangun (§6/§8): UI approve
+`ProposedFix.fieldMappingChanges`, threshold per-channel, auth granular.
+
+### Verifikasi §8
+- tsc 0 error · lint 0 warning.
+- Live: 4 mapping AI (`ai-agent-v1`, AI_GENERATED, UNVERIFIED) tampil dengan OriginBadge+Promote; maturity
+  section & schema preview render dari data live, 0 page error.
+- **E2E:** `tests/e2e/ai-console-addendum-p8.spec.ts` (7 test). Total suite **42 lulus** (`npm run test:e2e`).
+
+---
+
+## ✅ Polish opsional §3.1 + §5.3 (SELESAI 2026-07-03)
+
+- **§3.1 · Health Dashboard "LLM: rate-limited":** badge amber di ProviderStatusCard bila **aktivitas agent
+  terakhir gagal karena kuota/rate-limit**. Karena `sessions` wajib `channelId` (tak ada endpoint global),
+  service `getMostRecentSession(channels)` probe per-channel (best-effort, Promise.allSettled, hanya on
+  mount + manual refresh — bukan poll 30s), ambil sesi terbaru global, klasifikasi via `classifyLlmError`
+  (rate_limit/quota_zero → badge). `llmModel` juga ditonjolkan (violet). Tooltip menampilkan waktu gagal.
+  Live: sesi terbaru COMPLETED → badge benar-benar tidak muncul (tanpa false positive).
+- **§5.3 · Search Playground:** hint "RAG = pencarian makna, bukan ejaan" — hasil diurut berdasarkan
+  semantic similarity (mis. `weight`→`grams`, `color`→`colour`).
+
+E2E: `tests/e2e/ai-console-polish.spec.ts` (4). Total suite **47 lulus**.
 
 ---
 

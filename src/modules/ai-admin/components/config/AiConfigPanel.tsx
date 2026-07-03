@@ -17,18 +17,25 @@ import { ActivityIcon, DatabaseIcon, GitBranchIcon, RefreshIcon, SettingsIcon, S
 import {
   Badge,
   Card,
+  ConfirmDialog,
   ErrorNotice,
   InfoBanner,
   KeyValue,
   PageHeader,
   SectionCard,
   Spinner,
+  Toast,
+  useToast,
 } from "../shared/ui";
 
 export default function AiConfigPanel() {
   const [config, setConfig] = useState<AiConfig | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<unknown>(null);
+  const { toast, show } = useToast();
+  // §8.4 runtime toggle for Jalur C enrichment.
+  const [confirmEnrich, setConfirmEnrich] = useState<boolean | null>(null); // target value awaiting confirm
+  const [enrichBusy, setEnrichBusy] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -46,8 +53,51 @@ export default function AiConfigPanel() {
     load();
   }, [load]);
 
+  const applyEnrichToggle = useCallback(async (target: boolean) => {
+    setEnrichBusy(true);
+    try {
+      const res = await AiAdminService.setEnrichMappings(target);
+      show(
+        `AI enrichment (Jalur C) ${res.enrichMappings ? "ON" : "OFF"}.${res.note ? " " + res.note : ""}`,
+        "success",
+      );
+      await load();
+    } catch (e) {
+      show(`Gagal mengubah: ${(e as Error).message}`, "error");
+    } finally {
+      setEnrichBusy(false);
+      setConfirmEnrich(null);
+    }
+  }, [load, show]);
+
   return (
     <div className="p-6 space-y-5">
+      <Toast toast={toast} />
+
+      {confirmEnrich !== null && (
+        <ConfirmDialog
+          title={confirmEnrich ? "Aktifkan AI enrichment?" : "Matikan AI enrichment?"}
+          confirmLabel={confirmEnrich ? "Aktifkan" : "Matikan (kill-switch)"}
+          danger={!confirmEnrich}
+          busy={enrichBusy}
+          body={
+            confirmEnrich ? (
+              <>
+                Agent akan kembali <strong>menulis field mapping baru</strong> (Jalur C) saat AUTO_APPLY.
+                Perubahan berlaku <strong>runtime</strong> (revert saat restart).
+              </>
+            ) : (
+              <>
+                Agent <strong>berhenti menulis</strong> field mapping baru (Jalur C). Mapping yang sudah ada tetap.
+                Berguna jika enrichment AI menghasilkan mapping buruk. Perubahan <strong>runtime</strong> (revert saat restart).
+              </>
+            )
+          }
+          onConfirm={() => applyEnrichToggle(confirmEnrich)}
+          onCancel={() => setConfirmEnrich(null)}
+        />
+      )}
+
       <PageHeader
         icon={<SettingsIcon size={20} />}
         title="AI Config & Cascade"
@@ -155,6 +205,28 @@ export default function AiConfigPanel() {
                 env="AI_RECOMMENDATION_EXPIRY_DAYS"
               />
             </div>
+            {/* AI enrich field mappings — Jalur C runtime kill-switch (addendum §8.4).
+                Guarded: only render when backend exposes the flag. The one mutable
+                control on this otherwise read-only panel. */}
+            {config.recommendation.enrichMappings !== undefined && (
+              <div className="mt-4 flex flex-wrap items-center gap-3 rounded-lg bg-gray-50 dark:bg-gray-800/50 border border-gray-100 dark:border-gray-700 px-3 py-2.5">
+                <EnrichToggle
+                  enabled={!!config.recommendation.enrichMappings}
+                  busy={enrichBusy}
+                  onToggle={(target) => setConfirmEnrich(target)}
+                />
+                <div className="min-w-0">
+                  <p className="text-xs font-medium text-gray-700 dark:text-gray-200">
+                    AI enrich field mappings (Jalur C): {config.recommendation.enrichMappings ? "ON" : "OFF"}
+                  </p>
+                  <p className="text-[11px] text-gray-400">
+                    saat ON, agent menulis field mapping baru ke tabel APM saat AUTO_APPLY. Toggle bersifat{" "}
+                    <strong>runtime</strong> (revert ke <code className="font-mono">AI_ENRICH_MAPPINGS</code> saat restart) ·{" "}
+                    <Link href="/platform-admin/channel-field-mappings?origin=ai" className="text-blue-500 hover:underline">lihat mapping AI →</Link>
+                  </p>
+                </div>
+              </div>
+            )}
           </SectionCard>
 
           {/* Cascade */}
@@ -213,6 +285,35 @@ export default function AiConfigPanel() {
         </>
       ) : null}
     </div>
+  );
+}
+
+function EnrichToggle({
+  enabled,
+  busy,
+  onToggle,
+}: {
+  enabled: boolean;
+  busy: boolean;
+  onToggle: (target: boolean) => void;
+}) {
+  return (
+    <button
+      role="switch"
+      aria-checked={enabled}
+      aria-label="Toggle AI enrichment"
+      disabled={busy}
+      onClick={() => onToggle(!enabled)}
+      className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors disabled:opacity-50 ${
+        enabled ? "bg-green-500" : "bg-gray-300 dark:bg-gray-600"
+      }`}
+    >
+      <span
+        className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${
+          enabled ? "translate-x-6" : "translate-x-1"
+        }`}
+      />
+    </button>
   );
 }
 

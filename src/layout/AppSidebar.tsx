@@ -110,6 +110,7 @@ const adminNavItems: NavItem[] = [
       { name: "JOLT Specs", path: "/platform-admin/channel-jolt-specs", pro: false },
       { name: "Semantic Knowledge", path: "/platform-admin/field-semantic-knowledge", pro: false },
       { name: "Value Mappings", path: "/platform-admin/channel-value-mappings", pro: false },
+      { name: "API Schema Manager", path: "/platform-admin/channel-category-schemas", pro: false },
     ],
   },
   {

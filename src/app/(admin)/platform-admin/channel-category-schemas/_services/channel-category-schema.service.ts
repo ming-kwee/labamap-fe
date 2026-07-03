@@ -10,8 +10,19 @@ import {
   mapRawSchema,
 } from "../_types/channel-category-schema";
 
-const BASE = "http://localhost:8888/labamap/api/v1/admin/channel-category-schemas";
+const API_V1 = "http://localhost:8888/labamap/api/v1";
+const BASE = `${API_V1}/admin/channel-category-schemas`;
 const JSON_HEADERS = { "Content-Type": "application/json" };
+
+/** Merged schema (base + category extensions) the agent actually sees. Addendum §8.2. */
+export interface MergedSchemaPreview {
+  channelId: string;
+  fieldCount: number;
+  targetSchema: Record<string, unknown>;
+  schemaInfo?: unknown;
+  usage?: unknown;
+  timestamp?: string;
+}
 
 async function handleResponse<T>(res: Response): Promise<T> {
   if (!res.ok) {
@@ -101,5 +112,19 @@ export const ChannelCategorySchemaService = {
   async activateSchema(id: string): Promise<ChannelCategoryApiSchema> {
     const res = await fetch(`${BASE}/${id}/activate`, { method: "PUT", headers: JSON_HEADERS });
     return handleResponse<unknown>(res).then(mapRawSchema);
+  },
+
+  /**
+   * GET /api/v1/channels/{channelId}/schema?categorySlug=  (addendum §8.2)
+   * Returns the MERGED target schema (base + category extensions) the agent sees
+   * for grounding — the ground truth of "what fields JOLT should target".
+   */
+  async getMergedSchema(channelType: string, categorySlug: string): Promise<MergedSchemaPreview> {
+    const qs = `?categorySlug=${encodeURIComponent(categorySlug)}`;
+    const res = await fetch(`${API_V1}/channels/${encodeURIComponent(channelType)}/schema${qs}`, {
+      method: "GET",
+      headers: JSON_HEADERS,
+    });
+    return handleResponse<MergedSchemaPreview>(res);
   },
 };

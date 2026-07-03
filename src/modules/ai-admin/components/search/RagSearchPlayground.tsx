@@ -87,6 +87,12 @@ export default function RagSearchPlayground() {
           sekitar <strong>0.44</strong>. Set <em>minScore = 0</em> untuk melihat skor mentah seluruh top-K, lalu
           tetapkan <code className="font-mono">AI_MIN_SIMILARITY_SCORE</code> di antara band relevan & noise.
         </p>
+        <p>
+          <strong>RAG = pencarian makna, bukan ejaan.</strong> Hasil diurutkan berdasarkan <em>kemiripan makna</em>
+          (semantic similarity), bukan kecocokan huruf — makanya query <code className="font-mono">weight</code> bisa
+          menemukan field <code className="font-mono">grams</code>, dan <code className="font-mono">color</code> menemukan{" "}
+          <code className="font-mono">colour</code>.
+        </p>
       </InfoBanner>
 
       {/* Query controls */}

@@ -5,7 +5,7 @@ import {
   ChannelCategoryApiSchema,
   CHANNEL_TYPE_LABELS,
 } from "../_types/channel-category-schema";
-import { ChannelCategorySchemaService } from "../_services/channel-category-schema.service";
+import { ChannelCategorySchemaService, MergedSchemaPreview } from "../_services/channel-category-schema.service";
 import AddEditSchemaModal from "./AddEditSchemaModal";
 
 // ─── Icons ─────────────────────────────────────────────────────────────────────
@@ -73,11 +73,13 @@ function SchemaRow({
   onEdit,
   onActivate,
   onDeactivate,
+  onPreview,
 }: {
   schema: ChannelCategoryApiSchema;
   onEdit: (schema: ChannelCategoryApiSchema) => void;
   onActivate: (schema: ChannelCategoryApiSchema) => void;
   onDeactivate: (schema: ChannelCategoryApiSchema) => void;
+  onPreview: (schema: ChannelCategoryApiSchema) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
   const [confirmingDeactivate, setConfirmingDeactivate] = useState(false);
@@ -134,6 +136,14 @@ function SchemaRow({
               <div className={`transition-transform ${expanded ? "rotate-180" : ""}`}>
                 <ChevronDownIcon />
               </div>
+            </button>
+            {/* Preview merged schema the agent sees (addendum §8.2) */}
+            <button
+              onClick={() => onPreview(schema)}
+              className="px-2 py-1 text-xs rounded bg-violet-50 hover:bg-violet-100 dark:bg-violet-900/20 dark:hover:bg-violet-900/40 text-violet-700 dark:text-violet-400 font-medium transition-colors"
+              title="Preview merged schema (yang dilihat agent)"
+            >
+              Preview
             </button>
             {schema.isActive && (
               <button
@@ -221,6 +231,7 @@ export default function ChannelCategorySchemasPage() {
   const [channelFilter, setChannelFilter] = useState<string>("all");
   const [statusFilter, setStatusFilter] = useState<"all" | "active" | "inactive">("all");
   const [modal, setModal] = useState<{ mode: "create" | "edit"; schema?: ChannelCategoryApiSchema } | null>(null);
+  const [preview, setPreview] = useState<ChannelCategoryApiSchema | null>(null);
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
 
   const load = useCallback(async () => {
@@ -457,6 +468,7 @@ export default function ChannelCategorySchemasPage() {
                   onEdit={(s) => setModal({ mode: "edit", schema: s })}
                   onActivate={handleActivate}
                   onDeactivate={handleDeactivate}
+                  onPreview={(s) => setPreview(s)}
                 />
               ))}
             </tbody>
@@ -473,6 +485,102 @@ export default function ChannelCategorySchemasPage() {
           onClose={() => setModal(null)}
         />
       )}
+
+      {/* Merged-schema preview (addendum §8.2) */}
+      {preview && (
+        <PreviewSchemaModal
+          channelType={preview.channelType}
+          categorySlug={preview.categorySlug}
+          onClose={() => setPreview(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+// ─── Merged schema preview modal (addendum §8.2) ────────────────────────────
+
+function PreviewSchemaModal({
+  channelType,
+  categorySlug,
+  onClose,
+}: {
+  channelType: string;
+  categorySlug: string;
+  onClose: () => void;
+}) {
+  const [data, setData] = useState<MergedSchemaPreview | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [filter, setFilter] = useState("");
+
+  useEffect(() => {
+    let alive = true;
+    setLoading(true);
+    setError(null);
+    ChannelCategorySchemaService.getMergedSchema(channelType, categorySlug)
+      .then((d) => { if (alive) setData(d); })
+      .catch((e) => { if (alive) setError((e as Error).message); })
+      .finally(() => { if (alive) setLoading(false); });
+    return () => { alive = false; };
+  }, [channelType, categorySlug]);
+
+  const paths = data ? Object.keys(data.targetSchema ?? {}).sort() : [];
+  const shown = filter ? paths.filter((p) => p.toLowerCase().includes(filter.toLowerCase())) : paths;
+
+  return (
+    <div className="fixed inset-0 z-[10000] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={onClose}>
+      <div className="bg-white dark:bg-gray-900 rounded-xl shadow-2xl w-full max-w-2xl max-h-[85vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+        <div className="px-5 py-4 border-b border-gray-100 dark:border-gray-800">
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="text-base font-semibold text-gray-900 dark:text-white">
+                Merged schema — {CHANNEL_TYPE_LABELS[channelType] ?? channelType} / <span className="font-mono">{categorySlug}</span>
+              </h3>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                Target path (base + ekstensi kategori) yang <strong>dilihat agent</strong> untuk grounding.
+              </p>
+            </div>
+            {data && (
+              <span className="inline-flex items-center px-2.5 py-1 rounded-lg text-sm font-bold bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300">
+                {data.fieldCount} fields
+              </span>
+            )}
+          </div>
+        </div>
+        <div className="p-5 overflow-y-auto">
+          {loading ? (
+            <div className="text-center py-10 text-sm text-gray-400">Loading merged schema…</div>
+          ) : error ? (
+            <div className="px-3 py-2 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg text-xs text-red-700 dark:text-red-400">
+              {error}
+            </div>
+          ) : (
+            <>
+              <input
+                value={filter}
+                onChange={(e) => setFilter(e.target.value)}
+                placeholder="Filter target paths…"
+                className="w-full mb-3 px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-xs bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 focus:outline-none focus:ring-2 focus:ring-violet-400"
+              />
+              <div className="space-y-0.5">
+                {shown.map((p) => (
+                  <div key={p} className="flex items-center gap-2 px-2 py-1 rounded hover:bg-gray-50 dark:hover:bg-gray-800/50">
+                    <span className="text-violet-400">→</span>
+                    <code className="text-xs font-mono text-gray-700 dark:text-gray-300">{p}</code>
+                  </div>
+                ))}
+                {shown.length === 0 && <p className="text-xs text-gray-400 py-4 text-center">Tidak ada path cocok.</p>}
+              </div>
+            </>
+          )}
+        </div>
+        <div className="px-5 py-3 border-t border-gray-100 dark:border-gray-800 flex justify-end">
+          <button onClick={onClose} className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors">
+            Close
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

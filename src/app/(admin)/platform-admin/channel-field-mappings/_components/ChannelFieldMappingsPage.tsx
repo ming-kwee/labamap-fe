@@ -1,12 +1,16 @@
 "use client";
 
 import React, { useState, useEffect, useCallback, useMemo } from "react";
+import { useSearchParams } from "next/navigation";
 import {
   ChannelFieldMapping,
   MappingStrategy,
   STRATEGY_LABELS,
   CreateMappingRequest,
   UpdateMappingRequest,
+  TIER_LABELS,
+  isAiGenerated,
+  nextTier,
 } from "../_types/channel-field-mapping";
 import { ChannelFieldMappingService } from "../_services/channel-field-mapping.service";
 import { CHANNEL_TYPE_LABELS } from "../../channel-category-schemas/_types/channel-category-schema";
@@ -66,18 +70,58 @@ const MappingIcon = () => (
 
 // ─── Strategy badge ────────────────────────────────────────────────────────────
 
-const STRATEGY_COLORS: Record<MappingStrategy, string> = {
+const STRATEGY_COLORS: Partial<Record<MappingStrategy, string>> = {
   EXACT_OVERRIDE: "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300",
   EXACT:          "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300",
   SEMANTIC:       "bg-teal-100 text-teal-700 dark:bg-teal-900/30 dark:text-teal-300",
   EXCLUDE:        "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300",
   EXCLUDE_SOURCE: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300",
+  AI_GENERATED:   "bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300",
+  CHANNEL_SPECIFIC:"bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300",
 };
+
+const STRATEGY_FALLBACK = "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300";
 
 function StrategyBadge({ strategy }: { strategy: MappingStrategy }) {
   return (
-    <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium whitespace-nowrap ${STRATEGY_COLORS[strategy]}`}>
-      {STRATEGY_LABELS[strategy]}
+    <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium whitespace-nowrap ${STRATEGY_COLORS[strategy] ?? STRATEGY_FALLBACK}`}>
+      {STRATEGY_LABELS[strategy] ?? strategy}
+    </span>
+  );
+}
+
+// ─── Origin / verification badge (addendum §8.1) ─────────────────────────────
+
+function OriginBadge({ mapping }: { mapping: ChannelFieldMapping }) {
+  const ai = isAiGenerated(mapping);
+  const tier = mapping.verificationTier;
+  if (ai) {
+    const isUnverified = !tier || tier === "UNVERIFIED";
+    return (
+      <span
+        className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-medium ${
+          isUnverified
+            ? "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300"
+            : "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300"
+        }`}
+        title={`Ditulis agent AI (${mapping.createdBy ?? "ai-agent"}). Tier: ${tier ? TIER_LABELS[tier] : "Unverified"}.`}
+      >
+        🤖 AI · {tier ? TIER_LABELS[tier] : "Unverified"}
+      </span>
+    );
+  }
+  if (tier && tier !== "UNVERIFIED") {
+    return (
+      <span className="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300"
+        title={`Tier: ${TIER_LABELS[tier]}`}>
+        {TIER_LABELS[tier]}
+      </span>
+    );
+  }
+  return (
+    <span className="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400"
+      title={mapping.createdBy ? `Dibuat oleh: ${mapping.createdBy}` : "Seeded / manual"}>
+      {mapping.createdBy === "system" ? "system" : "manual"}
     </span>
   );
 }
@@ -112,13 +156,16 @@ function MappingRow({
   onDeactivate,
   onActivate,
   onDelete,
+  onPromote,
 }: {
   mapping: ChannelFieldMapping;
   onEdit: (m: ChannelFieldMapping) => void;
   onDeactivate: (m: ChannelFieldMapping) => void;
   onActivate: (m: ChannelFieldMapping) => void;
   onDelete: (m: ChannelFieldMapping) => void;
+  onPromote: (m: ChannelFieldMapping) => void;
 }) {
+  const promotable = nextTier(mapping.verificationTier);
   const [expanded, setExpanded] = useState(false);
   const [confirmDeactivate, setConfirmDeactivate] = useState(false);
 
@@ -157,9 +204,12 @@ function MappingRow({
           </div>
         </td>
 
-        {/* Strategy */}
+        {/* Strategy + origin */}
         <td className="px-3 py-2.5">
-          <StrategyBadge strategy={mapping.mappingStrategy} />
+          <div className="flex flex-col gap-1 items-start">
+            <StrategyBadge strategy={mapping.mappingStrategy} />
+            <OriginBadge mapping={mapping} />
+          </div>
         </td>
 
         {/* Confidence + Required */}
@@ -182,16 +232,24 @@ function MappingRow({
           )}
         </td>
 
-        {/* Stats */}
+        {/* Stats — successRate is LIVE (addendum §3.3), plus Beta evidence counts */}
         <td className="px-3 py-2.5">
           <div className="flex flex-col gap-0.5">
             <span className="text-xs text-gray-500 dark:text-gray-400">
               <span className={`font-medium ${mapping.successRate >= 90 ? "text-green-600 dark:text-green-400" : "text-yellow-600"}`}>
                 {mapping.successRate.toFixed(0)}%
               </span>
-              {" "}rate
+              {" "}rate <span className="text-gray-300 dark:text-gray-600">(live)</span>
             </span>
-            <span className="text-xs text-gray-400">{mapping.usageCount.toLocaleString()} uses</span>
+            {(mapping.successCount != null || mapping.failureCount != null) ? (
+              <span className="text-xs text-gray-400" title="Beta evidence — hasil publish nyata">
+                <span className="text-green-600 dark:text-green-400">✓{mapping.successCount ?? 0}</span>
+                {" "}
+                <span className="text-red-500">✗{mapping.failureCount ?? 0}</span>
+              </span>
+            ) : (
+              <span className="text-xs text-gray-400">{mapping.usageCount.toLocaleString()} uses</span>
+            )}
           </div>
         </td>
 
@@ -231,6 +289,15 @@ function MappingRow({
                 className="p-1.5 rounded hover:bg-blue-50 dark:hover:bg-blue-900/30 text-blue-600 dark:text-blue-400 transition-colors"
                 title="Edit mapping">
                 <EditIcon />
+              </button>
+            )}
+
+            {/* Promote — raise verification tier (AI-made or untrusted mappings) */}
+            {mapping.isActive && promotable && (isAiGenerated(mapping) || mapping.verificationTier) && (
+              <button onClick={() => onPromote(mapping)}
+                className="px-2 py-1 text-xs rounded bg-green-50 hover:bg-green-100 dark:bg-green-900/20 dark:hover:bg-green-900/40 text-green-700 dark:text-green-400 font-medium transition-colors"
+                title={`Promosikan ke ${TIER_LABELS[promotable]}`}>
+                Promote
               </button>
             )}
 
@@ -361,6 +428,7 @@ export default function ChannelFieldMappingsPage() {
   const [statusFilter, setStatusFilter] = useState<"all" | "active" | "inactive">("active");
   const [search, setSearch]             = useState("");
   const [requiredOnly, setRequiredOnly] = useState(false);
+  const [originFilter, setOriginFilter] = useState<"all" | "ai" | "human">("all");
   const [modal, setModal]               = useState<{ mode: "create" | "edit"; mapping?: ChannelFieldMapping } | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<ChannelFieldMapping | null>(null);
   const [toast, setToast]               = useState<{ message: string; type: "success" | "error" } | null>(null);
@@ -385,6 +453,17 @@ export default function ChannelFieldMappingsPage() {
 
   useEffect(() => { load(); }, [load]);
 
+  // Deep-link support (addendum §8.3): e.g. from a session → ?channelId=shopify&origin=ai
+  const searchParams = useSearchParams();
+  useEffect(() => {
+    const ch = searchParams.get("channelId");
+    const origin = searchParams.get("origin");
+    if (ch) setChannelFilter(ch);
+    if (origin === "ai" || origin === "human") setOriginFilter(origin);
+    // run once on mount
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   function showToast(message: string, type: "success" | "error") {
     setToast({ message, type });
     setTimeout(() => setToast(null), 4000);
@@ -399,6 +478,16 @@ export default function ChannelFieldMappingsPage() {
       showToast("Mapping updated. JOLT specs invalidated.", "success");
     }
     load();
+  }
+
+  async function handlePromote(m: ChannelFieldMapping) {
+    const target = nextTier(m.verificationTier);
+    if (!target) return;
+    try {
+      await ChannelFieldMappingService.promoteMapping(m.id, target);
+      showToast(`Mapping dipromosikan ke ${TIER_LABELS[target]}.`, "success");
+      load();
+    } catch (err) { showToast((err as Error).message, "error"); }
   }
 
   async function handleDeactivate(m: ChannelFieldMapping) {
@@ -436,6 +525,8 @@ export default function ChannelFieldMappingsPage() {
         if (statusFilter === "active"   && !m.isActive) return false;
         if (statusFilter === "inactive" && m.isActive)  return false;
         if (strategyFilter !== "all" && m.mappingStrategy !== strategyFilter) return false;
+        if (originFilter === "ai" && !isAiGenerated(m)) return false;
+        if (originFilter === "human" && isAiGenerated(m)) return false;
         if (requiredOnly && !m.isRequired) return false;
         if (q && !m.sourceField.toLowerCase().includes(q)
                && !m.targetField.toLowerCase().includes(q)
@@ -448,10 +539,11 @@ export default function ChannelFieldMappingsPage() {
         if (a.channelId !== b.channelId) return a.channelId.localeCompare(b.channelId);
         return a.sourceField.localeCompare(b.sourceField);
       });
-  }, [mappings, statusFilter, strategyFilter, requiredOnly, search]);
+  }, [mappings, statusFilter, strategyFilter, originFilter, requiredOnly, search]);
 
   const activeCount    = mappings.filter((m) => m.isActive).length;
-  const overrideCount  = mappings.filter((m) => m.mappingStrategy === "EXACT_OVERRIDE" && m.isActive).length;
+  const aiCount        = mappings.filter((m) => m.isActive && isAiGenerated(m)).length;
+  const aiUnverified   = mappings.filter((m) => m.isActive && isAiGenerated(m) && (!m.verificationTier || m.verificationTier === "UNVERIFIED")).length;
   const channelCount   = new Set(mappings.filter((m) => m.isActive).map((m) => m.channelId)).size;
 
   return (
@@ -496,10 +588,28 @@ export default function ChannelFieldMappingsPage() {
       {/* Stats */}
       <div className="grid grid-cols-4 gap-3">
         <StatCard label="Total Active" value={activeCount} />
-        <StatCard label="Exact Overrides" value={overrideCount} accent="purple" />
+        <StatCard label="AI-made (unverified)" value={aiUnverified} accent="amber" />
         <StatCard label="Channels Covered" value={channelCount} accent="blue" />
         <StatCard label="Showing" value={filtered.length} accent="gray" />
       </div>
+
+      {/* AI enrichment banner (addendum §8.1 · Jalur C) */}
+      {aiCount > 0 && (
+        <div className="flex items-start gap-3 px-4 py-3 bg-violet-50 dark:bg-violet-900/20 border border-violet-200 dark:border-violet-800 rounded-lg">
+          <div className="text-violet-500 shrink-0 mt-0.5"><InfoIcon /></div>
+          <div className="text-xs text-violet-800 dark:text-violet-300 space-y-0.5">
+            <p>
+              <strong>🤖 {aiCount} mapping ditulis agent AI</strong> ({aiUnverified} masih UNVERIFIED). Saat JOLT
+              di-AUTO_APPLY, agent membuat field mapping baru agar heuristik APM membaik (Jalur C).
+            </p>
+            <p>
+              Pantau <strong>✓success / ✗failure</strong> (hasil publish nyata). Setelah terbukti →{" "}
+              <strong>Promote</strong> (naikkan verification tier). Kalau salah/sering gagal → <strong>Delete</strong>.
+              Ini human-in-the-loop untuk tulisan AI ke tabel APM.
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* Info banner */}
       <div className="flex items-start gap-3 px-4 py-3 bg-purple-50 dark:bg-purple-900/20 border border-purple-200 dark:border-purple-800 rounded-lg">
@@ -511,8 +621,8 @@ export default function ChannelFieldMappingsPage() {
             <strong>EXACT_OVERRIDE</strong> to fix incorrect learned mappings instantly.
           </p>
           <p>
-            Every mutation (create, update, deactivate, activate, delete) automatically invalidates all
-            JOLT specs for the affected channel. The next publish regenerates them with the updated mapping.
+            successRate ditampilkan <strong>live</strong> (dari hasil publish nyata, bukan tebakan). Setiap mutasi
+            meng-invalidasi JOLT specs channel terkait; publish berikutnya meregenerasinya.
           </p>
         </div>
       </div>
@@ -551,6 +661,17 @@ export default function ChannelFieldMappingsPage() {
             {STRATEGIES.map((s) => (
               <option key={s} value={s}>{s === "all" ? "All strategies" : STRATEGY_LABELS[s]}</option>
             ))}
+          </select>
+        </div>
+
+        {/* Origin (addendum §8.1) */}
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-gray-500 dark:text-gray-400">Origin:</span>
+          <select value={originFilter} onChange={(e) => setOriginFilter(e.target.value as "all" | "ai" | "human")}
+            className="border border-gray-200 dark:border-gray-700 rounded-lg px-2.5 py-1.5 text-xs bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300">
+            <option value="all">All origins</option>
+            <option value="ai">🤖 AI-made</option>
+            <option value="human">Human / seeded</option>
           </select>
         </div>
 
@@ -611,6 +732,7 @@ export default function ChannelFieldMappingsPage() {
                   onDeactivate={handleDeactivate}
                   onActivate={handleActivate}
                   onDelete={(x) => setDeleteTarget(x)}
+                  onPromote={handlePromote}
                 />
               ))}
             </tbody>
@@ -640,10 +762,11 @@ export default function ChannelFieldMappingsPage() {
   );
 }
 
-function StatCard({ label, value, accent }: { label: string; value: number; accent?: "purple" | "blue" | "gray" }) {
+function StatCard({ label, value, accent }: { label: string; value: number; accent?: "purple" | "blue" | "gray" | "amber" }) {
   const color =
     accent === "purple" ? "text-purple-600 dark:text-purple-400" :
     accent === "blue"   ? "text-blue-600 dark:text-blue-400" :
+    accent === "amber"  ? "text-amber-600 dark:text-amber-400" :
     accent === "gray"   ? "text-gray-500 dark:text-gray-400" :
     "text-gray-800 dark:text-white";
   return (

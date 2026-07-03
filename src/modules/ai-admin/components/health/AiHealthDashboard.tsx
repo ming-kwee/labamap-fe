@@ -20,6 +20,7 @@ import Link from "next/link";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { AiApiError, SOURCE_TYPES, SOURCE_TYPE_LABELS } from "../../types/common";
 import { EmbeddingsStats, LearningStats, RecommendationsStats } from "../../types/health";
+import { AiAgentSession } from "../../types/session";
 import { AiAdminService } from "../../services/aiAdmin.service";
 import {
   ActivityIcon,
@@ -32,6 +33,8 @@ import {
 import {
   Badge,
   Card,
+  CHANNEL_OPTIONS,
+  classifyLlmError,
   ErrorNotice,
   InfoBanner,
   PageHeader,
@@ -55,6 +58,8 @@ export default function AiHealthDashboard() {
   const [learn, setLearn] = useState<Slot<LearningStats>>(idle);
   const [recs, setRecs] = useState<Slot<RecommendationsStats>>(idle);
   const [lastRefreshed, setLastRefreshed] = useState<string>();
+  // §3.1 — latest agent session across channels, for the "LLM: rate-limited" signal.
+  const [lastSession, setLastSession] = useState<AiAgentSession | null>(null);
   const timer = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const loadEmb = useCallback(async () => {
@@ -92,13 +97,32 @@ export default function AiHealthDashboard() {
     setLastRefreshed(new Date().toISOString());
   }, [loadEmb, loadLearn, loadRecs]);
 
+  // Best-effort LLM-health probe (§3.1). Heavier (per-channel), so run on mount +
+  // manual refresh only — NOT in the 30s poll.
+  const loadLlmHealth = useCallback(() => {
+    AiAdminService.getMostRecentSession(CHANNEL_OPTIONS)
+      .then(setLastSession)
+      .catch(() => setLastSession(null));
+  }, []);
+
+  const manualRefresh = useCallback(() => {
+    refreshAll();
+    loadLlmHealth();
+  }, [refreshAll, loadLlmHealth]);
+
   useEffect(() => {
     refreshAll();
+    loadLlmHealth();
     timer.current = setInterval(refreshAll, 30_000);
     return () => {
       if (timer.current) clearInterval(timer.current);
     };
-  }, [refreshAll]);
+  }, [refreshAll, loadLlmHealth]);
+
+  // Derive the rate-limited signal: latest agent activity was a quota/rate-limit failure.
+  const llmRateLimited =
+    lastSession?.status === "FAILED" &&
+    ["rate_limit", "quota_zero"].includes(classifyLlmError(lastSession.errorMessage).kind);
 
   const relative = useRelativeTime(lastRefreshed);
   const anyLoading = emb.loading || learn.loading || recs.loading;
@@ -147,7 +171,7 @@ export default function AiHealthDashboard() {
               diperbarui {relative}
             </span>
             <button
-              onClick={refreshAll}
+              onClick={manualRefresh}
               disabled={anyLoading}
               className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-500 transition-colors disabled:opacity-50"
               title="Refresh"
@@ -160,7 +184,7 @@ export default function AiHealthDashboard() {
 
       <DegradedBanners emb={emb.data} learn={learn.data} />
 
-      <ProviderStatusCard slot={emb} learn={learn.data} onRetry={loadEmb} />
+      <ProviderStatusCard slot={emb} learn={learn.data} onRetry={loadEmb} llmRateLimited={llmRateLimited} lastSession={lastSession} />
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
         <RagCoverageCard slot={emb} onRetry={loadEmb} />
@@ -223,10 +247,14 @@ function ProviderStatusCard({
   slot,
   learn,
   onRetry,
+  llmRateLimited,
+  lastSession,
 }: {
   slot: Slot<EmbeddingsStats>;
   learn: LearningStats | null;
   onRetry: () => void;
+  llmRateLimited?: boolean;
+  lastSession?: AiAgentSession | null;
 }) {
   return (
     <Card className="overflow-hidden">
@@ -236,7 +264,12 @@ function ProviderStatusCard({
         ) : slot.error ? (
           <ErrorNotice error={slot.error} onRetry={onRetry} compact />
         ) : slot.data ? (
-          <ProviderContent data={slot.data} agentEnabled={learn?.modelHealth.agentEnabled} />
+          <ProviderContent
+            data={slot.data}
+            agentEnabled={learn?.modelHealth.agentEnabled}
+            llmRateLimited={llmRateLimited}
+            lastSession={lastSession}
+          />
         ) : null}
       </div>
     </Card>
@@ -246,10 +279,15 @@ function ProviderStatusCard({
 function ProviderContent({
   data,
   agentEnabled,
+  llmRateLimited,
+  lastSession,
 }: {
   data: EmbeddingsStats;
   agentEnabled?: boolean;
+  llmRateLimited?: boolean;
+  lastSession?: AiAgentSession | null;
 }) {
+  const failedAt = lastSession?.createdAt ? new Date(lastSession.createdAt).toLocaleString() : "";
   return (
     <div className="flex flex-wrap items-center gap-x-8 gap-y-3">
       <div className="flex items-center gap-2">
@@ -288,12 +326,22 @@ function ProviderContent({
             Agent LLM
           </p>
           <p className="text-sm font-semibold text-gray-800 dark:text-gray-100">
-            {data.llmProvider} · {data.llmModel}
+            {data.llmProvider} · <span className="text-violet-700 dark:text-violet-300">{data.llmModel}</span>
           </p>
         </div>
       </div>
 
-      <div className="flex items-center gap-2 ml-auto">
+      <div className="flex items-center gap-2 ml-auto flex-wrap">
+        {/* §3.1 — latest agent activity failed on quota/rate-limit */}
+        {llmRateLimited && (
+          <span
+            title={`Sesi agent terakhir gagal karena kuota/rate-limit${failedAt ? ` (${failedAt})` : ""}. Model chat mungkin sedang habis jatah — cek Agent Sessions / ganti model.`}
+            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-medium bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300"
+          >
+            <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+            LLM: rate-limited
+          </span>
+        )}
         <Badge tone={data.embeddingEnabled ? "green" : "red"} dot>
           Embedding {data.embeddingEnabled ? "ON" : "OFF"}
         </Badge>

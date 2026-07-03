@@ -1,28 +1,84 @@
 // Channel Field Mapping types — APM Tier 1 (CHANNEL_SPECIFIC)
 // Corresponds to the `channel_field_mappings` MongoDB collection
 
+// Includes strategies the agent/heuristics emit (AI_GENERATED, PATTERN, …) so
+// the manager can display AI-written mappings — addendum §8.1 (Jalur C).
 export type MappingStrategy =
   | "EXACT_OVERRIDE"
   | "EXACT"
   | "SEMANTIC"
   | "EXCLUDE"
-  | "EXCLUDE_SOURCE";
+  | "EXCLUDE_SOURCE"
+  | "AI_GENERATED"
+  | "PATTERN"
+  | "PATTERN_TRANSFORM"
+  | "CHANNEL_SPECIFIC"
+  | "ALIAS_MAPPING";
 
 export const STRATEGY_LABELS: Record<MappingStrategy, string> = {
-  EXACT_OVERRIDE:  "Exact Override",
-  EXACT:           "Exact",
-  SEMANTIC:        "Semantic",
-  EXCLUDE:         "Exclude Target",
-  EXCLUDE_SOURCE:  "Exclude Source",
+  EXACT_OVERRIDE:   "Exact Override",
+  EXACT:            "Exact",
+  SEMANTIC:         "Semantic",
+  EXCLUDE:          "Exclude Target",
+  EXCLUDE_SOURCE:   "Exclude Source",
+  AI_GENERATED:     "AI Generated",
+  PATTERN:          "Pattern",
+  PATTERN_TRANSFORM:"Pattern Transform",
+  CHANNEL_SPECIFIC: "Channel Specific",
+  ALIAS_MAPPING:    "Alias",
 };
 
-export const STRATEGY_DESCRIPTIONS: Record<MappingStrategy, string> = {
+// Not every strategy has a human-authoring description (some are agent-only).
+export const STRATEGY_DESCRIPTIONS: Partial<Record<MappingStrategy, string>> = {
   EXACT_OVERRIDE: "Highest priority — bypasses semantic matching. Use to fix a wrong learned mapping.",
   EXACT:          "Direct verified mapping. Known correct pair.",
   SEMANTIC:       "Semantic matching — confidence-based fuzzy pair.",
   EXCLUDE:        "Exclude target field from matching candidates. Channel-only field with no master equivalent.",
   EXCLUDE_SOURCE: "Exclude source field from matching. Field that should never be auto-matched.",
+  AI_GENERATED:   "Ditulis otomatis oleh agent AI saat AUTO_APPLY (Jalur C). Awalnya UNVERIFIED — pantau successCount/failureCount lalu promosikan/hapus.",
 };
+
+// ─── Verification tier (Beta-distribution confidence) — addendum §8.1 ────────
+// Progression: UNVERIFIED → MANUALLY_TESTED → VERIFIED_PRODUCTION → CERTIFIED.
+export type VerificationTier =
+  | "UNVERIFIED"
+  | "MANUALLY_TESTED"
+  | "VERIFIED_PRODUCTION"
+  | "CERTIFIED";
+
+export const VERIFICATION_TIERS: VerificationTier[] = [
+  "UNVERIFIED",
+  "MANUALLY_TESTED",
+  "VERIFIED_PRODUCTION",
+  "CERTIFIED",
+];
+
+export const TIER_LABELS: Record<VerificationTier, string> = {
+  UNVERIFIED:          "Unverified",
+  MANUALLY_TESTED:     "Manually Tested",
+  VERIFIED_PRODUCTION: "Verified (production)",
+  CERTIFIED:           "Certified",
+};
+
+/** Confidence ceiling per tier (from SCORE-ACCURACY-DEEP-ANALYSIS). */
+export const TIER_CEILING: Record<VerificationTier, number> = {
+  UNVERIFIED: 60,
+  MANUALLY_TESTED: 75,
+  VERIFIED_PRODUCTION: 90,
+  CERTIFIED: 99,
+};
+
+/** Next tier up when promoting; null if already at the top / unknown. */
+export function nextTier(t?: VerificationTier | null): VerificationTier | null {
+  if (!t) return "MANUALLY_TESTED"; // UNVERIFIED-equivalent → first promotion
+  const i = VERIFICATION_TIERS.indexOf(t);
+  return i >= 0 && i < VERIFICATION_TIERS.length - 1 ? VERIFICATION_TIERS[i + 1] : null;
+}
+
+/** A mapping the AI agent wrote (Jalur C). */
+export function isAiGenerated(m: ChannelFieldMapping): boolean {
+  return (m.createdBy ?? "").toLowerCase().startsWith("ai") || m.mappingStrategy === "AI_GENERATED";
+}
 
 export interface ChannelFieldMapping {
   id: string;
@@ -42,6 +98,17 @@ export interface ChannelFieldMapping {
   description?: string;
   createdAt: string;
   updatedAt: string;
+  // ── Provenance & Beta-evidence (addendum §8.1) ────────────────────────────
+  /** e.g. "system" | "ai-agent-v1" | undefined. */
+  createdBy?: string;
+  verificationTier?: VerificationTier | null;
+  /** Beta-distribution numerator/denominator — real publish outcomes. */
+  successCount?: number | null;
+  failureCount?: number | null;
+  /** Tier-capped effective confidence (may differ from configured confidence). */
+  effectiveConfidence?: number | null;
+  isRecommended?: boolean;
+  lastUsedAt?: string | null;
 }
 
 /** POST body — create a new mapping */
@@ -69,6 +136,8 @@ export interface UpdateMappingRequest {
   mappingStrategy?: MappingStrategy;
   isRequired?: boolean;
   description?: string;
+  /** Promote a mapping's verification tier (addendum §8.1). */
+  verificationTier?: VerificationTier;
 }
 
 /** Query params for GET /admin/channel-field-mappings */
@@ -81,6 +150,10 @@ export interface MappingListParams {
   /** Default true (active only). Pass false to include deactivated. */
   isActive?: boolean;
   minConfidence?: number;
+  /** Filter by author, e.g. "ai-agent-v1" (addendum §8.1). */
+  createdBy?: string;
+  /** Filter by verification tier, e.g. "UNVERIFIED" (addendum §8.1). */
+  verificationTier?: VerificationTier;
 }
 
 // ─── Mapper ───────────────────────────────────────────────────────────────────
@@ -103,5 +176,12 @@ export function mapRawMapping(raw: unknown): ChannelFieldMapping {
     description:      r.description as string | undefined,
     createdAt:        (r.createdAt ?? "") as string,
     updatedAt:        (r.updatedAt ?? "") as string,
+    createdBy:        (r.createdBy as string | undefined) ?? undefined,
+    verificationTier: (r.verificationTier as VerificationTier | null | undefined) ?? null,
+    successCount:     r.successCount == null ? null : Number(r.successCount),
+    failureCount:     r.failureCount == null ? null : Number(r.failureCount),
+    effectiveConfidence: r.effectiveConfidence == null ? null : Number(r.effectiveConfidence),
+    isRecommended:    r.isRecommended == null ? undefined : Boolean(r.isRecommended),
+    lastUsedAt:       (r.lastUsedAt as string | null | undefined) ?? null,
   };
 }

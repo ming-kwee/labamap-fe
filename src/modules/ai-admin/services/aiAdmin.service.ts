@@ -12,6 +12,7 @@
 import { AiApiError, PageResponse } from "../types/common";
 import {
   AiConfig,
+  AiMappingMaturity,
   EmbeddingsStats,
   LearningStats,
   RecommendationsStats,
@@ -110,6 +111,54 @@ export const AiAdminService = {
 
   getConfig(): Promise<AiConfig> {
     return request<AiConfig>(`${BASE}/config`);
+  },
+
+  /**
+   * Runtime kill-switch for Jalur C enrichment (addendum §8.4).
+   * PUT /admin/ai/config/enrich-mappings?enabled= → { enrichMappings, scope, note }.
+   * scope="runtime": reverts to AI_ENRICH_MAPPINGS on restart.
+   */
+  setEnrichMappings(enabled: boolean): Promise<{ enrichMappings: boolean; scope?: string; note?: string }> {
+    return request(`${BASE}/config/enrich-mappings${buildQs({ enabled })}`, { method: "PUT" });
+  },
+
+  /**
+   * AI mapping maturity (addendum §8.5) — how much the agent has enriched the
+   * APM table (Jalur C) and how much is proven. Derived from field-mappings;
+   * we fetch all and filter client-side (createdBy startsWith "ai").
+   */
+  async getAiMappingMaturity(): Promise<AiMappingMaturity> {
+    const raw = await request<{ content?: unknown[] } | unknown[]>(
+      `${API_ROOT}/admin/channel-field-mappings?size=500`,
+    );
+    const arr = (Array.isArray(raw) ? raw : (raw?.content ?? [])) as Array<Record<string, unknown>>;
+    const ai = arr.filter((m) => {
+      const by = String(m.createdBy ?? "").toLowerCase();
+      return by.startsWith("ai") || m.mappingStrategy === "AI_GENERATED";
+    });
+    const isPromoted = (m: Record<string, unknown>) => {
+      const t = m.verificationTier;
+      return t != null && t !== "UNVERIFIED";
+    };
+    const promoted = ai.filter(isPromoted).length;
+    const rates = ai.map((m) => Number(m.successRate ?? 0)).filter((n) => !Number.isNaN(n));
+    const byChannelMap = new Map<string, { total: number; promoted: number }>();
+    for (const m of ai) {
+      const ch = String(m.channelId ?? "—");
+      const e = byChannelMap.get(ch) ?? { total: 0, promoted: 0 };
+      e.total += 1;
+      if (isPromoted(m)) e.promoted += 1;
+      byChannelMap.set(ch, e);
+    }
+    return {
+      total: ai.length,
+      promoted,
+      unverified: ai.length - promoted,
+      provenSuccessRate: rates.length ? rates.reduce((a, b) => a + b, 0) / rates.length : 0,
+      byChannel: [...byChannelMap.entries()]
+        .map(([channelId, v]) => ({ channelId, ...v }))
+        .sort((a, b) => b.total - a.total),
+    };
   },
 
   // ─── P0-B · RAG Index Management ──────────────────────────────────────────
@@ -216,6 +265,26 @@ export const AiAdminService = {
   /** Detail does NOT require channelId (verified). 404 → "Session not found". */
   getSession(id: string): Promise<AiAgentSession> {
     return request<AiAgentSession>(`${BASE}/sessions/${id}`);
+  },
+
+  /**
+   * Best-effort "latest agent activity" across channels (addendum §3.1).
+   * The sessions list requires channelId (no global endpoint), so we probe each
+   * channel's most-recent session in parallel and return the globally newest.
+   * Failures are ignored (best-effort); returns null if nothing found.
+   */
+  async getMostRecentSession(channels: string[]): Promise<AiAgentSession | null> {
+    const results = await Promise.allSettled(
+      channels.map((ch) => this.listSessions({ channelId: ch, page: 0, size: 1 })),
+    );
+    let latest: AiAgentSession | null = null;
+    const ts = (s?: AiAgentSession | null) => (s?.createdAt ? new Date(s.createdAt).getTime() : 0);
+    for (const r of results) {
+      if (r.status !== "fulfilled") continue;
+      const s = r.value.content?.[0];
+      if (s && ts(s) > ts(latest)) latest = s;
+    }
+    return latest;
   },
 
   // ─── P1-F · JOLT Generation Console ───────────────────────────────────────

@@ -4,11 +4,16 @@
 > **Tujuan:** Merekomendasikan tampilan (screens) yang perlu ditambahkan agar **platform admin & developer** bisa **mengoperasikan, memantau, men-tuning, dan mempercayai** sistem Agentic AI + RAG.
 > **Status backend:** Semua endpoint di bawah **sudah ada dan berjalan** (`/api/v1/admin/ai/*` dan admin controller terkait).
 >
-> **📦 Status implementasi frontend: ✅ SEMUA 12 LAYAR SELESAI (2026-07-02).**
+> **📦 Status implementasi frontend: ✅ 12 LAYAR AWAL SELESAI (2026-07-02).**
 > Dipecah menjadi 3 fase di [`IMPLEMENTATION-PHASES.md`](./IMPLEMENTATION-PHASES.md):
 > **Phase 1 (P0-A…D)**, **Phase 2 (P1-E,F,G,H,L)**, **Phase 3 (P2-I,J,K)**.
 > Modul `src/modules/ai-admin/` + halaman platform-admin, grup sidebar **"AI Console"** (12 item),
 > **22 e2e test lulus** (`npm run test:e2e`).
+>
+> ⚠️ **BELUM TERMASUK "12 layar" di atas — WAJIB baca [`FRONTEND-ADDENDUM-2026-07-02.md`](./FRONTEND-ADDENDUM-2026-07-02.md):**
+> temuan sesi hari ini menambah **penyesuaian kontrak API** (paginasi, stats, reject body) + **layar/enhancement baru**:
+> taksonomi error agent (§2), Cascade Outcome Indicator **P1-M** (§4), review mapping-buatan-AI di P1-G (§8.1),
+> **API Schema Manager P2-O** (§8.2). Item addendum ini adalah **gelombang berikutnya**, di luar 12 layar awal.
 
 Dokumen ini bukan sekadar daftar fitur — setiap layar disertai **alasan operasional** yang diambil dari masalah nyata yang ditemui saat mengoperasikan sistem ini (provider tersembunyi, index kosong senyap, threshold salah kalibrasi, kuota LLM, embedding yatim). UI yang baik **mencegah** kelas masalah tersebut.
 

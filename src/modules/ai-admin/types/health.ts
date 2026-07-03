@@ -59,6 +59,16 @@ export interface RecommendationsStats {
   total: number;
 }
 
+// ─── AI mapping maturity (addendum §8.5) — derived from field-mappings ──────
+
+export interface AiMappingMaturity {
+  total: number; // field mappings authored by the AI agent (Jalur C)
+  promoted: number; // verificationTier beyond UNVERIFIED
+  unverified: number;
+  provenSuccessRate: number; // avg live successRate across AI mappings (0–100)
+  byChannel: Array<{ channelId: string; total: number; promoted: number }>;
+}
+
 // ─── GET /admin/ai/config (P1-L; also feeds P0-A degraded banners) ──────────
 
 export interface AiConfig {
@@ -81,6 +91,8 @@ export interface AiConfig {
     autoApplyThreshold: number;
     recommendThreshold: number;
     expiryDays: number;
+    /** AI enrichment of field mappings (Jalur C) — addendum §8.4. May be absent. */
+    enrichMappings?: boolean;
   };
   cascade: {
     enabled: boolean;

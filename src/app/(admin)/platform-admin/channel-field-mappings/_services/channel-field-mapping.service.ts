@@ -8,6 +8,7 @@ import {
   CreateMappingRequest,
   UpdateMappingRequest,
   MappingListParams,
+  VerificationTier,
   mapRawMapping,
 } from "../_types/channel-field-mapping";
 
@@ -44,13 +45,19 @@ export const ChannelFieldMappingService = {
    */
   async listMappings(params?: MappingListParams): Promise<ChannelFieldMapping[]> {
     const qs = buildQs({
-      channelId:     params?.channelId,
-      sourceField:   params?.sourceField,
-      targetField:   params?.targetField,
-      strategy:      params?.strategy,
-      isRequired:    params?.isRequired,
-      isActive:      params?.isActive,
-      minConfidence: params?.minConfidence,
+      channelId:        params?.channelId,
+      sourceField:      params?.sourceField,
+      targetField:      params?.targetField,
+      strategy:         params?.strategy,
+      isRequired:       params?.isRequired,
+      isActive:         params?.isActive,
+      minConfidence:    params?.minConfidence,
+      createdBy:        params?.createdBy,
+      verificationTier: params?.verificationTier,
+      // The endpoint returns a PageResponse (addendum §1) that defaults to size 20.
+      // The page filters client-side, so pull the full set (backend caps size at 100).
+      page:             0,
+      size:             100,
     });
     const res = await fetch(`${BASE}${qs}`, { method: "GET", headers: JSON_HEADERS });
     const raw = await handleResponse<unknown>(res);
@@ -92,6 +99,14 @@ export const ChannelFieldMappingService = {
       body: JSON.stringify(request),
     });
     return handleResponse<unknown>(res).then(mapRawMapping);
+  },
+
+  /**
+   * Promote a mapping's verification tier (addendum §8.1) via PUT /{id}.
+   * Used on AI-generated mappings once real publish outcomes prove them.
+   */
+  async promoteMapping(id: string, tier: VerificationTier): Promise<ChannelFieldMapping> {
+    return this.updateMapping(id, { verificationTier: tier });
   },
 
   /**

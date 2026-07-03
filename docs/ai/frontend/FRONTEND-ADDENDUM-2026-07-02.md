@@ -2,12 +2,6 @@
 
 > **Pelengkap** untuk [`FRONTEND-ADMIN-RECOMMENDATIONS.md`](./FRONTEND-ADMIN-RECOMMENDATIONS.md) dan [`SPEC-P0-A-HEALTH-DASHBOARD.md`](./SPEC-P0-A-HEALTH-DASHBOARD.md).
 > Dokumen ini merangkum hal-hal **baru yang muncul saat kami membuat agent benar-benar berjalan end-to-end hari ini** — kontrak API yang berubah, kegagalan nyata yang harus ditangani UI, dan konsep yang perlu tercermin di layar. Semua di sini **sudah diverifikasi terhadap kode & uji live**, dan ditandai jelas mana yang **sudah ada** vs **belum dibangun**.
->
-> **✅ STATUS FRONTEND (2026-07-02):** semua item P0 & P1 addendum ini **sudah diimplementasikan**.
-> §1 kontrak (PageResponse/reject/stats/minScore) sudah terpenuhi sejak Phase 1–2; ditambah §1
-> `joltSpecId` di P1-F. §2 taksonomi error → `classifyLlmError` (shared P1-E/P1-F). §3.2 slider
-> threshold sudah ada. §4 **P1-M `CascadeOutcomeBadge`** (di PublishDashboard) + **P1-N** hint
-> sync/async di Config Panel. §6 (yang dilarang) **tidak** dibangun. Detail: [`IMPLEMENTATION-PHASES.md`](./IMPLEMENTATION-PHASES.md) bagian Addendum.
 
 ---
 
@@ -133,3 +127,75 @@ Kalau salah satu ini dibangun nanti, addendum akan diperbarui.
 
 ### Ringkasan satu kalimat untuk tim frontend
 > Selain layar di doc utama, **prioritaskan: (1) sesuaikan bentuk respons yang berubah (paginasi & stats), (2) terjemahkan `AGENT_FAILED` jadi pesan actionable (kuota/model/parse/config), (3) slider threshold di Search Playground, dan (4) badge "engine mana yang menyelesaikan" (APM / AI / fallback)** — semuanya lahir dari masalah nyata yang kami temui saat membuat sistem ini benar-benar jalan hari ini.
+
+---
+
+## 8. Tambahan — 3 kapabilitas backend BARU (Q2/Q3 apiSchema + Jalur C enrich mapping)
+
+> Ditambahkan setelah §1–§7: tiga kemampuan baru diimplementasikan hari ini yang punya implikasi UI langsung.
+
+### 8.1 · Jalur C — AI kini MEMBUAT field mapping baru (P1-G harus dibedakan)
+Ketika JOLT di-AUTO_APPLY, agent otomatis membuat `ChannelFieldMapping` baru (source→target dari JOLT) agar APM heuristik membaik. **Terverifikasi live:** kategori baru → muncul mapping `createdBy: ai-agent-v1`, `mappingStrategy: AI_GENERATED`, `verificationTier: UNVERIFIED`, `successCount: 0`.
+
+**Enhancement untuk P1-G (Field Mappings Manager)** — field ini **sudah** ada di respons (`createdBy`, `mappingStrategy`, `verificationTier`, `successCount`, `failureCount`):
+- **Badge asal-usul:** bedakan `AI_GENERATED` / `UNVERIFIED` (kuning "AI, belum terverifikasi") vs seeded/verified (hijau). Operator harus tahu mana buatan AI.
+- **Kolom bukti (Beta):** tampilkan `successCount` / `failureCount` — "mapping AI ini sudah sukses N kali, gagal M kali". Ini menunjukkan mapping AI **sedang mendapatkan kepercayaan** (roda B). Mapping UNVERIFIED dengan failureCount tinggi = kandidat hapus.
+- **Aksi review:** tombol **"Promosikan"** (naikkan verificationTier setelah terbukti) dan **"Hapus"** (buang mapping AI yang salah). Keduanya pakai endpoint yang sudah ada (`PUT /{id}`, `DELETE /{id}`).
+- **Filter "buatan AI":** ✅ backend list kini punya param `createdBy` + `verificationTier`. Contoh: `GET /admin/channel-field-mappings?channelId=shopify&createdBy=ai-agent-v1&verificationTier=UNVERIFIED&page=0&size=20` → hanya mapping buatan AI yang belum terverifikasi.
+
+> **Alasan:** Jalur C membuat AI menulis ke tabel yang dipakai APM. Operator butuh **jendela** untuk mengawasi & mengoreksi tulisan AI itu — kalau tidak, mapping salah bisa menyebar diam-diam. Ini human-in-the-loop untuk enrichment.
+
+### 8.2 · Q2/Q3 — layar baru: Channel Category API Schema Manager
+Agent kini membaca `apiSchema` (base dari `channel_configuration` + ekstensi per-kategori dari `channel_category_api_schemas`) untuk grounding channel/kategori baru. Data grounding ini perlu **dikelola & di-preview** operator.
+
+**Layar baru P2-O · API Schema Manager** — CRUD sudah tersedia:
+> *(kode P2-O dipilih agar huruf tidak bentrok dengan P1-L "Config & Cascade Panel".)*
+- **Sumber:** `/api/v1/admin/channel-category-schemas` → `GET` (list), `GET /active`, `GET /{id}`, `POST`, `PUT /{id}`, `PUT /{id}/activate|deactivate`.
+- **Preview schema ter-merge (yang DILIHAT agent):** `GET /api/v1/channels/{channelId}/schema?categorySlug={cat}` → mengembalikan `targetSchema` (base + ekstensi ter-merge, mis. 32 field untuk shopify/clothing). Tampilkan sebagai pohon/daftar path target.
+
+> **Alasan:** Kualitas JOLT untuk channel baru kini **bergantung** pada kelengkapan apiSchema. Kalau agent menghasilkan JOLT buruk untuk suatu kategori, operator perlu cek: "apakah apiSchema untuk kategori ini lengkap?" Layar ini + preview memberi jawabannya. Untuk channel BARU tanpa mapping, ini satu-satunya sumber grounding.
+
+### 8.3 · Observability (P1-E) — apiSchema kini terlihat di step
+Batas simpan output tool dinaikkan (300→4000 char), jadi step `get_channel_schema` di sesi kini menampilkan **`apiSchema` penuh** (path target yang diterima agent). UI Sessions harus me-render output panjang ini (JSON viewer collapsible). Sesi yang sukses juga akan menghasilkan mapping baru (Jalur C) — pertimbangkan tautkan sesi → mapping yang ia buat.
+
+### 8.4 · Config Panel (P1-L) — tampilkan flag enrichment
+✅ `GET /admin/ai/config` → `recommendation.enrichMappings` (env `AI_ENRICH_MAPPINGS`, default true). Tampilkan sebagai status read-only: "AI enrich field mappings: ON/OFF".
+
+### 8.5 · Feedback-loop maturity — sinyal konkret baru
+Konsep "kematangan kategori" (§5.1) kini punya metrik nyata: **jumlah mapping `createdBy: ai-agent` per channel** + berapa yang sudah "dipromosikan" (verificationTier naik) + successRate-nya. Dashboard bisa menampilkan tren ini: "AI telah menyumbang N mapping; M terbukti (successRate>0.8)". Ini bukti visual bahwa sistem **benar-benar belajar**.
+
+### 8.6 · Prioritas tambahan
+| Prioritas | Item | Alasan |
+|-----------|------|--------|
+| **P1** | §8.1 P1-G bedakan + review mapping AI (badge, counts, promote/delete) | Human-in-the-loop untuk tulisan AI ke tabel APM |
+| **P2** | §8.2 API Schema Manager + preview merged schema | Grounding channel baru bergantung ini |
+| **P2** | §8.3 Sessions render apiSchema panjang | Observability grounding agent |
+| **P3** | §8.4/8.5 flag enrichment + metrik maturity | Transparansi & bukti pembelajaran |
+
+> **Gap backend (8.1/8.4) — ✅ SUDAH DITUTUP (2026-07-02):** (a) filter `createdBy` + `verificationTier` ditambahkan ke list field-mappings; (b) `enrichMappings` diekspos di `GET /admin/ai/config`. Frontend bisa langsung memakainya tanpa workaround.
+
+---
+
+## ✅ Status implementasi frontend §8 (2026-07-02)
+
+Semua §8 **sudah diimplementasikan** (detail: [`IMPLEMENTATION-PHASES.md`](./IMPLEMENTATION-PHASES.md)):
+
+- **§8.1 (P1-G):** `channel-field-mappings` — tipe diperluas (`createdBy`, `verificationTier`,
+  `successCount/failureCount`, strategy `AI_GENERATED` dll); OriginBadge "🤖 AI · Unverified", kolom
+  bukti Beta (✓success ✗failure), tombol **Promote** (naikkan tier via PUT), filter **Origin** (AI/human),
+  banner Jalur C, stat "AI-made (unverified)". Filter service `createdBy`+`verificationTier`.
+  **Bonus fix:** service `listMappings` dulu hanya ambil 20 dari 92 (default page size) — kini `size=100`
+  → semua mapping (termasuk buatan AI) tampil.
+- **§8.2 (P2-O):** `channel-category-schemas` — tombol **Preview** per baris → modal "Merged schema"
+  (target path yang dilihat agent, via `GET /channels/{ch}/schema?categorySlug=`), + link sidebar
+  "API Schema Manager".
+- **§8.3:** Sessions — apiSchema panjang ter-render (JsonViewer collapsible); sesi COMPLETED punya link
+  ke mapping buatan AI channel-nya (deep-link `?channelId=&origin=ai`).
+- **§8.4:** Config Panel — badge "AI enrich field mappings: ON/OFF" (guarded — hanya render bila backend
+  mengekspos `recommendation.enrichMappings`).
+- **§8.5:** Learning Dashboard — seksi "Kematangan AI enrichment (Jalur C)": jumlah mapping AI, dipromosikan,
+  UNVERIFIED, avg successRate live, breakdown per-channel.
+
+**Verifikasi:** tsc 0 error · lint 0 warning · 4 mapping AI live tampil dengan badge+Promote · schema preview
+& maturity render live (0 page error) · **E2E +7 test** (`ai-console-addendum-p8.spec.ts`). Total suite **42 lulus**.
+§6/§8 yang dilarang (UI approve saran mapping, threshold per-channel, auth granular) **tidak** dibangun.
