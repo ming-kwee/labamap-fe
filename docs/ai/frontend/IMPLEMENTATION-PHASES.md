@@ -61,6 +61,9 @@ Fondasi bersama + 4 layar P0. Semua kontrak diverifikasi terhadap backend live
   **triggerContext (kenapa) · analysis.rootCause/affectedFields/missingRequirements ·
   ragEvidence (bukti grounding) · warnings (banner risiko) · proposedFix (JSON viewer)**;
   Approve (reviewedBy wajib + konfirmasi) · Reject (reason di BODY); Trigger Analysis per channel.
+  **Robustness (2026-07-03):** Trigger Analysis memicu agent (jalur 429 sama seperti generate-jolt) →
+  elapsed timer + hard timeout 120s + tombol Batalkan (AbortController) + banner pra-jalan bila sesi
+  agent terakhir channel itu gagal-kuota. E2E `tests/e2e/ai-recommendations-robustness.spec.ts` (2).
 
 ### Verifikasi
 - `tsc --noEmit` → 0 error di file baru. `next lint` → 0 warning/error.

@@ -14,8 +14,8 @@
  */
 
 import Link from "next/link";
-import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { PageResponse } from "../../types/common";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { AiApiError, PageResponse } from "../../types/common";
 import { AiRecommendation, RecommendationStatus } from "../../types/recommendation";
 import { AiAdminService } from "../../services/aiAdmin.service";
 import { CheckIcon, RefreshIcon, SparklesIcon, XIcon } from "../shared/icons";
@@ -25,6 +25,7 @@ import {
   ChannelBadge,
   CHANNEL_OPTIONS,
   CHANNEL_LABELS,
+  classifyLlmError,
   ConfirmDialog,
   ErrorNotice,
   InfoBanner,
@@ -35,6 +36,9 @@ import {
   Tone,
   useToast,
 } from "../shared/ui";
+
+/** Hard client-side ceiling for the analyze agent (see JoltGenerationConsole). */
+const TRIGGER_TIMEOUT_MS = 120_000;
 
 const STATUS_TABS: Array<{ key: RecommendationStatus | "ALL"; label: string }> = [
   { key: "PENDING", label: "Pending" },
@@ -60,6 +64,13 @@ export default function RecommendationsReviewQueue() {
   const [selected, setSelected] = useState<AiRecommendation | null>(null);
   const [triggerChannel, setTriggerChannel] = useState<string>("");
   const [triggering, setTriggering] = useState(false);
+  const [triggerElapsed, setTriggerElapsed] = useState(0);
+  const [preflightRateLimited, setPreflightRateLimited] = useState(false);
+
+  const abortRef = useRef<AbortController | null>(null);
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const tickRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const timedOutRef = useRef(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -83,23 +94,80 @@ export default function RecommendationsReviewQueue() {
     load();
   }, [load]);
 
+  const clearTriggerTimers = useCallback(() => {
+    if (timeoutRef.current) clearTimeout(timeoutRef.current);
+    if (tickRef.current) clearInterval(tickRef.current);
+    timeoutRef.current = null;
+    tickRef.current = null;
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      abortRef.current?.abort();
+      clearTriggerTimers();
+    };
+  }, [clearTriggerTimers]);
+
+  // Pre-flight: warn if the latest agent session on the chosen channel failed on quota.
+  useEffect(() => {
+    let alive = true;
+    setPreflightRateLimited(false);
+    if (!triggerChannel) return;
+    AiAdminService.getMostRecentSession([triggerChannel])
+      .then((s) => {
+        if (!alive || !s || s.status !== "FAILED") return;
+        const kind = classifyLlmError(s.errorMessage).kind;
+        if (kind === "rate_limit" || kind === "quota_zero") setPreflightRateLimited(true);
+      })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, [triggerChannel]);
+
+  const cancelTrigger = useCallback(() => {
+    timedOutRef.current = false;
+    abortRef.current?.abort();
+  }, []);
+
   const triggerAnalysis = useCallback(async () => {
     if (!triggerChannel) {
       show("Pilih channel dulu untuk trigger analysis.", "info");
       return;
     }
+    if (triggering) return;
+    const controller = new AbortController();
+    abortRef.current = controller;
+    timedOutRef.current = false;
     setTriggering(true);
+    setTriggerElapsed(0);
+    tickRef.current = setInterval(() => setTriggerElapsed((s) => s + 1), 1000);
+    timeoutRef.current = setTimeout(() => {
+      timedOutRef.current = true;
+      controller.abort();
+    }, TRIGGER_TIMEOUT_MS);
+
     try {
-      await AiAdminService.triggerAnalysis(triggerChannel);
-      show(`Analysis dipicu untuk ${CHANNEL_LABELS[triggerChannel] ?? triggerChannel}. Rekomendasi baru akan muncul saat siap.`, "success");
-      setTimeout(load, 1200);
+      await AiAdminService.triggerAnalysis(triggerChannel, controller.signal);
+      show(`Analysis selesai untuk ${CHANNEL_LABELS[triggerChannel] ?? triggerChannel}. Rekomendasi baru akan muncul di antrian.`, "success");
+      setTimeout(load, 800);
     } catch (e) {
-      show(`Trigger gagal: ${(e as Error).message}`, "error");
+      if (e instanceof AiApiError && e.kind === "aborted") {
+        show(
+          timedOutRef.current
+            ? `Timeout setelah ${Math.round(TRIGGER_TIMEOUT_MS / 1000)}s — agent kemungkinan masih menunggu kuota LLM (429). Coba lagi nanti atau pakai model/provider berbayar.`
+            : "Trigger dibatalkan.",
+          "error",
+        );
+      } else {
+        show(`Trigger gagal: ${(e as Error).message}`, "error");
+      }
     } finally {
+      clearTriggerTimers();
+      abortRef.current = null;
       setTriggering(false);
     }
-  }, [triggerChannel, show, load]);
+  }, [triggerChannel, triggering, show, load, clearTriggerTimers]);
 
+  const triggerElapsedLabel = `${Math.floor(triggerElapsed / 60)}:${String(triggerElapsed % 60).padStart(2, "0")}`;
   const rows = data?.content ?? [];
 
   return (
@@ -167,7 +235,8 @@ export default function RecommendationsReviewQueue() {
             <select
               value={triggerChannel}
               onChange={(e) => setTriggerChannel(e.target.value)}
-              className="border border-gray-200 dark:border-gray-700 rounded-lg px-2.5 py-1.5 text-xs bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300"
+              disabled={triggering}
+              className="border border-gray-200 dark:border-gray-700 rounded-lg px-2.5 py-1.5 text-xs bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 disabled:opacity-50"
             >
               <option value="">Pilih channel…</option>
               {CHANNEL_OPTIONS.map((c) => (
@@ -176,16 +245,48 @@ export default function RecommendationsReviewQueue() {
                 </option>
               ))}
             </select>
-            <button
-              onClick={triggerAnalysis}
-              disabled={triggering || !triggerChannel}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-gray-800 hover:bg-gray-900 dark:bg-gray-700 dark:hover:bg-gray-600 text-white transition-colors disabled:opacity-50"
-            >
-              {triggering ? <Spinner size={12} /> : <SparklesIcon size={12} />}
-              Trigger Analysis
-            </button>
+            {triggering ? (
+              <>
+                <span className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-gray-800 dark:bg-gray-700 text-white">
+                  <Spinner size={12} /> Menganalisis… <span className="font-mono tabular-nums">{triggerElapsedLabel}</span>
+                </span>
+                <button
+                  onClick={cancelTrigger}
+                  className="px-3 py-1.5 text-xs font-medium rounded-lg border border-red-300 dark:border-red-800 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+                >
+                  Batalkan
+                </button>
+              </>
+            ) : (
+              <button
+                onClick={triggerAnalysis}
+                disabled={!triggerChannel}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-gray-800 hover:bg-gray-900 dark:bg-gray-700 dark:hover:bg-gray-600 text-white transition-colors disabled:opacity-50"
+              >
+                <SparklesIcon size={12} />
+                Trigger Analysis
+              </button>
+            )}
           </div>
         </div>
+
+        {/* Pre-flight rate-limit warning + honest waiting note (long-run robustness) */}
+        {preflightRateLimited && !triggering && (
+          <div className="mt-3">
+            <InfoBanner tone="amber">
+              <p>
+                <strong>LLM sedang rate-limited</strong> untuk {CHANNEL_LABELS[triggerChannel] ?? triggerChannel} —
+                sesi agent terakhir gagal karena kuota. Trigger sekarang kemungkinan besar juga gagal (429).
+              </p>
+            </InfoBanner>
+          </div>
+        )}
+        {triggering && (
+          <p className="mt-2 text-[11px] text-gray-400">
+            Menjalankan agent (memakai kuota LLM). Bisa sampai ~2 menit saat kuota sibuk — otomatis berhenti di{" "}
+            {Math.round(TRIGGER_TIMEOUT_MS / 1000)}s. Boleh Batalkan kapan saja.
+          </p>
+        )}
       </Card>
 
       {/* List */}

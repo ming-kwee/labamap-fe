@@ -246,10 +246,15 @@ export const AiAdminService = {
     );
   },
 
-  triggerAnalysis(channelId: string): Promise<unknown> {
+  /**
+   * Runs the agent to analyze a channel and create recommendations. Like
+   * generate-jolt this can take minutes under LLM 429 retry/backoff — pass an
+   * AbortSignal to support timeout / user-cancel.
+   */
+  triggerAnalysis(channelId: string, signal?: AbortSignal): Promise<unknown> {
     return request<unknown>(
       `${BASE}/recommendations/trigger-analysis${buildQs({ channelId })}`,
-      { method: "POST" },
+      { method: "POST", signal },
     );
   },
 
