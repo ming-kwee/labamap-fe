@@ -118,7 +118,7 @@ export const AiAdminService = {
   },
 
   /**
-   * Runtime kill-switch for Jalur C enrichment (addendum §8.4).
+   * Runtime kill-switch for AI Mapping Enrichment (addendum §8.4).
    * PUT /admin/ai/config/enrich-mappings?enabled= → { enrichMappings, scope, note }.
    * scope="runtime": reverts to AI_ENRICH_MAPPINGS on restart.
    */
@@ -128,7 +128,7 @@ export const AiAdminService = {
 
   /**
    * AI mapping maturity (addendum §8.5) — how much the agent has enriched the
-   * APM table (Jalur C) and how much is proven. Derived from field-mappings;
+   * APM table (AI Mapping Enrichment) and how much is proven. Derived from field-mappings;
    * we fetch all and filter client-side (createdBy startsWith "ai").
    */
   async getAiMappingMaturity(): Promise<AiMappingMaturity> {

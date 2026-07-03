@@ -15,6 +15,20 @@ import {
 const BASE = "http://localhost:8888/labamap/api/v1/admin/channel-field-mappings";
 const JSON_HEADERS = { "Content-Type": "application/json" };
 
+/**
+ * Thrown when the backend promote guard rejects a tier change (HTTP 422).
+ * Carries the backend's actionable `reason` so the UI can show it verbatim
+ * (addendum §8.1). Non-422 failures throw a plain Error as before.
+ */
+export class PromoteRejectedError extends Error {
+  readonly reason: string;
+  constructor(reason: string) {
+    super(reason);
+    this.name = "PromoteRejectedError";
+    this.reason = reason;
+  }
+}
+
 async function handleResponse<T>(res: Response): Promise<T> {
   if (!res.ok) {
     let message = res.statusText;
@@ -102,11 +116,25 @@ export const ChannelFieldMappingService = {
   },
 
   /**
-   * Promote a mapping's verification tier (addendum §8.1) via PUT /{id}.
-   * Used on AI-generated mappings once real publish outcomes prove them.
+   * PUT /admin/channel-field-mappings/{id}/promote?tier=&promotedBy= (addendum §8.1).
+   * Dedicated guarded endpoint: backend enforces the tier ladder + evidence
+   * threshold (netSuccess) and returns 422 { error:"PROMOTE_REJECTED", reason }
+   * when unmet. We surface `reason` via PromoteRejectedError.
    */
-  async promoteMapping(id: string, tier: VerificationTier): Promise<ChannelFieldMapping> {
-    return this.updateMapping(id, { verificationTier: tier });
+  async promoteMapping(id: string, tier: VerificationTier, promotedBy: string): Promise<ChannelFieldMapping> {
+    const res = await fetch(
+      `${BASE}/${id}/promote${buildQs({ tier, promotedBy })}`,
+      { method: "PUT", headers: JSON_HEADERS },
+    );
+    if (res.status === 422) {
+      let reason = "Promote rejected.";
+      try {
+        const body = await res.json();
+        reason = body.reason ?? body.error ?? reason;
+      } catch { /* keep default */ }
+      throw new PromoteRejectedError(reason);
+    }
+    return handleResponse<unknown>(res).then(mapRawMapping);
   },
 
   /**

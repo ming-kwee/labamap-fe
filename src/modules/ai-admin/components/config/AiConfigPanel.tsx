@@ -33,7 +33,7 @@ export default function AiConfigPanel() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<unknown>(null);
   const { toast, show } = useToast();
-  // §8.4 runtime toggle for Jalur C enrichment.
+  // §8.4 runtime toggle for AI Mapping Enrichment.
   const [confirmEnrich, setConfirmEnrich] = useState<boolean | null>(null); // target value awaiting confirm
   const [enrichBusy, setEnrichBusy] = useState(false);
 
@@ -58,7 +58,7 @@ export default function AiConfigPanel() {
     try {
       const res = await AiAdminService.setEnrichMappings(target);
       show(
-        `AI enrichment (Jalur C) ${res.enrichMappings ? "ON" : "OFF"}.${res.note ? " " + res.note : ""}`,
+        `AI Mapping Enrichment ${res.enrichMappings ? "ON" : "OFF"}.${res.note ? " " + res.note : ""}`,
         "success",
       );
       await load();
@@ -83,12 +83,12 @@ export default function AiConfigPanel() {
           body={
             confirmEnrich ? (
               <>
-                Agent akan kembali <strong>menulis field mapping baru</strong> (Jalur C) saat AUTO_APPLY.
+                Agent akan kembali <strong>menulis field mapping baru</strong> (AI Mapping Enrichment) saat AUTO_APPLY.
                 Perubahan berlaku <strong>runtime</strong> (revert saat restart).
               </>
             ) : (
               <>
-                Agent <strong>berhenti menulis</strong> field mapping baru (Jalur C). Mapping yang sudah ada tetap.
+                Agent <strong>berhenti menulis</strong> field mapping baru (AI Mapping Enrichment). Mapping yang sudah ada tetap.
                 Berguna jika enrichment AI menghasilkan mapping buruk. Perubahan <strong>runtime</strong> (revert saat restart).
               </>
             )
@@ -205,7 +205,7 @@ export default function AiConfigPanel() {
                 env="AI_RECOMMENDATION_EXPIRY_DAYS"
               />
             </div>
-            {/* AI enrich field mappings — Jalur C runtime kill-switch (addendum §8.4).
+            {/* AI enrich field mappings — AI Mapping Enrichment runtime kill-switch (addendum §8.4).
                 Guarded: only render when backend exposes the flag. The one mutable
                 control on this otherwise read-only panel. */}
             {config.recommendation.enrichMappings !== undefined && (
@@ -217,7 +217,7 @@ export default function AiConfigPanel() {
                 />
                 <div className="min-w-0">
                   <p className="text-xs font-medium text-gray-700 dark:text-gray-200">
-                    AI enrich field mappings (Jalur C): {config.recommendation.enrichMappings ? "ON" : "OFF"}
+                    AI Mapping Enrichment: {config.recommendation.enrichMappings ? "ON" : "OFF"}
                   </p>
                   <p className="text-[11px] text-gray-400">
                     saat ON, agent menulis field mapping baru ke tabel APM saat AUTO_APPLY. Toggle bersifat{" "}

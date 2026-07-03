@@ -189,10 +189,10 @@ export default function LearningDashboard() {
             )}
           </SectionCard>
 
-          {/* AI enrichment maturity (addendum §8.5 · Jalur C) */}
+          {/* AI enrichment maturity (addendum §8.5 · AI Mapping Enrichment) */}
           {maturity && maturity.total > 0 && (
             <SectionCard
-              title="Kematangan AI enrichment (Jalur C)"
+              title="Kematangan AI Mapping Enrichment"
               subtitle="bukti sistem belajar — mapping buatan AI & yang terbukti"
               icon={<SparklesIcon size={16} />}
               right={

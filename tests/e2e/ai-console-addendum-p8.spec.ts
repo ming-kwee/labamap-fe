@@ -65,11 +65,12 @@ test.describe("Addendum §8.1 · Field Mappings — AI origin & review", () => {
     await expect(page.getByText("product.title")).toHaveCount(0);
   });
 
-  test("Promote raises verification tier via PUT", async ({ page }) => {
-    let promotedBody: Record<string, unknown> | null = null;
-    await page.route("**/admin/channel-field-mappings/fm-ai", (route) => {
+  test("Promote calls the guarded /promote endpoint (tier + promotedBy in query)", async ({ page }) => {
+    // fm-ai: netSuccess 2−1 = 1; next tier MANUALLY_TESTED needs 0 evidence → allowed.
+    let promoteUrl: string | null = null;
+    await page.route("**/admin/channel-field-mappings/fm-ai/promote**", (route) => {
       if (route.request().method() === "PUT") {
-        promotedBody = route.request().postDataJSON();
+        promoteUrl = route.request().url();
         return route.fulfill(json({ ...AI_MAPPING, verificationTier: "MANUALLY_TESTED" }));
       }
       return route.continue();
@@ -79,7 +80,38 @@ test.describe("Addendum §8.1 · Field Mappings — AI origin & review", () => {
     await page.getByRole("button", { name: "Promote" }).click();
 
     await expect(page.getByText(/dipromosikan ke Manually Tested/)).toBeVisible();
-    expect(promotedBody).toMatchObject({ verificationTier: "MANUALLY_TESTED" });
+    expect(promoteUrl).toContain("tier=MANUALLY_TESTED");
+    expect(promoteUrl).toContain("promotedBy=");
+  });
+
+  test("evidence guard: Promote to an evidence tier is disabled until netSuccess is enough", async ({ page }) => {
+    // Already MANUALLY_TESTED → next tier VERIFIED_PRODUCTION needs netSuccess ≥ 5.
+    // netSuccess 2−1 = 1 < 5 → button replaced by a disabled "Promote · 1/5".
+    const tested = { ...AI_MAPPING, id: "fm-t", verificationTier: "MANUALLY_TESTED", successCount: 2, failureCount: 1 };
+    await page.route("**/admin/channel-field-mappings**", (route) => {
+      if (route.request().method() === "GET") return route.fulfill(json([tested]));
+      return route.continue();
+    });
+    await page.goto("/platform-admin/channel-field-mappings");
+    await expect(page.getByText("Promote · 1/5")).toBeVisible();
+    await expect(page.getByRole("button", { name: /^Promote$/ })).toHaveCount(0);
+  });
+
+  test("422 PROMOTE_REJECTED surfaces the backend reason", async ({ page }) => {
+    // Force a mapping that looks promotable client-side but backend rejects.
+    const promotable = { ...AI_MAPPING, id: "fm-r", verificationTier: "UNVERIFIED", successCount: 0, failureCount: 0 };
+    await page.route("**/admin/channel-field-mappings**", (route) => {
+      if (route.request().method() === "GET") return route.fulfill(json([promotable]));
+      return route.continue();
+    });
+    await page.route("**/admin/channel-field-mappings/fm-r/promote**", (route) =>
+      route.fulfill({ status: 422, contentType: "application/json",
+        body: JSON.stringify({ error: "PROMOTE_REJECTED", reason: "Insufficient evidence to reach VERIFIED_PRODUCTION: need net successes ≥ 5 but have 0." }) }),
+    );
+    await page.goto("/platform-admin/channel-field-mappings");
+    // UNVERIFIED → next MANUALLY_TESTED (evidence 0) → button enabled; but backend 422s.
+    await page.getByRole("button", { name: /^Promote$/ }).click();
+    await expect(page.getByText(/Insufficient evidence to reach VERIFIED_PRODUCTION/)).toBeVisible();
   });
 
   // Deep-link support (addendum §8.3): ?channelId=&origin=ai pre-filters.
@@ -98,7 +130,7 @@ test.describe("Addendum §8.5 · AI enrichment maturity", () => {
       route.fulfill(json([AI_MAPPING, { ...AI_MAPPING, id: "fm-ai2", verificationTier: "VERIFIED_PRODUCTION" }, SYSTEM_MAPPING])),
     );
     await page.goto("/platform-admin/ai-learning");
-    await expect(page.getByText("Kematangan AI enrichment (Jalur C)")).toBeVisible();
+    await expect(page.getByText("Kematangan AI Mapping Enrichment")).toBeVisible();
     await expect(page.getByText("Mapping buatan AI").first()).toBeVisible();
     // 2 AI mappings, 1 promoted (VERIFIED_PRODUCTION).
     await expect(page.getByText("Dipromosikan").first()).toBeVisible();
@@ -141,7 +173,7 @@ test.describe("Addendum §8.4 · enrichMappings runtime toggle", () => {
       r.fulfill(json({ ...mock.config, recommendation: { ...mock.config.recommendation, enrichMappings: true } })),
     );
     await page.goto("/platform-admin/ai-config");
-    await expect(page.getByText(/AI enrich field mappings \(Jalur C\): ON/)).toBeVisible();
+    await expect(page.getByText(/AI Mapping Enrichment: ON/)).toBeVisible();
     await expect(page.getByRole("switch")).toHaveAttribute("aria-checked", "true");
   });
 
@@ -166,7 +198,7 @@ test.describe("Addendum §8.4 · enrichMappings runtime toggle", () => {
     await page.getByTestId("confirm-ok").click();
 
     // Toast reflects the backend note; switch flips to OFF after reload.
-    await expect(page.getByText(/Jalur C\) OFF/)).toBeVisible();
+    await expect(page.getByText(/AI Mapping Enrichment OFF/)).toBeVisible();
     await expect(page.getByRole("switch")).toHaveAttribute("aria-checked", "false");
     expect(putCalled).toContain("enabled=false");
   });

@@ -282,13 +282,13 @@ function SessionDetail({ session, onClose }: { session: AiAgentSession; onClose:
             </SectionCard>
           )}
 
-          {/* Jalur C link (addendum §8.3): a COMPLETED session may have created field mappings */}
+          {/* AI Mapping Enrichment link (addendum §8.3): a COMPLETED session may have created field mappings */}
           {session.status === "COMPLETED" && session.channelId && (
             <Link
               href={`/platform-admin/channel-field-mappings?channelId=${session.channelId}&origin=ai`}
               className="flex items-center justify-between gap-2 rounded-lg border border-violet-200 dark:border-violet-800 bg-violet-50 dark:bg-violet-900/20 px-3 py-2.5 text-xs text-violet-800 dark:text-violet-300 hover:bg-violet-100 dark:hover:bg-violet-900/30 transition-colors"
             >
-              <span>🤖 Sesi sukses bisa menulis field mapping baru (Jalur C) — lihat mapping buatan AI di channel ini</span>
+              <span>🤖 Sesi sukses bisa menulis field mapping baru (AI Mapping Enrichment) — lihat mapping buatan AI di channel ini</span>
               <span className="shrink-0 font-medium">→</span>
             </Link>
           )}

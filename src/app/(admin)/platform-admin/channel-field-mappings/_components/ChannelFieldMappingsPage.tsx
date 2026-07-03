@@ -9,10 +9,13 @@ import {
   CreateMappingRequest,
   UpdateMappingRequest,
   TIER_LABELS,
+  TIER_EVIDENCE,
   isAiGenerated,
   nextTier,
+  netSuccess,
+  canPromoteTo,
 } from "../_types/channel-field-mapping";
-import { ChannelFieldMappingService } from "../_services/channel-field-mapping.service";
+import { ChannelFieldMappingService, PromoteRejectedError } from "../_services/channel-field-mapping.service";
 import { CHANNEL_TYPE_LABELS } from "../../channel-category-schemas/_types/channel-category-schema";
 import AddEditMappingModal from "./AddEditMappingModal";
 
@@ -292,14 +295,27 @@ function MappingRow({
               </button>
             )}
 
-            {/* Promote — raise verification tier (AI-made or untrusted mappings) */}
-            {mapping.isActive && promotable && (isAiGenerated(mapping) || mapping.verificationTier) && (
-              <button onClick={() => onPromote(mapping)}
-                className="px-2 py-1 text-xs rounded bg-green-50 hover:bg-green-100 dark:bg-green-900/20 dark:hover:bg-green-900/40 text-green-700 dark:text-green-400 font-medium transition-colors"
-                title={`Promosikan ke ${TIER_LABELS[promotable]}`}>
-                Promote
-              </button>
-            )}
+            {/* Promote — raise verification tier. Backend enforces an evidence guard
+                (netSuccess ≥ threshold); we mirror it client-side to disable the button
+                and show "bukti N/threshold" instead of letting the operator hit a 422. */}
+            {mapping.isActive && promotable && (isAiGenerated(mapping) || mapping.verificationTier) && (() => {
+              const need = TIER_EVIDENCE[promotable];
+              const have = netSuccess(mapping);
+              const allowed = canPromoteTo(mapping, promotable);
+              return allowed ? (
+                <button onClick={() => onPromote(mapping)}
+                  className="px-2 py-1 text-xs rounded bg-green-50 hover:bg-green-100 dark:bg-green-900/20 dark:hover:bg-green-900/40 text-green-700 dark:text-green-400 font-medium transition-colors"
+                  title={`Promosikan ke ${TIER_LABELS[promotable]}${need > 0 ? ` (bukti ${have}/${need})` : ""}`}>
+                  Promote
+                </button>
+              ) : (
+                <span
+                  className="px-2 py-1 text-xs rounded bg-gray-100 dark:bg-gray-800 text-gray-400 dark:text-gray-500 font-medium cursor-not-allowed"
+                  title={`Belum cukup bukti untuk ${TIER_LABELS[promotable]}: butuh net sukses ≥ ${need}, baru ${have}. Biarkan terbukti di produksi dulu.`}>
+                  Promote · {have}/{need}
+                </span>
+              );
+            })()}
 
             {/* Deactivate / Activate */}
             {mapping.isActive ? (
@@ -483,11 +499,18 @@ export default function ChannelFieldMappingsPage() {
   async function handlePromote(m: ChannelFieldMapping) {
     const target = nextTier(m.verificationTier);
     if (!target) return;
+    // Reuse the shared reviewer identity (same key as the Recommendations queue).
+    const promotedBy =
+      (typeof window !== "undefined" && window.localStorage.getItem("ai_admin_reviewer")) || "admin";
     try {
-      await ChannelFieldMappingService.promoteMapping(m.id, target);
+      await ChannelFieldMappingService.promoteMapping(m.id, target, promotedBy);
       showToast(`Mapping dipromosikan ke ${TIER_LABELS[target]}.`, "success");
       load();
-    } catch (err) { showToast((err as Error).message, "error"); }
+    } catch (err) {
+      // Backend guard rejection → show its actionable reason verbatim.
+      if (err instanceof PromoteRejectedError) showToast(err.reason, "error");
+      else showToast((err as Error).message, "error");
+    }
   }
 
   async function handleDeactivate(m: ChannelFieldMapping) {
@@ -593,14 +616,14 @@ export default function ChannelFieldMappingsPage() {
         <StatCard label="Showing" value={filtered.length} accent="gray" />
       </div>
 
-      {/* AI enrichment banner (addendum §8.1 · Jalur C) */}
+      {/* AI enrichment banner (addendum §8.1 · AI Mapping Enrichment) */}
       {aiCount > 0 && (
         <div className="flex items-start gap-3 px-4 py-3 bg-violet-50 dark:bg-violet-900/20 border border-violet-200 dark:border-violet-800 rounded-lg">
           <div className="text-violet-500 shrink-0 mt-0.5"><InfoIcon /></div>
           <div className="text-xs text-violet-800 dark:text-violet-300 space-y-0.5">
             <p>
               <strong>🤖 {aiCount} mapping ditulis agent AI</strong> ({aiUnverified} masih UNVERIFIED). Saat JOLT
-              di-AUTO_APPLY, agent membuat field mapping baru agar heuristik APM membaik (Jalur C).
+              di-AUTO_APPLY, agent membuat field mapping baru agar heuristik APM membaik (AI Mapping Enrichment).
             </p>
             <p>
               Pantau <strong>✓success / ✗failure</strong> (hasil publish nyata). Setelah terbukti →{" "}

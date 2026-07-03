@@ -2,7 +2,7 @@
 // Corresponds to the `channel_field_mappings` MongoDB collection
 
 // Includes strategies the agent/heuristics emit (AI_GENERATED, PATTERN, …) so
-// the manager can display AI-written mappings — addendum §8.1 (Jalur C).
+// the manager can display AI-written mappings — addendum §8.1 (AI Mapping Enrichment).
 export type MappingStrategy =
   | "EXACT_OVERRIDE"
   | "EXACT"
@@ -35,29 +35,29 @@ export const STRATEGY_DESCRIPTIONS: Partial<Record<MappingStrategy, string>> = {
   SEMANTIC:       "Semantic matching — confidence-based fuzzy pair.",
   EXCLUDE:        "Exclude target field from matching candidates. Channel-only field with no master equivalent.",
   EXCLUDE_SOURCE: "Exclude source field from matching. Field that should never be auto-matched.",
-  AI_GENERATED:   "Ditulis otomatis oleh agent AI saat AUTO_APPLY (Jalur C). Awalnya UNVERIFIED — pantau successCount/failureCount lalu promosikan/hapus.",
+  AI_GENERATED:   "Ditulis otomatis oleh agent AI saat AUTO_APPLY (AI Mapping Enrichment). Awalnya UNVERIFIED — pantau successCount/failureCount lalu promosikan/hapus.",
 };
 
 // ─── Verification tier (Beta-distribution confidence) — addendum §8.1 ────────
-// Progression: UNVERIFIED → MANUALLY_TESTED → VERIFIED_PRODUCTION → CERTIFIED.
+// Ladder: UNVERIFIED → MANUALLY_TESTED → VERIFIED_PRODUCTION → CERTIFIED_HIGH_VOLUME.
 export type VerificationTier =
   | "UNVERIFIED"
   | "MANUALLY_TESTED"
   | "VERIFIED_PRODUCTION"
-  | "CERTIFIED";
+  | "CERTIFIED_HIGH_VOLUME";
 
 export const VERIFICATION_TIERS: VerificationTier[] = [
   "UNVERIFIED",
   "MANUALLY_TESTED",
   "VERIFIED_PRODUCTION",
-  "CERTIFIED",
+  "CERTIFIED_HIGH_VOLUME",
 ];
 
 export const TIER_LABELS: Record<VerificationTier, string> = {
-  UNVERIFIED:          "Unverified",
-  MANUALLY_TESTED:     "Manually Tested",
-  VERIFIED_PRODUCTION: "Verified (production)",
-  CERTIFIED:           "Certified",
+  UNVERIFIED:            "Unverified",
+  MANUALLY_TESTED:       "Manually Tested",
+  VERIFIED_PRODUCTION:   "Verified (production)",
+  CERTIFIED_HIGH_VOLUME: "Certified (high-volume)",
 };
 
 /** Confidence ceiling per tier (from SCORE-ACCURACY-DEEP-ANALYSIS). */
@@ -65,8 +65,25 @@ export const TIER_CEILING: Record<VerificationTier, number> = {
   UNVERIFIED: 60,
   MANUALLY_TESTED: 75,
   VERIFIED_PRODUCTION: 90,
-  CERTIFIED: 99,
+  CERTIFIED_HIGH_VOLUME: 99,
 };
+
+/**
+ * Evidence required (net successes = successCount − failureCount) to promote INTO
+ * each tier, enforced by the backend promote guard (addendum §8.1). MANUALLY_TESTED
+ * needs none (a human vouches). Backend rejects with 422 if unmet.
+ */
+export const TIER_EVIDENCE: Record<VerificationTier, number> = {
+  UNVERIFIED: 0,
+  MANUALLY_TESTED: 0,
+  VERIFIED_PRODUCTION: 5,
+  CERTIFIED_HIGH_VOLUME: 50,
+};
+
+/** net successes = successCount − failureCount (0 when counters absent). */
+export function netSuccess(m: ChannelFieldMapping): number {
+  return (m.successCount ?? 0) - (m.failureCount ?? 0);
+}
 
 /** Next tier up when promoting; null if already at the top / unknown. */
 export function nextTier(t?: VerificationTier | null): VerificationTier | null {
@@ -75,7 +92,16 @@ export function nextTier(t?: VerificationTier | null): VerificationTier | null {
   return i >= 0 && i < VERIFICATION_TIERS.length - 1 ? VERIFICATION_TIERS[i + 1] : null;
 }
 
-/** A mapping the AI agent wrote (Jalur C). */
+/**
+ * Can this mapping be promoted to `target` right now (client-side guard mirroring
+ * the backend)? MANUALLY_TESTED always allowed; evidence tiers need netSuccess ≥ threshold.
+ */
+export function canPromoteTo(m: ChannelFieldMapping, target: VerificationTier): boolean {
+  const need = TIER_EVIDENCE[target] ?? 0;
+  return need === 0 || netSuccess(m) >= need;
+}
+
+/** A mapping the AI agent wrote via AI Mapping Enrichment. */
 export function isAiGenerated(m: ChannelFieldMapping): boolean {
   return (m.createdBy ?? "").toLowerCase().startsWith("ai") || m.mappingStrategy === "AI_GENERATED";
 }

@@ -166,13 +166,16 @@ resolver + `ai-console-addendum.spec.ts` 7: 4 varian error taxonomy, joltSpecId,
 
 ---
 
-## ✅ Addendum §8 — Jalur C & apiSchema (SELESAI 2026-07-02)
+## ✅ Addendum §8 — AI Mapping Enrichment & apiSchema (SELESAI 2026-07-02)
+
+> **Renaming (2026-07-03):** istilah internal **"Jalur C" → "AI Mapping Enrichment"** di seluruh UI &
+> kode (konsisten dgn flag `enrichMappings`/env `AI_ENRICH_MAPPINGS`). Zero "Jalur C" tersisa di src.
 
 Gelombang berikutnya dari addendum (kapabilitas backend baru: agent menulis mapping + apiSchema grounding).
 
 | Item | Layar | Yang dikerjakan |
 |------|-------|-----------------|
-| **§8.1** | Field Mappings (`/platform-admin/channel-field-mappings`) | Bedakan & review mapping buatan-AI: `OriginBadge` (🤖 AI · tier), bukti Beta ✓success/✗failure, tombol **Promote** (nextTier via PUT), filter **Origin**, banner Jalur C, stat AI-unverified. Tipe+service diperluas (`createdBy`/`verificationTier`/counts, filter params). Fix: `size=100` agar semua 92 mapping ter-load (dulu 20). |
+| **§8.1** | Field Mappings (`/platform-admin/channel-field-mappings`) | Bedakan & review mapping buatan-AI: `OriginBadge` (🤖 AI · tier), bukti Beta ✓success/✗failure, tombol **Promote**, filter **Origin**, banner AI Mapping Enrichment, stat AI-unverified. Fix: `size=100` agar semua mapping ter-load. **Promote (2026-07-03):** pindah ke endpoint khusus ber-guard `PUT /{id}/promote?tier=&promotedBy=`; tier `CERTIFIED`→`CERTIFIED_HIGH_VOLUME`; guard bukti client-side (netSuccess ≥ TIER_EVIDENCE: VERIFIED_PRODUCTION 5, CERTIFIED_HIGH_VOLUME 50, MANUALLY_TESTED 0) → tombol disabled + "Promote · N/5" bila kurang; 422 `PROMOTE_REJECTED` → tampilkan `reason` apa adanya (`PromoteRejectedError`). |
 | **§8.2** | API Schema Manager (`/platform-admin/channel-category-schemas`) | Tombol **Preview** → modal merged targetSchema (`GET /channels/{ch}/schema?categorySlug=`) + link sidebar. |
 | **§8.3** | Agent Sessions | apiSchema panjang via JsonViewer; sesi COMPLETED → link ke mapping AI channel (deep-link `?channelId=&origin=ai`). |
 | **§8.4** | Config & Cascade | **toggle runtime berfungsi** — switch ON/OFF via `PUT /admin/ai/config/enrich-mappings?enabled=` (kill-switch Jalur C) + konfirmasi + toast note "revert saat restart". (Backend expose flag + endpoint sejak 2026-07-03; sebelumnya badge read-only guarded.) |
