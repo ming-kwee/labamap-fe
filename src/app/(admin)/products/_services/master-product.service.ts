@@ -132,6 +132,7 @@ export const MasterProductService = {
       description:   attrs.description != null ? String(attrs.description) : null,
       tags:          tags.length > 0 ? tags : null,
       images:        images.length > 0 ? images : null,
+      productTypeId: (raw.productTypeId ?? attrs.productTypeId) != null ? String(raw.productTypeId ?? attrs.productTypeId) : null,
       variantCount:  Number(raw.variantCount ?? 0),
       variants:      (() => {
                        // Check every plausible location the backend might store variants.

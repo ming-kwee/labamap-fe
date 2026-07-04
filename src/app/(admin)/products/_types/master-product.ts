@@ -103,6 +103,9 @@ export interface MasterProductDetail {
   description?: string | null;
   tags?: string[] | null;
   images?: string[] | null;
+  /** The product's assigned product type. Needed so edit mode can restore the
+   *  product-type selection (and its type-specific fields + variant option axes). */
+  productTypeId?: string | null;
   variantCount: number;
   variants: Array<Record<string, unknown>>;
   status: MasterProductStatus;

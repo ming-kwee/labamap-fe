@@ -45,6 +45,10 @@ export default function EditProductPage({ params }: Props) {
         price:         detail.basePrice  ?? undefined,
         currency:      detail.currency   ?? undefined,
         description:   detail.description ?? undefined,
+        // Restore the product type so edit mode reloads its schema (type-specific
+        // fields + variant option axes). Without this it looks like the product
+        // type "disappeared" after save/refresh.
+        productTypeId: detail.productTypeId ?? undefined,
         // category: intentionally omitted — product_categories removed (2026-06-16).
         // Category-specific schema fields (brand, OS, storage, etc.) will not appear
         // in edit mode until backend migrates /form-schema/generate to accept productTypeId.

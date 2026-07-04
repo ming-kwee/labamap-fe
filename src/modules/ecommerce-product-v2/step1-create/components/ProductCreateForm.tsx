@@ -201,7 +201,12 @@ export default function ProductCreateForm({
   // The type-specific call returns ONLY type-specific fields and replaces the schema,
   // so in edit mode we skip it (see editCategoryLoadedRef below) to keep all global fields.
   useEffect(() => {
-    loadSchema();
+    // Edit mode: load the schema WITH the product's saved product type so its
+    // type-specific fields AND variant option axes are restored (the backend now
+    // returns global fields too, so this no longer hides name/sku/price). Without
+    // this, product type + variant options look like they "disappeared" on reload.
+    const initialPtId = mode === 'edit' ? (initialData?.productTypeId as string | undefined) : undefined;
+    loadSchema(initialPtId || undefined);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
