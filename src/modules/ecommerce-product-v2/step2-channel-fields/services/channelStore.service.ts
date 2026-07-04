@@ -46,8 +46,10 @@ export class ChannelApiError extends Error {
 async function parseErrorMessage(res: Response): Promise<string> {
   try {
     const body = await res.json();
-    // Log full body so backend validation detail is visible in the browser console
-    console.error(`[ChannelStoreService] ${res.status} ${res.url}`, body);
+    // Log full body so backend validation detail is visible in the browser console.
+    // Use warn (not error) — many 4xx here are expected/handled (e.g. 422
+    // PRODUCT_TYPE_MISSING) and shouldn't trip the Next.js error overlay.
+    console.warn(`[ChannelStoreService] ${res.status} ${res.url}`, body);
     // Spring Boot bean-validation errors come in body.errors[] or body.fieldErrors[]
     const fieldErrors: string | undefined =
       (body.errors as Array<{ defaultMessage?: string; field?: string }> | undefined)

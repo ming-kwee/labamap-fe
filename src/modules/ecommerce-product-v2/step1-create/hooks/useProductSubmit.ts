@@ -30,12 +30,26 @@ function createBackendContext(
   );
 }
 
+/**
+ * The backend persists productTypeId from the `productData` map (NOT from context —
+ * verified live 2026-07-04: context.productTypeId is ignored, productData.productTypeId
+ * sticks). So we inject the selected product type into the productData payload.
+ */
+function withProductType(product: MasterProduct, productTypeId?: string): MasterProduct {
+  if (!productTypeId) return product;
+  return { ...product, productTypeId } as MasterProduct & { productTypeId: string };
+}
+
 export interface UseProductSubmitOptions {
   userId: string;
   organizationId: string;
   userRole: string;
   targetChannels: string[];
   category: string;
+  /** The selected product type — MUST be threaded into the backend context so the
+   *  product persists productTypeId (Step 2 form schema depends on it). Without it
+   *  the product saves with productTypeId=null and Channel Fields 422s. */
+  productTypeId?: string;
   permissions?: string[];
   /** Phase 4: "edit" routes submitProduct through updateProduct instead of createProduct */
   mode?: 'create' | 'edit';
@@ -58,7 +72,7 @@ export interface UseProductSubmitReturn {
 }
 
 export function useProductSubmit(options: UseProductSubmitOptions): UseProductSubmitReturn {
-  const { userId, organizationId, userRole, targetChannels, category, permissions = [], mode = 'create', productId, clientProductId } = options;
+  const { userId, organizationId, userRole, targetChannels, category, productTypeId, permissions = [], mode = 'create', productId, clientProductId } = options;
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -68,7 +82,7 @@ export function useProductSubmit(options: UseProductSubmitOptions): UseProductSu
   const validateProduct = useCallback(async (product: MasterProduct): Promise<EnhancedValidationResult> => {
     try {
       const context = createBackendContext(userId, organizationId, userRole, targetChannels, category, permissions);
-      const result = await ProductApiService.validateProductEnhanced(product, context);
+      const result = await ProductApiService.validateProductEnhanced(withProductType(product, productTypeId), context);
       setValidationResult(result);
       return result;
     } catch (error) {
@@ -91,7 +105,7 @@ export function useProductSubmit(options: UseProductSubmitOptions): UseProductSu
       setValidationResult(fallback);
       return fallback;
     }
-  }, [userId, organizationId, userRole, targetChannels, category, permissions]);
+  }, [userId, organizationId, userRole, targetChannels, category, productTypeId, permissions]);
 
   const submitProduct = useCallback(async (product: MasterProduct): Promise<MasterProduct | null> => {
     setIsSubmitting(true);
@@ -113,9 +127,12 @@ export function useProductSubmit(options: UseProductSubmitOptions): UseProductSu
         return null;
       }
 
+      // Inject the selected product type into productData so it persists (backend
+      // reads productTypeId from productData, not context).
+      const productData = withProductType(product, productTypeId);
       const createdProduct = mode === 'edit' && productId
-        ? await ProductApiService.updateProduct(productId, product, context)
-        : await ProductApiService.createProduct(product, context);
+        ? await ProductApiService.updateProduct(productId, productData, context)
+        : await ProductApiService.createProduct(productData, context);
       setIsSubmitting(false);
       return createdProduct;
 
@@ -125,7 +142,7 @@ export function useProductSubmit(options: UseProductSubmitOptions): UseProductSu
       setIsSubmitting(false);
       return null;
     }
-  }, [userId, organizationId, userRole, targetChannels, category, permissions, validateProduct]);
+  }, [userId, organizationId, userRole, targetChannels, category, productTypeId, permissions, validateProduct]);
 
   const clearSubmitError = useCallback(() => setSubmitError(null), []);
 

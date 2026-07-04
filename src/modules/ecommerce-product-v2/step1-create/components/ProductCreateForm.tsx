@@ -165,6 +165,9 @@ export default function ProductCreateForm({
     userRole,
     targetChannels,
     category: formData.category || organizationDefaultCategory,
+    // Thread the selected product type so it persists to the backend (fixes
+    // "product type won't stick" → Step 2 Channel Fields 422 PRODUCT_TYPE_MISSING).
+    productTypeId: productTypeId ?? undefined,
     mode,
     productId: initialProductId,
     clientProductId,
