@@ -46,14 +46,13 @@ export default function EditProductPage({ params }: Props) {
         currency:      detail.currency   ?? undefined,
         description:   detail.description ?? undefined,
         // Restore the product type so edit mode reloads its schema (type-specific
-        // fields + variant option axes). Without this it looks like the product
-        // type "disappeared" after save/refresh.
+        // fields + variant option axes) AND the CategorySelect shows the current type.
+        // The `category` schema field is a category-select whose value IS a productTypeId,
+        // so both keys carry the same id: `category` drives the visible selector,
+        // `productTypeId` drives the schema load + submit. Without these the product type
+        // + variant options look like they "disappeared" after save/refresh.
         productTypeId: detail.productTypeId ?? undefined,
-        // category: intentionally omitted — product_categories removed (2026-06-16).
-        // Category-specific schema fields (brand, OS, storage, etc.) will not appear
-        // in edit mode until backend migrates /form-schema/generate to accept productTypeId.
-        // Tracked in: docs/02-api-reference/14-product-categories-migration-backend.md §Sprint 1
-        // Map to both the schema field name AND the legacy key so either is pre-filled
+        category:      detail.productTypeId ?? undefined,
         mainImage:     detail.imageUrl   ?? undefined,
         imageUrl:      detail.imageUrl   ?? undefined,
         galleryImages: galleryImages.length > 0 ? galleryImages : undefined,
