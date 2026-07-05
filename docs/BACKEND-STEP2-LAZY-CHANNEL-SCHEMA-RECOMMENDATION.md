@@ -2,7 +2,7 @@
 
 **Date:** 2026-07-04
 **Author:** Frontend Team
-**Status:** 🟡 Proposed — backend support needed; frontend lazy-load follows once available.
+**Status:** ✅ **DONE (2026-07-05)** — both endpoints shipped & verified live; frontend lazy-load + cache implemented in `ChannelFieldsWizard`.
 **Priority:** Medium-High — Step 2 load time grows **linearly** with connected stores. Fine at 3, sluggish at 10–20.
 **Endpoint(s):** `POST /api/v1/ecommerce/form-schema/channel-step` (extend) + one new lightweight list endpoint.
 
@@ -95,7 +95,7 @@ Not required — the frontend will cache in-session (§4).
 
 ---
 
-## 4. How the frontend will consume it (planned, after backend ships)
+## 4. How the frontend consumes it (✅ implemented 2026-07-05)
 
 1. On Step 2 open → `GET …/stores` → render the tab bar instantly (O(1)).
 2. Fetch the **active** store's schema via `POST …/channel-step {storeId}` (small spinner in the tab body).

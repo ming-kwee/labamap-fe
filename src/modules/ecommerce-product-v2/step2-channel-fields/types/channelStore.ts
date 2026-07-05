@@ -444,6 +444,30 @@ export interface ChannelSchemaPerStore {
   categoryAttributeSection?: CategoryAttributeSection;
 }
 
+/**
+ * Lightweight per-store descriptor for the Step 2 tab bar (no `sections`).
+ * From `GET /ecommerce/form-schema/channel-step/stores`. Lets the wizard render the
+ * tab bar + completion badges instantly (O(1)) and lazy-load each store's full
+ * schema on demand. See docs/BACKEND-STEP2-LAZY-CHANNEL-SCHEMA-RECOMMENDATION.md.
+ */
+export interface ChannelStepStore {
+  storeId: string;
+  channelType: ChannelType;
+  storeName: string;
+  storeUrl: string;
+  displayOrder: number;
+  completionStatus: ChannelProductStatus;
+  completionPercentage: number;
+  /** Optional — the lightweight list may omit it; only the full schema guarantees it. */
+  completionStats?: CompletionStats;
+}
+
+export interface ChannelStepStoresResponse {
+  masterProductId: string;
+  productTypeId?: string;
+  stores: ChannelStepStore[];
+}
+
 export interface ChannelStepSchemaResponse {
   step: 2;
   masterProductId: string;
@@ -455,6 +479,9 @@ export interface ChannelStepSchemaResponse {
 export interface ChannelStepRequest {
   masterProductId: string;
   organizationId: string;
+  /** Optional — when set, backend returns only this store's schema (channels: [one]).
+   *  Omit for the full all-stores response (backward compatible). */
+  storeId?: string;
   /** @deprecated Backend now fetches variants from DB using masterProductId. No longer sent. */
   masterVariants?: Array<{ sku: string; label: string }>;
 }

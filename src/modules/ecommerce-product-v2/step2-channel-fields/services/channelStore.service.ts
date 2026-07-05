@@ -11,6 +11,7 @@ import type {
   ChannelStepSaveRequest,
   CompletionSummaryResponse,
   ChannelStepSchemaResponse,
+  ChannelStepStoresResponse,
   ChannelStepRequest,
   PublishSingleRequest,
   BatchPublishRequest,
@@ -325,8 +326,24 @@ export const ChannelProductDataService = {
 
 export const ChannelSchemaService = {
   /**
-   * Generate the Step 2 tabbed form schema
+   * Lightweight store list for the Step 2 tab bar (no field `sections`).
+   * GET /api/v1/ecommerce/form-schema/channel-step/stores
+   * O(1) regardless of store count — the wizard lazy-loads each store's full
+   * schema on demand via generateChannelStepSchema({ storeId }).
+   */
+  getChannelStepStores(masterProductId: string, organizationId: string): Promise<ChannelStepStoresResponse> {
+    const qs = `?masterProductId=${encodeURIComponent(masterProductId)}&organizationId=${encodeURIComponent(organizationId)}`;
+    return fetch(`${BASE}/ecommerce/form-schema/channel-step/stores${qs}`, {
+      method: "GET",
+      headers: { "Content-Type": "application/json" },
+    }).then((r) => handleResponse<ChannelStepStoresResponse>(r));
+  },
+
+  /**
+   * Generate the Step 2 tabbed form schema.
    * POST /api/v1/ecommerce/form-schema/channel-step
+   * Pass `storeId` in the request to fetch a single store's schema (channels: [one]);
+   * omit it for the full all-stores response.
    */
   generateChannelStepSchema(request: ChannelStepRequest): Promise<ChannelStepSchemaResponse> {
     return fetch(`${BASE}/ecommerce/form-schema/channel-step`, {

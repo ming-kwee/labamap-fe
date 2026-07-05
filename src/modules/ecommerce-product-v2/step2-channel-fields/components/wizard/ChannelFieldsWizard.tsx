@@ -120,6 +120,21 @@ export default function ChannelFieldsWizard({ masterProductId }: Props) {
   // Active tab — starts at the store specified by ?storeId= query param, or 0
   const [activeStoreIndex, setActiveStoreIndex] = useState(0);
 
+  // ── Lazy per-store schema (scales to many stores) ──────────────────────────
+  // The tab bar renders instantly from a lightweight /stores list (skeleton channels
+  // with empty `sections`); each store's full schema is fetched on demand and cached.
+  // hydratedRef tracks which stores' schemas are loaded; hydratingStoreId drives the
+  // per-tab spinner. savedStoreData + productType are fetched once and reused across
+  // hydrations (for the restore/prefill logic).
+  const hydratedRef = useRef<Set<string>>(new Set());
+  // In-flight guard: dedupe concurrent hydrate calls for the same store (React
+  // StrictMode double-invokes effects, and two paths can trigger a hydrate before
+  // the first fetch resolves → without this, one store fetches N times).
+  const hydratingInFlightRef = useRef<Set<string>>(new Set());
+  const [hydratingStoreId, setHydratingStoreId] = useState<string | null>(null);
+  const savedStoreDataRef = useRef<Awaited<ReturnType<typeof ChannelProductDataService.getAllStoreData>> | null>(null);
+  const productTypeIdRef = useRef<string | null>(null);
+
   // Per-store form values map: storeId → values
   const [storeValues, setStoreValues] = useState<Record<string, StoreFormValues>>({});
 
@@ -145,134 +160,77 @@ export default function ChannelFieldsWizard({ masterProductId }: Props) {
   const [activeTabFieldErrors, setActiveTabFieldErrors] = useState<Set<string>>(new Set());
 
   // Load schema
-  const loadSchema = useCallback(async () => {
-    if (!orgId) return;
-    setLoading(true);
-    setLoadError(null);
-    setLoadErrorCode(null);
+  // Fetch (once) the saved store data used to restore Step-2 extras across hydrations.
+  const getSavedStoreData = useCallback(async () => {
+    if (savedStoreDataRef.current) return savedStoreDataRef.current;
     try {
-      // Backend fetches variants directly from DB — masterVariants not needed.
+      const data = await ChannelProductDataService.getAllStoreData(masterProductId);
+      savedStoreDataRef.current = data;
+      return data;
+    } catch {
+      savedStoreDataRef.current = [];
+      return [];
+    }
+  }, [masterProductId]);
+
+  // Hydrate ONE store's full schema on demand: fetch { storeId } schema, restore the
+  // Step-2 extras + CATEGORY_TREE state, then merge into the skeleton. Cached via hydratedRef.
+  const hydrateStore = useCallback(async (storeId: string) => {
+    if (hydratedRef.current.has(storeId) || hydratingInFlightRef.current.has(storeId)) return;
+    hydratingInFlightRef.current.add(storeId);
+    setHydratingStoreId(storeId);
+    try {
       const resp = await ChannelSchemaService.generateChannelStepSchema({
         masterProductId,
         organizationId: orgId,
+        storeId,
       });
-      // Build the master product snapshot for the variant table.
-      // Backend now always returns masterProduct.variants from DB — no sessionStorage merge needed.
-      const backendSnap = resp.masterProduct ?? null;
-      if (backendSnap) {
-        setMasterProductSnapshot(backendSnap as MasterProductSnapshot);
-      }
+      const channel = resp.channels.find((c) => c.storeId === storeId) ?? resp.channels[0];
+      if (!channel) return;
+      if (resp.masterProduct) setMasterProductSnapshot(resp.masterProduct as MasterProductSnapshot);
 
-      // Initialize values from schema's currentValue
-      const initValues: Record<string, StoreFormValues> = {};
-      const initCompletion: Record<string, { pct: number; status: ChannelProductStatus }> = {};
-      for (const ch of resp.channels) {
-        initValues[ch.storeId] = extractInitialValues(ch);
-        initCompletion[ch.storeId] = {
-          pct: ch.completionPercentage,
-          status: ch.completionStatus,
-        };
-      }
+      const initVals = extractInitialValues(channel);
 
-      // Restore state that the schema API does not echo back via field.currentValue:
-      //   • channelData extras — option{n}_name / option{n}_values written by the
-      //     "Apply as variant options" panel (not schema fields, so no currentValue)
-      //   • variantOverrides extras — option1/option2/option3 per-SKU values written
-      //     by the same panel (schema currentOverrides may omit them when the backend
-      //     only returns pre-registered variant fields)
-      // Without this, navigating away and back clears the dynamic variant columns,
-      // their per-variant values, and the "Applied — Re-apply" button state.
-      try {
-        const savedStoreData = await ChannelProductDataService.getAllStoreData(masterProductId);
-        for (const saved of savedStoreData) {
-          if (!initValues[saved.storeId]) continue;
-
-          // ── channelData: restore extra keys missing from schema ──────────────
-          if (saved.channelData) {
-            const extracted = initValues[saved.storeId].channelData;
-            const extras: Record<string, unknown> = {};
-            for (const [key, val] of Object.entries(saved.channelData)) {
-              if (!(key in extracted) && val !== null && val !== undefined) {
-                extras[key] = val;
-              }
-            }
-            if (Object.keys(extras).length > 0) {
-              initValues[saved.storeId] = {
-                ...initValues[saved.storeId],
-                channelData: { ...extras, ...extracted },
-              };
-            }
-          }
-
-          // ── variantOverrides: restore per-SKU keys missing from currentOverrides ──
-          if (saved.variantOverrides) {
-            const extractedVariants = initValues[saved.storeId].variantOverrides;
-            const mergedVariants: Record<string, Record<string, unknown>> = { ...extractedVariants };
-            for (const [sku, savedSkuOverrides] of Object.entries(saved.variantOverrides)) {
-              if (!savedSkuOverrides || typeof savedSkuOverrides !== "object") continue;
-              const existing = mergedVariants[sku] ?? {};
-              const skuExtras: Record<string, unknown> = {};
-              for (const [key, val] of Object.entries(savedSkuOverrides as Record<string, unknown>)) {
-                if (!(key in existing) && val !== null && val !== undefined) {
-                  skuExtras[key] = val;
-                }
-              }
-              if (Object.keys(skuExtras).length > 0) {
-                mergedVariants[sku] = { ...skuExtras, ...existing };
-              }
-            }
-            initValues[saved.storeId] = {
-              ...initValues[saved.storeId],
-              variantOverrides: mergedVariants,
-            };
-          }
+      // Restore channelData / variantOverrides extras the schema doesn't echo back.
+      const savedStoreData = await getSavedStoreData();
+      const saved = savedStoreData.find((d) => d.storeId === storeId);
+      if (saved?.channelData) {
+        const extras: Record<string, unknown> = {};
+        for (const [key, val] of Object.entries(saved.channelData)) {
+          if (!(key in initVals.channelData) && val !== null && val !== undefined) extras[key] = val;
         }
-      } catch {
-        // Non-fatal — user can re-apply variant options manually
+        if (Object.keys(extras).length > 0) initVals.channelData = { ...extras, ...initVals.channelData };
+      }
+      if (saved?.variantOverrides) {
+        const merged: Record<string, Record<string, unknown>> = { ...initVals.variantOverrides };
+        for (const [sku, sov] of Object.entries(saved.variantOverrides)) {
+          if (!sov || typeof sov !== "object") continue;
+          const existing = merged[sku] ?? {};
+          const skuExtras: Record<string, unknown> = {};
+          for (const [key, val] of Object.entries(sov as Record<string, unknown>)) {
+            if (!(key in existing) && val !== null && val !== undefined) skuExtras[key] = val;
+          }
+          if (Object.keys(skuExtras).length > 0) merged[sku] = { ...skuExtras, ...existing };
+        }
+        initVals.variantOverrides = merged;
       }
 
-      // Pre-fill CATEGORY_TREE fields from ProductType.channelCategoryDefaults (Phase 5/6).
-      // Works for ALL treeCapable channels: Shopify, Shopee, Amazon, TikTok, eBay, Lazada, etc.
-      //   isLeaf=true  → set selectedPath + channelData value (committed, picker shows breadcrumb)
-      //   isLeaf=false → set preFillPath (pre-navigation hint, merchant must still pick leaf)
+      // Pre-fill CATEGORY_TREE from ProductType.channelCategoryDefaults.
       try {
         const sessionPtId =
-          typeof window !== "undefined"
-            ? sessionStorage.getItem(`productTypeId_${masterProductId}`)
-            : null;
-        const ptId = resp.masterProduct?.productTypeId ?? sessionPtId ?? null;
+          typeof window !== "undefined" ? sessionStorage.getItem(`productTypeId_${masterProductId}`) : null;
+        const ptId = resp.masterProduct?.productTypeId ?? productTypeIdRef.current ?? sessionPtId ?? null;
         if (ptId) {
           const pt = await ProductTypeService.get(ptId).catch(() => null);
-          if (pt && pt.channelCategoryDefaults.length > 0) {
-            const defaultByType = new Map(
-              pt.channelCategoryDefaults.map(d => [normaliseChannelType(d.channelType), d])
-            );
-
-            for (const ch of resp.channels) {
-              const normType = normaliseChannelType(ch.channelType);
-              const def = defaultByType.get(normType);
-              if (!def) continue;
-
-              const categoryField = ch.sections
-                .flatMap(s => s.fields ?? [])
-                .find(f => f.fieldType === "CATEGORY_TREE");
-              if (!categoryField?.categoryTreeConfig) continue;
-
-              const fn = categoryField.fieldName;
-              const existingValue = initValues[ch.storeId]?.channelData[fn];
-              if (existingValue) continue;
-
+          const def = pt?.channelCategoryDefaults
+            ?.find((d) => normaliseChannelType(d.channelType) === normaliseChannelType(channel.channelType));
+          if (def) {
+            const categoryField = channel.sections.flatMap((s) => s.fields ?? []).find((f) => f.fieldType === "CATEGORY_TREE");
+            if (categoryField?.categoryTreeConfig && !initVals.channelData[categoryField.fieldName]) {
               const pathNodes = buildPathNodes(def.categoryId, def.categoryFullPath, def.isLeaf);
-
               if (def.isLeaf) {
                 categoryField.categoryTreeConfig.selectedPath = pathNodes;
-                initValues[ch.storeId] = {
-                  ...initValues[ch.storeId],
-                  channelData: {
-                    ...initValues[ch.storeId]?.channelData,
-                    [fn]: def.categoryId,
-                  },
-                };
+                initVals.channelData = { ...initVals.channelData, [categoryField.fieldName]: def.categoryId };
               } else {
                 categoryField.categoryTreeConfig.preFillPath = pathNodes;
               }
@@ -283,51 +241,105 @@ export default function ChannelFieldsWizard({ masterProductId }: Props) {
         // Non-fatal — merchant can browse manually
       }
 
-      // Restore selectedPath for CATEGORY_TREE fields that already have a saved category.
-      // When navigating from My Products → channel-fields, the schema is freshly fetched.
-      // The backend embeds categoryAttributeSection (with categoryName + categoryPath) when
-      // a category is already saved — use those labels to reconstruct the breadcrumb so
-      // CategoryTreePicker shows "Apparel › Clothing › Shirts" instead of the raw GID.
-      for (const ch of resp.channels) {
-        if (!ch.categoryAttributeSection) continue;
-        const { categoryId, categoryName, categoryPath } = ch.categoryAttributeSection;
-        const categoryField = ch.sections
-          .flatMap(s => s.fields ?? [])
-          .find(f => f.fieldType === "CATEGORY_TREE");
-        if (!categoryField?.categoryTreeConfig) continue;
-        if (categoryField.categoryTreeConfig.selectedPath?.length) continue;
-        // Skip when backend didn't resolve name (name === id = raw GID).
-        // CategoryTreePicker will resolve via search endpoint instead.
-        const nameIsUnresolved = categoryName === categoryId;
-        if (nameIsUnresolved) continue;
-        const ancestorNodes = (categoryPath ?? []).map((name, i) => ({
-          id: `__ancestor_${i}_${name}`,
-          name,
-          hasChildren: true,
-        }));
-        const leafNode = { id: categoryId, name: categoryName, hasChildren: false };
-        categoryField.categoryTreeConfig.selectedPath = [...ancestorNodes, leafNode];
+      // Restore selectedPath from categoryAttributeSection (already-saved category).
+      if (channel.categoryAttributeSection) {
+        const { categoryId, categoryName, categoryPath } = channel.categoryAttributeSection;
+        const categoryField = channel.sections.flatMap((s) => s.fields ?? []).find((f) => f.fieldType === "CATEGORY_TREE");
+        if (
+          categoryField?.categoryTreeConfig &&
+          !categoryField.categoryTreeConfig.selectedPath?.length &&
+          categoryName !== categoryId
+        ) {
+          const ancestorNodes = (categoryPath ?? []).map((name, i) => ({ id: `__ancestor_${i}_${name}`, name, hasChildren: true }));
+          categoryField.categoryTreeConfig.selectedPath = [...ancestorNodes, { id: categoryId, name: categoryName, hasChildren: false }];
+        }
       }
 
-      // Set schema AFTER restoring saved state so field values are visible to CategoryTreePicker
-      setSchemaResponse(resp);
-      setStoreValues(initValues);
-      setStoreCompletion(initCompletion);
-
-      // Jump to the store specified by ?storeId= (e.g. clicked "Set up & publish" on a specific store)
-      if (targetStoreId) {
-        const idx = resp.channels.findIndex(ch => ch.storeId === targetStoreId);
-        if (idx > 0) setActiveStoreIndex(idx);
-      }
+      hydratedRef.current.add(storeId);
+      setSchemaResponse((prev) =>
+        prev
+          ? {
+              ...prev,
+              masterProduct: resp.masterProduct ?? prev.masterProduct,
+              channels: prev.channels.map((c) => (c.storeId === storeId ? channel : c)),
+            }
+          : prev,
+      );
+      setStoreValues((prev) => ({ ...prev, [storeId]: initVals }));
+      setStoreCompletion((prev) => ({
+        ...prev,
+        [storeId]: { pct: channel.completionPercentage, status: channel.completionStatus },
+      }));
     } catch (err) {
       setLoadError(err instanceof Error ? err.message : "Failed to load channel schema");
       setLoadErrorCode(err instanceof ChannelApiError ? err.code ?? null : null);
     } finally {
+      hydratingInFlightRef.current.delete(storeId);
+      setHydratingStoreId((cur) => (cur === storeId ? null : cur));
+    }
+  }, [masterProductId, orgId, getSavedStoreData]);
+
+  // Load the lightweight store list (renders the tab bar instantly, O(1)), then
+  // hydrate the active store's schema. Full per-store schemas load lazily on tab switch.
+  const loadStoreList = useCallback(async () => {
+    if (!orgId) return;
+    setLoading(true);
+    setLoadError(null);
+    setLoadErrorCode(null);
+    hydratedRef.current = new Set();
+    savedStoreDataRef.current = null;
+    const ZERO_STATS = {
+      requiredTotal: 0, requiredFilled: 0, channelRequiredTotal: 0, channelRequiredFilled: 0,
+      categoryRequiredTotal: 0, categoryRequiredFilled: 0, recommendedTotal: 0, recommendedFilled: 0,
+    };
+    try {
+      const list = await ChannelSchemaService.getChannelStepStores(masterProductId, orgId);
+      productTypeIdRef.current = list.productTypeId ?? null;
+
+      const skeleton: ChannelStepSchemaResponse = {
+        step: 2,
+        masterProductId,
+        channels: list.stores.map((s) => ({
+          channelType: s.channelType,
+          storeId: s.storeId,
+          storeName: s.storeName,
+          storeUrl: s.storeUrl,
+          displayOrder: s.displayOrder,
+          completionStatus: s.completionStatus,
+          completionPercentage: s.completionPercentage,
+          sections: [],
+          completionStats: s.completionStats ?? ZERO_STATS,
+        })),
+      };
+
+      const comp: Record<string, { pct: number; status: ChannelProductStatus }> = {};
+      for (const s of list.stores) comp[s.storeId] = { pct: s.completionPercentage, status: s.completionStatus };
+
+      let activeIdx = 0;
+      if (targetStoreId) {
+        const i = list.stores.findIndex((s) => s.storeId === targetStoreId);
+        if (i >= 0) activeIdx = i;
+      }
+
+      setStoreCompletion(comp);
+      setActiveStoreIndex(activeIdx);
+      setSchemaResponse(skeleton);
+      setLoading(false);
+      // The activeStoreIndex effect below hydrates the active store (dedup-guarded).
+    } catch (err) {
+      setLoadError(err instanceof Error ? err.message : "Failed to load channel schema");
+      setLoadErrorCode(err instanceof ChannelApiError ? err.code ?? null : null);
       setLoading(false);
     }
-  }, [masterProductId, orgId]);
+  }, [masterProductId, orgId, targetStoreId]);
 
-  useEffect(() => { loadSchema(); }, [loadSchema]);
+  useEffect(() => { loadStoreList(); }, [loadStoreList]);
+
+  // Hydrate whenever the active store changes (tab switch) — cached after first fetch.
+  useEffect(() => {
+    const ch = schemaResponse?.channels[activeStoreIndex];
+    if (ch && !hydratedRef.current.has(ch.storeId)) hydrateStore(ch.storeId);
+  }, [activeStoreIndex, schemaResponse, hydrateStore]);
 
   // Cleanup timers on unmount
   useEffect(() => {
@@ -491,9 +503,14 @@ export default function ChannelFieldsWizard({ masterProductId }: Props) {
       })
     );
     // If no store defines any required fields, always allow continuation.
+    // With lazy per-store schema, non-active stores may not be hydrated — so also
+    // honour the saved/live completion from the store list (a store at 100% is
+    // complete even if its schema isn't loaded in this session).
+    const anyStoreCompleteByCompletion = Object.values(storeCompletion).some((c) => (c?.pct ?? 0) >= 100);
     const hasCompleteStore =
       storesWithRequired.length === 0 ||
-      storesWithRequired.some((ch) => !missingByStore[ch.storeId]);
+      storesWithRequired.some((ch) => !missingByStore[ch.storeId]) ||
+      anyStoreCompleteByCompletion;
     if (!hasCompleteStore) {
       // Highlight missing fields in the active tab
       const activeErrors = missingFieldNamesByStore[activeChannel.storeId];
@@ -544,6 +561,9 @@ export default function ChannelFieldsWizard({ masterProductId }: Props) {
     if (!schemaResponse) return {} as Record<string, number>;
     const result: Record<string, number> = {};
     for (const ch of schemaResponse.channels) {
+      // Not-yet-hydrated store (lazy): no sections loaded. Skip so the tab bar falls
+      // back to the saved/list completion (storeCompletion) instead of a false 100%.
+      if (ch.sections.length === 0) continue;
       const channelData = storeValues[ch.storeId]?.channelData ?? {};
       const variantOverrides = storeValues[ch.storeId]?.variantOverrides ?? {};
       let required = 0, filled = 0;
@@ -605,7 +625,7 @@ export default function ChannelFieldsWizard({ masterProductId }: Props) {
             Ke Step 1: Master Product
           </Link>
           <button
-            onClick={loadSchema}
+            onClick={loadStoreList}
             className="px-4 py-2 rounded-lg text-sm font-medium bg-warning-100 dark:bg-warning-500/20 text-warning-700 dark:text-warning-400 hover:bg-warning-200 transition-colors"
           >
             Coba lagi
@@ -621,7 +641,7 @@ export default function ChannelFieldsWizard({ masterProductId }: Props) {
         <p className="font-medium text-error-700 dark:text-error-400">Failed to load channel schema</p>
         <p className="text-sm text-error-600 dark:text-error-300 mt-1">{loadError}</p>
         <button
-          onClick={loadSchema}
+          onClick={loadStoreList}
           className="mt-3 px-4 py-2 rounded-lg text-sm font-medium bg-error-100 dark:bg-error-500/20 text-error-700 dark:text-error-400 hover:bg-error-200 transition-colors"
         >
           Retry
@@ -715,16 +735,26 @@ export default function ChannelFieldsWizard({ masterProductId }: Props) {
           </div>
           <ChannelTypeBadge channelType={activeChannel.channelType} />
         </div>
-        <ChannelStoreTab
-          schema={activeChannel}
-          values={activeValues}
-          onChange={(vals) => handleValuesChange(activeStoreId, activeChannel, vals)}
-          isSaving={savingStoreId === activeStoreId}
-          lastSaved={lastSaved[activeStoreId]}
-          masterProduct={masterProductSnapshot ?? undefined}
-          fieldErrors={activeTabFieldErrors}
-          orgId={orgId}
-        />
+        {activeChannel.sections.length === 0 ? (
+          // Schema for this store is still loading (lazy per-store fetch).
+          <div className="flex flex-col items-center justify-center py-16 text-center">
+            <div className="h-8 w-8 rounded-full border-2 border-brand-500 border-t-transparent animate-spin mb-3" />
+            <p className="text-sm text-gray-500 dark:text-gray-400">
+              {hydratingStoreId === activeStoreId ? "Memuat field channel…" : "Menyiapkan…"}
+            </p>
+          </div>
+        ) : (
+          <ChannelStoreTab
+            schema={activeChannel}
+            values={activeValues}
+            onChange={(vals) => handleValuesChange(activeStoreId, activeChannel, vals)}
+            isSaving={savingStoreId === activeStoreId}
+            lastSaved={lastSaved[activeStoreId]}
+            masterProduct={masterProductSnapshot ?? undefined}
+            fieldErrors={activeTabFieldErrors}
+            orgId={orgId}
+          />
+        )}
       </div>
 
       {/* Navigation */}
