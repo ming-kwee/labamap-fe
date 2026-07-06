@@ -57,7 +57,8 @@ export interface GenerateJoltResult {
   confidenceScore?: number;
   proposedJoltSpec?: unknown; // AUTO_APPLIED now includes this (addendum §1)
   joltSpecId?: string; // id of the written spec when AUTO_APPLIED
-  explanation?: string;
+  /** May be a plain string OR a structured object (e.g. {rules, designDecisions, limitations}). */
+  explanation?: string | Record<string, unknown>;
   validationSummary?: unknown;
   agentSessionId?: string;
   errorMessage?: string;

@@ -62,6 +62,53 @@ const STATUS_META: Record<string, { tone: Tone; label: string; desc: string }> =
   AGENT_FAILED: { tone: "red", label: "Agent failed", desc: "Agent tidak menghasilkan spec (lihat penyebab)." },
 };
 
+const labelize = (k: string) =>
+  k.replace(/[_-]/g, " ").replace(/([a-z])([A-Z])/g, "$1 $2").replace(/^./, (c) => c.toUpperCase());
+
+/**
+ * The agent's `explanation` may arrive as a plain string OR a structured object
+ * (e.g. {rules, designDecisions, limitations}), where each value is a string or a
+ * list. Render both shapes safely — never render a raw object as a React child.
+ */
+function ExplanationBlock({ explanation }: { explanation?: string | Record<string, unknown> }) {
+  if (explanation == null) return null;
+  if (typeof explanation === "string") {
+    return explanation.trim()
+      ? <p className="text-xs text-gray-700 dark:text-gray-300 mt-2 whitespace-pre-wrap">{explanation}</p>
+      : null;
+  }
+  if (typeof explanation !== "object") {
+    return <p className="text-xs text-gray-700 dark:text-gray-300 mt-2">{String(explanation)}</p>;
+  }
+  const entries = Object.entries(explanation).filter(
+    ([, v]) => v != null && (Array.isArray(v) ? v.length > 0 : String(v).trim().length > 0),
+  );
+  if (entries.length === 0) return null;
+  return (
+    <div className="mt-2 space-y-2">
+      {entries.map(([key, val]) => (
+        <div key={key}>
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">{labelize(key)}</p>
+          {Array.isArray(val) ? (
+            <ul className="mt-0.5 space-y-0.5">
+              {val.map((item, i) => (
+                <li key={i} className="text-xs text-gray-700 dark:text-gray-300 flex gap-1.5">
+                  <span className="text-gray-400 flex-shrink-0">•</span>
+                  <span>{typeof item === "string" ? item : JSON.stringify(item)}</span>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="text-xs text-gray-700 dark:text-gray-300 whitespace-pre-wrap">
+              {typeof val === "string" ? val : JSON.stringify(val)}
+            </p>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export default function JoltGenerationConsole() {
   const [channelId, setChannelId] = useState("shopify");
   const [categoryId, setCategoryId] = useState("clothing");
@@ -290,7 +337,7 @@ export default function JoltGenerationConsole() {
                   )}
                 </div>
                 <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">{meta.desc}</p>
-                {result.explanation && <p className="text-xs text-gray-700 dark:text-gray-300 mt-2">{result.explanation}</p>}
+                <ExplanationBlock explanation={result.explanation} />
               </Card>
 
               {isFailed && errClass && (

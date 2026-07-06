@@ -47,4 +47,40 @@ test.describe("P1-F · long-run robustness", () => {
     await expect(page.getByText(/Dibatalkan/)).toBeVisible();
     await expect(page.getByRole("button", { name: /Jalankan Agent/ })).toBeVisible();
   });
+
+  test("renders a STRUCTURED explanation object without crashing (not [object Object])", async ({ page }) => {
+    const pageErrors: string[] = [];
+    page.on("pageerror", (e) => pageErrors.push(e.message));
+
+    await page.route("**/admin/ai/sessions?**", (r) =>
+      r.fulfill(json(page1([{ id: "ok", triggerType: "JOLT_GENERATION", channelId: "shopify", status: "COMPLETED", createdAt: "2026-07-03T10:00:00" }]))),
+    );
+    // Backend may return explanation as an object {rules, designDecisions, limitations}
+    // instead of a string — the console must render it, not throw "Objects are not
+    // valid as a React child".
+    await page.route("**/admin/ai/generate-jolt**", (route) =>
+      route.fulfill(json({
+        status: "AUTO_APPLIED",
+        confidenceScore: 0.95,
+        proposedJoltSpec: [{ operation: "shift" }],
+        joltSpecId: "spec-1",
+        explanation: {
+          rules: ["Map name → product.title", "Map price → variants[0].price"],
+          designDecisions: "Used Shopify taxonomy for category.",
+          limitations: ["Brand not verified"],
+        },
+      })),
+    );
+
+    await page.goto("/platform-admin/ai-generate");
+    await page.getByRole("button", { name: /Jalankan Agent/ }).click();
+
+    // Structured explanation renders its content (no crash, no [object Object]).
+    // Assert on the unique values (labels like "Rules" clash with the sidebar).
+    await expect(page.getByText("Map name → product.title")).toBeVisible();
+    await expect(page.getByText("Used Shopify taxonomy for category.")).toBeVisible();
+    await expect(page.getByText("Brand not verified")).toBeVisible();
+    await expect(page.getByText(/\[object Object\]/)).toHaveCount(0);
+    expect(pageErrors).toEqual([]);
+  });
 });
