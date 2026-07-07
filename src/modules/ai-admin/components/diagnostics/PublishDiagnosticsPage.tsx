@@ -78,6 +78,101 @@ const TIER_META: Array<{ key: keyof AdaptivePatternMatchingResponse["matchingMet
   { key: "patternMatches", label: "Pattern", band: "~75%", tone: "violet" },
 ];
 
+// ─── JOLT readiness parsing → table ───────────────────────────────────────────
+// Backend emits readiness as flat warning strings; parse the known shapes into
+// tidy rows so the diagnostics table is readable instead of a raw log dump.
+type ReadinessLevel = "ok" | "warn" | "error" | "info";
+interface ReadinessRow { level: ReadinessLevel; primary: string; secondary?: string }
+
+const READINESS_TONE: Record<ReadinessLevel, Tone> = { ok: "green", warn: "amber", error: "red", info: "gray" };
+const READINESS_LABEL: Record<ReadinessLevel, string> = { ok: "OK", warn: "Peringatan", error: "Error", info: "Info" };
+const READINESS_MARK: Record<ReadinessLevel, string> = { ok: "✓", warn: "⚠", error: "✗", info: "ℹ" };
+
+const CONFLICT_RE = /\[JOLT-CONFLICT (ERROR|WARNING)\]\s+target='([^']+)'\s+sources=\[([^\]]+)\]\s*[—-]*\s*(.*)/;
+
+function parseReadiness(warnings: string[]): {
+  overall: "READY" | "WARNINGS" | "NOT_READY" | null;
+  rows: ReadinessRow[];
+} {
+  let overall: "READY" | "WARNINGS" | "NOT_READY" | null = null;
+  const rows: ReadinessRow[] = [];
+  for (const raw of warnings) {
+    const w = (raw ?? "").trim();
+    if (!w) continue;
+    if (w.includes("[JOLT-READINESS]")) {
+      overall = w.includes("NOT_READY") ? "NOT_READY" : w.includes("WARNINGS") ? "WARNINGS" : w.includes("READY") ? "READY" : overall;
+      continue;
+    }
+    const c = CONFLICT_RE.exec(w);
+    if (c) {
+      const [, sev, target, sources, desc] = c;
+      rows.push({
+        level: sev === "ERROR" ? "error" : "warn",
+        primary: `Konflik target: ${target}`,
+        secondary: `${desc ? desc + " · " : ""}sources: ${sources}`,
+      });
+      continue;
+    }
+    if (w.startsWith("✓")) { rows.push({ level: "ok", primary: w.replace(/^✓\s*/, "") }); continue; }
+    if (w.startsWith("⚠")) { rows.push({ level: "warn", primary: w.replace(/^⚠\s*/, "") }); continue; }
+    if (w.startsWith("✗")) { rows.push({ level: "error", primary: w.replace(/^✗\s*/, "") }); continue; }
+    // Unrecognised info line (unmapped %, injected fields, persistence, etc.).
+    const lower = w.toLowerCase();
+    const level: ReadinessLevel = lower.includes("not persisted") || lower.includes("error") ? "error" : lower.includes("warn") ? "warn" : "info";
+    rows.push({ level, primary: w });
+  }
+  return { overall, rows };
+}
+
+function ReadinessTable({ warnings }: { warnings: string[] }) {
+  const { overall, rows } = parseReadiness(warnings);
+  const overallMeta =
+    overall === "READY" ? { tone: "green" as Tone, label: "READY" }
+    : overall === "WARNINGS" ? { tone: "amber" as Tone, label: "WARNINGS" }
+    : overall === "NOT_READY" ? { tone: "red" as Tone, label: "NOT READY" }
+    : null;
+
+  return (
+    <div className="space-y-3">
+      {overallMeta && (
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-gray-500 dark:text-gray-400">Status keseluruhan:</span>
+          <Badge tone={overallMeta.tone} dot>{overallMeta.label}</Badge>
+        </div>
+      )}
+      {rows.length > 0 ? (
+        <div className="overflow-hidden rounded-lg border border-gray-200 dark:border-gray-700">
+          <table className="w-full">
+            <thead className="bg-gray-50 dark:bg-gray-800/50">
+              <tr className="text-left">
+                <th className="px-3 py-2 text-[11px] font-medium text-gray-500 dark:text-gray-400 w-32">Status</th>
+                <th className="px-3 py-2 text-[11px] font-medium text-gray-500 dark:text-gray-400">Pemeriksaan</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r, i) => (
+                <tr key={i} className="border-t border-gray-100 dark:border-gray-800 align-top">
+                  <td className="px-3 py-2 whitespace-nowrap">
+                    <Badge tone={READINESS_TONE[r.level]}>{READINESS_MARK[r.level]} {READINESS_LABEL[r.level]}</Badge>
+                  </td>
+                  <td className="px-3 py-2">
+                    <p className="text-xs text-gray-700 dark:text-gray-300">{r.primary}</p>
+                    {r.secondary && (
+                      <p className="text-[11px] text-gray-400 dark:text-gray-500 mt-0.5 font-mono break-all">{r.secondary}</p>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        !overallMeta && <p className="text-xs text-gray-400">Tidak ada catatan kesiapan.</p>
+      )}
+    </div>
+  );
+}
+
 type Mode = "product" | "json";
 
 export default function PublishDiagnosticsPage() {
@@ -454,18 +549,10 @@ function DiagnosticsResult({ result, channelId }: { result: AdaptivePatternMatch
         </div>
       </SectionCard>
 
-      {/* JOLT readiness */}
+      {/* JOLT readiness — parsed into a readable table (status + check) */}
       {(md?.warnings?.length ?? 0) > 0 && (
         <SectionCard title="JOLT readiness" subtitle="hasil cek kesiapan + konflik">
-          <div className="space-y-1">
-            {md!.warnings!.map((w, i) => {
-              const tone = w.includes("NOT_READY") || w.startsWith("✗") || w.includes("ERROR")
-                ? "text-red-600 dark:text-red-400"
-                : w.includes("WARNINGS") || w.startsWith("⚠") ? "text-amber-600 dark:text-amber-400"
-                : w.startsWith("✓") ? "text-green-600 dark:text-green-400" : "text-gray-500 dark:text-gray-400";
-              return <p key={i} className={`text-xs font-mono ${tone}`}>{w}</p>;
-            })}
-          </div>
+          <ReadinessTable warnings={md!.warnings!} />
         </SectionCard>
       )}
 

@@ -21,7 +21,12 @@ const ANALYZE_RESULT = {
   matchingMetadata: {
     knowledgeBasedMatches: 1, semanticMatches: 1, similarityMatches: 0, patternMatches: 0,
     totalMatches: 2, processingTimeMs: 143,
-    warnings: ["[JOLT-READINESS] Overall: READY", "✓ All required fields mapped"],
+    warnings: [
+      "[JOLT-READINESS] Overall: WARNINGS",
+      "✓ All required fields mapped",
+      "⚠ 2 optional fields unmapped",
+      "[JOLT-CONFLICT ERROR] target='product.title' sources=[name, seo_title] — multiple sources map to one target",
+    ],
   },
   // cascade block → APM resolved it (no escalation)
   escalatedToAgent: false,
@@ -63,9 +68,16 @@ test.describe("Publish Diagnostics", () => {
     // Field mappings table.
     await expect(page.getByText(/Field mappings \(2\)/)).toBeVisible();
     await expect(page.getByText("product.variants[0].grams")).toBeVisible();
-    // Unmapped + JOLT readiness.
+    // Unmapped section.
     await expect(page.getByText("Unmapped fields")).toBeVisible();
-    await expect(page.getByText(/JOLT-READINESS/)).toBeVisible();
+
+    // JOLT readiness rendered as a parsed TABLE (not a raw log dump):
+    // overall status badge + parsed rows; raw "[JOLT-READINESS]" text is gone.
+    await expect(page.getByText("Status keseluruhan:")).toBeVisible();
+    await expect(page.getByText(/JOLT-READINESS/)).toHaveCount(0); // parsed, not dumped
+    await expect(page.getByRole("cell", { name: "All required fields mapped" })).toBeVisible();
+    await expect(page.getByText(/Konflik target: product\.title/)).toBeVisible();
+    await expect(page.getByText(/sources: name, seo_title/)).toBeVisible();
 
     expect(pageErrors).toEqual([]);
   });
