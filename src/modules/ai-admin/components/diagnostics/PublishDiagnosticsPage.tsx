@@ -32,6 +32,7 @@ import {
 import { MasterProductService } from "@/app/(admin)/products/_services/master-product.service";
 import { useAuth } from "@/shared/contexts/AuthContext";
 import { CascadeOutcomeBadge } from "../shared/CascadeOutcomeBadge";
+import { ProductTypeSampleLoader } from "../shared/ProductTypeSampleLoader";
 import { ActivityIcon, GitBranchIcon, PlayIcon, RefreshIcon, SearchIcon, TerminalIcon } from "../shared/icons";
 import {
   Badge,
@@ -448,8 +449,10 @@ export default function PublishDiagnosticsPage() {
               <div>
                 <div className="flex items-center justify-between mb-1">
                   <label className="text-xs text-gray-500 dark:text-gray-400">Master product (JSON)</label>
-                  <button onClick={() => setProductText(JSON.stringify(SAMPLE_PRODUCT, null, 2))} className="text-[11px] text-blue-500 hover:underline">reset ke contoh</button>
+                  <button onClick={() => setProductText(JSON.stringify(SAMPLE_PRODUCT, null, 2))} className="text-[11px] text-blue-500 hover:underline">reset ke contoh statis</button>
                 </div>
+                {/* Seed from a real Product Type's fields (not a blind hardcoded example). */}
+                <ProductTypeSampleLoader onLoaded={setProductText} className="mb-2" />
                 <textarea
                   value={productText}
                   onChange={(e) => setProductText(e.target.value)}

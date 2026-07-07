@@ -118,6 +118,19 @@ export const AiAdminService = {
   },
 
   /**
+   * Sample master product derived from a Product Type's master attributes — used to
+   * seed the "Master Product (JSON)" input in the JOLT Generation Console and Publish
+   * Diagnostics (instead of a hardcoded/blind example). Values are synthetic; the
+   * accurate part is the field names & structure (what matching uses).
+   * GET /admin/ai/sample-master-product?productTypeId=
+   * 404 (AiApiError kind "not_found") when the Product Type has no active master
+   * attributes — surface the message, do NOT fall back to a hardcoded example.
+   */
+  getSampleMasterProduct(productTypeId: string): Promise<Record<string, unknown>> {
+    return request<Record<string, unknown>>(`${BASE}/sample-master-product${buildQs({ productTypeId })}`);
+  },
+
+  /**
    * Runtime kill-switch for AI Mapping Enrichment (addendum §8.4).
    * PUT /admin/ai/config/enrich-mappings?enabled= → { enrichMappings, scope, note }.
    * scope="runtime": reverts to AI_ENRICH_MAPPINGS on restart.

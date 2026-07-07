@@ -17,6 +17,7 @@ import { AiApiError } from "../../types/common";
 import { GenerateJoltResult } from "../../types/session";
 import { AiAdminService } from "../../services/aiAdmin.service";
 import { PlayIcon, SparklesIcon, TerminalIcon } from "../shared/icons";
+import { ProductTypeSampleLoader } from "../shared/ProductTypeSampleLoader";
 import {
   Badge,
   Card,
@@ -250,8 +251,10 @@ export default function JoltGenerationConsole() {
           <div>
             <div className="flex items-center justify-between mb-1">
               <label className="text-xs text-gray-500 dark:text-gray-400">Master product (JSON)</label>
-              <button onClick={() => setProductText(SAMPLE_PRODUCT)} className="text-[11px] text-blue-500 hover:underline">reset ke contoh</button>
+              <button onClick={() => setProductText(SAMPLE_PRODUCT)} className="text-[11px] text-blue-500 hover:underline">reset ke contoh statis</button>
             </div>
+            {/* Seed from a real Product Type's fields (not a blind hardcoded example). */}
+            <ProductTypeSampleLoader onLoaded={setProductText} className="mb-2" />
             <textarea
               value={productText}
               onChange={(e) => setProductText(e.target.value)}

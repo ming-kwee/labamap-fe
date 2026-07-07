@@ -2,7 +2,7 @@
 
 **Date:** 2026-07-04
 **Author:** Frontend Team
-**Status:** 🔴 Open — backend data-integrity / query bug.
+**Status:** ✅ FIXED (backend, 2026-07-04) — query hardened across all 4 request-path callers; needs rebuild+restart to go live. See §8.
 **Severity:** High — blocks Step 2 (Channel Fields) for any product **once it has a Product Type**, whenever the org has a duplicated channel record. Surfaces right after the `PRODUCT_TYPE_MISSING` fix (see the sibling report — that one is resolved).
 **Endpoint:** `POST /api/v1/ecommerce/form-schema/channel-step`
 
@@ -94,3 +94,38 @@ never sent in `productData`) — fixed 2026-07-04. That fix is what exposes this
 | Actual | `500` — `IncorrectResultSizeDataAccessException` on `{ channelId: "shopify" }` |
 | Expected | schema built, or a hardened query / unique index preventing the duplicate |
 | Scope | org-level (affects all products for the duplicated channel), not product-scoped |
+
+---
+
+## 8. Backend fix applied (2026-07-04)
+
+**Confirmed root cause (live):** `GET /api/v1/channels` (active-only) shows **one** `shopify`, yet
+`channel-step` 500s on `{channelId:"shopify"} non unique`. Reason: the schema builder used
+`ChannelService.getChannelById` → `ChannelConfigurationRepository.findByChannelId` — a **single-result**
+query with **no `isActive` filter** → it returns the active config **plus** the leftover deactivated
+duplicate(s) → `IncorrectResultSizeDataAccessException` → 500.
+
+Why a deactivated duplicate exists: `ChannelConfigurationDedupMigration` (@Order 1) is **non-destructive**
+— it keeps the newest as active and **deactivates** the rest (audit-safe, does not delete). So there is
+exactly ≤1 *active* config, but ≥1 *inactive* duplicate can linger — which the non-active-filtered
+`findByChannelId` trips over.
+
+**Fix (query hardening, per request §5.2 — tolerate multiples deterministically):**
+- New `ChannelConfigurationRepository.findAllByChannelId(channelId)` → `Flux` (all matches).
+- New `ChannelService.resolveChannelConfig(channelId)` → reads all, sorts **active-first**, takes
+  `.next()` → a single deterministic result that **never throws on duplicates** (picks the active one).
+- Swapped **all 4 request-path callers** off `getChannelById` → `resolveChannelConfig`:
+  `ChannelStepSchemaService` (the reported one), `ChannelProductDataService` (save Step 2 values),
+  `ChannelStoreConnectionService` (connect store), `MerchantDataController` (merchant options) —
+  the same latent 500 lived in all four for any duplicated channel.
+
+**Data note:** the inactive duplicate is left in place (harmless now the query tolerates it); the
+existing DedupMigration continues to guarantee ≤1 active. No unique index was added because `channelId`
+is intentionally non-unique across org-specific vs system-default configs.
+
+**New contract:** `channel-step` returns **200** with the schema even when a duplicate channel row
+exists. (Typed 4xx from the sibling fix — 404 unknown product / 422 PRODUCT_TYPE_MISSING — unchanged.)
+
+**Verification:** compile-clean; full Spring context loads (`AdaptivePatternBeanTest`). Live root cause
+confirmed on the old build (`channel-step` for `test 1` with its now-valid productType → 500 non-unique,
+while `/channels` shows a single active shopify). Live re-test of the 200 result pending rebuild+restart.
