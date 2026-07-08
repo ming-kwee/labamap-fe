@@ -115,7 +115,7 @@ export default function AddEditSchemaModal({
                     value={categorySlug}
                     onChange={(e) => setCategorySlug(e.target.value.toLowerCase().replace(/\s+/g, "_"))}
                     required
-                    placeholder="e.g. electronics, clothing, food"
+                    placeholder="e.g. electronics, clothing, jewelry, baby"
                     className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>

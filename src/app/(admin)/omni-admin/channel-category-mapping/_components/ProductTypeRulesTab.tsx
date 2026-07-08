@@ -272,6 +272,16 @@ export function ProductTypeRulesTab({ stores, storesLoading, orgId }: Props) {
                     {/* ProductType name */}
                     <td className="px-4 py-3 border-r border-r-gray-100 dark:border-r-gray-800">
                       <p className="text-sm font-semibold text-gray-900 dark:text-white">{pt.name}</p>
+                      {/* Derived internal category anchor (Phase 0A) — distinct from the
+                          per-channel native categories set to the right. */}
+                      {pt.categorySlug && (
+                        <span
+                          title="Kategori internal turunan (anchor). Berbeda dari kategori native channel di kanan."
+                          className="inline-block mt-0.5 text-[10px] font-mono text-purple-700 dark:text-purple-300 bg-purple-50 dark:bg-purple-500/10 border border-purple-100 dark:border-purple-500/20 px-1.5 py-0.5 rounded"
+                        >
+                          {pt.categorySlug}
+                        </span>
+                      )}
                       {pt.description && (
                         <p className="text-[11px] text-gray-400 dark:text-gray-500 mt-0.5 truncate max-w-[180px]">
                           {pt.description}

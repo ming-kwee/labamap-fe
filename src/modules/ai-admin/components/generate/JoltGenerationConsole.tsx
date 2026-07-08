@@ -16,6 +16,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { AiApiError } from "../../types/common";
 import { GenerateJoltResult } from "../../types/session";
 import { AiAdminService } from "../../services/aiAdmin.service";
+import type { ProductType } from "@/app/(admin)/omni-admin/product-types/_types/product-type";
 import { PlayIcon, SparklesIcon, TerminalIcon } from "../shared/icons";
 import { ProductTypeSampleLoader } from "../shared/ProductTypeSampleLoader";
 import {
@@ -113,6 +114,7 @@ function ExplanationBlock({ explanation }: { explanation?: string | Record<strin
 export default function JoltGenerationConsole() {
   const [channelId, setChannelId] = useState("shopify");
   const [categoryId, setCategoryId] = useState("clothing");
+  const [productType, setProductType] = useState<ProductType | null>(null);
   const [productText, setProductText] = useState(SAMPLE_PRODUCT);
   const [running, setRunning] = useState(false);
   const [result, setResult] = useState<GenerateJoltResult | null>(null);
@@ -186,7 +188,17 @@ export default function JoltGenerationConsole() {
 
     try {
       const product = JSON.parse(productText);
-      setResult(await AiAdminService.generateJolt({ channelId, categoryId, product }, controller.signal));
+      // Phase 0B: when a Product Type is picked, pass its id — backend derives the
+      // category from ProductType.categorySlug; the manual categoryId is a fallback.
+      setResult(await AiAdminService.generateJolt(
+        {
+          channelId,
+          categoryId: categoryId.trim() || productType?.categorySlug || "",
+          productTypeId: productType?.id,
+          product,
+        },
+        controller.signal,
+      ));
     } catch (e) {
       if (e instanceof AiApiError && e.kind === "aborted") {
         setError(
@@ -242,19 +254,33 @@ export default function JoltGenerationConsole() {
               </select>
             </div>
             <div>
-              <label className="text-xs text-gray-500 dark:text-gray-400">Category ID</label>
-              <input value={categoryId} onChange={(e) => setCategoryId(e.target.value)} placeholder="mis. clothing"
+              <label className="text-xs text-gray-500 dark:text-gray-400">
+                Category ID {productType ? "(override)" : ""}
+              </label>
+              <input value={categoryId} onChange={(e) => setCategoryId(e.target.value)}
+                placeholder={productType?.categorySlug ? `otomatis: ${productType.categorySlug}` : "mis. clothing"}
                 className="mt-1 w-full border border-gray-200 dark:border-gray-700 rounded-lg px-2.5 py-1.5 text-xs bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300" />
             </div>
           </div>
+
+          {/* Phase 0B: category derived from the selected Product Type (categoryId optional). */}
+          {productType && (
+            <p className="text-[11px] text-gray-500 dark:text-gray-400 -mt-1">
+              Kategori diturunkan dari Product Type <strong>{productType.name}</strong> →{" "}
+              <code className="font-mono text-violet-600 dark:text-violet-400">{productType.categorySlug ?? "default"}</code>
+              {categoryId.trim() && (
+                <> · di-override manual ke <code className="font-mono">{categoryId.trim()}</code></>
+              )}
+            </p>
+          )}
 
           <div>
             <div className="flex items-center justify-between mb-1">
               <label className="text-xs text-gray-500 dark:text-gray-400">Master product (JSON)</label>
               <button onClick={() => setProductText(SAMPLE_PRODUCT)} className="text-[11px] text-blue-500 hover:underline">reset ke contoh statis</button>
             </div>
-            {/* Seed from a real Product Type's fields (not a blind hardcoded example). */}
-            <ProductTypeSampleLoader onLoaded={setProductText} className="mb-2" />
+            {/* Seed from a real Product Type's fields — and drive category from its categorySlug. */}
+            <ProductTypeSampleLoader onLoaded={setProductText} onProductTypeChange={setProductType} className="mb-2" />
             <textarea
               value={productText}
               onChange={(e) => setProductText(e.target.value)}
@@ -297,7 +323,7 @@ export default function JoltGenerationConsole() {
           ) : (
             <button
               onClick={run}
-              disabled={!!jsonError || !categoryId.trim()}
+              disabled={!!jsonError || (!categoryId.trim() && !productType)}
               className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-violet-600 hover:bg-violet-700 text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-60"
             >
               <PlayIcon size={14} /> Jalankan Agent

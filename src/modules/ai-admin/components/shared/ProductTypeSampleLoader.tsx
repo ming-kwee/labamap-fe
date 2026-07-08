@@ -37,10 +37,17 @@ function compositionLabel(meta: SampleMasterProductMeta): string {
 
 export function ProductTypeSampleLoader({
   onLoaded,
+  onProductTypeChange,
   className = "",
 }: {
   /** Called with the pretty-printed sample JSON when a Product Type sample loads. */
   onLoaded: (json: string) => void;
+  /**
+   * Optional — called with the currently selected Product Type (or null when cleared)
+   * as the dropdown changes. Lets a caller drive category resolution from
+   * ProductType.categorySlug (Phase 0B) off the same picker used for sample seeding.
+   */
+  onProductTypeChange?: (pt: ProductType | null) => void;
   className?: string;
 }) {
   const [types, setTypes] = useState<ProductType[]>([]);
@@ -87,7 +94,11 @@ export function ProductTypeSampleLoader({
       <div className="flex items-center gap-2">
         <select
           value={selectedId}
-          onChange={(e) => { setSelectedId(e.target.value); setWarning(null); setMeta(null); }}
+          onChange={(e) => {
+            const id = e.target.value;
+            setSelectedId(id); setWarning(null); setMeta(null);
+            onProductTypeChange?.(types.find((t) => t.id === id) ?? null);
+          }}
           disabled={typesLoading}
           className="flex-1 min-w-0 border border-gray-200 dark:border-gray-700 rounded-lg px-2.5 py-1.5 text-xs bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300"
         >

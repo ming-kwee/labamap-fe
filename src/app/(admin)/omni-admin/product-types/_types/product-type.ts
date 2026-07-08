@@ -36,6 +36,13 @@ export interface ProductType {
   id: string;
   name: string;                          // "Kaos Pria"
   slug: string;                          // "kaos-pria"
+  /**
+   * Derived internal category anchor (Phase 0A, backend `bff-v8`). Many product types
+   * roll up to one category slug (N:1), e.g. apparel/footwear/bag → "clothing".
+   * Canonical source for category resolution in /publish/analyze & JOLT generation;
+   * omitted (undefined) on legacy docs that predate this field. "default" = catch-all.
+   */
+  categorySlug?: string;
   description?: string;
   inheritFromTypeId?: string | null;
   inheritFromTypeName?: string | null;
@@ -53,6 +60,7 @@ export interface ProductTypeDoc {
   _id?: string;
   name: string;
   slug: string;
+  categorySlug?: string;                 // Phase 0A — NON_NULL (omitted on legacy docs)
   description?: string;
   inheritFromTypeId?: string | null;
   inheritFromTypeName?: string | null;
@@ -85,6 +93,7 @@ export function docToProductType(doc: ProductTypeDoc): ProductType {
     id:                  r.id ?? r._id ?? "",
     name:                r.name ?? "",
     slug:                r.slug ?? "",
+    categorySlug:        r.categorySlug ?? undefined,
     description:         r.description ?? undefined,
     inheritFromTypeId:   r.inheritFromTypeId ?? null,
     inheritFromTypeName: r.inheritFromTypeName ?? null,

@@ -34,10 +34,29 @@ const ANALYZE_RESULT = {
 
 // Product-mode fixtures.
 const PRODUCTS = { content: [{ productId: "p-1", name: "Classic Cotton T-Shirt", basePrice: 19.99, variantCount: 2 }], totalElements: 1, totalPages: 1, page: 0, size: 200 };
-const PRODUCT_DETAIL = { id: "p-1", organizationId: "org-e7dac9f8-6353-4168-b9a1-6a7791d71b02", name: "Classic Cotton T-Shirt", sku: "ACME-1", basePrice: 19.99, currency: "USD", category: "clothing", variantCount: 2, variants: [], status: "ACTIVE", createdAt: "2026-01-01", updatedAt: "2026-01-01", channelDistribution: [] };
 const STORES = [
   { masterProductId: "p-1", storeId: "shopify-01", channelType: "shopify", organizationId: "o", status: "DRAFT", masterOverrides: { name: "Shopify Tee" }, channelData: { vendor: "Acme" }, variantOverrides: {}, completionPercentage: 100, readyToPublish: true, savedAt: "2026-01-01" },
 ];
+
+// Product-aware readiness report (POST /channels/publish/analyze). readyToPublish:false is a
+// valid 200 verdict — the report renders, it is not an error.
+const PUBLISH_ANALYSIS = {
+  masterProductId: "p-1",
+  storeId: "shopify-01",
+  channelType: "shopify",
+  categoryId: "clothing",
+  readyToPublish: false,
+  readinessScore: 75,
+  masterProduct: { source: "mongodb", found: true, fieldCount: 24, hasVariants: true, variantCount: 2 },
+  channelData: { step2DataFound: true, completionPercentage: 80, missingRequiredFields: ["material"] },
+  mergedData: { fieldCount: 31 },
+  adaptiveMapping: { status: "WARNING", overallConfidence: 88.0, totalMappings: 22, warnings: ["[MAPPING-CONFLICT] title"] },
+  joltSpec: { found: true, source: "adaptive_pattern_matching", operationCount: 5 },
+  transformation: { success: true, outputTopLevelKeys: ["product"], transformedData: { product: { title: "Shopify Tee" } } },
+  postProcessing: { ruleCount: 3, rules: [{ name: "r1", priority: 10 }] },
+  issues: [{ severity: "WARNING", category: "CHANNEL_DATA", field: "material", message: "Missing required field 'material'" }],
+  suggestions: ["Fill required field 'material' in Step 2"],
+};
 
 test.describe("Publish Diagnostics", () => {
   test.beforeEach(async ({ page }) => {
@@ -90,30 +109,38 @@ test.describe("Publish Diagnostics", () => {
     await expect(page.getByRole("button", { name: /Jalankan Diagnostics/ })).toBeDisabled();
   });
 
-  test("Product mode: pick product + store replicates the publish input and runs", async ({ page }) => {
+  test("Product mode: product-aware readiness via /channels/publish/analyze", async ({ page }) => {
     await page.route("**/admin/master-products?**", (r) => r.fulfill(json(PRODUCTS)));
-    await page.route("**/admin/master-products/p-1?**", (r) => r.fulfill(json(PRODUCT_DETAIL)));
     await page.route("**/ecommerce/channel-product-data/p-1", (r) => r.fulfill(json(STORES)));
     let analyzeBody: Record<string, unknown> | null = null;
-    await page.route("**/adaptive-pattern-matching/analyze", (r) => {
+    await page.route("**/channels/publish/analyze", (r) => {
       analyzeBody = r.request().postDataJSON();
-      return r.fulfill(json(ANALYZE_RESULT));
+      return r.fulfill(json(PUBLISH_ANALYSIS));
     });
 
     await page.goto("/platform-admin/publish-diagnostics");
-    // Product mode is default. Run button disabled until product+store chosen.
+    // Product mode is default. Run disabled until a product is chosen (store optional now).
     await expect(page.getByRole("button", { name: /Jalankan Diagnostics/ })).toBeDisabled();
 
     await page.getByRole("combobox").first().selectOption("p-1");
+    // Store optional — a product alone enables the run.
+    await expect(page.getByRole("button", { name: /Jalankan Diagnostics/ })).toBeEnabled();
     await page.getByRole("combobox").nth(1).selectOption("shopify-01");
     await expect(page.getByText(/Mendiagnosa input publish/)).toBeVisible();
-    await expect(page.getByRole("button", { name: /Jalankan Diagnostics/ })).toBeEnabled();
 
     await page.getByRole("button", { name: /Jalankan Diagnostics/ }).click();
-    await expect(page.getByText("Keputusan engine")).toBeVisible();
 
-    // The analyze request must carry the Step-2 override (masterOverrides.name) merged in.
-    expect(JSON.stringify(analyzeBody)).toContain("Shopify Tee");
-    expect(JSON.stringify(analyzeBody)).toContain("\"persistJolt\":false");
+    // New product-aware readiness report — a NOT-READY verdict still renders (valid 200).
+    await expect(page.getByText("Kesiapan publish")).toBeVisible();
+    await expect(page.getByText("NOT READY")).toBeVisible();
+    await expect(page.getByText(/Issues \(1\)/)).toBeVisible();
+    await expect(page.getByText(/Missing required field/)).toBeVisible();
+    await expect(page.getByText("Saran perbaikan")).toBeVisible();
+    await expect(page.getByText(/Pipeline \(7 stage\)/)).toBeVisible();
+
+    // Request carries masterProductId + storeId; NO manual categoryId (backend derives it).
+    expect(JSON.stringify(analyzeBody)).toContain("\"masterProductId\":\"p-1\"");
+    expect(JSON.stringify(analyzeBody)).toContain("\"storeId\":\"shopify-01\"");
+    expect(JSON.stringify(analyzeBody)).not.toContain("categoryId");
   });
 });

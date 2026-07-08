@@ -3,15 +3,20 @@
 /**
  * Publish Diagnostics (platform-admin).
  *
- * The engineering-facing counterpart of the merchant Step-3 publish page. The
- * merchant screen shows only "is my product ready?"; this shows HOW the engine
- * decided: which engine resolved it (APM / AI / fallback via cascade), the
- * 5-tier matching breakdown, field mappings + confidence, unmapped fields, JOLT
- * readiness, and the raw JOLT spec — keyed by a sample product + channel.
+ * The engineering-facing counterpart of the merchant Step-3 publish page. Two modes:
  *
- * Runs the REAL `/adaptive-pattern-matching/analyze` pipeline (persistJolt:false,
- * so it never writes to production JOLT). Cascade is live and sync, so this can
- * escalate to the agent and take up to ~90s / hit 429 → elapsed timer + Cancel.
+ *  • "Dari My Products" (product-aware) → POST /channels/publish/analyze. Loads the REAL
+ *    product + Step-2 channel data from the DB and answers "is THIS product ready to
+ *    publish?" — a 7-stage readiness report that can flag real data issues (dup SKU/price,
+ *    empty required values) the schema-only endpoint cannot see. Nothing is published.
+ *    (docs/FRONTEND-PHASE0-CATEGORY-ANCHORING-AND-PUBLISH-DIAGNOSTICS.md §2–3.)
+ *
+ *  • "Paste JSON" (schema-level) → POST /adaptive-pattern-matching/analyze (persistJolt:false).
+ *    Answers "is my JOLT spec correct?" for a hypothetical product: cascade / 5-tier breakdown,
+ *    field mappings + confidence, unmapped fields, JOLT readiness, raw spec.
+ *
+ * Both are live & sync — cascade can escalate to the agent and take up to ~90s / hit 429 →
+ * elapsed timer + Cancel.
  */
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -24,9 +29,14 @@ import { MasterProduct } from "@/modules/ecommerce-product-v2/types/product";
 import { ChannelProductData } from "@/modules/ecommerce-product-v2/step2-channel-fields/types/channelStore";
 import { ChannelProductDataService } from "@/modules/ecommerce-product-v2/step2-channel-fields/services/channelStore.service";
 import { analyzePatternMatching } from "@/modules/ecommerce-product-v2/services/pattern-matching.service";
+import { analyzePublish } from "@/modules/ecommerce-product-v2/services/publish-analyze.service";
+import type {
+  PublishAnalysisRequest,
+  PublishAnalysisResponse,
+  PublishIssue,
+} from "@/modules/ecommerce-product-v2/types/publish-analysis";
 import {
   generateMappingRequest,
-  masterDetailToProduct,
   mergeStoreOverridesIntoRequest,
 } from "@/modules/ecommerce-product-v2/utils/product-mapper";
 import { MasterProductService } from "@/app/(admin)/products/_services/master-product.service";
@@ -200,6 +210,7 @@ export default function PublishDiagnosticsPage() {
   const [running, setRunning] = useState(false);
   const [elapsed, setElapsed] = useState(0);
   const [result, setResult] = useState<AdaptivePatternMatchingResponse | null>(null);
+  const [publishResult, setPublishResult] = useState<PublishAnalysisResponse | null>(null);
   const [error, setError] = useState<unknown>(null);
 
   const abortRef = useRef<AbortController | null>(null);
@@ -274,7 +285,8 @@ export default function PublishDiagnosticsPage() {
     !running &&
     (mode === "json"
       ? !jsonError && !!categoryId.trim()
-      : !!selectedProductId && !!selectedStoreId);
+      : // Product-aware endpoint only needs masterProductId; a store adds Step-2 context.
+        !!selectedProductId);
 
   async function run() {
     if (!canRun) return;
@@ -284,6 +296,7 @@ export default function PublishDiagnosticsPage() {
     setRunning(true);
     setError(null);
     setResult(null);
+    setPublishResult(null);
     setElapsed(0);
     tickRef.current = setInterval(() => setElapsed((s) => s + 1), 1000);
     timeoutRef.current = setTimeout(() => {
@@ -292,38 +305,33 @@ export default function PublishDiagnosticsPage() {
     }, RUN_TIMEOUT_MS);
 
     try {
-      let product: MasterProduct;
-      let channel: string;
-      let category: string;
-      let store = null as import("@/modules/ecommerce-product-v2/utils/product-mapper").StoreOverrideData | null;
-
       if (mode === "json") {
-        product = JSON.parse(productText) as MasterProduct;
-        channel = channelId;
-        category = categoryId.trim();
+        // Schema-level (hypothetical product) → APM analyze. Diagnostic only:
+        // never persist to production JOLT; force a fresh run.
+        const product = JSON.parse(productText) as MasterProduct;
+        const request = await generateMappingRequest(product, channelId, {
+          confidenceThreshold: 70,
+          categoryId: categoryId.trim(),
+          organizationId: orgId,
+          persistJolt: false,
+          forceReanalyze: true,
+        });
+        mergeStoreOverridesIntoRequest(request, null);
+        setResult(await analyzePatternMatching(request, controller.signal));
       } else {
-        // Product mode: fetch the real product + replicate the exact publish input
-        // for the chosen store (channelType + Step-2 overrides).
-        const detail = await MasterProductService.getById(selectedProductId, orgId);
-        product = masterDetailToProduct(detail as unknown as Record<string, unknown>);
-        const st = selectedStore!;
-        channel = st.channelType;
-        category = product.category ?? "default";
-        store = st;
+        // Product-aware readiness → the backend loads the real product + Step-2 data
+        // and resolves the category itself (from ProductType.categorySlug). A store,
+        // when chosen, adds the channel + Step-2 context.
+        const req: PublishAnalysisRequest = {
+          masterProductId: selectedProductId,
+          organizationId: orgId || undefined,
+        };
+        if (selectedStore) {
+          req.storeId = selectedStore.storeId;
+          req.channelId = selectedStore.channelType;
+        }
+        setPublishResult(await analyzePublish(req, controller.signal));
       }
-
-      // Diagnostic only — never persist to production JOLT; force a fresh run.
-      const request = await generateMappingRequest(product, channel, {
-        confidenceThreshold: 70,
-        categoryId: category,
-        organizationId: orgId,
-        persistJolt: false,
-        forceReanalyze: true,
-      });
-      // Replicate the merchant's exact source picture (Step-2 overrides) in product mode.
-      mergeStoreOverridesIntoRequest(request, store);
-
-      setResult(await analyzePatternMatching(request, controller.signal));
     } catch (e) {
       if ((e as Error)?.name === "AbortError" || (e instanceof AiApiError && e.kind === "aborted")) {
         setError(
@@ -401,9 +409,9 @@ export default function PublishDiagnosticsPage() {
                 )}
               </div>
 
-              {/* Store picker */}
+              {/* Store picker (optional — adds channel + Step-2 context) */}
               <div>
-                <label className="text-xs text-gray-500 dark:text-gray-400">Channel store</label>
+                <label className="text-xs text-gray-500 dark:text-gray-400">Channel store <span className="text-gray-400">(opsional)</span></label>
                 <select value={selectedStoreId} onChange={(e) => setSelectedStoreId(e.target.value)}
                   disabled={!selectedProductId || storesLoading}
                   className="mt-1 w-full border border-gray-200 dark:border-gray-700 rounded-lg px-2.5 py-2 text-xs bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 disabled:opacity-50">
@@ -417,7 +425,10 @@ export default function PublishDiagnosticsPage() {
                   ))}
                 </select>
                 {selectedProductId && !storesLoading && stores.length === 0 && (
-                  <p className="text-[11px] text-gray-400 mt-1">Produk ini belum terhubung ke store mana pun (Step 2).</p>
+                  <p className="text-[11px] text-gray-400 mt-1">Produk ini belum terhubung ke store mana pun (Step 2) — analisa tetap bisa jalan (master product + kategori turunan, tanpa konteks channel).</p>
+                )}
+                {selectedProductId && !selectedStoreId && stores.length > 0 && (
+                  <p className="text-[11px] text-gray-400 mt-1">Tanpa store: analisa master product + kategori turunan saja. Pilih store untuk sertakan channel + Step-2.</p>
                 )}
               </div>
 
@@ -499,6 +510,8 @@ export default function PublishDiagnosticsPage() {
               <p className="text-sm text-gray-600 dark:text-gray-300 mt-3">Menjalankan APM… <span className="font-mono">{elapsedLabel}</span></p>
               <p className="text-xs text-gray-400 mt-1">Fetch target schema → matching → cascade. Bisa lama bila eskalasi ke agent.</p>
             </Card>
+          ) : publishResult ? (
+            <PublishAnalysisResult result={publishResult} />
           ) : result ? (
             <DiagnosticsResult result={result} channelId={runChannel} />
           ) : (
@@ -506,7 +519,9 @@ export default function PublishDiagnosticsPage() {
               <div className="p-3 bg-gray-100 dark:bg-gray-800 rounded-xl mb-3 text-gray-400"><SearchIcon size={22} /></div>
               <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Belum ada hasil</p>
               <p className="text-xs text-gray-500 dark:text-gray-400 max-w-xs">
-                Isi produk contoh + channel/category, lalu <strong>Jalankan Diagnostics</strong> untuk melihat keputusan engine.
+                {mode === "product"
+                  ? <>Pilih produk (store opsional), lalu <strong>Jalankan Diagnostics</strong> untuk laporan kesiapan publish per-produk.</>
+                  : <>Isi produk contoh + channel/category, lalu <strong>Jalankan Diagnostics</strong> untuk melihat keputusan engine.</>}
               </p>
             </Card>
           )}
@@ -617,6 +632,188 @@ function DiagnosticsResult({ result, channelId }: { result: AdaptivePatternMatch
         <div className="mt-2">
           <JsonViewer label="raw response" value={result} />
         </div>
+      </SectionCard>
+    </div>
+  );
+}
+
+// ─── Product-aware readiness result (POST /channels/publish/analyze) ───────────
+
+const ISSUE_TONE: Record<PublishIssue["severity"], Tone> = { ERROR: "red", WARNING: "amber", INFO: "gray" };
+
+/** One pipeline-stage summary row: a status dot, a label, and key:value stats. */
+function StageRow({
+  label,
+  tone,
+  stats,
+  chips,
+}: {
+  label: string;
+  tone: Tone;
+  stats: Array<[string, React.ReactNode]>;
+  chips?: string[];
+}) {
+  return (
+    <div className="rounded-lg border border-gray-200 dark:border-gray-700 px-3 py-2.5">
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <span className="inline-flex items-center gap-2 text-xs font-medium text-gray-700 dark:text-gray-200">
+          <Badge tone={tone} dot>{""}</Badge>{label}
+        </span>
+        <div className="flex items-center gap-x-3 gap-y-1 flex-wrap justify-end">
+          {stats.map(([k, v]) => (
+            <span key={k} className="text-[11px] text-gray-500 dark:text-gray-400">
+              {k}: <span className="font-mono text-gray-700 dark:text-gray-300">{v ?? "—"}</span>
+            </span>
+          ))}
+        </div>
+      </div>
+      {chips && chips.length > 0 && (
+        <div className="mt-1.5 flex flex-wrap gap-1">
+          {chips.map((c, i) => <Badge key={i} tone="amber">{c}</Badge>)}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function PublishAnalysisResult({ result }: { result: PublishAnalysisResponse }) {
+  const score = result.readinessScore ?? 0;
+  const ready = result.readyToPublish === true;
+  const scoreTone: Tone = score >= 90 ? "green" : score >= 70 ? "amber" : "red";
+  const issues = result.issues ?? [];
+  const errorCount = issues.filter((i) => i.severity === "ERROR").length;
+  const warnCount = issues.filter((i) => i.severity === "WARNING").length;
+
+  const ms = result.masterProduct;
+  const cd = result.channelData;
+  const merged = result.mergedData;
+  const am = result.adaptiveMapping;
+  const js = result.joltSpec;
+  const tf = result.transformation;
+  const pp = result.postProcessing;
+
+  return (
+    <div className="space-y-4">
+      {/* Verdict + readiness score */}
+      <SectionCard
+        title="Kesiapan publish"
+        subtitle={`${CHANNEL_LABELS[result.channelType ?? ""] ?? result.channelType ?? "—"} · kategori ${result.categoryId ?? "—"}`}
+        icon={<GitBranchIcon size={16} />}
+        right={<Badge tone={ready ? "green" : errorCount > 0 ? "red" : "amber"} dot>{ready ? "READY" : "NOT READY"}</Badge>}
+      >
+        <div className="grid grid-cols-3 gap-3">
+          <StatTile label="Readiness" value={`${score}`} tone={scoreTone} hint="0–100" />
+          <StatTile label="Errors" value={errorCount} tone={errorCount > 0 ? "red" : "gray"} />
+          <StatTile label="Warnings" value={warnCount} tone={warnCount > 0 ? "amber" : "gray"} />
+        </div>
+        <div className="mt-3 h-2 rounded-full bg-gray-100 dark:bg-gray-800 overflow-hidden">
+          <div
+            className={score >= 90 ? "h-full bg-green-500" : score >= 70 ? "h-full bg-amber-500" : "h-full bg-red-500"}
+            style={{ width: `${Math.max(0, Math.min(100, score))}%` }}
+          />
+        </div>
+        <p className="text-xs text-gray-400 mt-2">
+          Dry-run — <strong>tidak</strong> ada yang dipublish. Kategori diresolusi backend (explicit → ProductType.categorySlug → legacy → default).
+        </p>
+      </SectionCard>
+
+      {/* Issues */}
+      {issues.length > 0 && (
+        <SectionCard title={`Issues (${issues.length})`} subtitle="severity · kategori · field">
+          <div className="overflow-hidden rounded-lg border border-gray-200 dark:border-gray-700">
+            <table className="w-full">
+              <thead className="bg-gray-50 dark:bg-gray-800/50">
+                <tr className="text-left">
+                  <th className="px-3 py-2 text-[11px] font-medium text-gray-500 dark:text-gray-400 w-24">Severity</th>
+                  <th className="px-3 py-2 text-[11px] font-medium text-gray-500 dark:text-gray-400">Pesan</th>
+                </tr>
+              </thead>
+              <tbody>
+                {issues.map((it, i) => (
+                  <tr key={i} className="border-t border-gray-100 dark:border-gray-800 align-top">
+                    <td className="px-3 py-2 whitespace-nowrap">
+                      <Badge tone={ISSUE_TONE[it.severity] ?? "gray"}>{it.severity}</Badge>
+                    </td>
+                    <td className="px-3 py-2">
+                      <p className="text-xs text-gray-700 dark:text-gray-300">{it.message}</p>
+                      {(it.category || it.field) && (
+                        <p className="text-[11px] text-gray-400 dark:text-gray-500 mt-0.5 font-mono">
+                          {[it.category, it.field].filter(Boolean).join(" · ")}
+                        </p>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </SectionCard>
+      )}
+
+      {/* Suggestions */}
+      {(result.suggestions?.length ?? 0) > 0 && (
+        <SectionCard title="Saran perbaikan" subtitle="langkah agar siap publish">
+          <ul className="space-y-1.5">
+            {result.suggestions!.map((s, i) => (
+              <li key={i} className="text-xs text-gray-700 dark:text-gray-300 flex gap-1.5">
+                <span className="text-violet-500 flex-shrink-0">→</span><span>{s}</span>
+              </li>
+            ))}
+          </ul>
+        </SectionCard>
+      )}
+
+      {/* 7-stage pipeline summary */}
+      <SectionCard title="Pipeline (7 stage)" subtitle="ringkasan tiap tahap dry-run" icon={<ActivityIcon size={16} />}>
+        <div className="space-y-2.5">
+          <StageRow label="1 · Master Product" tone={ms?.found ? "green" : "red"} stats={[
+            ["source", ms?.source],
+            ["found", ms ? String(ms.found ?? false) : undefined],
+            ["fields", ms?.fieldCount],
+            ["variants", ms?.hasVariants ? (ms?.variantCount ?? 0) : 0],
+          ]} />
+          <StageRow
+            label="2 · Channel Data (Step 2)"
+            tone={cd == null ? "gray" : cd.step2DataFound ? ((cd.completionPercentage ?? 0) >= 100 ? "green" : "amber") : "gray"}
+            stats={[
+              ["step2", cd ? String(cd.step2DataFound ?? false) : undefined],
+              ["completion", cd?.completionPercentage != null ? `${cd.completionPercentage}%` : undefined],
+              ["missing req", cd?.missingRequiredFields?.length ?? undefined],
+            ]}
+            chips={cd?.missingRequiredFields?.length ? cd.missingRequiredFields : undefined}
+          />
+          <StageRow label="3 · Merged Data" tone="gray" stats={[["fields", merged?.fieldCount]]} />
+          <StageRow
+            label="4 · Adaptive Mapping"
+            tone={am?.status === "OK" ? "green" : am?.status === "WARNING" ? "amber" : am?.status === "ERROR" ? "red" : "gray"}
+            stats={[
+              ["status", am?.status],
+              ["confidence", am?.overallConfidence != null ? `${am.overallConfidence.toFixed(0)}%` : undefined],
+              ["mappings", am?.totalMappings],
+            ]}
+            chips={am?.warnings?.length ? am.warnings : undefined}
+          />
+          <StageRow label="5 · JOLT Spec" tone={js == null ? "gray" : js.found ? "green" : "red"} stats={[
+            ["found", js ? String(js.found ?? false) : undefined],
+            ["source", js?.source],
+            ["ops", js?.operationCount],
+          ]} />
+          <StageRow label="6 · Transformation" tone={tf == null ? "gray" : tf.success ? "green" : "red"} stats={[
+            ["success", tf ? String(tf.success ?? false) : undefined],
+            ["output keys", tf?.outputTopLevelKeys?.length ? tf.outputTopLevelKeys.join(", ") : undefined],
+          ]} />
+          <StageRow label="7 · Post-Processing" tone="gray" stats={[["rules", pp?.ruleCount ?? pp?.rules?.length]]} />
+        </div>
+      </SectionCard>
+
+      {/* Transformed output + raw */}
+      {tf?.transformedData != null && (
+        <SectionCard title="Transformed output" subtitle="hasil transformasi (dry-run, tidak dipublish)">
+          <JsonViewer label="transformedData" value={tf.transformedData} />
+        </SectionCard>
+      )}
+      <SectionCard title="Raw response" subtitle="PublishAnalysisResponse penuh">
+        <JsonViewer label="raw" value={result} />
       </SectionCard>
     </div>
   );

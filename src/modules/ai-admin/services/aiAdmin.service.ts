@@ -324,7 +324,13 @@ export const AiAdminService = {
    * body = master product JSON.
    */
   generateJolt(params: GenerateJoltParams, signal?: AbortSignal): Promise<GenerateJoltResult> {
-    const qs = buildQs({ channelId: params.channelId, categoryId: params.categoryId });
+    // productTypeId (when set) lets the backend derive the category from
+    // ProductType.categorySlug; categoryId stays as an explicit override/fallback.
+    const qs = buildQs({
+      channelId: params.channelId,
+      categoryId: params.categoryId,
+      productTypeId: params.productTypeId,
+    });
     return request<GenerateJoltResult>(`${BASE}/generate-jolt${qs}`, {
       method: "POST",
       body: JSON.stringify(params.product),

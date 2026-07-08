@@ -57,6 +57,12 @@ const LinkIcon = () => (
     <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
   </svg>
 );
+const TagIcon = () => (
+  <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/>
+    <line x1="7" y1="7" x2="7.01" y2="7"/>
+  </svg>
+);
 
 const DragHandleIcon = () => (
   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -586,6 +592,16 @@ function ProductTypeCard({ type, savingId, stores, orgId, onEdit, onToggleActive
               {type.name}
             </h3>
             <code className="text-[11px] text-gray-400 dark:text-gray-500 font-mono mt-0.5 block">{type.slug}</code>
+            {/* Derived category anchor (Phase 0A) — many types roll up to one slug (N:1). */}
+            {type.categorySlug && (
+              <span
+                title="Kategori turunan (dipakai untuk resolusi kategori di publish & JOLT generation)"
+                className="inline-flex items-center gap-1 mt-1 text-[10px] font-medium text-purple-700 dark:text-purple-300 bg-purple-50 dark:bg-purple-500/10 border border-purple-100 dark:border-purple-500/20 px-1.5 py-0.5 rounded-md"
+              >
+                <TagIcon />
+                {type.categorySlug}
+              </span>
+            )}
           </div>
 
           {/* Active/Inactive pill */}
@@ -784,7 +800,7 @@ export default function ProductTypesPage() {
   const filtered = useMemo(() => {
     const q = searchQuery.toLowerCase().trim();
     return types.filter(t => {
-      const matchesSearch = !q || t.name.toLowerCase().includes(q) || t.slug.includes(q) || (t.description ?? "").toLowerCase().includes(q);
+      const matchesSearch = !q || t.name.toLowerCase().includes(q) || t.slug.includes(q) || (t.categorySlug ?? "").includes(q) || (t.description ?? "").toLowerCase().includes(q);
       const matchesActive =
         activeFilter === "all" ||
         (activeFilter === "active" ? t.active : !t.active);

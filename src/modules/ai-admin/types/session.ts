@@ -69,6 +69,12 @@ export interface GenerateJoltParams {
   channelId: string;
   categoryId: string;
   product: unknown; // master product JSON (request body)
+  /**
+   * Optional (Phase 0B, backend `bff-v8`). When present, the backend derives the
+   * category from ProductType.categorySlug and `categoryId` becomes a fallback.
+   * Sent as the `productTypeId` query param on POST /admin/ai/generate-jolt.
+   */
+  productTypeId?: string;
 }
 
 // ─── GET /admin/ai/sample-master-product (seed "Master Product (JSON)" input) ─
