@@ -70,3 +70,22 @@ export interface GenerateJoltParams {
   categoryId: string;
   product: unknown; // master product JSON (request body)
 }
+
+// ─── GET /admin/ai/sample-master-product (seed "Master Product (JSON)" input) ─
+// Backend update #2 (2026-07-08): response is now an envelope `{ sample, meta }`
+// (was raw sample JSON), and the sample includes variant dimensions from
+// ProductType.variantDimensions as variants[0].<code>.
+
+/** Composition summary of the generated sample — drives an accurate UI label. */
+export interface SampleMasterProductMeta {
+  globalFieldCount: number; // global/common fields (name, price, sku, …)
+  typeSpecificFieldCount: number; // type-specific fields = ProductType.attributeCount
+  variantDimensions: string[]; // variation axes, e.g. ["color", "size"]
+  hasVariants: boolean; // whether the sample has variants[0].*
+}
+
+/** `.sample` seeds the textarea (editable); `.meta` describes the composition. */
+export interface SampleMasterProductResponse {
+  sample: Record<string, unknown>;
+  meta: SampleMasterProductMeta;
+}

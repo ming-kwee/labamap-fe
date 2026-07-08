@@ -5,10 +5,17 @@
  * instead of a hardcoded/blind example. Shared by the JOLT Generation Console and
  * Publish Diagnostics (docs/FRONTEND-SAMPLE-FROM-PRODUCT-TYPE-RECOMMENDATION.md).
  *
- * Single source, no silent fallback: if the Product Type has no active master
- * attributes the backend returns 404 with a config message — we surface it and do
- * NOT populate a hardcoded example. The loaded JSON is a starting point; the caller's
- * textarea stays editable.
+ * Single source, no silent fallback: the sample comes only from a Product Type — global/common
+ * fields (name, price, sku, description, brand) are ALWAYS included, type-specific fields are
+ * added when they belong to the picked Product Type, and variant dimensions (color/size) come
+ * from ProductType.variantDimensions. So even a Product Type with no type-specific attributes
+ * (attributeCount: 0) still returns a usable sample — and may still carry variant axes, which is
+ * why we do NOT label it "global only". The backend returns 404 only when the catalog has no
+ * master attributes at all — a real config signal we surface as-is (no hardcoded fallback).
+ *
+ * The endpoint returns `{ sample, meta }` (backend update #2, 2026-07-08): we populate the
+ * caller's textarea from `.sample` (editable), and render an accurate composition label from
+ * `.meta` (e.g. "5 global · axes: color, size").
  */
 
 import React, { useEffect, useState } from "react";
@@ -16,8 +23,17 @@ import { ProductTypeService } from "@/app/(admin)/omni-admin/product-types/_serv
 import type { ProductType } from "@/app/(admin)/omni-admin/product-types/_types/product-type";
 import { AiAdminService } from "../../services/aiAdmin.service";
 import { AiApiError } from "../../types/common";
+import type { SampleMasterProductMeta } from "../../types/session";
 import { SparklesIcon } from "./icons";
 import { Spinner } from "./ui";
+
+/** "5 global · 2 khusus · axes: color, size" — accurate composition from the sample's meta. */
+function compositionLabel(meta: SampleMasterProductMeta): string {
+  const parts = [`${meta.globalFieldCount} global`];
+  if (meta.typeSpecificFieldCount > 0) parts.push(`${meta.typeSpecificFieldCount} khusus`);
+  if (meta.variantDimensions.length) parts.push(`axes: ${meta.variantDimensions.join(", ")}`);
+  return parts.join(" · ");
+}
 
 export function ProductTypeSampleLoader({
   onLoaded,
@@ -32,6 +48,7 @@ export function ProductTypeSampleLoader({
   const [selectedId, setSelectedId] = useState("");
   const [loading, setLoading] = useState(false);
   const [warning, setWarning] = useState<string | null>(null);
+  const [meta, setMeta] = useState<SampleMasterProductMeta | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -47,11 +64,14 @@ export function ProductTypeSampleLoader({
     if (!selectedId || loading) return;
     setLoading(true);
     setWarning(null);
+    setMeta(null);
     try {
-      const sample = await AiAdminService.getSampleMasterProduct(selectedId);
+      // Response envelope { sample, meta }: `.sample` seeds the textarea, `.meta` labels it.
+      const { sample, meta } = await AiAdminService.getSampleMasterProduct(selectedId);
       onLoaded(JSON.stringify(sample, null, 2));
+      setMeta(meta);
     } catch (e) {
-      // 404 = Product Type has no active master attributes → config message, no fallback.
+      // 404 = catalog has no master attributes at all (not just this type) → config message, no fallback.
       if (e instanceof AiApiError) {
         setWarning(e.message.replace(/^\d{3}\s*/, ""));
       } else {
@@ -67,12 +87,18 @@ export function ProductTypeSampleLoader({
       <div className="flex items-center gap-2">
         <select
           value={selectedId}
-          onChange={(e) => { setSelectedId(e.target.value); setWarning(null); }}
+          onChange={(e) => { setSelectedId(e.target.value); setWarning(null); setMeta(null); }}
           disabled={typesLoading}
           className="flex-1 min-w-0 border border-gray-200 dark:border-gray-700 rounded-lg px-2.5 py-1.5 text-xs bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300"
         >
           <option value="">{typesLoading ? "Memuat product type…" : "Pilih Product Type…"}</option>
-          {types.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+          {/* attributeCount = type-specific fields only; 0 is NOT "global only" (variant
+              axes may still exist), so we only annotate when there are extra fields. */}
+          {types.map((t) => (
+            <option key={t.id} value={t.id}>
+              {t.name}{t.attributeCount > 0 ? ` · ${t.attributeCount} attribute khusus` : ""}
+            </option>
+          ))}
         </select>
         <button
           type="button"
@@ -84,9 +110,18 @@ export function ProductTypeSampleLoader({
           Load from Product Type
         </button>
       </div>
-      {warning && (
+      {warning ? (
         <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-1.5">
           ⚠ {warning}
+        </p>
+      ) : meta ? (
+        <p className="text-[11px] text-emerald-600 dark:text-emerald-400 mt-1.5">
+          ✓ Sample dimuat — {compositionLabel(meta)}
+        </p>
+      ) : (
+        <p className="text-[11px] text-gray-400 dark:text-gray-500 mt-1.5">
+          Field global (name, harga, sku, deskripsi, brand) selalu disertakan — Product Type tanpa
+          attribute khusus tetap menghasilkan sample (bisa termasuk axis variasi seperti color/size).
         </p>
       )}
     </div>

@@ -32,6 +32,7 @@ import {
   AiAgentSession,
   GenerateJoltParams,
   GenerateJoltResult,
+  SampleMasterProductResponse,
   SessionListParams,
 } from "../types/session";
 
@@ -118,16 +119,22 @@ export const AiAdminService = {
   },
 
   /**
-   * Sample master product derived from a Product Type's master attributes — used to
-   * seed the "Master Product (JSON)" input in the JOLT Generation Console and Publish
-   * Diagnostics (instead of a hardcoded/blind example). Values are synthetic; the
-   * accurate part is the field names & structure (what matching uses).
+   * Sample master product derived from a Product Type — used to seed the "Master Product
+   * (JSON)" input in the JOLT Generation Console and Publish Diagnostics (instead of a
+   * hardcoded/blind example). Values are synthetic; the accurate part is the field names &
+   * structure (what matching uses).
    * GET /admin/ai/sample-master-product?productTypeId=
-   * 404 (AiApiError kind "not_found") when the Product Type has no active master
-   * attributes — surface the message, do NOT fall back to a hardcoded example.
+   *
+   * Backend update #2 (2026-07-08): response is the envelope `{ sample, meta }` (was raw
+   * sample JSON) — populate the textarea from `.sample`, use `.meta` for an accurate
+   * composition label. The sample also carries variant dimensions from
+   * ProductType.variantDimensions (variants[0].<code>), so a Product Type with
+   * attributeCount: 0 is NOT "global only" — it may still have color/size axes.
+   * 404 (AiApiError kind "not_found") only when the catalog has no master attributes at
+   * all — surface the message, do NOT fall back to a hardcoded example.
    */
-  getSampleMasterProduct(productTypeId: string): Promise<Record<string, unknown>> {
-    return request<Record<string, unknown>>(`${BASE}/sample-master-product${buildQs({ productTypeId })}`);
+  getSampleMasterProduct(productTypeId: string): Promise<SampleMasterProductResponse> {
+    return request<SampleMasterProductResponse>(`${BASE}/sample-master-product${buildQs({ productTypeId })}`);
   },
 
   /**
