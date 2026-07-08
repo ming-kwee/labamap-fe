@@ -454,7 +454,12 @@ export default function PublishDashboard({ masterProductId }: Props) {
         channelId: store?.channelType,
         fieldMappings: priorAnalysis?.fieldMappings ?? [],
         joltSpec: priorAnalysis?.joltSpec ?? [],
-        categoryId: product?.category ?? "default",
+        // Phase 0B parity: do NOT send categoryId. The old `product.category ?? "default"`
+        // promoted a loose/legacy value (often the productTypeId stored in the "category"
+        // field) to an explicit override — winning priority level 1 and defeating the
+        // backend's derivation from ProductType.categorySlug. Omitting lets the backend
+        // resolve the same chain the diagnostics dry-run uses (explicit → categorySlug →
+        // legacy → default), so the published payload matches the readiness verdict.
         dryRun: false,
         variantOverrides: store?.variantOverrides ?? {},
         masterOverrides: store?.masterOverrides ?? {},

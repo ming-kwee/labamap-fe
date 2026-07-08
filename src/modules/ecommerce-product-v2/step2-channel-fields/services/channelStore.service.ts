@@ -16,8 +16,6 @@ import type {
   PublishSingleRequest,
   BatchPublishRequest,
   BatchPublishResponse,
-  PublishAnalysisRequest,
-  PublishAnalysisResponse,
   CredentialFieldSchema,
   OAuthInitiateRequest,
   OAuthInitiateResponse,
@@ -410,15 +408,7 @@ export const PublishService = {
     }).then((r) => handleResponse<BatchPublishResponse>(r));
   },
 
-  /**
-   * Run a full JOLT pipeline analysis for a product × store pair
-   * POST /api/v1/channels/publish/analyze
-   */
-  analyzePublish(request: PublishAnalysisRequest): Promise<PublishAnalysisResponse> {
-    return fetch(`${BASE}/channels/publish/analyze`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(request),
-    }).then((r) => handleResponse<PublishAnalysisResponse>(r));
-  },
+  // Publish readiness dry-run (POST /channels/publish/analyze) lives in
+  // services/publish-analyze.service.ts (`analyzePublish`) — its 400/500 bodies are a valid
+  // report, not an error, so it must NOT go through handleResponse (which throws on non-2xx).
 };

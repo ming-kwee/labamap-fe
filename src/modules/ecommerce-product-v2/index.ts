@@ -127,10 +127,17 @@ export type {
   ChannelFormSection,
   ChannelSchemaPerStore,
   ChannelStepSchemaResponse,
-  PublishAnalysisResponse,
 } from './step2-channel-fields/types/channelStore';
 
 export { ChannelStoreService, ChannelCredentialSchemaService, ChannelProductDataService, ChannelSchemaService, PublishService } from './step2-channel-fields/services/channelStore.service';
+
+// Publish-analysis (product-aware diagnostics) — canonical types + service (doc §2).
+export type {
+  PublishAnalysisRequest,
+  PublishAnalysisResponse,
+  PublishIssue,
+} from './types/publish-analysis';
+export { analyzePublish } from './services/publish-analyze.service';
 
 // ── Step 3: Publish ─────────────────────────────────────────────────────────
 

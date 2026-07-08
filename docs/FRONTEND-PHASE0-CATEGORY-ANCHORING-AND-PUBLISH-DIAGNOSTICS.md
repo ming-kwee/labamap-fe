@@ -24,6 +24,18 @@ Verification: typecheck + eslint clean on touched files; e2e `publish-diagnostic
 
 > ⚠ Live note: `/channels/publish/analyze` verified against the typed contract via mocked e2e. Once deployed on the dev backend, re-verify the 200/400/500 body shapes live.
 
+### Follow-up — Phase 0B-completion parity (2026-07-08, branch `v8`) ✅
+
+Implements the §4B parity note (category resolution now identical across publish / diagnostics / JOLT):
+
+| Change | Detail |
+|---|---|
+| **Actual publish path fixed** | `PublishDashboard.handlePublishSingle` no longer sends `categoryId: product.category ?? "default"`. That promoted a loose/legacy value (often the `productTypeId` stored in the `category` field) to an explicit **level-1 override**, defeating derivation from `ProductType.categorySlug` (level 2). Now **omitted** → backend resolves the same chain the dry-run uses, so the published payload matches the readiness verdict. (Batch publish already sent no `categoryId`.) |
+| **Step-1 `CATEGORY_SELECT` — left as-is (by design)** | In this codebase `CATEGORY_SELECT` is **not** a loose category field; it **is** the ProductType picker (`CategorySelectField`, value = productTypeId) whose job is to drive form-schema generation (`loadSchema(ptId)`). So §4B's "redundant manual category field" premise doesn't apply — there's nothing to convert to an override, and the internal `categorySlug` (electronics/clothing/`default`) is a platform anchor, not merchant-facing info. The derived category is surfaced only on **admin** surfaces (Product Types page, Channel Category Rules, JOLT console) and applied automatically by the backend at publish. |
+| **Type consolidation (cleanup)** | Removed a duplicate/outdated `PublishAnalysis*` contract (dead `PublishService.analyzePublish` + old stage types in `channelStore.ts`, which wrongly marked `storeId`/`organizationId` required and used `mergedInput`/`stage`). Canonical types now live only in `types/publish-analysis.ts` (doc §2 shape); `index.ts` re-exports those + `analyzePublish`. |
+
+> Not in scope (matches doc): the **merchant Step-3 readiness** (`handleAnalyze`) still uses the schema-level `/adaptive-pattern-matching/analyze` — §6 scopes the product-aware endpoint switch to the admin Publish Diagnostics screen only. Switching merchant readiness to `/publish/analyze` would be a later phase.
+
 ---
 
 ## 1. What changed, in one picture
@@ -140,7 +152,9 @@ The Publish Diagnostics screen today likely calls `/api/v1/adaptive-pattern-matc
 
 ### 4B — How category is resolved now (priority chain)
 
-When the backend needs a category (in `/publish/analyze` and in JOLT generation), it resolves in this order:
+When the backend needs a category it resolves in this order — **in all three paths**: the actual
+publish (`POST /channels/publish` + `/batch`), the diagnostics dry-run (`/publish/analyze`), and
+JOLT generation:
 
 ```
 1. Explicit categoryId in the request        (manual override — still honored)
@@ -149,8 +163,13 @@ When the backend needs a category (in `/publish/analyze` and in JOLT generation)
 4. "default"
 ```
 
+> **Parity note (Phase 0B-completion, 2026-07-08):** the actual publish endpoint previously resolved
+> only `categoryId ?: "default"` (2 levels), while diagnostics used the full 4-level chain. They are
+> now identical, so the **Publish Diagnostics verdict matches what is actually published** — no more
+> "diagnostics says category=clothing but publish used default → different JOLT → different payload".
+
 **What this means for you:**
-- You **no longer need to send `categoryId`** to `/publish/analyze` (or to JOLT generation) if the product has a `productTypeId` — the backend derives it. Sending it still works as an explicit override.
+- You **no longer need to send `categoryId`** to *any* of these — actual publish (`/channels/publish`, `/batch`), `/publish/analyze`, or JOLT generation — if the product has a `productTypeId`. The backend derives it. Sending it still works as an explicit override.
 - The **manual "category" form field** (the generic `CATEGORY_SELECT`) is now redundant for products that have a product type. It is **not removed yet** (that's Phase 0C, needs FE coordination), but you can start treating it as an **override**, not a required input. Recommended UX: show the derived category (read-only or pre-filled), let the user override only if needed.
 
 ### 4C — JOLT Generation Console can pass `productTypeId`
@@ -196,6 +215,6 @@ Also, eBay namespace was aligned to internal slugs: `fashion` → `clothing`, `s
 ## 7. What did NOT change (so you don't over-adjust)
 
 - `PublishProductRequest` shape is unchanged (new endpoint reuses it; `categoryId` still optional).
-- The publish endpoints (`/channels/publish`, `/channels/publish/batch`) are unchanged.
+- The publish endpoints (`/channels/publish`, `/channels/publish/batch`) have an **unchanged request/response contract** — `categoryId` is still optional and any value you send is still honored. Only the *internal* behavior when you omit it changed: it now derives category from `productType.categorySlug` (see §4B parity note) instead of silently defaulting to `"default"`. Backward-compatible; no FE change required.
 - `/adaptive-pattern-matching/*` endpoints are unchanged — still the JOLT-generation engine for the console.
 - Existing products without `productTypeId` or `categorySlug` keep working via the legacy `product.category` fallback.
