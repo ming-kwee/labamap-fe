@@ -24,6 +24,8 @@ test.describe("Addendum §2 · Agent error taxonomy", () => {
         r.fulfill(json({ status: "AGENT_FAILED", errorMessage: c.errorMessage })),
       );
       await page.goto("/platform-admin/ai-generate");
+      // Category ID is empty by default (no phantom override) → set one to enable the run.
+      await page.getByPlaceholder("mis. clothing").fill("clothing");
       await page.getByRole("button", { name: /Jalankan Agent/ }).click();
 
       await expect(page.getByText("Agent failed")).toBeVisible();
@@ -49,6 +51,8 @@ test.describe("Addendum §1 · generate-jolt AUTO_APPLIED", () => {
       ),
     );
     await page.goto("/platform-admin/ai-generate");
+    // Category ID is empty by default (no phantom override) → set one to enable the run.
+    await page.getByPlaceholder("mis. clothing").fill("clothing");
     await page.getByRole("button", { name: /Jalankan Agent/ }).click();
 
     await expect(page.getByText("Auto-applied")).toBeVisible();

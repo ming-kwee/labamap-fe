@@ -113,7 +113,10 @@ function ExplanationBlock({ explanation }: { explanation?: string | Record<strin
 
 export default function JoltGenerationConsole() {
   const [channelId, setChannelId] = useState("shopify");
-  const [categoryId, setCategoryId] = useState("clothing");
+  // Empty by default so it never acts as a phantom override — a leftover value would win
+  // the backend's priority chain (explicit categoryId > productType.categorySlug) and
+  // silently defeat derivation. Only a value the admin actually types is an override.
+  const [categoryId, setCategoryId] = useState("");
   const [productType, setProductType] = useState<ProductType | null>(null);
   const [productText, setProductText] = useState(SAMPLE_PRODUCT);
   const [running, setRunning] = useState(false);
@@ -188,12 +191,14 @@ export default function JoltGenerationConsole() {
 
     try {
       const product = JSON.parse(productText);
-      // Phase 0B: when a Product Type is picked, pass its id — backend derives the
-      // category from ProductType.categorySlug; the manual categoryId is a fallback.
+      // Phase 0B: when a Product Type is picked, pass its id and let the BACKEND derive the
+      // category from ProductType.categorySlug. Send categoryId only if the admin actually
+      // typed one (an explicit override / the standalone value when no type is picked);
+      // an empty string is dropped by buildQs, so we never re-derive it on the FE.
       setResult(await AiAdminService.generateJolt(
         {
           channelId,
-          categoryId: categoryId.trim() || productType?.categorySlug || "",
+          categoryId: categoryId.trim(),
           productTypeId: productType?.id,
           product,
         },

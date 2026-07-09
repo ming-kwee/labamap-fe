@@ -60,6 +60,8 @@ test.describe("P1-F · JOLT Generation Console", () => {
     await page.goto("/platform-admin/ai-generate");
     await expect(page.getByRole("heading", { name: "JOLT Generation Console" })).toBeVisible();
 
+    // Category ID is empty by default (no phantom override) → set one to enable the run.
+    await page.getByPlaceholder("mis. clothing").fill("clothing");
     await page.getByRole("button", { name: /Jalankan Agent/ }).click();
 
     await expect(page.getByText("Recommendation created")).toBeVisible();
@@ -72,6 +74,8 @@ test.describe("P1-F · JOLT Generation Console", () => {
       r.fulfill(json({ status: "AGENT_FAILED", errorMessage: "Retries exhausted: 3/3" })),
     );
     await page.goto("/platform-admin/ai-generate");
+    // Category ID is empty by default (no phantom override) → set one to enable the run.
+    await page.getByPlaceholder("mis. clothing").fill("clothing");
     await page.getByRole("button", { name: /Jalankan Agent/ }).click();
 
     await expect(page.getByText("Agent failed")).toBeVisible();

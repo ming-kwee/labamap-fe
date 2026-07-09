@@ -40,12 +40,17 @@ Implements the §4B parity note (category resolution now identical across publis
 
 ## 1. What changed, in one picture
 
+This is about **how the backend resolves category** — not about any merchant-facing field.
+
 ```
-BEFORE:  category = a loose, manually-typed/selected field on the product
-AFTER:   category = DERIVED from ProductType.categorySlug  (manual value only as override/fallback)
+BEFORE:  category (for JOLT/publish) = whatever loose `product.category` value happened to be sent
+AFTER:   category = DERIVED from ProductType.categorySlug  (explicit request value only as override)
 ```
 
-Nothing you send today breaks. The changes add a **preferred, canonical source** for category and a **new endpoint**. You only need to adjust where it improves UX (details below).
+The merchant never had a separate "category" field to fill — they pick a **ProductType** (the
+`CATEGORY_SELECT` picker), and the backend now derives the internal `categorySlug` from that. Nothing
+you send today breaks. The changes add a **preferred, canonical source** for the category the backend
+uses, plus a **new endpoint**. See the §4B correction: there is no manual category field to remove.
 
 ---
 
@@ -170,7 +175,23 @@ JOLT generation:
 
 **What this means for you:**
 - You **no longer need to send `categoryId`** to *any* of these — actual publish (`/channels/publish`, `/batch`), `/publish/analyze`, or JOLT generation — if the product has a `productTypeId`. The backend derives it. Sending it still works as an explicit override.
-- The **manual "category" form field** (the generic `CATEGORY_SELECT`) is now redundant for products that have a product type. It is **not removed yet** (that's Phase 0C, needs FE coordination), but you can start treating it as an **override**, not a required input. Recommended UX: show the derived category (read-only or pre-filled), let the user override only if needed.
+
+> **⚠️ Correction (2026-07-08) — the `CATEGORY_SELECT` field is the ProductType picker, do NOT remove it.**
+> An earlier draft of this section claimed the `CATEGORY_SELECT` form field was a "redundant manual
+> category picker" that a later Phase 0C would remove. **That premise was wrong.** In this codebase
+> `CATEGORY_SELECT` **is** the ProductType picker (`CategorySelectField`, value = `productTypeId`) — its
+> whole job is to drive form-schema generation (`loadSchema(productTypeId)`). It is essential; nothing
+> to convert to an "override" and nothing to remove.
+>
+> The internal `categorySlug` (electronics / clothing / `default` …) is a **platform anchor derived
+> from that picked productType** — not a separate merchant-facing input. So there was never a second,
+> manual category field. The picker stays exactly as-is; the backend derives `categorySlug` from the
+> `productTypeId` it already sends. Phase 0 was **not** touched schema generation (see §7) — the picker →
+> `loadSchema` flow is unchanged.
+>
+> **→ Phase 0C is therefore N/A (cancelled).** There is no manual category field to migrate. Surface the
+> derived `categorySlug` on admin surfaces only (Product Types page, Channel Category Rules, JOLT
+> console) for context; the backend applies it automatically at publish/diagnostics time.
 
 ### 4C — JOLT Generation Console can pass `productTypeId`
 

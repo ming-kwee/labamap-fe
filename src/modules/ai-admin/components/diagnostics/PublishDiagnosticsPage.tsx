@@ -454,6 +454,7 @@ export default function PublishDiagnosticsPage() {
                   <label className="text-xs text-gray-500 dark:text-gray-400">Category ID</label>
                   <input value={categoryId} onChange={(e) => setCategoryId(e.target.value)} placeholder="mis. clothing"
                     className="mt-1 w-full border border-gray-200 dark:border-gray-700 rounded-lg px-2.5 py-1.5 text-xs bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300" />
+                  <p className="text-[10px] text-gray-400 dark:text-gray-500 mt-0.5">Ikut ter-set saat memuat sample dari Product Type.</p>
                 </div>
               </div>
 
@@ -462,8 +463,15 @@ export default function PublishDiagnosticsPage() {
                   <label className="text-xs text-gray-500 dark:text-gray-400">Master product (JSON)</label>
                   <button onClick={() => setProductText(JSON.stringify(SAMPLE_PRODUCT, null, 2))} className="text-[11px] text-blue-500 hover:underline">reset ke contoh statis</button>
                 </div>
-                {/* Seed from a real Product Type's fields (not a blind hardcoded example). */}
-                <ProductTypeSampleLoader onLoaded={setProductText} className="mb-2" />
+                {/* Seed from a real Product Type's fields (not a blind hardcoded example).
+                    Sync the Category ID to the type's derived categorySlug so the sample data
+                    and the schema it's matched against stay consistent (schema-level mode has
+                    no backend derivation — the category here is a direct input). */}
+                <ProductTypeSampleLoader
+                  onLoaded={setProductText}
+                  onProductTypeChange={(pt) => { if (pt) setCategoryId(pt.categorySlug ?? "default"); }}
+                  className="mb-2"
+                />
                 <textarea
                   value={productText}
                   onChange={(e) => setProductText(e.target.value)}

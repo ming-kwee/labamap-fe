@@ -35,6 +35,8 @@ test.describe("P1-F · long-run robustness", () => {
     });
 
     await page.goto("/platform-admin/ai-generate");
+    // Category ID is empty by default (no phantom override) → set one to enable the run.
+    await page.getByPlaceholder("mis. clothing").fill("clothing");
     await page.getByRole("button", { name: /Jalankan Agent/ }).click();
 
     // Running state: elapsed timer (m:ss) + Cancel button visible.
@@ -73,6 +75,8 @@ test.describe("P1-F · long-run robustness", () => {
     );
 
     await page.goto("/platform-admin/ai-generate");
+    // Category ID is empty by default (no phantom override) → set one to enable the run.
+    await page.getByPlaceholder("mis. clothing").fill("clothing");
     await page.getByRole("button", { name: /Jalankan Agent/ }).click();
 
     // Structured explanation renders its content (no crash, no [object Object]).
