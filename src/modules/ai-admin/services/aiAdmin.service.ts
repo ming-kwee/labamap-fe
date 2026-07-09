@@ -271,23 +271,26 @@ export const AiAdminService = {
    * generate-jolt this can take minutes under LLM 429 retry/backoff — pass an
    * AbortSignal to support timeout / user-cancel.
    *
-   * `categoryId` (optional) scopes the generated JOLT to a specific channel × category —
-   * omit it and the backend resolves "default". `sampleProduct` (optional) is the request
-   * body: a representative product so the agent analyses real field structure instead of an
-   * empty sample. Both come from a picked Product Type (categorySlug + its sample) on the FE.
+   * Phase 0B parity with generate-jolt: pass `productTypeId` (the ObjectId) and let the
+   * backend derive the category from ProductType.categorySlug — single source of truth, so
+   * the generated JOLT is stored under the same categoryId that publish resolves. `categoryId`
+   * stays available as an explicit override/fallback. `sampleProduct` (optional) is the
+   * request body: a representative product so the agent analyses real field structure.
    */
   triggerAnalysis(
-    params: { channelId: string; categoryId?: string; sampleProduct?: Record<string, unknown> },
+    params: { channelId: string; productTypeId?: string; categoryId?: string; sampleProduct?: Record<string, unknown> },
     signal?: AbortSignal,
   ): Promise<unknown> {
-    return request<unknown>(
-      `${BASE}/recommendations/trigger-analysis${buildQs({ channelId: params.channelId, categoryId: params.categoryId })}`,
-      {
-        method: "POST",
-        body: params.sampleProduct ? JSON.stringify(params.sampleProduct) : undefined,
-        signal,
-      },
-    );
+    const qs = buildQs({
+      channelId: params.channelId,
+      productTypeId: params.productTypeId,
+      categoryId: params.categoryId,
+    });
+    return request<unknown>(`${BASE}/recommendations/trigger-analysis${qs}`, {
+      method: "POST",
+      body: params.sampleProduct ? JSON.stringify(params.sampleProduct) : undefined,
+      signal,
+    });
   },
 
   // ─── P1-E · Agent Sessions / Observability ────────────────────────────────

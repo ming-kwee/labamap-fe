@@ -164,10 +164,11 @@ export default function RecommendationsReviewQueue() {
     }, TRIGGER_TIMEOUT_MS);
 
     try {
-      // Scope the trigger to the picked Product Type: category from its categorySlug, plus a
-      // representative sample (best-effort — trigger still runs with an empty sample if the
-      // sample endpoint fails). Without a type, backend resolves category "default".
-      const categoryId = triggerProductType?.categorySlug || undefined;
+      // Scope the trigger to the picked Product Type. Phase 0B parity with generate-jolt:
+      // send productTypeId (the ObjectId) and let the BACKEND derive the category from
+      // ProductType.categorySlug — one source of truth, matching what publish resolves. Also
+      // seed a representative sample (best-effort). Without a type, backend resolves "default".
+      const productTypeId = triggerProductType?.id;
       let sampleProduct: Record<string, unknown> | undefined;
       if (triggerProductType) {
         try {
@@ -177,11 +178,13 @@ export default function RecommendationsReviewQueue() {
       }
 
       await AiAdminService.triggerAnalysis(
-        { channelId: triggerChannel, categoryId, sampleProduct },
+        { channelId: triggerChannel, productTypeId, sampleProduct },
         controller.signal,
       );
       const ch = CHANNEL_LABELS[triggerChannel] ?? triggerChannel;
-      const scope = categoryId ? ` · kategori ${categoryId}` : "";
+      // Display the derived category (FE already has categorySlug loaded) even though the
+      // wire sends productTypeId — the backend resolves the same slug.
+      const scope = triggerProductType ? ` · kategori ${triggerProductType.categorySlug ?? "default"}` : "";
       // The trigger returns { sessionId, status: "TRIGGERED" } — it does NOT report the
       // outcome. A recommendation only lands here when confidence is in the review band
       // (~70–92%). High-confidence results are AUTO-APPLIED to the production JOLT spec and

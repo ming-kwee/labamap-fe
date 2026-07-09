@@ -52,7 +52,7 @@ test.describe("P0-D · Trigger Analysis robustness", () => {
     await expect(page.getByRole("button", { name: /Trigger Analysis/ })).toBeVisible();
   });
 
-  test("product-type scope sends categoryId + sample body to trigger-analysis", async ({ page }) => {
+  test("product-type scope sends productTypeId + sample body to trigger-analysis", async ({ page }) => {
     await page.route("**/admin/ai/sessions?**", (r) =>
       r.fulfill(json(page1([{ id: "ok", triggerType: "PUBLISH_FAILED", channelId: "shopify", status: "COMPLETED", createdAt: "2026-07-03T10:00:00" }]))),
     );
@@ -82,8 +82,10 @@ test.describe("P0-D · Trigger Analysis robustness", () => {
     await page.getByRole("button", { name: /Trigger Analysis/ }).click();
     await expect(page.getByText(/kategori clothing selesai/)).toBeVisible();
 
-    // Query carried categoryId; body carried the seeded sample (no longer empty).
-    expect(triggerUrl).toContain("categoryId=clothing");
+    // Phase 0B parity with generate-jolt: the wire carries productTypeId (the ObjectId) and
+    // the backend derives the category — NOT categoryId=<slug>. Body carries the seeded sample.
+    expect(triggerUrl).toContain("productTypeId=pt-apparel");
+    expect(triggerUrl).not.toContain("categoryId=");
     expect(JSON.stringify(triggerBody)).toContain("sample_sku");
   });
 });
