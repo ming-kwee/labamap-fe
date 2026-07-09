@@ -55,8 +55,8 @@ Sebuah **JOLT spec** menentukan cara SETIAP produk di satu `channel × category`
 │  ✦ Recommendations Review Queue                                          [⟳]     │
 │    AI mengusulkan, manusia memutuskan — approve / reject dengan bukti.            │
 ├────────────────────────────────────────────────────────────────────────────────┤
-│  [ Pending | Approved | Rejected | All ]   Channel:[All ▾]    [shopify ▾][Trigger │
-│   ▲ filter status            ▲ filter channel      Analysis]◄ picu manual/channel │
+│  [ Pending | Approved | Rejected | All ]  Channel:[All▾]  [shopify▾][Apparel→cloth│
+│   ▲ filter status         ▲ filter channel  trigger channel▲  ▲scope kategori▾][Trg│
 ├────────────────────────────────────────────────────────────────────────────────┤
 │  Confidence   Channel   Trigger            Root cause              Status  Expires│
 │ ─────────────────────────────────────────────────────────────────────────────── │
@@ -73,6 +73,8 @@ Sebuah **JOLT spec** menentukan cara SETIAP produk di satu `channel × category`
 - **Confidence** berwarna: hijau `auto` (≥92%), amber `review` (70–92%), merah `low` (<70%).
 - **Expires** — rekomendasi kedaluwarsa (mis. "2h lagi"); amber bila ≤2 hari, merah bila lewat.
 - **Trigger Analysis** (kanan) — admin bisa **memicu** agent menganalisa satu channel manual (tak cuma menunggu kegagalan). Ada elapsed timer + tombol Batalkan + timeout 120s (agent LLM bisa lambat / 429).
+  - **Scope kategori (opsional)** — picker Product Type di samping channel. Jika dipilih, trigger menyertakan `categoryId` (dari `categorySlug` type itu) + **sample produk representatif** dari type tsb, sehingga JOLT digenerate untuk **channel × kategori yang tepat**, bukan `default` dengan sample kosong. Dikosongkan = perilaku lama (kategori `default`).
+  - ⚠ **Outcome tidak dijanjikan**: trigger balikin `{ sessionId, status:"TRIGGERED" }` saja. Rekomendasi hanya muncul di antrian bila confidence di **band review (~70–92%)**; confidence tinggi → **AUTO_APPLIED** ke JOLT spec produksi (cek **Channel JOLT Specs** / **Agent Sessions**), tidak masuk antrian.
 
 ---
 

@@ -51,4 +51,39 @@ test.describe("P0-D · Trigger Analysis robustness", () => {
     await expect(page.getByText(/Trigger dibatalkan/)).toBeVisible();
     await expect(page.getByRole("button", { name: /Trigger Analysis/ })).toBeVisible();
   });
+
+  test("product-type scope sends categoryId + sample body to trigger-analysis", async ({ page }) => {
+    await page.route("**/admin/ai/sessions?**", (r) =>
+      r.fulfill(json(page1([{ id: "ok", triggerType: "PUBLISH_FAILED", channelId: "shopify", status: "COMPLETED", createdAt: "2026-07-03T10:00:00" }]))),
+    );
+    // Product types feed the optional scope picker; Apparel → clothing.
+    await page.route("**/admin/product-types**", (r) => r.fulfill(json([
+      { id: "pt-apparel", name: "Apparel", slug: "apparel", categorySlug: "clothing", active: true, attributeCount: 3 },
+    ])));
+    // Sample seeded from the picked type — sent as the trigger body (not empty).
+    await page.route("**/admin/ai/sample-master-product**", (r) => r.fulfill(json({
+      sample: { name: "sample_name", variants: [{ sku: "sample_sku" }] },
+      meta: { globalFieldCount: 4, typeSpecificFieldCount: 3, variantDimensions: [], hasVariants: true },
+    })));
+    let triggerUrl = "";
+    let triggerBody: unknown = null;
+    await page.route("**/admin/ai/recommendations/trigger-analysis**", (route) => {
+      triggerUrl = route.request().url();
+      triggerBody = route.request().postDataJSON();
+      return route.fulfill(json({ sessionId: "sess-1", status: "TRIGGERED" }));
+    });
+
+    await page.goto("/platform-admin/ai-recommendations");
+    await triggerSelect(page).selectOption("shopify");
+    // 3rd combobox = the product-type scope picker (added after the trigger channel select).
+    await page.getByRole("combobox").nth(2).selectOption("pt-apparel");
+    await expect(page.getByText(/Scope: kategori/)).toBeVisible();
+
+    await page.getByRole("button", { name: /Trigger Analysis/ }).click();
+    await expect(page.getByText(/kategori clothing selesai/)).toBeVisible();
+
+    // Query carried categoryId; body carried the seeded sample (no longer empty).
+    expect(triggerUrl).toContain("categoryId=clothing");
+    expect(JSON.stringify(triggerBody)).toContain("sample_sku");
+  });
 });

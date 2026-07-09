@@ -18,6 +18,8 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { AiApiError, PageResponse } from "../../types/common";
 import { AiRecommendation, RecommendationStatus } from "../../types/recommendation";
 import { AiAdminService } from "../../services/aiAdmin.service";
+import { ProductTypeService } from "@/app/(admin)/omni-admin/product-types/_services/product-type.service";
+import type { ProductType } from "@/app/(admin)/omni-admin/product-types/_types/product-type";
 import { CheckIcon, RefreshIcon, SparklesIcon, XIcon } from "../shared/icons";
 import {
   Badge,
@@ -67,6 +69,13 @@ export default function RecommendationsReviewQueue() {
   const [triggerElapsed, setTriggerElapsed] = useState(0);
   const [preflightRateLimited, setPreflightRateLimited] = useState(false);
 
+  // Optional Product Type scope for Trigger Analysis: when set, the trigger targets that
+  // type's channel × category (categorySlug) and seeds a representative sample product,
+  // instead of the backend defaulting to category "default" with an empty sample.
+  const [productTypes, setProductTypes] = useState<ProductType[]>([]);
+  const [triggerProductTypeId, setTriggerProductTypeId] = useState<string>("");
+  const triggerProductType = productTypes.find((t) => t.id === triggerProductTypeId) ?? null;
+
   const abortRef = useRef<AbortController | null>(null);
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const tickRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -93,6 +102,15 @@ export default function RecommendationsReviewQueue() {
   useEffect(() => {
     load();
   }, [load]);
+
+  // Product types for the optional Trigger-Analysis scope (best-effort).
+  useEffect(() => {
+    let alive = true;
+    ProductTypeService.list({ active: true })
+      .then((ts) => { if (alive) setProductTypes(ts); })
+      .catch(() => { if (alive) setProductTypes([]); });
+    return () => { alive = false; };
+  }, []);
 
   const clearTriggerTimers = useCallback(() => {
     if (timeoutRef.current) clearTimeout(timeoutRef.current);
@@ -146,14 +164,30 @@ export default function RecommendationsReviewQueue() {
     }, TRIGGER_TIMEOUT_MS);
 
     try {
-      await AiAdminService.triggerAnalysis(triggerChannel, controller.signal);
+      // Scope the trigger to the picked Product Type: category from its categorySlug, plus a
+      // representative sample (best-effort — trigger still runs with an empty sample if the
+      // sample endpoint fails). Without a type, backend resolves category "default".
+      const categoryId = triggerProductType?.categorySlug || undefined;
+      let sampleProduct: Record<string, unknown> | undefined;
+      if (triggerProductType) {
+        try {
+          const { sample } = await AiAdminService.getSampleMasterProduct(triggerProductType.id);
+          sampleProduct = sample;
+        } catch { /* sample is optional — proceed without it */ }
+      }
+
+      await AiAdminService.triggerAnalysis(
+        { channelId: triggerChannel, categoryId, sampleProduct },
+        controller.signal,
+      );
       const ch = CHANNEL_LABELS[triggerChannel] ?? triggerChannel;
+      const scope = categoryId ? ` · kategori ${categoryId}` : "";
       // The trigger returns { sessionId, status: "TRIGGERED" } — it does NOT report the
       // outcome. A recommendation only lands here when confidence is in the review band
       // (~70–92%). High-confidence results are AUTO-APPLIED to the production JOLT spec and
       // never enter this queue — so don't promise a queue entry unconditionally.
       show(
-        `Analysis ${ch} selesai — antrian di-refresh. Jika confidence tinggi, JOLT langsung diterapkan (auto-apply) & tidak masuk antrian; cek di Channel JOLT Specs / Agent Sessions.`,
+        `Analysis ${ch}${scope} selesai — antrian di-refresh. Jika confidence tinggi, JOLT langsung diterapkan (auto-apply) & tidak masuk antrian; cek di Channel JOLT Specs / Agent Sessions.`,
         "info",
       );
       setTimeout(load, 800);
@@ -173,7 +207,7 @@ export default function RecommendationsReviewQueue() {
       abortRef.current = null;
       setTriggering(false);
     }
-  }, [triggerChannel, triggering, show, load, clearTriggerTimers]);
+  }, [triggerChannel, triggerProductType, triggering, show, load, clearTriggerTimers]);
 
   const triggerElapsedLabel = `${Math.floor(triggerElapsed / 60)}:${String(triggerElapsed % 60).padStart(2, "0")}`;
   const rows = data?.content ?? [];
@@ -253,6 +287,22 @@ export default function RecommendationsReviewQueue() {
                 </option>
               ))}
             </select>
+            {/* Optional scope: pick a Product Type → trigger targets its channel × category
+                (categorySlug) with a representative sample, instead of category "default". */}
+            <select
+              value={triggerProductTypeId}
+              onChange={(e) => setTriggerProductTypeId(e.target.value)}
+              disabled={triggering || productTypes.length === 0}
+              title="Opsional — scope trigger ke kategori Product Type ini. Kosong = kategori 'default'."
+              className="border border-gray-200 dark:border-gray-700 rounded-lg px-2.5 py-1.5 text-xs bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 disabled:opacity-50 max-w-[190px]"
+            >
+              <option value="">Semua kategori (default)</option>
+              {productTypes.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.name}{t.categorySlug ? ` → ${t.categorySlug}` : ""}
+                </option>
+              ))}
+            </select>
             {triggering ? (
               <>
                 <span className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-gray-800 dark:bg-gray-700 text-white">
@@ -288,6 +338,13 @@ export default function RecommendationsReviewQueue() {
               </p>
             </InfoBanner>
           </div>
+        )}
+        {triggerProductType && !triggering && (
+          <p className="mt-2 text-[11px] text-gray-500 dark:text-gray-400">
+            Scope: kategori{" "}
+            <code className="font-mono text-violet-600 dark:text-violet-400">{triggerProductType.categorySlug ?? "default"}</code>{" "}
+            + sample dari <strong>{triggerProductType.name}</strong> (bukan sample kosong).
+          </p>
         )}
         {triggering && (
           <p className="mt-2 text-[11px] text-gray-400">

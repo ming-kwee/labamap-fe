@@ -270,11 +270,23 @@ export const AiAdminService = {
    * Runs the agent to analyze a channel and create recommendations. Like
    * generate-jolt this can take minutes under LLM 429 retry/backoff — pass an
    * AbortSignal to support timeout / user-cancel.
+   *
+   * `categoryId` (optional) scopes the generated JOLT to a specific channel × category —
+   * omit it and the backend resolves "default". `sampleProduct` (optional) is the request
+   * body: a representative product so the agent analyses real field structure instead of an
+   * empty sample. Both come from a picked Product Type (categorySlug + its sample) on the FE.
    */
-  triggerAnalysis(channelId: string, signal?: AbortSignal): Promise<unknown> {
+  triggerAnalysis(
+    params: { channelId: string; categoryId?: string; sampleProduct?: Record<string, unknown> },
+    signal?: AbortSignal,
+  ): Promise<unknown> {
     return request<unknown>(
-      `${BASE}/recommendations/trigger-analysis${buildQs({ channelId })}`,
-      { method: "POST", signal },
+      `${BASE}/recommendations/trigger-analysis${buildQs({ channelId: params.channelId, categoryId: params.categoryId })}`,
+      {
+        method: "POST",
+        body: params.sampleProduct ? JSON.stringify(params.sampleProduct) : undefined,
+        signal,
+      },
     );
   },
 
