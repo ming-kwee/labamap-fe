@@ -248,7 +248,9 @@ export function Toast({ toast }: { toast: ToastState }) {
   const bg =
     toast.type === "success" ? "bg-green-600" : toast.type === "error" ? "bg-red-600" : "bg-gray-800";
   return (
-    <div className={`fixed top-4 right-4 z-[10000] max-w-md px-4 py-3 rounded-lg shadow-lg text-sm text-white ${bg}`}>
+    // z-index must clear the app header (sticky, z-99999) or the toast is painted
+    // behind it — it sits at top-4, inside the header's band. Highest overlay layer.
+    <div className={`fixed top-4 right-4 z-[100010] max-w-md px-4 py-3 rounded-lg shadow-lg text-sm text-white ${bg}`}>
       {toast.message}
     </div>
   );
@@ -339,7 +341,8 @@ export function ConfirmDialog({
   return (
     <div
       data-testid="confirm-dialog"
-      className="fixed inset-0 z-[10000] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
+      // Above the app header (z-99999); toast (z-100010) still sits above this.
+      className="fixed inset-0 z-[100000] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
     >
       <div className="bg-white dark:bg-gray-900 rounded-xl shadow-2xl w-full max-w-md p-6">
         <div className="flex items-start justify-between mb-2">

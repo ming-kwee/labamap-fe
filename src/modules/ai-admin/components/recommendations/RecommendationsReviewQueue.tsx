@@ -147,7 +147,15 @@ export default function RecommendationsReviewQueue() {
 
     try {
       await AiAdminService.triggerAnalysis(triggerChannel, controller.signal);
-      show(`Analysis selesai untuk ${CHANNEL_LABELS[triggerChannel] ?? triggerChannel}. Rekomendasi baru akan muncul di antrian.`, "success");
+      const ch = CHANNEL_LABELS[triggerChannel] ?? triggerChannel;
+      // The trigger returns { sessionId, status: "TRIGGERED" } — it does NOT report the
+      // outcome. A recommendation only lands here when confidence is in the review band
+      // (~70–92%). High-confidence results are AUTO-APPLIED to the production JOLT spec and
+      // never enter this queue — so don't promise a queue entry unconditionally.
+      show(
+        `Analysis ${ch} selesai — antrian di-refresh. Jika confidence tinggi, JOLT langsung diterapkan (auto-apply) & tidak masuk antrian; cek di Channel JOLT Specs / Agent Sessions.`,
+        "info",
+      );
       setTimeout(load, 800);
     } catch (e) {
       if (e instanceof AiApiError && e.kind === "aborted") {
@@ -520,7 +528,7 @@ function RecommendationDetail({
   const canApprove = reviewer.trim().length > 0;
 
   return (
-    <div className="fixed inset-0 z-[9999] flex justify-end bg-black/50 backdrop-blur-sm" onClick={onClose}>
+    <div className="fixed inset-0 z-[100000] flex justify-end bg-black/50 backdrop-blur-sm" onClick={onClose}>
       <div
         className="w-full max-w-2xl h-full bg-white dark:bg-gray-900 shadow-2xl overflow-y-auto"
         onClick={(e) => e.stopPropagation()}
