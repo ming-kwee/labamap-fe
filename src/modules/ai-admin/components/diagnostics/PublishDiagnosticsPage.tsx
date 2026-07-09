@@ -34,6 +34,7 @@ import type {
   PublishAnalysisRequest,
   PublishAnalysisResponse,
   PublishIssue,
+  PublishStageAdaptiveMapping,
 } from "@/modules/ecommerce-product-v2/types/publish-analysis";
 import {
   generateMappingRequest,
@@ -684,6 +685,224 @@ function StageRow({
   );
 }
 
+// ─── Adaptive-mapping warnings (stage 4) → readable structure ──────────────────
+// Backend emits stage-4 findings as flat strings mixing three shapes; dumping them
+// raw is unreadable. Parse into conflicts / readiness checks / notes.
+//  • [MAPPING-CONFLICT] target 'X' menerima N sumber. USED: <p> (95%, nama cocok). IGNORED: <p> (95%); …
+//  • ✓/⚠/✗ Check N (Title): detail … [field, …]   and   [JOLT-READINESS] Overall: WARNINGS
+//  • plain notes (injected / coverage / persisted)
+
+interface MappingConflict { target: string; count: number; used?: string; matched: boolean; ignored: string[] }
+interface MappingCheck { level: ReadinessLevel; title: string; detail?: string; items: string[] }
+interface ParsedMapping {
+  overall: "READY" | "WARNINGS" | "NOT_READY" | null;
+  conflicts: MappingConflict[];
+  checks: MappingCheck[];
+  notes: string[];
+}
+
+/** Drop the repetitive "(95%)" / "(95%, nama cocok)" confidence annotation + trailing punctuation. */
+const stripConf = (s: string) => s.replace(/\s*\(\d+%[^)]*\)/g, "").replace(/[;.\s]+$/, "").trim();
+/** Pull a trailing "[a, b, c]" list from a check message. */
+const bracketItems = (s: string): string[] => {
+  const m = s.match(/\[([^\]]*)\]\s*$/);
+  return m ? m[1].split(",").map((x) => x.trim()).filter(Boolean) : [];
+};
+
+function parseMappingWarnings(warnings: string[]): ParsedMapping {
+  const out: ParsedMapping = { overall: null, conflicts: [], checks: [], notes: [] };
+  for (const raw of warnings) {
+    const w = (raw ?? "").trim();
+    if (!w) continue;
+
+    const ro = /\[JOLT-READINESS\]\s*Overall:\s*(READY|WARNINGS|NOT_READY)/i.exec(w);
+    if (ro) { out.overall = ro[1].toUpperCase() as ParsedMapping["overall"]; continue; }
+
+    if (w.startsWith("[MAPPING-CONFLICT]")) {
+      const head = /target\s+'([^']+)'\s+(?:menerima|receives)\s+(\d+)/i.exec(w);
+      const usedIdx = w.indexOf("USED:");
+      const ignIdx = w.indexOf("IGNORED:");
+      let used: string | undefined;
+      let matched = false;
+      let ignored: string[] = [];
+      if (usedIdx >= 0) {
+        const usedRaw = w.slice(usedIdx + 5, ignIdx >= 0 ? ignIdx : undefined);
+        matched = /nama cocok|name match/i.test(usedRaw);
+        used = stripConf(usedRaw);
+      }
+      if (ignIdx >= 0) {
+        ignored = w.slice(ignIdx + 8).split(";").map(stripConf).filter(Boolean);
+      }
+      out.conflicts.push({ target: head?.[1] ?? "?", count: head ? Number(head[2]) : ignored.length + (used ? 1 : 0), used, matched, ignored });
+      continue;
+    }
+
+    const chk = /^([✓⚠✗])\s*(.+)$/.exec(w);
+    if (chk) {
+      const level: ReadinessLevel = chk[1] === "✓" ? "ok" : chk[1] === "✗" ? "error" : "warn";
+      const body = chk[2];
+      const items = bracketItems(body);
+      const titleM = /^(Check\s+\d+\s*\([^)]*\)|[^:]+):\s*(.*)$/.exec(body);
+      let title = body;
+      let detail: string | undefined;
+      if (titleM) {
+        title = titleM[1].trim();
+        detail = titleM[2].replace(/\[[^\]]*\]\s*$/, "").replace(/[:\s]+$/, "").trim() || undefined;
+      }
+      out.checks.push({ level, title, detail, items });
+      continue;
+    }
+
+    out.notes.push(w);
+  }
+  return out;
+}
+
+/** Collapsible summary → content (for long path lists). */
+function Expandable({ summary, children }: { summary: React.ReactNode; children: React.ReactNode }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div>
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="inline-flex items-center gap-1 text-[11px] text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
+      >
+        <span className={`transition-transform ${open ? "rotate-90" : ""}`}>▸</span>
+        {summary}
+      </button>
+      {open && <div className="mt-1.5">{children}</div>}
+    </div>
+  );
+}
+
+function PathChips({ paths, tone = "gray" }: { paths: string[]; tone?: Tone }) {
+  return (
+    <div className="flex flex-wrap gap-1">
+      {paths.map((p, i) => (
+        <code key={i} className={`text-[10px] font-mono px-1.5 py-0.5 rounded ${tone === "amber" ? "bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-300" : "bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300"}`}>
+          {p}
+        </code>
+      ))}
+    </div>
+  );
+}
+
+function AdaptiveMappingDetails({ am }: { am: PublishStageAdaptiveMapping }) {
+  const parsed = useMemo(() => parseMappingWarnings(am.warnings ?? []), [am.warnings]);
+  const overallMeta =
+    parsed.overall === "READY" ? { tone: "green" as Tone, label: "READY" }
+    : parsed.overall === "WARNINGS" ? { tone: "amber" as Tone, label: "WARNINGS" }
+    : parsed.overall === "NOT_READY" ? { tone: "red" as Tone, label: "NOT READY" }
+    : null;
+  const statusTone: Tone = am.status === "OK" || am.status === "EXCELLENT" ? "green" : am.status === "WARNING" ? "amber" : am.status === "ERROR" ? "red" : "gray";
+
+  return (
+    <SectionCard
+      title="Adaptive mapping — detail"
+      subtitle="konflik pemetaan & pemeriksaan kesiapan JOLT"
+      icon={<GitBranchIcon size={16} />}
+      right={overallMeta ? <Badge tone={overallMeta.tone} dot>{overallMeta.label}</Badge> : undefined}
+    >
+      {/* Stat strip */}
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mb-3">
+        {am.status && <span className="text-[11px] text-gray-500 dark:text-gray-400">status: <Badge tone={statusTone}>{am.status}</Badge></span>}
+        {am.overallConfidence != null && <span className="text-[11px] text-gray-500 dark:text-gray-400">confidence: <span className="font-mono text-gray-700 dark:text-gray-300">{am.overallConfidence.toFixed(0)}%</span></span>}
+        {am.totalMappings != null && <span className="text-[11px] text-gray-500 dark:text-gray-400">mappings: <span className="font-mono text-gray-700 dark:text-gray-300">{am.totalMappings}</span></span>}
+      </div>
+
+      {/* Conflicts — many sources collapsing to one target */}
+      {parsed.conflicts.length > 0 && (
+        <div className="mb-4">
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-1.5">
+            Konflik pemetaan ({parsed.conflicts.length})
+          </p>
+          <p className="text-[11px] text-gray-400 dark:text-gray-500 mb-2">
+            Beberapa source memetakan ke satu target — engine memakai satu, sisanya diabaikan. Confidence semua sama (mis. 95%), jadi pilihan bisa sewenang-wenang; pertimbangkan mempersempit source.
+          </p>
+          <div className="space-y-2">
+            {parsed.conflicts.map((c, i) => (
+              <div key={i} className="rounded-lg border border-amber-200 dark:border-amber-900/40 bg-amber-50/40 dark:bg-amber-900/10 px-3 py-2">
+                <div className="flex items-center justify-between gap-2 flex-wrap">
+                  <code className="text-xs font-mono font-medium text-gray-800 dark:text-gray-100">{c.target}</code>
+                  <Badge tone="amber">{c.count} sumber</Badge>
+                </div>
+                {c.used && (
+                  <p className="text-[11px] text-gray-600 dark:text-gray-300 mt-1">
+                    <span className="text-green-600 dark:text-green-400">✓ dipakai</span>{" "}
+                    <code className="font-mono">{c.used}</code>
+                    {c.matched && <span className="text-gray-400"> · nama cocok</span>}
+                  </p>
+                )}
+                {c.ignored.length > 0 && (
+                  <div className="mt-1.5">
+                    <Expandable summary={`${c.ignored.length} sumber lain diabaikan`}>
+                      <PathChips paths={c.ignored} />
+                    </Expandable>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Readiness checks */}
+      {parsed.checks.length > 0 && (
+        <div className="mb-4">
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-1.5">
+            Pemeriksaan kesiapan JOLT
+          </p>
+          <div className="overflow-hidden rounded-lg border border-gray-200 dark:border-gray-700">
+            <table className="w-full">
+              <tbody>
+                {parsed.checks.map((c, i) => (
+                  <tr key={i} className="border-t first:border-t-0 border-gray-100 dark:border-gray-800 align-top">
+                    <td className="px-3 py-2 whitespace-nowrap w-24">
+                      <Badge tone={READINESS_TONE[c.level]}>{READINESS_MARK[c.level]} {READINESS_LABEL[c.level]}</Badge>
+                    </td>
+                    <td className="px-3 py-2">
+                      <p className="text-xs text-gray-700 dark:text-gray-300">
+                        <span className="font-medium">{c.title}</span>
+                        {c.detail && <span className="text-gray-500 dark:text-gray-400"> — {c.detail}</span>}
+                      </p>
+                      {c.items.length > 0 && (
+                        <div className="mt-1.5">
+                          {c.items.length > 8 ? (
+                            <Expandable summary={`${c.items.length} field`}>
+                              <PathChips paths={c.items} tone="amber" />
+                            </Expandable>
+                          ) : (
+                            <PathChips paths={c.items} tone="amber" />
+                          )}
+                        </div>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Notes */}
+      {parsed.notes.length > 0 && (
+        <div>
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-1.5">Catatan</p>
+          <ul className="space-y-1">
+            {parsed.notes.map((n, i) => (
+              <li key={i} className="text-[11px] text-gray-500 dark:text-gray-400 flex gap-1.5">
+                <span className="text-gray-300 dark:text-gray-600 flex-shrink-0">•</span><span>{n}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </SectionCard>
+  );
+}
+
 function PublishAnalysisResult({ result }: { result: PublishAnalysisResponse }) {
   const score = result.readinessScore ?? 0;
   const ready = result.readyToPublish === true;
@@ -793,13 +1012,13 @@ function PublishAnalysisResult({ result }: { result: PublishAnalysisResponse }) 
           <StageRow label="3 · Merged Data" tone="gray" stats={[["fields", merged?.fieldCount]]} />
           <StageRow
             label="4 · Adaptive Mapping"
-            tone={am?.status === "OK" ? "green" : am?.status === "WARNING" ? "amber" : am?.status === "ERROR" ? "red" : "gray"}
+            tone={am?.status === "OK" || am?.status === "EXCELLENT" ? "green" : am?.status === "WARNING" ? "amber" : am?.status === "ERROR" ? "red" : "gray"}
             stats={[
               ["status", am?.status],
               ["confidence", am?.overallConfidence != null ? `${am.overallConfidence.toFixed(0)}%` : undefined],
               ["mappings", am?.totalMappings],
+              ["warnings", am?.warnings?.length || undefined],
             ]}
-            chips={am?.warnings?.length ? am.warnings : undefined}
           />
           <StageRow label="5 · JOLT Spec" tone={js == null ? "gray" : js.found ? "green" : "red"} stats={[
             ["found", js ? String(js.found ?? false) : undefined],
@@ -813,6 +1032,9 @@ function PublishAnalysisResult({ result }: { result: PublishAnalysisResponse }) 
           <StageRow label="7 · Post-Processing" tone="gray" stats={[["rules", pp?.ruleCount ?? pp?.rules?.length]]} />
         </div>
       </SectionCard>
+
+      {/* Stage-4 detail: mapping conflicts + JOLT readiness checks (parsed, not a chip dump) */}
+      {(am?.warnings?.length ?? 0) > 0 && <AdaptiveMappingDetails am={am!} />}
 
       {/* Transformed output + raw */}
       {tf?.transformedData != null && (

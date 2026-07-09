@@ -50,7 +50,20 @@ const PUBLISH_ANALYSIS = {
   masterProduct: { source: "mongodb", found: true, fieldCount: 24, hasVariants: true, variantCount: 2 },
   channelData: { step2DataFound: true, completionPercentage: 80, missingRequiredFields: ["material"] },
   mergedData: { fieldCount: 31 },
-  adaptiveMapping: { status: "WARNING", overallConfidence: 88.0, totalMappings: 22, warnings: ["[MAPPING-CONFLICT] title"] },
+  adaptiveMapping: {
+    status: "EXCELLENT",
+    overallConfidence: 95.0,
+    totalMappings: 29,
+    // Realistic stage-4 findings: a many-source conflict, JOLT readiness checks (one with a
+    // field list), the overall line, and plain notes — the FE parses these into a structure.
+    warnings: [
+      "[MAPPING-CONFLICT] target 'product.description' menerima 14 sumber. USED: properties.productTypeId.description (95%, nama cocok). IGNORED: properties.category.description (95%); properties.productId.description (95%); properties.price.description (95%).",
+      "[JOLT-READINESS] Overall: WARNINGS",
+      "✓ Check 1 (Compile): JOLT spec parsed successfully by Chainr.",
+      "⚠ Check 3 (Required coverage): 8 required target(s) missing from spec: [product.variants[0].weight, product.variants[0].size, product.variants[0].sku]",
+      "Injected 11 critical field(s) that were below confidence threshold",
+    ],
+  },
   joltSpec: { found: true, source: "adaptive_pattern_matching", operationCount: 5 },
   transformation: { success: true, outputTopLevelKeys: ["product"], transformedData: { product: { title: "Shopify Tee" } } },
   postProcessing: { ruleCount: 3, rules: [{ name: "r1", priority: 10 }] },
@@ -137,6 +150,21 @@ test.describe("Publish Diagnostics", () => {
     await expect(page.getByText(/Missing required field/)).toBeVisible();
     await expect(page.getByText("Saran perbaikan")).toBeVisible();
     await expect(page.getByText(/Pipeline \(7 stage\)/)).toBeVisible();
+
+    // Stage-4 warnings are parsed into a readable structure (not a raw amber-chip dump):
+    // a conflict card (target + used source + collapsed ignored count) and a checks table.
+    await expect(page.getByText("Adaptive mapping — detail")).toBeVisible();
+    await expect(page.getByText(/Konflik pemetaan \(1\)/)).toBeVisible();
+    await expect(page.getByText("product.description", { exact: true })).toBeVisible();
+    await expect(page.getByText("Pemeriksaan kesiapan JOLT", { exact: true })).toBeVisible();
+    await expect(page.getByText(/Check 1 \(Compile\)/).first()).toBeVisible();
+    // The long IGNORED path list is collapsed by default; expanding reveals the paths
+    // (raw-response JSON viewer stays collapsed, so this is the only source of the text).
+    const ignoredToggle = page.getByText(/3 sumber lain diabaikan/);
+    await expect(ignoredToggle).toBeVisible();
+    await expect(page.getByText("properties.category.description", { exact: true })).toHaveCount(0);
+    await ignoredToggle.click();
+    await expect(page.getByText("properties.category.description", { exact: true })).toBeVisible();
 
     // Request carries masterProductId + storeId; NO manual categoryId (backend derives it).
     expect(JSON.stringify(analyzeBody)).toContain("\"masterProductId\":\"p-1\"");
