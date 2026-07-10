@@ -536,6 +536,7 @@ function RecommendationDetail({
   const [rejectReason, setRejectReason] = useState("");
   const [confirmApprove, setConfirmApprove] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [approveError, setApproveError] = useState<string | null>(null);
 
   useEffect(() => {
     if (typeof window !== "undefined") setReviewer(window.localStorage.getItem(REVIEWER_KEY) ?? "");
@@ -557,12 +558,19 @@ function RecommendationDetail({
 
   const doApprove = useCallback(async () => {
     setBusy(true);
+    setApproveError(null);
     try {
       await AiAdminService.approveRecommendation(rec.id, reviewer.trim(), note.trim() || undefined);
       notify("Rekomendasi disetujui — JOLT spec produksi diperbarui.", "success");
       onReviewed();
     } catch (e) {
-      notify(`Approve gagal: ${(e as Error).message}`, "error");
+      // 422 = the proposed spec fails the backend JOLT-compile guard (can't be applied to
+      // production). Surface it persistently in the drawer — not a 4.5s toast — so the
+      // reviewer sees WHY and rejects/fixes instead of blindly retrying.
+      const is422 = e instanceof AiApiError && e.status === 422;
+      const raw = e instanceof AiApiError ? e.message.replace(/^\d{3}\s*/, "") : (e as Error).message;
+      setApproveError(is422 ? `Spec ditolak — tidak bisa di-compile jadi JOLT valid: ${raw}` : raw);
+      notify(is422 ? "Approve ditolak: proposed spec tidak valid (lihat detail di panel)." : `Approve gagal: ${raw}`, "error");
       setBusy(false);
       setConfirmApprove(false);
     }
@@ -588,7 +596,13 @@ function RecommendationDetail({
   const canApprove = reviewer.trim().length > 0;
 
   return (
-    <div className="fixed inset-0 z-[100000] flex justify-end bg-black/50 backdrop-blur-sm" onClick={onClose}>
+    <div
+      className="fixed inset-0 z-[100000] flex justify-end bg-black/50 backdrop-blur-sm"
+      // Only a direct backdrop click closes the drawer — not clicks bubbling up from the
+      // ConfirmDialog (rendered inside), which would otherwise unmount the drawer mid-approve
+      // and swallow a 422 rejection before its banner can show.
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+    >
       <div
         className="w-full max-w-2xl h-full bg-white dark:bg-gray-900 shadow-2xl overflow-y-auto"
         onClick={(e) => e.stopPropagation()}
@@ -729,6 +743,15 @@ function RecommendationDetail({
                   <XIcon size={15} /> Reject
                 </button>
               </div>
+              {approveError && (
+                <div className="rounded-lg border border-red-300 dark:border-red-800 bg-red-50 dark:bg-red-900/20 px-3 py-2">
+                  <p className="text-xs font-semibold text-red-700 dark:text-red-300">Approve ditolak backend</p>
+                  <p className="text-[11px] text-red-600 dark:text-red-400 mt-0.5 break-words">{approveError}</p>
+                  <p className="text-[11px] text-red-500/80 dark:text-red-400/80 mt-1">
+                    Spec ini tak bisa diterapkan ke produksi. Reject rekomendasi ini, atau perbaiki spec-nya lebih dulu.
+                  </p>
+                </div>
+              )}
               <p className="text-[11px] text-amber-600 dark:text-amber-400">
                 Approve mengubah JOLT spec produksi untuk channel ini. Pastikan sudah meninjau evidence & warnings.
               </p>

@@ -181,4 +181,33 @@ test.describe("P0-D · Recommendations Review Queue", () => {
     await page.getByRole("button", { name: "Reject", exact: true }).click();
     await expect(page.getByText(/Isi nama reviewer dulu/)).toBeVisible();
   });
+
+  test("surfaces a 422 JOLT-compile rejection on approve (persistent, not silent)", async ({ page }) => {
+    await page.route("**/admin/ai/recommendations?**", (r) =>
+      r.fulfill(json({ content: [mockRecommendation], page: 0, size: 20, totalElements: 1, totalPages: 1, hasNext: false })),
+    );
+    await page.route("**/admin/ai/recommendations/rec-e2e-001", (r) => r.fulfill(json(mockRecommendation)));
+    // Backend JOLT-compile guard rejects the proposed spec with 422.
+    await page.route("**/admin/ai/recommendations/rec-e2e-001/approve**", (r) =>
+      r.fulfill({
+        status: 422,
+        contentType: "application/json",
+        body: JSON.stringify({ message: "proposed spec is not a valid JOLT transform — expected flat dot-notation shift" }),
+      }),
+    );
+
+    await page.goto("/platform-admin/ai-recommendations");
+    await page.getByText("PUBLISH_FAILED").first().click();
+
+    // Reviewer required → then Approve → confirm.
+    await page.getByPlaceholder("nama / email admin").fill("qa@bhakti.co.id");
+    await page.getByRole("button", { name: "Approve", exact: true }).click();
+    await page.getByTestId("confirm-ok").click();
+
+    // 422 surfaced persistently in the drawer (not a disappearing toast), with the reason
+    // and a next-step hint. The drawer stays open so the reviewer can act.
+    await expect(page.getByText("Approve ditolak backend")).toBeVisible();
+    await expect(page.getByText(/not a valid JOLT transform/)).toBeVisible();
+    await expect(page.getByText(/Reject rekomendasi ini, atau perbaiki/)).toBeVisible();
+  });
 });

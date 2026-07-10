@@ -111,6 +111,47 @@ function ExplanationBlock({ explanation }: { explanation?: string | Record<strin
   );
 }
 
+/**
+ * Surface validationSummary errors/warnings prominently instead of burying them in raw JSON.
+ * After the backend's JOLT-compile guard, a spec that used to AUTO_APPLY can downgrade to
+ * RECOMMENDATION_CREATED / MANUAL_REVIEW_REQUIRED and carry the reasons here — make them visible.
+ */
+function ValidationSummaryBlock({ summary }: { summary: unknown }) {
+  const obj = summary && typeof summary === "object" ? (summary as Record<string, unknown>) : null;
+  const asStrings = (v: unknown): string[] =>
+    Array.isArray(v) ? v.map((x) => (typeof x === "string" ? x : JSON.stringify(x))) : [];
+  const errors = obj ? asStrings(obj.errors) : [];
+  const warnings = obj ? asStrings(obj.warnings) : [];
+  const valid = obj && typeof obj.valid === "boolean" ? (obj.valid as boolean) : undefined;
+
+  return (
+    <div className="space-y-2">
+      {valid != null && <Badge tone={valid ? "green" : "red"} dot>{valid ? "valid" : "tidak valid"}</Badge>}
+      {errors.length > 0 && (
+        <div>
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-red-600 dark:text-red-400 mb-1">Errors ({errors.length})</p>
+          <ul className="space-y-0.5">
+            {errors.map((e, i) => (
+              <li key={i} className="text-xs text-red-600 dark:text-red-400 flex gap-1.5"><span className="flex-shrink-0">✗</span><span className="break-words">{e}</span></li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {warnings.length > 0 && (
+        <div>
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-amber-600 dark:text-amber-400 mb-1">Warnings ({warnings.length})</p>
+          <ul className="space-y-0.5">
+            {warnings.map((w, i) => (
+              <li key={i} className="text-xs text-amber-600 dark:text-amber-400 flex gap-1.5"><span className="flex-shrink-0">⚠</span><span className="break-words">{w}</span></li>
+            ))}
+          </ul>
+        </div>
+      )}
+      <JsonViewer label="raw validationSummary" value={summary} />
+    </div>
+  );
+}
+
 export default function JoltGenerationConsole() {
   const [channelId, setChannelId] = useState("shopify");
   // Empty by default so it never acts as a phantom override — a leftover value would win
@@ -402,8 +443,8 @@ export default function JoltGenerationConsole() {
               )}
 
               {result.validationSummary != null && (
-                <SectionCard title="Validation summary" subtitle="hasil validasi spec">
-                  <JsonViewer label="validation" value={result.validationSummary} />
+                <SectionCard title="Validation summary" subtitle="hasil validasi spec — errors/warnings di sini">
+                  <ValidationSummaryBlock summary={result.validationSummary} />
                 </SectionCard>
               )}
 

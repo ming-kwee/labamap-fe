@@ -40,7 +40,10 @@ export default function EditJoltSpecModal({ spec, onSave, onClose }: Props) {
       await onSave(parsed, manualLock);
       onClose();
     } catch (err) {
-      setError((err as Error).message);
+      // 422 = backend JOLT-compile guard rejected the edited spec (it won't be saved). Strip the
+      // internal service prefix and flag validation rejections clearly instead of a raw dump.
+      const msg = (err as Error).message.replace(/^\[[^\]]+\]\s*/, "");
+      setError(/^422\b/.test(msg) ? `Spec ditolak — bukan JOLT valid: ${msg.replace(/^422\s*/, "")}` : msg);
     } finally {
       setSaving(false);
     }
