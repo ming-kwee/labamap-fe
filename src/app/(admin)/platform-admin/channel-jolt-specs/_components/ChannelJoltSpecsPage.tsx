@@ -1,6 +1,7 @@
 "use client";
 
-import React, { useState, useEffect, useCallback, useMemo } from "react";
+import React, { Suspense, useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { useSearchParams } from "next/navigation";
 import {
   ChannelJoltSpec,
   UpdateJoltSpecRequest,
@@ -381,11 +382,27 @@ function tierShortLabel(tier: string): string {
 
 // ─── Main page ─────────────────────────────────────────────────────────────────
 
+// Deep-link support (e.g. "Lihat spec ini" from Publish Diagnostics): ?channelId=&categoryId=
+// filters to that channel and auto-opens the matching spec's editor. useSearchParams needs a
+// Suspense boundary in the App Router.
 export default function ChannelJoltSpecsPage() {
+  return (
+    <Suspense fallback={<div className="p-6 text-sm text-gray-400 dark:text-gray-500">Loading…</div>}>
+      <ChannelJoltSpecsPageInner />
+    </Suspense>
+  );
+}
+
+function ChannelJoltSpecsPageInner() {
+  const searchParams = useSearchParams();
+  const deepLinkChannel  = searchParams.get("channelId");
+  const deepLinkCategory = searchParams.get("categoryId");
+  const deepLinkHandled  = useRef(false);
+
   const [specs, setSpecs]               = useState<ChannelJoltSpec[]>([]);
   const [loading, setLoading]           = useState(true);
   const [error, setError]               = useState<string | null>(null);
-  const [channelFilter, setChannelFilter] = useState<string>("all");
+  const [channelFilter, setChannelFilter] = useState<string>(deepLinkChannel ?? "all");
   const [lockedFilter, setLockedFilter] = useState<"all" | "locked" | "auto">("all");
   const [originFilter, setOriginFilter] = useState<"all" | SpecOrigin | "auto_applied">("all");
   const [editTarget, setEditTarget]     = useState<ChannelJoltSpec | null>(null);
@@ -413,6 +430,24 @@ export default function ChannelJoltSpecsPage() {
     setToast({ message, type });
     setTimeout(() => setToast(null), 4000);
   }
+
+  // Once specs are loaded, honor a ?channelId=&categoryId= deep link: open the matching spec's
+  // editor, or (if none is cached yet) tell the admin why. Runs once per navigation.
+  useEffect(() => {
+    if (deepLinkHandled.current || loading || !deepLinkChannel || !deepLinkCategory) return;
+    deepLinkHandled.current = true;
+    const target = specs.find(
+      (s) => s.channelId === deepLinkChannel && (s.categoryId ?? "default") === deepLinkCategory,
+    );
+    if (target) {
+      setEditTarget(target);
+    } else {
+      showToast(
+        `Belum ada JOLT spec tersimpan untuk ${CHANNEL_TYPE_LABELS[deepLinkChannel] ?? deepLinkChannel} / ${deepLinkCategory}. APM akan membuatnya saat publish/analyse berikutnya.`,
+        "error",
+      );
+    }
+  }, [loading, specs, deepLinkChannel, deepLinkCategory]);
 
   async function handleSave(joltSpec: unknown[], markAsManuallyConfigured: boolean) {
     if (!editTarget) return;

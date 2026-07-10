@@ -70,4 +70,18 @@ test.describe("P2-I · JOLT Specs provenance", () => {
     await expect(table.getByText("APM").first()).toBeVisible();
     await expect(table.getByText("Manual")).toHaveCount(0);
   });
+
+  test("deep link (?channelId=&categoryId=) auto-opens the matching spec's editor", async ({ page }) => {
+    // "Lihat spec ini" from Publish Diagnostics lands here; the shopify/clothing spec (s-ai)
+    // matches, so its editor opens automatically.
+    await page.goto("/platform-admin/channel-jolt-specs?channelId=shopify&categoryId=clothing");
+    await expect(page.getByRole("heading", { name: "Edit JOLT Spec" })).toBeVisible();
+  });
+
+  test("deep link with no matching spec informs the admin instead of opening", async ({ page }) => {
+    // No spec cached for shopify/food → no editor; a toast explains APM will create it.
+    await page.goto("/platform-admin/channel-jolt-specs?channelId=shopify&categoryId=food");
+    await expect(page.getByText(/Belum ada JOLT spec tersimpan/)).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Edit JOLT Spec" })).toHaveCount(0);
+  });
 });

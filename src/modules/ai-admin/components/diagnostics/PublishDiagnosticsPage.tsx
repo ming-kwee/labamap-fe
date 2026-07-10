@@ -19,6 +19,7 @@
  * elapsed timer + Cancel.
  */
 
+import Link from "next/link";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AiApiError } from "../../types/common";
 import {
@@ -788,7 +789,15 @@ function PathChips({ paths, tone = "gray" }: { paths: string[]; tone?: Tone }) {
   );
 }
 
-function AdaptiveMappingDetails({ am }: { am: PublishStageAdaptiveMapping }) {
+function AdaptiveMappingDetails({
+  am,
+  channelType,
+  categoryId,
+}: {
+  am: PublishStageAdaptiveMapping;
+  channelType?: string;
+  categoryId?: string;
+}) {
   const parsed = useMemo(() => parseMappingWarnings(am.warnings ?? []), [am.warnings]);
   const overallMeta =
     parsed.overall === "READY" ? { tone: "green" as Tone, label: "READY" }
@@ -836,6 +845,22 @@ function AdaptiveMappingDetails({ am }: { am: PublishStageAdaptiveMapping }) {
             tapi spec <strong>belum lengkap</strong> — masih ada required target yang belum terpetakan. Jadi kualitas match bagus,
             namun belum siap publish. Lihat daftar pemeriksaan di bawah untuk yang kurang.
           </p>
+        </div>
+      )}
+
+      {/* Jump to the exact JOLT spec (channel × category) to inspect/fix it — e.g. from a
+          Check 1 (Compile) ✗ straight to the editor. */}
+      {channelType && (
+        <div className="mb-4 flex items-center gap-2 flex-wrap">
+          <Link
+            href={`/platform-admin/channel-jolt-specs?channelId=${encodeURIComponent(channelType)}&categoryId=${encodeURIComponent(categoryId ?? "default")}`}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+          >
+            <GitBranchIcon size={13} /> Lihat spec ini →
+          </Link>
+          <span className="text-[11px] text-gray-400 dark:text-gray-500">
+            Buka JOLT spec <code className="font-mono">{channelType}/{categoryId ?? "default"}</code> di editor untuk periksa/perbaiki.
+          </span>
         </div>
       )}
 
@@ -1062,7 +1087,9 @@ function PublishAnalysisResult({ result }: { result: PublishAnalysisResponse }) 
       </SectionCard>
 
       {/* Stage-4 detail: mapping conflicts + JOLT readiness checks (parsed, not a chip dump) */}
-      {(am?.warnings?.length ?? 0) > 0 && <AdaptiveMappingDetails am={am!} />}
+      {(am?.warnings?.length ?? 0) > 0 && (
+        <AdaptiveMappingDetails am={am!} channelType={result.channelType} categoryId={result.categoryId ?? "default"} />
+      )}
 
       {/* Transformed output + raw */}
       {tf?.transformedData != null && (
