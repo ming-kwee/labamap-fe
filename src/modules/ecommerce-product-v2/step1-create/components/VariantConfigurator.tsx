@@ -196,6 +196,14 @@ const VariantConfigurator: React.FC<VariantConfiguratorProps> = ({
     return variantDimensions;
   }, [variantDimensions, productTypeDimensions, dimensionOptions]);
 
+  // Dev-only diagnostics: ProductType variant dimensions dropped from the axes because their
+  // matched master-attribute has zero options (the primary path filters `options.length > 0`).
+  // Surfaced only in development so a "missing axis" isn't a silent mystery; never in production.
+  const droppedDimensions = useMemo(() => {
+    if (!(productTypeDimensions.length > 0 && dimensionOptions.size > 0)) return [];
+    return productTypeDimensions.filter(dim => !(dimensionOptions.get(dim.attributeCode)?.length));
+  }, [productTypeDimensions, dimensionOptions]);
+
   // Parse value prop once synchronously so variants and selectedOptions are available
   // on the FIRST render (avoiding the effect-delay that caused derivedDimensions to be
   // empty until after the first paint).
@@ -435,6 +443,30 @@ const VariantConfigurator: React.FC<VariantConfiguratorProps> = ({
               </span>
             )}
           </span>
+        </div>
+      )}
+
+      {/* Dev-only: warn when a ProductType variant dimension was dropped for having no options.
+          Gated on NODE_ENV → statically eliminated from production builds (never shown to users). */}
+      {process.env.NODE_ENV !== "production" && droppedDimensions.length > 0 && (
+        <div
+          data-testid="dropped-dimensions-dev-warning"
+          className="rounded-lg border border-dashed border-amber-400 dark:border-amber-600 bg-amber-50/60 dark:bg-amber-900/10 px-3 py-2"
+        >
+          <p className="text-[11px] font-semibold text-amber-700 dark:text-amber-300">
+            ⚠ Dev-only — {droppedDimensions.length} dimensi varian dilewati (tanpa opsi)
+          </p>
+          <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-0.5">
+            Dimensi ini ada di ProductType tapi master-attribute-nya belum punya opsi, jadi tak jadi axis:
+          </p>
+          <ul className="mt-1 space-y-0.5">
+            {droppedDimensions.map(dim => (
+              <li key={dim.attributeCode} className="text-[11px] text-amber-700 dark:text-amber-300">
+                • <strong>{dim.attributeName}</strong> <code className="font-mono">({dim.attributeCode})</code> — seed opsi di master-attributes agar muncul.
+              </li>
+            ))}
+          </ul>
+          <p className="text-[10px] text-amber-500/80 dark:text-amber-400/70 mt-1">Pesan ini hanya tampil saat development.</p>
         </div>
       )}
 
