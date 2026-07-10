@@ -154,9 +154,14 @@ test.describe("Publish Diagnostics", () => {
     // Stage-4 warnings are parsed into a readable structure (not a raw amber-chip dump):
     // a conflict card (target + used source + collapsed ignored count) and a checks table.
     await expect(page.getByText("Adaptive mapping — detail")).toBeVisible();
+    // Two axes labeled separately so "EXCELLENT" (match quality) doesn't contradict the
+    // JOLT readiness verdict; the divergence explainer reconciles them.
+    await expect(page.getByText("Kualitas pemetaan")).toBeVisible();
+    await expect(page.getByText("Kesiapan JOLT").first()).toBeVisible();
+    await expect(page.getByText(/Bukan kontradiksi/)).toBeVisible();
     await expect(page.getByText(/Konflik pemetaan \(1\)/)).toBeVisible();
     await expect(page.getByText("product.description", { exact: true })).toBeVisible();
-    await expect(page.getByText("Pemeriksaan kesiapan JOLT", { exact: true })).toBeVisible();
+    await expect(page.getByRole("paragraph").filter({ hasText: /^Pemeriksaan kesiapan JOLT$/ })).toBeVisible();
     await expect(page.getByText(/Check 1 \(Compile\)/).first()).toBeVisible();
     // The long IGNORED path list is collapsed by default; expanding reveals the paths
     // (raw-response JSON viewer stays collapsed, so this is the only source of the text).

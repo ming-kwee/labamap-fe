@@ -795,21 +795,49 @@ function AdaptiveMappingDetails({ am }: { am: PublishStageAdaptiveMapping }) {
     : parsed.overall === "WARNINGS" ? { tone: "amber" as Tone, label: "WARNINGS" }
     : parsed.overall === "NOT_READY" ? { tone: "red" as Tone, label: "NOT READY" }
     : null;
-  const statusTone: Tone = am.status === "OK" || am.status === "EXCELLENT" ? "green" : am.status === "WARNING" ? "amber" : am.status === "ERROR" ? "red" : "gray";
+  const matchGood = am.status === "OK" || am.status === "EXCELLENT";
+  const statusTone: Tone = matchGood ? "green" : am.status === "WARNING" ? "amber" : am.status === "ERROR" ? "red" : "gray";
+  // The two axes look contradictory (green "EXCELLENT" next to a red readiness badge) but
+  // measure different things — flag it explicitly when they diverge.
+  const axesDiverge = matchGood && (parsed.overall === "NOT_READY" || parsed.overall === "WARNINGS");
 
   return (
     <SectionCard
       title="Adaptive mapping — detail"
       subtitle="konflik pemetaan & pemeriksaan kesiapan JOLT"
       icon={<GitBranchIcon size={16} />}
-      right={overallMeta ? <Badge tone={overallMeta.tone} dot>{overallMeta.label}</Badge> : undefined}
+      // No single header verdict: this section reports TWO axes (match quality + JOLT
+      // readiness) shown as labeled cards below, so one badge here would be misread.
     >
-      {/* Stat strip */}
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mb-3">
-        {am.status && <span className="text-[11px] text-gray-500 dark:text-gray-400">status: <Badge tone={statusTone}>{am.status}</Badge></span>}
-        {am.overallConfidence != null && <span className="text-[11px] text-gray-500 dark:text-gray-400">confidence: <span className="font-mono text-gray-700 dark:text-gray-300">{am.overallConfidence.toFixed(0)}%</span></span>}
-        {am.totalMappings != null && <span className="text-[11px] text-gray-500 dark:text-gray-400">mappings: <span className="font-mono text-gray-700 dark:text-gray-300">{am.totalMappings}</span></span>}
+      {/* Two distinct axes — label them so EXCELLENT vs NOT READY isn't confusing. */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-3">
+        <div className="rounded-lg border border-gray-200 dark:border-gray-700 px-3 py-2">
+          <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">Kualitas pemetaan</p>
+          <div className="flex items-center gap-2 mt-1 flex-wrap">
+            {am.status && <Badge tone={statusTone}>{am.status}</Badge>}
+            {am.overallConfidence != null && <span className="text-[11px] text-gray-500 dark:text-gray-400">confidence <span className="font-mono text-gray-700 dark:text-gray-300">{am.overallConfidence.toFixed(0)}%</span></span>}
+            {am.totalMappings != null && <span className="text-[11px] text-gray-500 dark:text-gray-400">· <span className="font-mono text-gray-700 dark:text-gray-300">{am.totalMappings}</span> mapping</span>}
+          </div>
+          <p className="text-[10px] text-gray-400 dark:text-gray-500 mt-1">Seberapa yakin field yang <em>berhasil</em> dipetakan.</p>
+        </div>
+        <div className="rounded-lg border border-gray-200 dark:border-gray-700 px-3 py-2">
+          <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">Kesiapan JOLT</p>
+          <div className="flex items-center gap-2 mt-1">
+            {overallMeta ? <Badge tone={overallMeta.tone} dot>{overallMeta.label}</Badge> : <span className="text-[11px] text-gray-400">—</span>}
+          </div>
+          <p className="text-[10px] text-gray-400 dark:text-gray-500 mt-1">Apakah spec <em>lengkap</em> untuk dipublish (semua required tercakup).</p>
+        </div>
       </div>
+
+      {axesDiverge && (
+        <div className="mb-3 rounded-lg border border-amber-200 dark:border-amber-900/40 bg-amber-50/50 dark:bg-amber-900/10 px-3 py-2">
+          <p className="text-[11px] text-amber-700 dark:text-amber-300">
+            <strong>Bukan kontradiksi.</strong> Match yang dibuat <strong>{am.status}</strong> (berkeyakinan tinggi),
+            tapi spec <strong>belum lengkap</strong> — masih ada required target yang belum terpetakan. Jadi kualitas match bagus,
+            namun belum siap publish. Lihat daftar pemeriksaan di bawah untuk yang kurang.
+          </p>
+        </div>
+      )}
 
       {/* Conflicts — many sources collapsing to one target */}
       {parsed.conflicts.length > 0 && (
