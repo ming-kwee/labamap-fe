@@ -163,10 +163,12 @@ test.describe("Publish Diagnostics", () => {
     await expect(page.getByText("product.description", { exact: true })).toBeVisible();
     await expect(page.getByRole("paragraph").filter({ hasText: /^Pemeriksaan kesiapan JOLT$/ })).toBeVisible();
     await expect(page.getByText(/Check 1 \(Compile\)/).first()).toBeVisible();
-    // "Lihat spec ini" deep-links to the JOLT specs editor for this channel × category.
+    // "Lihat spec ini" deep-links to the JOLT specs editor for this channel × category, in a
+    // new tab so the diagnostics run isn't lost on navigation.
     const specLink = page.getByRole("link", { name: /Lihat spec ini/ });
     await expect(specLink).toBeVisible();
     await expect(specLink).toHaveAttribute("href", "/platform-admin/channel-jolt-specs?channelId=shopify&categoryId=clothing");
+    await expect(specLink).toHaveAttribute("target", "_blank");
     // The long IGNORED path list is collapsed by default; expanding reveals the paths
     // (raw-response JSON viewer stays collapsed, so this is the only source of the text).
     const ignoredToggle = page.getByText(/3 sumber lain diabaikan/);

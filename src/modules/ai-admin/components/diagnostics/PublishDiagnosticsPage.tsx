@@ -849,17 +849,20 @@ function AdaptiveMappingDetails({
       )}
 
       {/* Jump to the exact JOLT spec (channel × category) to inspect/fix it — e.g. from a
-          Check 1 (Compile) ✗ straight to the editor. */}
+          Check 1 (Compile) ✗ straight to the editor. Opens in a NEW TAB so this diagnostics
+          run (product/store/result live only in component state) isn't lost on navigation. */}
       {channelType && (
         <div className="mb-4 flex items-center gap-2 flex-wrap">
           <Link
             href={`/platform-admin/channel-jolt-specs?channelId=${encodeURIComponent(channelType)}&categoryId=${encodeURIComponent(categoryId ?? "default")}`}
+            target="_blank"
+            rel="noopener noreferrer"
             className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
           >
-            <GitBranchIcon size={13} /> Lihat spec ini →
+            <GitBranchIcon size={13} /> Lihat spec ini ↗
           </Link>
           <span className="text-[11px] text-gray-400 dark:text-gray-500">
-            Buka JOLT spec <code className="font-mono">{channelType}/{categoryId ?? "default"}</code> di editor untuk periksa/perbaiki.
+            Buka JOLT spec <code className="font-mono">{channelType}/{categoryId ?? "default"}</code> di tab baru — hasil diagnostics ini tetap tersimpan di sini.
           </span>
         </div>
       )}
