@@ -6,7 +6,7 @@
 
 export interface CascadeOutcome {
   escalatedToAgent?: boolean;
-  agentStatus?: string; // AUTO_APPLIED | RECOMMENDATION_CREATED | MANUAL_REVIEW_REQUIRED | AGENT_FAILED | FALLBACK_APM
+  agentStatus?: string; // AUTO_APPLIED | RECOMMENDATION_CREATED | MANUAL_REVIEW_REQUIRED | AGENT_FAILED | FALLBACK_APM | SKIPPED_PROTECTED
   agentJoltSpecId?: string;
   aiAgentSessionId?: string;
   aiEnriched?: boolean;
@@ -24,6 +24,7 @@ export type CascadeKind =
   | "ai_manual"
   | "fallback_apm"
   | "ai_failed"
+  | "ai_skipped"
   | "ai_other";
 
 export interface CascadeVariant {
@@ -55,6 +56,8 @@ export function resolveCascadeVariant(o: CascadeOutcome): CascadeVariant | null 
       return { kind: "fallback_apm", label: "AI timeout → fallback APM", title: "Agent tak sempat menyelesaikan (timeout) — APM yang dipakai. Naikkan AI_CASCADE_TIMEOUT_SECONDS atau pakai LLM berbayar." };
     case "AGENT_FAILED":
       return { kind: "ai_failed", label: "AI gagal → APM", title: "Agent gagal (lihat sesi untuk penyebab) — hasil APM yang dipakai." };
+    case "SKIPPED_PROTECTED":
+      return { kind: "ai_skipped", label: "AI dilewati (terkunci)", title: "Spec sudah di-approve/dikonfigurasi manusia — auto-apply dilewati agar tidak menimpa. Approve manual masih bisa menimpa." };
     default:
       return { kind: "ai_other", label: "AI", title: `Dieskalasi ke agent AI (status: ${o.agentStatus ?? "?"}).` };
   }

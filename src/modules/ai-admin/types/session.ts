@@ -19,12 +19,25 @@ export type AgentStep = Record<string, unknown>;
 
 export type SessionStatus = "COMPLETED" | "FAILED" | "RUNNING" | string;
 
+/**
+ * Outcome of the agent's attempt to write its JOLT spec (audit trail; backend
+ * commit 2d09e96). `SKIPPED_PROTECTED` = the target spec is human-owned
+ * (approved/manual), so auto-apply was skipped rather than overwriting it.
+ */
+export type ApplyOutcome =
+  | "AUTO_APPLIED"
+  | "SKIPPED_PROTECTED"
+  | "RECOMMENDATION_CREATED"
+  | "MANUAL_REVIEW_REQUIRED";
+
 export interface AiAgentSession {
   id: string;
   triggerType: string; // e.g. "JOLT_GENERATION"
   channelId: string;
   categoryId?: string | null;
   status: SessionStatus;
+  /** @Indexed audit field — how the agent's spec write resolved (may be null for non-write triggers). */
+  applyOutcome?: ApplyOutcome | null;
   ragContext?: RagContext | null; // grounding proof (null on early failure)
   agentSteps?: AgentStep[] | null;
   summary?: unknown;
@@ -50,6 +63,9 @@ export type GenerateStatus =
   | "RECOMMENDATION_CREATED"
   | "MANUAL_REVIEW_REQUIRED"
   | "AGENT_FAILED"
+  // Auto-apply blocked because the target spec is human-owned (manually configured
+  // or approved). A human *approve* may still overwrite. Backend commit f6c7b5e.
+  | "SKIPPED_PROTECTED"
   | string;
 
 export interface GenerateJoltResult {

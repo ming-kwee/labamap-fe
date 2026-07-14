@@ -16,7 +16,7 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import React, { useCallback, useEffect, useState } from "react";
 import { PageResponse } from "../../types/common";
-import { AiAgentSession } from "../../types/session";
+import { AiAgentSession, ApplyOutcome } from "../../types/session";
 import { AiAdminService } from "../../services/aiAdmin.service";
 import { ActivityIcon, ClockIcon, RefreshIcon, TerminalIcon, XIcon, ZapIcon } from "../shared/icons";
 import {
@@ -49,6 +49,21 @@ function fmtTime(iso?: string): string {
   }
 }
 const statusTone = (s: string): Tone => (s === "COMPLETED" ? "green" : s === "FAILED" ? "red" : s === "RUNNING" ? "amber" : "gray");
+
+// Audit: how the agent's JOLT-spec write resolved (backend commit 2d09e96).
+// SKIPPED_PROTECTED is highlighted amber — a human-owned spec was left untouched.
+const APPLY_OUTCOME_META: Record<ApplyOutcome, { tone: Tone; label: string; title: string }> = {
+  AUTO_APPLIED: { tone: "green", label: "Auto-applied", title: "Agent menulis JOLT spec dan langsung menerapkannya." },
+  SKIPPED_PROTECTED: { tone: "amber", label: "Skipped — locked", title: "Spec sudah di-approve/dikonfigurasi manusia — auto-apply dilewati agar tidak menimpa." },
+  RECOMMENDATION_CREATED: { tone: "blue", label: "Recommendation", title: "Agent membuat rekomendasi — menunggu review manusia." },
+  MANUAL_REVIEW_REQUIRED: { tone: "amber", label: "Manual review", title: "Confidence rendah — perlu keputusan manual." },
+};
+
+function ApplyOutcomeBadge({ outcome }: { outcome?: ApplyOutcome | null }) {
+  if (!outcome) return <span className="text-xs text-gray-400">—</span>;
+  const meta = APPLY_OUTCOME_META[outcome] ?? { tone: "gray" as Tone, label: outcome, title: outcome };
+  return <span title={meta.title}><Badge tone={meta.tone} dot>{meta.label}</Badge></span>;
+}
 
 export default function AgentSessionsPage() {
   const searchParams = useSearchParams();
@@ -154,6 +169,7 @@ export default function AgentSessionsPage() {
                 <th className="px-3 py-2.5 text-xs font-medium text-gray-500 dark:text-gray-400">Trigger</th>
                 <th className="px-3 py-2.5 text-xs font-medium text-gray-500 dark:text-gray-400">Category</th>
                 <th className="px-3 py-2.5 text-xs font-medium text-gray-500 dark:text-gray-400">Status</th>
+                <th className="px-3 py-2.5 text-xs font-medium text-gray-500 dark:text-gray-400">Apply</th>
                 <th className="px-3 py-2.5 text-xs font-medium text-gray-500 dark:text-gray-400">Grounding</th>
                 <th className="px-3 py-2.5 text-xs font-medium text-gray-500 dark:text-gray-400">Duration</th>
                 <th className="px-3 py-2.5 text-xs font-medium text-gray-500 dark:text-gray-400">Tokens</th>
@@ -195,6 +211,7 @@ function SessionRow({ session, onOpen }: { session: AiAgentSession; onOpen: () =
       <td className="px-3 py-3"><span className="text-xs font-mono text-gray-700 dark:text-gray-300">{session.triggerType}</span></td>
       <td className="px-3 py-3"><span className="text-xs text-gray-500 dark:text-gray-400">{session.categoryId || "—"}</span></td>
       <td className="px-3 py-3"><Badge tone={statusTone(session.status)} dot>{session.status}</Badge></td>
+      <td className="px-3 py-3"><ApplyOutcomeBadge outcome={session.applyOutcome} /></td>
       <td className="px-3 py-3">
         {rag == null ? (
           <span className="text-xs text-gray-400" title="tidak ada ragContext (gagal sebelum retrieval)">—</span>
@@ -224,6 +241,7 @@ function SessionDetail({ session, onClose }: { session: AiAgentSession; onClose:
         <div className="sticky top-0 z-10 flex items-center justify-between px-5 py-4 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800">
           <div className="flex items-center gap-3 min-w-0">
             <Badge tone={statusTone(session.status)} dot>{session.status}</Badge>
+            <ApplyOutcomeBadge outcome={session.applyOutcome} />
             <ChannelBadge channelId={session.channelId} />
             <span className="text-xs font-mono text-gray-400 truncate">{session.triggerType}</span>
           </div>

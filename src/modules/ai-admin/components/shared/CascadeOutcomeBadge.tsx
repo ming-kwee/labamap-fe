@@ -26,6 +26,7 @@ const KIND_STYLE: Record<CascadeKind, { cls: string; dot: string }> = {
   ai_manual: { cls: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300", dot: "bg-amber-500" },
   fallback_apm: { cls: "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300", dot: "bg-yellow-500" },
   ai_failed: { cls: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300", dot: "bg-red-500" },
+  ai_skipped: { cls: "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300", dot: "bg-gray-400" },
   ai_other: { cls: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300", dot: "bg-blue-500" },
 };
 

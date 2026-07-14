@@ -62,6 +62,7 @@ const STATUS_META: Record<string, { tone: Tone; label: string; desc: string }> =
   RECOMMENDATION_CREATED: { tone: "blue", label: "Recommendation created", desc: "Menunggu review manusia di P0-D." },
   MANUAL_REVIEW_REQUIRED: { tone: "amber", label: "Manual review required", desc: "Confidence rendah — perlu keputusan manual." },
   AGENT_FAILED: { tone: "red", label: "Agent failed", desc: "Agent tidak menghasilkan spec (lihat penyebab)." },
+  SKIPPED_PROTECTED: { tone: "gray", label: "Skipped — locked", desc: "Spec sudah di-approve/dikonfigurasi manusia; auto-apply dilewati agar tidak menimpa." },
 };
 
 const labelize = (k: string) =>
