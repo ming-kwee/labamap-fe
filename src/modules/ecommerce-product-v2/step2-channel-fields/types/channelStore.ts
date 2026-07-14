@@ -508,6 +508,22 @@ export interface OAuthInitiateResponse {
 
 // ─── Publish Types ────────────────────────────────────────────────────────────
 
+/**
+ * A single actionable, per-field error from the publish pre-flight gate (HTTP 400).
+ * The gate returns `errors[] { field, errorCode, message, suggestion }` when a
+ * merchant-fixable field is missing. Spring bean-validation errors (`defaultMessage`)
+ * are normalised into this same shape by the service layer.
+ *
+ * `errorCode:"MISSING_REQUIRED_FIELD"` marks a merchant-fixable content block
+ * (distinct from `"PUBLISH_FAILED"`, a system/channel error).
+ */
+export interface PublishFieldError {
+  field: string;
+  errorCode?: string;
+  message?: string;
+  suggestion?: string;
+}
+
 export interface PublishSingleRequest {
   masterProductId: string;
   storeId: string;
@@ -532,10 +548,17 @@ export interface PublishSingleRequest {
 export interface StorePublishResult {
   storeId: string;
   storeName?: string;
-  /** Backend may return "COMPLETED" (workflow terminal state) — treat same as "PUBLISHED" */
-  status: "PUBLISHED" | "COMPLETED" | "FAILED";
+  /**
+   * Backend may return "COMPLETED" (workflow terminal state) — treat same as "PUBLISHED".
+   * "BLOCKED" is the pre-flight gate verdict: publish never reached the channel because a
+   * merchant-fixable field is missing (see `fieldErrors`) — distinct from a real "FAILED".
+   */
+  status: "PUBLISHED" | "COMPLETED" | "FAILED" | "BLOCKED";
   publishedAt?: string;
+  /** Human-readable summary (joined field messages, or a system error message). */
   error?: string;
+  /** Structured per-field errors from the pre-flight gate — for inline field highlighting. */
+  fieldErrors?: PublishFieldError[];
 }
 
 export interface BatchPublishRequest {

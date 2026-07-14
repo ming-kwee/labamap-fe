@@ -14,6 +14,7 @@ import type {
   ChannelStepStoresResponse,
   ChannelStepRequest,
   PublishSingleRequest,
+  PublishFieldError,
   BatchPublishRequest,
   BatchPublishResponse,
   CredentialFieldSchema,
@@ -33,41 +34,70 @@ const BASE = "http://localhost:8888/labamap/api/v1";
 export class ChannelApiError extends Error {
   readonly status: number;
   readonly code?: string;
-  constructor(message: string, status: number, code?: string) {
+  /**
+   * Structured per-field errors when the body carries them (publish pre-flight gate,
+   * Spring bean-validation). Lets callers highlight individual fields instead of only
+   * rendering the joined `message`.
+   */
+  readonly fieldErrors?: PublishFieldError[];
+  constructor(message: string, status: number, code?: string, fieldErrors?: PublishFieldError[]) {
     super(message);
     this.name = "ChannelApiError";
     this.status = status;
     this.code = code;
+    this.fieldErrors = fieldErrors;
   }
 }
 
-/** Parse the most useful message out of a non-2xx response body. */
-async function parseErrorMessage(res: Response): Promise<string> {
+/**
+ * Extract structured per-field errors from a parsed error body. Handles both shapes:
+ *  - Publish pre-flight gate: `errors[] { field, errorCode, message, suggestion }`
+ *  - Spring bean-validation:  `errors[]`/`fieldErrors[] { field, defaultMessage }`
+ * Returns undefined when the body has no recognisable per-field array.
+ */
+function extractFieldErrors(body: Record<string, unknown> | undefined): PublishFieldError[] | undefined {
+  const raw = (body?.errors ?? body?.fieldErrors) as unknown;
+  if (!Array.isArray(raw) || raw.length === 0) return undefined;
+  return raw.map((e): PublishFieldError => {
+    if (typeof e === "string") return { field: "?", message: e };
+    const o = (e ?? {}) as Record<string, unknown>;
+    return {
+      field: (o.field as string) ?? "?",
+      errorCode: o.errorCode as string | undefined,
+      // Pre-flight gate uses `message`; bean-validation uses `defaultMessage`.
+      message: (o.message ?? o.defaultMessage) as string | undefined,
+      suggestion: o.suggestion as string | undefined,
+    };
+  });
+}
+
+/** Build a typed error from a non-2xx response, extracting any `CODE:` prefix + per-field errors. */
+async function buildApiError(res: Response): Promise<ChannelApiError> {
+  const rawText = await res.text().catch(() => "");
+  let body: Record<string, unknown> | undefined;
   try {
-    const body = await res.json();
+    body = rawText ? (JSON.parse(rawText) as Record<string, unknown>) : undefined;
+  } catch {
+    // Non-JSON body (e.g. plain text / HTML error page) — fall through with rawText.
+  }
+
+  if (body && typeof body === "object") {
     // Log full body so backend validation detail is visible in the browser console.
     // Use warn (not error) — many 4xx here are expected/handled (e.g. 422
     // PRODUCT_TYPE_MISSING) and shouldn't trip the Next.js error overlay.
     console.warn(`[ChannelStoreService] ${res.status} ${res.url}`, body);
-    // Spring Boot bean-validation errors come in body.errors[] or body.fieldErrors[]
-    const fieldErrors: string | undefined =
-      (body.errors as Array<{ defaultMessage?: string; field?: string }> | undefined)
-        ?.map((e) => `${e.field ?? "?"}: ${e.defaultMessage ?? e}`)
-        .join("; ") ??
-      (body.fieldErrors as Array<{ field?: string; defaultMessage?: string }> | undefined)
-        ?.map((e) => `${e.field ?? "?"}: ${e.defaultMessage ?? e}`)
-        .join("; ");
-    return fieldErrors ?? body.message ?? body.error ?? res.statusText;
-  } catch {
-    return res.text().catch(() => res.statusText);
   }
-}
 
-/** Build a typed error from a non-2xx response, extracting any `CODE:` prefix. */
-async function buildApiError(res: Response): Promise<ChannelApiError> {
-  const message = await parseErrorMessage(res);
+  const fieldErrors = extractFieldErrors(body);
+  const message =
+    fieldErrors?.map((e) => `${e.field}: ${e.message ?? e.suggestion ?? "?"}`).join("; ") ||
+    (body?.message as string | undefined) ||
+    (body?.error as string | undefined) ||
+    rawText ||
+    res.statusText;
+
   const code = /^([A-Z][A-Z0-9_]{2,}):/.exec(message.trim())?.[1];
-  return new ChannelApiError(message, res.status, code);
+  return new ChannelApiError(message, res.status, code, fieldErrors);
 }
 
 async function handleResponse<T>(res: Response): Promise<T> {

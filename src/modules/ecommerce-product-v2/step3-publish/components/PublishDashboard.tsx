@@ -77,6 +77,7 @@ function EffectiveValueRow({
 import {
   ChannelProductDataService,
   PublishService,
+  ChannelApiError,
 } from "../../step2-channel-fields/services/channelStore.service";
 import { useAuth } from "@/shared/contexts/AuthContext";
 import ChannelTypeBadge from "../../step2-channel-fields/components/stores/ChannelTypeBadge";
@@ -484,9 +485,14 @@ export default function PublishDashboard({ masterProductId }: Props) {
       );
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Publish failed";
+      // Pre-flight gate (HTTP 400) carries per-field errors — surface them individually
+      // so the merchant sees which fields to fix, not one opaque string. A block on
+      // MISSING_REQUIRED_FIELD is merchant-fixable ("BLOCKED"), not a system "FAILED".
+      const fieldErrors = err instanceof ChannelApiError ? err.fieldErrors : undefined;
+      const blocked = !!fieldErrors?.some((e) => e.errorCode === "MISSING_REQUIRED_FIELD");
       setPublishResults((prev) => ({
         ...prev,
-        [storeId]: { storeId, status: "FAILED", error: msg },
+        [storeId]: { storeId, status: blocked ? "BLOCKED" : "FAILED", error: msg, fieldErrors },
       }));
     } finally {
       setPublishingStores((prev) => {
@@ -519,7 +525,10 @@ export default function PublishDashboard({ masterProductId }: Props) {
         prev.map((d) => {
           const r = resultsMap[d.storeId];
           if (!r) return d;
-          const normalizedStatus = (r.status === "PUBLISHED" || r.status === "COMPLETED") ? "PUBLISHED" : r.status;
+          // Both FAILED and a pre-flight BLOCKED collapse to FAILED for the store badge;
+          // the raw result (incl. BLOCKED + fieldErrors) is kept in publishResults.
+          const normalizedStatus: ChannelProductStatus =
+            r.status === "PUBLISHED" || r.status === "COMPLETED" ? "PUBLISHED" : "FAILED";
           return { ...d, status: normalizedStatus, publishedAt: r.publishedAt, publishError: r.error };
         })
       );
@@ -537,7 +546,10 @@ export default function PublishDashboard({ masterProductId }: Props) {
     (d) => d.status === "PUBLISHED" || publishResults[d.storeId]?.status === "PUBLISHED" || publishResults[d.storeId]?.status === "COMPLETED"
   ).length;
   const failedCount = storeData.filter(
-    (d) => d.status === "FAILED" || publishResults[d.storeId]?.status === "FAILED"
+    (d) =>
+      d.status === "FAILED" ||
+      publishResults[d.storeId]?.status === "FAILED" ||
+      publishResults[d.storeId]?.status === "BLOCKED"
   ).length;
 
   const currentStoreData = selectedStoreId ? storeData.find((d) => d.storeId === selectedStoreId) ?? null : null;
@@ -702,9 +714,10 @@ export default function PublishDashboard({ masterProductId }: Props) {
                 {storeData.map((data) => {
                   const isSelected = selectedStoreId === data.storeId;
                   const hasAnalysis = !!analysisByChannel[data.channelType];
+                  const prStatus = publishResults[data.storeId]?.status;
                   const storeStatus: ChannelProductStatus =
-                    publishResults[data.storeId]?.status === "PUBLISHED" ? "PUBLISHED"
-                    : publishResults[data.storeId]?.status === "FAILED" ? "FAILED"
+                    prStatus === "PUBLISHED" || prStatus === "COMPLETED" ? "PUBLISHED"
+                    : prStatus === "FAILED" || prStatus === "BLOCKED" ? "FAILED"
                     : data.status;
 
                   return (
@@ -980,13 +993,51 @@ export default function PublishDashboard({ masterProductId }: Props) {
                         </Button>
                       )}
                     </div>
-                    {selectedStoreId && publishResults[selectedStoreId]?.status === "FAILED" && (
-                      <div className="mt-3 p-3 bg-error-50 dark:bg-error-500/10 rounded-lg">
-                        <p className="text-sm text-error-600 dark:text-error-400">
-                          {publishResults[selectedStoreId].error ?? "Publish failed"}
-                        </p>
-                      </div>
-                    )}
+                    {(() => {
+                      const r = selectedStoreId ? publishResults[selectedStoreId] : undefined;
+                      if (!r || (r.status !== "FAILED" && r.status !== "BLOCKED")) return null;
+                      const blocked = r.status === "BLOCKED";
+                      const fe = r.fieldErrors ?? [];
+                      return (
+                        <div className={`mt-3 p-3 rounded-lg border ${
+                          blocked
+                            ? "bg-warning-50 dark:bg-warning-500/10 border-warning-200 dark:border-warning-500/30"
+                            : "bg-error-50 dark:bg-error-500/10 border-error-200 dark:border-error-500/30"
+                        }`}>
+                          <p className={`text-sm font-medium flex items-center gap-2 ${
+                            blocked ? "text-warning-700 dark:text-warning-400" : "text-error-700 dark:text-error-400"
+                          }`}>
+                            <AlertTriangle className="h-4 w-4 flex-shrink-0" />
+                            {blocked ? "Lengkapi field berikut sebelum publish" : "Publish gagal"}
+                          </p>
+                          {fe.length > 0 ? (
+                            <ul className="mt-2 space-y-1.5">
+                              {fe.map((e, i) => (
+                                <li key={`${e.field}-${i}`} className="text-sm text-gray-700 dark:text-gray-300">
+                                  <span className="font-medium capitalize">{friendlyField(e.field)}</span>
+                                  {e.message ? <span className="text-gray-600 dark:text-gray-400"> — {e.message}</span> : null}
+                                  {e.suggestion ? (
+                                    <span className="block text-xs text-gray-500 dark:text-gray-400">↳ {e.suggestion}</span>
+                                  ) : null}
+                                </li>
+                              ))}
+                            </ul>
+                          ) : (
+                            <p className={`mt-1 text-sm ${blocked ? "text-warning-600 dark:text-warning-300" : "text-error-600 dark:text-error-400"}`}>
+                              {r.error ?? "Publish failed"}
+                            </p>
+                          )}
+                          {blocked && (
+                            <Link
+                              href={channelFieldsUrl}
+                              className="mt-2 inline-flex items-center gap-1 text-sm font-medium text-brand-600 dark:text-brand-400 hover:underline"
+                            >
+                              Lengkapi di Channel Fields →
+                            </Link>
+                          )}
+                        </div>
+                      );
+                    })()}
                   </CardContent>
                 </Card>
               </>
