@@ -486,10 +486,14 @@ export default function PublishDashboard({ masterProductId }: Props) {
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Publish failed";
       // Pre-flight gate (HTTP 400) carries per-field errors — surface them individually
-      // so the merchant sees which fields to fix, not one opaque string. A block on
-      // MISSING_REQUIRED_FIELD is merchant-fixable ("BLOCKED"), not a system "FAILED".
+      // so the merchant sees which fields to fix, not one opaque string. Merchant-fixable codes
+      // (missing required field, or a resolved variant-axis issue) are "BLOCKED", not "FAILED".
       const fieldErrors = err instanceof ChannelApiError ? err.fieldErrors : undefined;
-      const blocked = !!fieldErrors?.some((e) => e.errorCode === "MISSING_REQUIRED_FIELD");
+      const blocked = !!fieldErrors?.some((e) =>
+        e.errorCode === "MISSING_REQUIRED_FIELD" ||
+        e.errorCode === "INCOMPLETE_MATRIX" ||
+        e.errorCode === "TOO_MANY_AXES"
+      );
       setPublishResults((prev) => ({
         ...prev,
         [storeId]: { storeId, status: blocked ? "BLOCKED" : "FAILED", error: msg, fieldErrors },

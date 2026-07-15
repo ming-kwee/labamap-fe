@@ -104,16 +104,17 @@ be computed on the client (the server owns SKU-structure authority and multi-cha
 
 ## 4. Contract: `categoryAttributeSection`
 
-**Shipped delivery (2026-07-15, `VariantAxisResolver`):** the backend narrows
-`variantOptionSuggestions` **in place** to `eligible ∩ Step-1 dimensions` and demotes non-axis
-eligible fields (Pattern) into `optionalFields`. The response *shape* is unchanged — only the field
-distribution changed. See `docs/FRONTEND-VARIANT-AXIS-NARROWING.md`. The frontend must send
-`masterProductId` to `GET /category-attributes` for the narrowing to apply on that path (the embedded
-schema section is narrowed automatically server-side).
+**Shipped — Phase 2 (2026-07-15, `VariantAxisResolver`):** the backend now emits the full contract:
+`variantAxes` (authoritative resolved axes) **and** `axisValidation`, both `@JsonInclude(NON_NULL)`.
+`variantOptionSuggestions` is demoted to a value-vocabulary hint and non-axis eligible fields (Pattern)
+move to `optionalFields`. See `docs/FRONTEND-VARIANT-AXIS-NARROWING.md`.
 
-`variantAxes` / `axisValidation` below are a **forward-compatible** fully-resolved contract the FE
-already honors if a future backend emits them; today the FE realizes the same structure from the
-narrowed `variantOptionSuggestions` + the master snapshot.
+- The FE **prefers `variantAxes`** when present; it falls back to
+  `buildAxesFromFields(variantOptionSuggestions, master)` when the backend omitted it (older response).
+- The frontend must still send `masterProductId` to `GET /category-attributes` — the endpoint resolves
+  axes only with the product's Step-1 structure. The embedded schema section resolves automatically.
+- The backend **enforces** BLOCKING `axisValidation` at the publish pre-flight gate; the FE additionally
+  gates "Continue to Preview" locally so the merchant fixes it before the round-trip (see §5).
 
 ```typescript
 interface CategoryAttributeSection {
@@ -122,9 +123,9 @@ interface CategoryAttributeSection {
   categoryPath: string[];
   requiredFields: ChannelFormField[];      // product-level, single value (incl. required eligible-non-axis)
   optionalFields: ChannelFormField[];      // product-level, single value (now incl. demoted Pattern, Style, …)
-  variantOptionSuggestions?: ChannelFormField[]; // backend-NARROWED = the product's real axes (+ vocab)
-  variantAxes?: ResolvedVariantAxis[];     // forward-compat: fully-resolved axes if a future backend sends them
-  axisValidation?: AxisValidationIssue[];  // forward-compat: server-side axis problems
+  variantOptionSuggestions?: ChannelFormField[]; // value-vocabulary hint (+ FE fallback axis source)
+  variantAxes?: ResolvedVariantAxis[];     // Phase 2: authoritative resolved axes — FE prefers these
+  axisValidation?: AxisValidationIssue[];  // Phase 2: server-side axis problems (BLOCKING enforced at publish)
 }
 
 interface ResolvedVariantAxis {
@@ -193,6 +194,13 @@ The frontend is a **renderer**, not an axis chooser. There is no "Apply" button 
 4. **Variant table columns**: one TEXT column per resolved axis, pre-filled per SKU, with
    `valueVocabulary` as a datalist (suggestions, not constraints — channels accept any string).
 
+5. **Publish gate** (`ChannelFieldsWizard.tsx`): a BLOCKING `axisValidation` issue
+   (`INCOMPLETE_MATRIX` / `TOO_MANY_AXES`) on the active store disables **Continue to Preview** and
+   shows a red per-issue banner, so the merchant fixes it before the backend pre-flight rejects the
+   publish (round-trip). `WARNING` issues (`NOT_EXPRESSIBLE_ON_CHANNEL`) stay advisory — banner only,
+   button enabled. Step 3 (`PublishDashboard.tsx`) also classifies these axis error codes as
+   **BLOCKED** (merchant-fixable), not **FAILED**, alongside `MISSING_REQUIRED_FIELD`.
+
 ### Save format (unchanged shape, now always correct)
 
 ```json
@@ -241,12 +249,13 @@ action; re-save persists it.
 
 | # | What | File | Status |
 |---|---|---|---|
-| 1 | `ResolvedVariantAxis` / `AxisValidationIssue` types; `variantAxes`/`axisValidation` (forward-compat) on `CategoryAttributeSection` | `types/channelStore.ts` | ✅ |
+| 1 | `ResolvedVariantAxis` / `AxisValidationIssue` types; `variantAxes`/`axisValidation` on `CategoryAttributeSection` | `types/channelStore.ts` | ✅ |
 | 2 | Send `masterProductId` to `GET /category-attributes` (prop threaded from `ChannelFieldsWizard`) | `ChannelStoreTab.tsx`, `ChannelFieldsWizard.tsx` | ✅ |
-| 3 | `buildAxesFromFields()` + `resolvedAxes` memo (axis set from backend-narrowed `variantOptionSuggestions`; values/order from master; drop empty-value axes) | `ChannelStoreTab.tsx` | ✅ |
+| 3 | `resolvedAxes` prefers `variantAxes`; `buildAxesFromFields()` fallback (axis set from narrowed `variantOptionSuggestions`; values/order from master; drop empty-value axes) | `ChannelStoreTab.tsx` | ✅ |
 | 4 | Sync effect: seed per-SKU, `option{n}_values`=distinct, prune stale/orphan, loop-safe | `ChannelStoreTab.tsx` | ✅ |
 | 5 | `VariantAxisSummary` read-only panel; `axisValidation` = backend ∪ client fail-loud missing-axis warning | `ChannelStoreTab.tsx` | ✅ |
 | 6 | Variant table columns from `resolvedAxes`; removed selectable panel, `handleVariantSuggestionsApply`, `: labels` fallback | `ChannelStoreTab.tsx` | ✅ |
+| 7 | Publish gate: disable "Continue to Preview" + banner on BLOCKING axis issue; Step 3 classifies axis codes as BLOCKED | `ChannelFieldsWizard.tsx`, `PublishDashboard.tsx` | ✅ |
 
 ### Backend
 
@@ -255,7 +264,7 @@ action; re-save persists it.
 | B1 | `VariantAxisResolver` narrows `variantOptionSuggestions` to `eligible ∩ Step-1 dims` in `buildStoreResult` + `/category-attributes` (needs `masterProductId`). | ✅ shipped 2026-07-15 |
 | B2 | Demote non-axis eligible fields (Pattern, Style) into `optionalFields` as single-value attributes. | ✅ shipped |
 | B3 | Keep the taxonomy cache product-agnostic (eligible pool only); resolve per-product in schema build. | ✅ shipped |
-| B4 | Emit `axisValidation` (`INCOMPLETE_MATRIX`, `TOO_MANY_AXES`, `NOT_EXPRESSIBLE_ON_CHANNEL`) + wire BLOCKING into publish gate. | ⬜ follow-up (FE surfaces the missing-axis warning client-side meanwhile) |
+| B4 | Phase 2: emit `variantAxes` + `axisValidation`; `PublishPreflightGate` (commit `09ea300`) rejects BLOCKING axis issues before any channel call. | ✅ shipped |
 | B5 | `BUILD_OPTIONS_FROM_FLAT_KEYS` invariant guard: drop any `option{n}` with zero variant coverage before publish. | ⬜ recommended |
 
 ---

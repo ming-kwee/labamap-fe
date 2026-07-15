@@ -11,9 +11,10 @@ Base path: `/labamap/api/v1`
 > (`variantOptionAttributeNames ∩ Step-1 variant dimensions`) when the request includes
 > `masterProductId`. Non-axis eligible fields (Pattern, Style) are demoted into `optionalFields` as
 > single-value attributes. Realize `option{n}_values` from the product's actual SKUs — never dump the
-> attribute's full taxonomy list. `variantAxes` / `axisValidation` (below) are forward-compatible fields
-> a future backend may emit; the frontend already honors them. See `docs/FRONTEND-VARIANT-AXIS-NARROWING.md`
-> and guide 18.
+> attribute's full taxonomy list. **Phase 2 (shipped 2026-07-15):** the backend now also emits
+> `variantAxes` (authoritative resolved axes) + `axisValidation` (both `NON_NULL`); the frontend prefers
+> `variantAxes` and gates publish on BLOCKING issues. See `docs/product/01-catalog-schema/01-guides/08a-variant-axis-resolution.md`,
+> `docs/FRONTEND-VARIANT-AXIS-NARROWING.md`, and guide 18.
 
 ---
 

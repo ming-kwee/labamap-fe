@@ -442,6 +442,21 @@ export default function ChannelFieldsWizard({ masterProductId }: Props) {
 
   async function handleContinueToPreview() {
     if (!schemaResponse) return;
+
+    // Gate: a BLOCKING variant-axis issue (INCOMPLETE_MATRIX / TOO_MANY_AXES) on the store we'd
+    // publish will be rejected by the backend publish pre-flight. Fail fast locally instead of a
+    // round-trip. WARNING issues (NOT_EXPRESSIBLE_ON_CHANNEL) stay advisory and do not gate.
+    const activeBlockingAxis = (activeChannel.categoryAttributeSection?.axisValidation ?? [])
+      .filter((i) => i.severity === "BLOCKING");
+    if (activeBlockingAxis.length > 0) {
+      setActiveTabFieldErrors(new Set());
+      setContinueWarning(
+        `Resolve variant-option issues on ${activeChannel.storeName} before continuing:\n` +
+        activeBlockingAxis.map((i) => `${i.dimension}: ${i.message}`).join("\n")
+      );
+      return;
+    }
+
     await flushDirtyStores();
 
     // Compute missing required fields per store (local validation only)
@@ -667,6 +682,10 @@ export default function ChannelFieldsWizard({ masterProductId }: Props) {
   const activeStoreId = activeChannel.storeId;
   const activeValues = storeValues[activeStoreId] ?? { masterOverrides: {}, channelData: {}, variantOverrides: {} };
   const isLastTab = activeStoreIndex === channels.length - 1;
+  // BLOCKING variant-axis issues on the active store — gate "Continue to Preview" locally so the
+  // merchant fixes them before the backend pre-flight rejects the publish (round-trip).
+  const activeBlockingAxis = (activeChannel.categoryAttributeSection?.axisValidation ?? [])
+    .filter((i) => i.severity === "BLOCKING");
 
   const doneCount = channels.filter((ch) => {
     const comp = storeCompletion[ch.storeId] ?? { pct: ch.completionPercentage, status: ch.completionStatus };
@@ -759,6 +778,18 @@ export default function ChannelFieldsWizard({ masterProductId }: Props) {
       </div>
 
       {/* Navigation */}
+      {activeBlockingAxis.length > 0 && (
+        <div className="rounded-xl bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/30 px-4 py-3 space-y-1">
+          <p className="text-sm font-medium text-red-700 dark:text-red-400">
+            Variant-option issues on {activeChannel.storeName} must be fixed before publishing:
+          </p>
+          {activeBlockingAxis.map((i, idx) => (
+            <p key={`${i.code}-${i.dimension}-${idx}`} className="text-sm text-red-600 dark:text-red-300">
+              • <strong>{i.dimension}</strong>: {i.message}
+            </p>
+          ))}
+        </div>
+      )}
       {continueWarning && (
         <div className="rounded-xl bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/30 px-4 py-3 space-y-1">
           {continueWarning.split("\n").map((line, i) => (
@@ -786,7 +817,13 @@ export default function ChannelFieldsWizard({ masterProductId }: Props) {
           )}
           <button
             onClick={handleContinueToPreview}
-            className="px-6 py-2.5 rounded-xl bg-brand-500 text-white text-sm font-medium hover:bg-brand-600 transition-colors"
+            disabled={activeBlockingAxis.length > 0}
+            title={activeBlockingAxis.length > 0 ? "Resolve the variant-option issues above before continuing" : undefined}
+            className={`px-6 py-2.5 rounded-xl text-sm font-medium transition-colors ${
+              activeBlockingAxis.length > 0
+                ? "bg-gray-200 dark:bg-gray-700 text-gray-400 dark:text-gray-500 cursor-not-allowed"
+                : "bg-brand-500 text-white hover:bg-brand-600"
+            }`}
           >
             Continue to Preview →
           </button>
