@@ -634,7 +634,7 @@ Key Queries Enabled:
 
 Implementation:
   Option A: MongoDB dengan manual reference traversal
-            → Sudah punya semua data, cukup query patternsconyinue
+            → Sudah punya semua data, cukup query patterns
             → Tidak perlu infrastructure baru
   
   Option B: Neo4j graph database (dedicated)
