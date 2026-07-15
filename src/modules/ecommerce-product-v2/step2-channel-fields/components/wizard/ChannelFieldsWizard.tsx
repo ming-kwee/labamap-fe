@@ -751,6 +751,7 @@ export default function ChannelFieldsWizard({ masterProductId }: Props) {
             isSaving={savingStoreId === activeStoreId}
             lastSaved={lastSaved[activeStoreId]}
             masterProduct={masterProductSnapshot ?? undefined}
+            masterProductId={masterProductId}
             fieldErrors={activeTabFieldErrors}
             orgId={orgId}
           />

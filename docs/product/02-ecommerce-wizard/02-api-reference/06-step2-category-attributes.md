@@ -3,7 +3,17 @@
 Base path: `/labamap/api/v1`
 
 **Implemented:** Phase 3 (Path A static map) + Path B activation (live API per channel)  
-**Relates to:** `11-step2-category-required-fields.md` (design), `12-path-b-category-attributes-explanation.md` (internals)
+**Relates to:** `11-step2-category-required-fields.md` (design), `12-path-b-category-attributes-explanation.md` (internals),
+`01-guides/18-variant-option-suggestions-frontend.md` (variant-axis resolution — supersedes the suggestions model)
+
+> **⚠️ `variantOptionSuggestions` is now backend-NARROWED (2026-07-15).** It used to be an *eligible
+> pool* of variant-driving attributes; it now contains only the product's **real axes**
+> (`variantOptionAttributeNames ∩ Step-1 variant dimensions`) when the request includes
+> `masterProductId`. Non-axis eligible fields (Pattern, Style) are demoted into `optionalFields` as
+> single-value attributes. Realize `option{n}_values` from the product's actual SKUs — never dump the
+> attribute's full taxonomy list. `variantAxes` / `axisValidation` (below) are forward-compatible fields
+> a future backend may emit; the frontend already honors them. See `docs/FRONTEND-VARIANT-AXIS-NARROWING.md`
+> and guide 18.
 
 ---
 
@@ -26,6 +36,7 @@ Always returns HTTP 200 — empty arrays on error or no attribute API configured
 |-------|----------|-------------|
 | `categoryId` | Yes | Leaf node ID as returned by the category tree endpoints |
 | `organizationId` | Yes | Organization ID |
+| `masterProductId` | Recommended | When present, `variantOptionSuggestions` is narrowed to this product's real axes (`eligible ∩ Step-1 dimensions`) and non-axis eligible fields are demoted to `optionalFields`. Omit → legacy eligible-only (Pattern still leaks as a candidate axis). |
 
 **Example:**
 ```
@@ -395,15 +406,33 @@ Seeded slugs per channel:
 ## TypeScript Types
 
 ```typescript
-// CategoryAttributesResponse — matches Java record (updated 2026-06-05)
+// CategoryAttributesResponse — matches Java record (axis resolution added 2026-07-15)
 interface CategoryAttributesResponse {
   categoryId:              string;
   categoryName:            string;
   categoryPath:            string[];       // ancestor labels, root → parent (NOT including leaf)
   requiredFields:          ChannelFormField[];
   optionalFields:          ChannelFormField[];  // product-level metadata attributes
-  variantOptionSuggestions: ChannelFormField[]; // NEW — variant-driving attributes (Color, Size, Pattern)
-                                                // empty [] for channels without variantOptionAttributeNames config
+  variantAxes?:            ResolvedVariantAxis[]; // authoritative axes = permitted ∩ Step-1 dimensions
+  axisValidation?:         AxisValidationIssue[]; // NOT_EXPRESSIBLE_ON_CHANNEL | INCOMPLETE_MATRIX | TOO_MANY_AXES
+  variantOptionSuggestions?: ChannelFormField[]; // @deprecated — value-vocabulary hint only (see doc 18)
+}
+
+// Server-resolved variant axis for THIS product on THIS channel (see doc 18 §4).
+interface ResolvedVariantAxis {
+  optionIndex:    number;    // 1..3, from Step-1 dimension order
+  attributeCode:  string;    // "color"
+  name:           string;    // "Color" → option{n}_name
+  values:         string[];  // distinct realized values → option{n}_values (NEVER the full taxonomy)
+  perSku:         Record<string, string>;                    // sku → value
+  valueVocabulary?: { label: string; channelValueId?: string }[]; // datalist suggestions only
+}
+
+interface AxisValidationIssue {
+  dimension: string;
+  code:      "NOT_EXPRESSIBLE_ON_CHANNEL" | "INCOMPLETE_MATRIX" | "TOO_MANY_AXES";
+  severity:  "WARNING" | "BLOCKING";
+  message:   string;
 }
 
 // Updated CompletionStats — replaces the old { required, total, percentage } shape

@@ -150,12 +150,63 @@ export interface CategoryAttributeSection {
   /** Optional category-specific fields — product-level metadata (Neckline, Sleeve length, etc.) */
   optionalFields: ChannelFormField[];
   /**
-   * Variant-driving attributes (Color, Size, Pattern) — rendered in the variant options panel,
-   * NOT in the optional section. Empty [] for channels without variantOptionAttributeNames config.
-   * Use option.label (not option.value) when building channelData — Shopify takes human-readable
-   * labels, not taxonomy GIDs.
+   * @deprecated Legacy "eligible pool" of variant-driving attributes (Color, Size, Pattern) with
+   * their full taxonomy value lists. Historically the frontend let the seller pick from these and
+   * "Apply", which conflated *eligible-to-be-an-axis* (a channel taxonomy fact) with *is-an-axis-for-
+   * this-product* (a Step 1 fact) — and dumped the full taxonomy vocabulary into option{n}_values.
+   *
+   * The authoritative variant structure now comes from {@link variantAxes} (server-resolved
+   * intersection of the channel's permitted axes × the product's Step 1 variant dimensions). This
+   * field is retained only as a *value-vocabulary hint* (datalist suggestions) and for backward
+   * compatibility while the backend rolls out `variantAxes`. Never derive the axis SET from it.
    */
-  variantOptionSuggestions: ChannelFormField[];
+  variantOptionSuggestions?: ChannelFormField[];
+  /**
+   * Server-resolved variant axes for THIS product on THIS channel. Computed backend-side as
+   *   variantOptionAttributeNames (permitted/eligible) ∩ Step-1 variant dimensions (declared),
+   * with values realized from the product's actual SKUs. When present, the frontend renders these
+   * directly — no selection UI, no client-side intersection. option{n}_name / option{n}_values in
+   * channelData follow these deterministically. Absent (undefined) until the backend ships the
+   * contract, in which case the frontend derives an equivalent structure from the master snapshot.
+   */
+  variantAxes?: ResolvedVariantAxis[];
+  /** Axis-level problems to surface (dimension not expressible on channel, incomplete SKU matrix). */
+  axisValidation?: AxisValidationIssue[];
+}
+
+/**
+ * One resolved variant axis (option1/option2/option3 for Shopify; sales-attribute for
+ * TikTok/Lazada). The axis SET and per-SKU values are facts about the product's Step 1 SKUs —
+ * the channel only contributes the value vocabulary and the option ordering constraint.
+ */
+export interface ResolvedVariantAxis {
+  /** 1-based option position (1..3). Order comes from the Step 1 dimension order, not seller choice. */
+  optionIndex: number;
+  /** Step 1 dimension code, e.g. "color". Join key for value lookups. */
+  attributeCode: string;
+  /** Human-readable dimension name → option{n}_name, e.g. "Color". */
+  name: string;
+  /** Distinct values the product's variants actually use → option{n}_values. NEVER the full taxonomy. */
+  values: string[];
+  /** sku → the value that SKU uses on this axis. Seeds variantOverrides[sku]["option{n}"]. */
+  perSku: Record<string, string>;
+  /** Channel taxonomy vocabulary for this axis — datalist suggestions only, not a hard constraint. */
+  valueVocabulary?: Array<{ label: string; channelValueId?: string }>;
+}
+
+export type AxisValidationSeverity = "WARNING" | "BLOCKING";
+
+export interface AxisValidationIssue {
+  /** The Step 1 dimension the issue concerns, e.g. "Fabric". */
+  dimension: string;
+  /**
+   * NOT_EXPRESSIBLE_ON_CHANNEL — a Step 1 variant dimension is not in the channel's permitted axes.
+   * INCOMPLETE_MATRIX        — a SKU is missing a value for an axis (would yield an invalid payload).
+   * TOO_MANY_AXES            — the product has more variant dimensions than the channel allows (>3).
+   */
+  code: "NOT_EXPRESSIBLE_ON_CHANNEL" | "INCOMPLETE_MATRIX" | "TOO_MANY_AXES";
+  severity: AxisValidationSeverity;
+  message: string;
 }
 
 // ─── Completion Summary ───────────────────────────────────────────────────────
