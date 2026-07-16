@@ -341,6 +341,12 @@ export default function ChannelFieldInput({ field, value, onChange, disabled, va
       // Used by dynamic variant option columns (Color, Size, Pattern per-variant cells)
       // where Shopify accepts any string but suggests taxonomy labels.
       const listId = options.length > 0 ? `dl-${field.fieldName}` : undefined;
+      // Dedupe by the displayed label — a channel taxonomy vocabulary can repeat a label
+      // (e.g. two "6-7 years" size nodes), which both duplicates React keys and shows the
+      // same suggestion twice. The datalist only surfaces the label, so label is the identity.
+      const datalistOptions = listId
+        ? options.filter((o, i, arr) => arr.findIndex((x) => x.label === o.label) === i)
+        : [];
       return (
         <>
           <input
@@ -355,8 +361,8 @@ export default function ChannelFieldInput({ field, value, onChange, disabled, va
           />
           {listId && (
             <datalist id={listId}>
-              {options.map((opt) => (
-                <option key={opt.value} value={opt.label} />
+              {datalistOptions.map((opt) => (
+                <option key={opt.label} value={opt.label} />
               ))}
             </datalist>
           )}
