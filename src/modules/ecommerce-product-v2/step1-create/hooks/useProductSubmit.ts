@@ -31,9 +31,11 @@ function createBackendContext(
 }
 
 /**
- * The backend persists productTypeId from the `productData` map (NOT from context —
- * verified live 2026-07-04: context.productTypeId is ignored, productData.productTypeId
- * sticks). So we inject the selected product type into the productData payload.
+ * Injects the selected product type into the productData payload. The backend persists
+ * `productData.productTypeId` on both create and update (fixed 2026-07-16, branch bff-v8: the
+ * create validation now treats productTypeId as a system field, runtime-verified). Without it,
+ * Step 2 Channel Fields 422s PRODUCT_TYPE_MISSING.
+ * See docs/BACKEND-CREATE-PRODUCT-TYPE-FIX-RECOMMENDATION.md.
  */
 function withProductType(product: MasterProduct, productTypeId?: string): MasterProduct {
   if (!productTypeId) return product;
@@ -127,8 +129,6 @@ export function useProductSubmit(options: UseProductSubmitOptions): UseProductSu
         return null;
       }
 
-      // Inject the selected product type into productData so it persists (backend
-      // reads productTypeId from productData, not context).
       const productData = withProductType(product, productTypeId);
       const createdProduct = mode === 'edit' && productId
         ? await ProductApiService.updateProduct(productId, productData, context)
