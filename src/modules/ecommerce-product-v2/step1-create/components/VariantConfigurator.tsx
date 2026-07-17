@@ -101,6 +101,12 @@ const VariantConfigurator: React.FC<VariantConfiguratorProps> = ({
       if (!hasOptions) return false;
       if (isVariantOnly) return true;
 
+      // Explicit product-level scope overrides the legacy name heuristic below: a field the
+      // backend scoped as product-level (e.g. `material`, moved to variantScope="product_only"
+      // in backend d4945fd) must NOT be treated as a variant dimension/column, even though its
+      // name matches the heuristic. It renders in the product form section instead.
+      if (field.variantScope === 'product_only') return false;
+
       const fieldNameLower = fieldName.toLowerCase();
       const isCommonVariantField =
         fieldNameLower.includes('color') || fieldNameLower.includes('size') ||
