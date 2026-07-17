@@ -856,7 +856,7 @@ export default function PublishDashboard({ masterProductId }: Props) {
                   <Info className="h-12 w-12 mx-auto text-gray-400 mb-4" />
                   <h3 className="text-lg font-semibold mb-2">Select a Store to Begin</h3>
                   <p className="text-gray-600 dark:text-gray-400">
-                    Pilih toko yang terhubung di panel kiri, lalu klik Cek Kesiapan untuk memeriksa produk.
+                    Pilih toko yang terhubung di panel kiri untuk mempublish produk kamu.
                   </p>
                 </CardContent>
               </Card>
@@ -880,12 +880,14 @@ export default function PublishDashboard({ masterProductId }: Props) {
                       </div>
                       <div className="flex items-center gap-3">
                         <Button
+                          variant="outline"
+                          size="sm"
                           onClick={() => handleAnalyze(selectedStoreId)}
                           disabled={isAnalyzing || !product}
                         >
                           {isAnalyzing
                             ? <><RefreshCw className="h-4 w-4 mr-2 animate-spin" />Memeriksa…</>
-                            : <><Brain className="h-4 w-4 mr-2" />Cek Kesiapan</>
+                            : <><Brain className="h-4 w-4 mr-2" />Cek kesiapan (opsional)</>
                           }
                         </Button>
                       </div>
@@ -939,18 +941,10 @@ export default function PublishDashboard({ masterProductId }: Props) {
                   />
                 )}
 
-                {/* Before analyze — prompt */}
-                {!isAnalyzing && !currentAnalysis && !analyzeError && !productMissing && product && (
-                  <Card>
-                    <CardContent className="p-12 text-center">
-                      <Brain className="h-12 w-12 mx-auto text-gray-400 mb-4" />
-                      <h3 className="text-lg font-semibold mb-2">Klik “Cek Kesiapan” untuk memeriksa produk</h3>
-                      <p className="text-gray-600 dark:text-gray-400">
-                        Kami akan cek apakah produk kamu siap dipublish ke channel ini dan apa yang perlu dilengkapi.
-                      </p>
-                    </CardContent>
-                  </Card>
-                )}
+                {/* Publish-first: no forced readiness pre-check. Publish is the primary action;
+                    the backend pre-flight gate validates on Publish and any blocking issues render
+                    inline below the button (see the FAILED/BLOCKED block). "Cek kesiapan" stays as an
+                    optional detail in the header for merchants who want the full readiness breakdown. */}
 
                 {/* Publish Card */}
                 <Card>
