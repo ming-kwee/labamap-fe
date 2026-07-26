@@ -98,7 +98,7 @@ within 24 hours are served from cache.
 |---------|----------|-------|
 | Lazada | REST GET | Direct: `/api/category/attributes?primary_category_id={id}` |
 | TikTok Shop | REST GET | Direct: `/api/products/attributes?category_id={id}` |
-| Shopee | REST GET | Direct: `/api/v2/product/get_attributes?category_id={id}` |
+| Shopee | REST GET | Direct: `/api/v2/product/get_attribute_tree?category_id_list={id}` — nested response (`response.list[].attribute_tree`, flattened via `nestedArrayField`). `get_attributes` is `api_suspended` on the Partner API |
 | eBay | REST GET | Direct: `/commerce/taxonomy/v1/category_tree/0/get_item_aspects_for_category?category_id={id}` |
 | Shopify | GraphQL POST | `TaxonomyCategoryAttributes` query; `TaxonomyCategoryAttribute` union — `TaxonomyChoiceListAttribute` (SELECT, `values.nodes`) + `TaxonomyMeasurementAttribute` (TEXT); `attributes(first: 50)` paginated connection |
 | Amazon | Two-step REST | Category name → product type search → JSON Schema fetch |

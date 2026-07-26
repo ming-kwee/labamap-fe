@@ -16,6 +16,8 @@ import {
 import ChannelFieldInput from "./ChannelFieldInput";
 import VariantOverridesTable from "./VariantOverridesTable";
 import MasterOverrideSection from "./MasterOverrideSection";
+import { ProductTypeService } from "@/app/(admin)/omni-admin/product-types/_services/product-type.service";
+import { normaliseChannelType, applyChannelCategoryDefault } from "../../utils/categoryPrefill";
 
 const BASE = "http://localhost:8888/labamap/api/v1";
 
@@ -450,8 +452,10 @@ export default function ChannelStoreTab({ schema, values, onChange, isSaving, la
   }, [schema.categoryAttributeSection]);
 
   // ── Phase 2: Pre-fill CATEGORY_TREE from ProductType channel default ─────────
-  // Only fires once when the tab first mounts AND the category field is empty.
-  // Does not override a category the merchant has already set.
+  // Fills the channel category on the FIRST visit (before any save is persisted) from the
+  // ProductType's channelCategoryDefaults. Mirrors the wizard-level pre-fill and shares its
+  // leaf/non-leaf rule: leaf → commit value + breadcrumb; non-leaf → browse hint only.
+  // A saved/existing category always wins — this never overrides a value already present.
 
   // Keep a live ref to values so the async callback always writes to current state,
   // not the stale snapshot captured at mount time.
@@ -461,36 +465,40 @@ export default function ChannelStoreTab({ schema, values, onChange, isSaving, la
   const prefillAttempted = useRef(false);
 
   useEffect(() => {
-    const productTypeId = masterProduct?.productTypeId;
-    if (!productTypeId || !mainCategoryField || prefillAttempted.current) return;
-    const currentValue = values.channelData[mainCategoryField.fieldName];
-    if (currentValue) return; // already has a value — don't override
+    if (prefillAttempted.current || !mainCategoryField) return;
+    // Resolve productTypeId: prefer the snapshot, fall back to the sessionStorage bridge
+    // written by Step 1 create (productTypeId_{masterProductId}). Without the fallback the
+    // pre-fill silently no-ops on the first visit when the snapshot hasn't loaded yet.
+    const sessionPtId =
+      typeof window !== "undefined" && masterProductId
+        ? sessionStorage.getItem(`productTypeId_${masterProductId}`)
+        : null;
+    const productTypeId = masterProduct?.productTypeId ?? sessionPtId ?? null;
+    if (!productTypeId) return; // not resolvable yet — effect re-runs when the snapshot arrives
+    if (valuesRef.current.channelData[mainCategoryField.fieldName]) return; // already has a value
 
     prefillAttempted.current = true;
-    const fieldName = mainCategoryField.fieldName; // capture, not the ref
+    const field = mainCategoryField; // capture — used inside the async callback
 
-    fetch(
-      `${BASE}/admin/product-types/${encodeURIComponent(productTypeId)}/channel-defaults/${encodeURIComponent(schema.channelType)}`,
-      { headers: { "Content-Type": "application/json" } }
-    )
-      .then(res => {
-        if (!res.ok) return null;
-        return res.json() as Promise<{ categoryId: string }>;
-      })
-      .then(def => {
+    ProductTypeService.getChannelDefault(productTypeId, normaliseChannelType(schema.channelType))
+      .then((def) => {
         if (!def?.categoryId) return;
-        // Use valuesRef.current (not stale closure) so concurrent field edits are preserved
+        // Use valuesRef.current (not the stale closure) so concurrent field edits survive.
         const latest = valuesRef.current;
-        if (latest.channelData[fieldName]) return; // merchant set a value while fetch was in flight
+        if (latest.channelData[field.fieldName]) return; // merchant set a value while in flight
+        // leaf → commit categoryId + selectedPath breadcrumb; non-leaf → preFillPath hint only.
+        const commitValue = applyChannelCategoryDefault(field, def);
+        if (commitValue === undefined) return; // non-leaf → hint only, nothing to commit
         onChange({
           ...latest,
-          channelData: { ...latest.channelData, [fieldName]: def.categoryId },
+          channelData: { ...latest.channelData, [field.fieldName]: commitValue },
         });
       })
       .catch(() => { /* silent — pre-fill failure must not block merchant */ });
-  // Pre-fill runs once per mount — deps intentionally empty
+  // Re-runs when productTypeId or the category field becomes available; prefillAttempted
+  // guarantees the fetch fires at most once.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [masterProduct?.productTypeId, mainCategoryField?.fieldName]);
 
   function handleFieldChange(fieldName: string, value: unknown) {
     const isCategoryField = mainCategoryField != null && fieldName === mainCategoryField.fieldName;

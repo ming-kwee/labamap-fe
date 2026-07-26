@@ -10,6 +10,7 @@ import type {
 } from "../../types/channelStore";
 import { ChannelSchemaService, ChannelProductDataService, ChannelApiError } from "../../services/channelStore.service";
 import { ProductTypeService } from "@/app/(admin)/omni-admin/product-types/_services/product-type.service";
+import { normaliseChannelType, applyChannelCategoryDefault } from "../../utils/categoryPrefill";
 import { isFieldVisible, isFieldRequired } from "../../hooks/useChannelFieldVisibility";
 import { useAuth } from "@/shared/contexts/AuthContext";
 import ChannelTypeBadge from "../stores/ChannelTypeBadge";
@@ -17,42 +18,9 @@ import ChannelStoreTab from "./ChannelStoreTab";
 
 const BASE_API = "http://localhost:8888/labamap/api/v1";
 
-// ─── ProductType pre-fill helpers ─────────────────────────────────────────────
-
-// TikTok is stored as "tiktok" in ChannelType but some stores carry "tiktokshop".
-// Normalise both to "tiktok" for matching ProductType channelCategoryDefaults.
-function normaliseChannelType(ct: string): string {
-  return ct === "tiktokshop" ? "tiktok" : ct;
-}
-
-// Reconstruct breadcrumb path nodes from the denormalised categoryFullPath string.
-// "Apparel & Accessories › Clothing › Tops" → [{id, name: "Apparel …", hasChildren: true}, ...]
-// Only the leaf node carries the real categoryId. Ancestor nodes use placeholder IDs
-// because we don't store them — but CategoryTreePicker only uses ancestor entries for
-// display (the breadcrumb), not for API calls; actual navigation uses loadLevel(parentId).
-function buildPathNodes(
-  categoryId: string,
-  categoryFullPath: string,
-  isLeaf: boolean,
-): Array<{ id: string; name: string; hasChildren: boolean }> {
-  const sep = categoryFullPath.includes("›") ? "›" : ">";
-  const parts = categoryFullPath.split(sep).map(p => p.trim()).filter(Boolean);
-
-  if (parts.length <= 1 || !isLeaf) {
-    // Single segment or mid-node: use the LAST segment — that is the node categoryId refers to.
-    // parts[0] would be the root ancestor, not the node itself for multi-segment paths.
-    const name = parts[parts.length - 1] ?? categoryId;
-    return [{ id: categoryId, name, hasChildren: !isLeaf }];
-  }
-
-  // Multi-segment leaf: reconstruct ancestor chain.
-  // Ancestors get a synthetic id (path-based) sufficient for breadcrumb display.
-  return parts.map((name, i) => ({
-    id:          i === parts.length - 1 ? categoryId : `__ancestor_${i}_${name}`,
-    name,
-    hasChildren: i < parts.length - 1,
-  }));
-}
+// ProductType pre-fill helpers (normaliseChannelType / buildPathNodes /
+// applyChannelCategoryDefault) live in ../../utils/categoryPrefill so the wizard-level
+// pre-fill (here) and the tab-level pre-fill (ChannelStoreTab) share one leaf/non-leaf rule.
 
 // ─── Tab store form values ────────────────────────────────────────────────────
 
@@ -227,12 +195,10 @@ export default function ChannelFieldsWizard({ masterProductId }: Props) {
           if (def) {
             const categoryField = channel.sections.flatMap((s) => s.fields ?? []).find((f) => f.fieldType === "CATEGORY_TREE");
             if (categoryField?.categoryTreeConfig && !initVals.channelData[categoryField.fieldName]) {
-              const pathNodes = buildPathNodes(def.categoryId, def.categoryFullPath, def.isLeaf);
-              if (def.isLeaf) {
-                categoryField.categoryTreeConfig.selectedPath = pathNodes;
-                initVals.channelData = { ...initVals.channelData, [categoryField.fieldName]: def.categoryId };
-              } else {
-                categoryField.categoryTreeConfig.preFillPath = pathNodes;
+              // leaf → commit categoryId + selectedPath; non-leaf → preFillPath hint only.
+              const commitValue = applyChannelCategoryDefault(categoryField, def);
+              if (commitValue !== undefined) {
+                initVals.channelData = { ...initVals.channelData, [categoryField.fieldName]: commitValue };
               }
             }
           }

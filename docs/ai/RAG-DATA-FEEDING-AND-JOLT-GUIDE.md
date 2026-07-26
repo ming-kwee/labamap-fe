@@ -429,6 +429,24 @@ Claude melihat: "Shopify sebelumnya berhasil dengan confidence 0.93. Lihat field
 
 Claude melihat: "Semua field harus di bawah 'product.' — ini berarti `title` seharusnya `product.title`!"
 
+> ℹ️ **`get_channel_schema` mengembalikan lebih dari `domainNotes`** (disingkat di contoh Shopify di
+> atas). Field deterministik penuh — semuanya diturunkan dari data, jadi berlaku untuk channel/kategori
+> baru sekalipun:
+> - `apiSchema` — struktur target persis (base + ekstensi per-kategori) = path otoritatif.
+> - `postProcessingHandledFields` — target/source yang **diisi post-processing** → agent JANGAN map ke
+>   sini. Untuk body **flat** (Shopee/TikTok) ini termasuk target top-level tanpa titik
+>   (`logistic_info`, `brand`, `seller_stock`); untuk body wrapper (Shopify) token telanjang `product`
+>   tetap dibuang.
+> - `categoryAttributes` — atribut riil kategori + **value-names** (dibaca dari
+>   `channel_capability_cache`/`GetAttributeTree`). Contoh Shopee/clothing:
+>   `[{attribute:"Material", values:["Cotton","Polyester",…]}, {attribute:"Pattern", values:[…]}]`.
+>   Agent memetakan **nama value** ke `attribute_list`; `value_id` diisi post-processing
+>   (`TRANSLATE_VALUE_IDS`) — agent tidak boleh mengeluarkan `value_id`. Kosong bila kategori belum
+>   pernah publish (cache dingin) → fallback ke `attribute_list` generik.
+>
+> Detail kontrak: `docs/POST-PROCESSING-CONTRACT-DESIGN.md` (Lapis 3) &
+> `docs/product/07-publishing-engine/01-guides/09-channel-capability-resolution.md` (§6b).
+
 **Tool Call #3**: `find_field_mappings` → sourceField=weight, channelId=shopify
 ```json
 {

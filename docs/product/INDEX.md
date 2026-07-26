@@ -191,6 +191,9 @@ Module root (backend): `com.labamap.labamapomnichannelbe4fe.publishing`
 | `03-attribute-conversion.md` | ChannelAttributeConverterService, @ separator, dimension order, buildChannelAttributes / buildVariantGroups / buildOptionGroups / buildMetadataGroups / buildChannelCredentials |
 | `04-sync-api-integration.md` | SyncChannelProductRequest shape, sync API call, response handling |
 | `05-post-processing-config.md` | Rule JSON structure, dot-notation path rules, MongoDB document shape, Shopify + WIX + TikTok examples, naming conventions, priority ranges, FOR_EACH step ordering, common pitfalls, new channel checklist |
+| `06-variant-value-id-translation.md` | Variant option value label → channel ID translation at publish time |
+| `07-data-driven-channel-config.md` | Removing hardcoded channel-type logic from services; sourcing channel behaviour from MongoDB |
+| `08-shopee-variant-groups.md` | Walkthrough of the Shopee `variantGroups` pipeline: why it was empty, `BUILD_MODEL`→`variants` in-place, `seller_stock`/`model_id`, `skus.` prefix mapping for `init_tier_variation` + `add_model` |
 
 ### 02-api-reference/
 

@@ -157,18 +157,26 @@ Use when the channel changes their per-category attribute API (endpoint path, re
 
 ```json
 {
-  "urlPath": "/api/v2/product/get_attributes",
-  "categoryIdQueryParam": "category_id",
-  "itemsJsonPath": "response.attribute_list",
+  "urlPath": "/api/v2/product/get_attribute_tree",
+  "categoryIdQueryParam": "category_id_list",
+  "itemsJsonPath": "response.list",
+  "nestedArrayField": "attribute_tree",
   "idField": "attribute_id",
-  "nameField": "attribute_name",
-  "requiredField": "is_mandatory",
-  "isCustomizedField": "input_type",
+  "nameField": "name",
+  "requiredField": "mandatory",
   "valuesField": "attribute_value_list",
   "valueIdField": "value_id",
-  "valueNameField": "display_value_name"
+  "valueNameField": "name"
 }
 ```
+
+> **Shopee note:** `/api/v2/product/get_attributes` is `api_suspended` on the Partner API
+> (verified via `scripts/shopee_probe.py` — returns `api_suspended` even with a valid token).
+> Use `get_attribute_tree` instead. Its response nests attributes under
+> `response.list[{category_id, attribute_tree[…]}]`, so `itemsJsonPath` targets `response.list`
+> and `nestedArrayField: "attribute_tree"` flattens each entry's attributes. Field names also
+> differ: `mandatory` (not `is_mandatory`) and `name` (not `display_*`). SELECT vs TEXT is inferred
+> from `attribute_value_list` presence — free-text attributes (e.g. EAN) omit it.
 
 **Response:** `200 OK` — updated `attributeConfig` sub-document
 
