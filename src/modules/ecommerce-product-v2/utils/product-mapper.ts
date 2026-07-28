@@ -5,7 +5,7 @@
 
 import { MasterProduct, ProductVariant } from '../types/product';
 import { DynamicFormData } from '../types/form-schema';
-import { convertValueByType, isDimensionField } from './form-utils';
+import { convertValueByType } from './form-utils';
 
 export interface ProductGenerationOptions {
   formData: DynamicFormData;
@@ -43,7 +43,6 @@ export function generateMasterProduct(options: ProductGenerationOptions): Master
   };
 
   const mappedFields = new Set<string>(['sku', 'name', 'price']);
-  const dimensionFields: Record<string, any> = {};
 
   for (const field of schema.fields) {
     const { fieldName, name, backendFieldPath, fieldType } = field;
@@ -52,11 +51,9 @@ export function generateMasterProduct(options: ProductGenerationOptions): Master
 
     if (value === null || value === undefined || value === '') continue;
 
-    if (isDimensionField(actualFieldName)) {
-      dimensionFields[actualFieldName] = value;
-      mappedFields.add(actualFieldName);
-      continue;
-    }
+    // NOTE: length / width / height / dimensionUnit are NOT special-cased — they flow
+    // through as flat fields (like weight/weightUnit). The backend and the pattern-match
+    // analyzer both consume them flat, so nesting them here would only be undone downstream.
 
     if (actualFieldName === 'variantConfigurator') {
       try {
@@ -114,15 +111,6 @@ export function generateMasterProduct(options: ProductGenerationOptions): Master
       (product as any)[actualFieldName] = convertValueByType(value, fieldType);
       mappedFields.add(actualFieldName);
     }
-  }
-
-  if (Object.keys(dimensionFields).length > 0) {
-    (product as any).dimensions = {
-      length: dimensionFields.length || 0,
-      width: dimensionFields.width || 0,
-      height: dimensionFields.height || 0,
-      unit: dimensionFields.dimensionUnit || 'in'
-    };
   }
 
   for (const [key, value] of Object.entries(formData)) {
@@ -190,12 +178,8 @@ export function transformMasterProductToSourceSchema(
     }
   });
 
-  if (product.dimensions) {
-    sourceSchema['length'] = product.dimensions.length || 0;
-    sourceSchema['width'] = product.dimensions.width || 0;
-    sourceSchema['height'] = product.dimensions.height || 0;
-    sourceSchema['dimension_unit'] = product.dimensions.unit || 'cm';
-  }
+  // length / width / height / dimensionUnit are flat scalar fields on the product now,
+  // so the generic scalar loop above already copies them into sourceSchema verbatim.
 
   if (product.weight !== undefined && product.weight !== null) {
     sourceSchema['weight'] = product.weight;

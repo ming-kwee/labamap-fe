@@ -191,10 +191,6 @@ export const convertValueByType = (value: any, fieldType: string): any => {
 // FIELD UTILITIES
 // ============================================================================
 
-export const isDimensionField = (fieldName: string): boolean => {
-  return ['length', 'width', 'height', 'dimensionUnit'].includes(fieldName);
-};
-
 export const isValidEmail = (email: string): boolean => {
   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
   return emailRegex.test(email);

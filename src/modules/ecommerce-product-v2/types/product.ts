@@ -32,15 +32,13 @@ export interface MasterProduct {
   galleryImages?: string[];
   videos?: string[];
 
-  // Physical Properties
+  // Physical Properties — stored flat (backend + analyzer consume them flat)
   weight?: number;
   weightUnit?: 'kg' | 'lb' | 'g' | 'oz';
-  dimensions?: {
-    length: number;
-    width: number;
-    height: number;
-    unit: 'cm' | 'in' | 'm' | 'ft';
-  };
+  length?: number;
+  width?: number;
+  height?: number;
+  dimensionUnit?: 'cm' | 'in' | 'm' | 'ft';
 
   // SEO
   metaTitle?: string;
@@ -124,12 +122,10 @@ export interface CreateMasterProductRequest {
   galleryImages?: string[];
   weight?: number;
   weightUnit?: 'kg' | 'lb' | 'g' | 'oz';
-  dimensions?: {
-    length: number;
-    width: number;
-    height: number;
-    unit: 'cm' | 'in' | 'm' | 'ft';
-  };
+  length?: number;
+  width?: number;
+  height?: number;
+  dimensionUnit?: 'cm' | 'in' | 'm' | 'ft';
   metaTitle?: string;
   metaDescription?: string;
   metaKeywords?: string[];
