@@ -14,6 +14,7 @@ import {
   RefreshCw,
   Brain,
   Package,
+  Code,
 } from "@/shared/ui/icons/Icons";
 import type {
   ChannelProductData,
@@ -94,6 +95,25 @@ import {
   transformMasterProductToSourceSchema,
 } from "@/modules/ecommerce-product-v2/utils/product-mapper";
 import { MasterProductService } from "@/app/(admin)/products/_services/master-product.service";
+import PublishTraceInspector from "./PublishTraceInspector";
+import type { PublishTraceRequest } from "@/modules/ecommerce-product-v2/types/publish-trace";
+
+// ─── Publish payload builder ──────────────────────────────────────────────────
+//
+// The single source of truth for the `masterProductData` body: master (transformed)
+// overlaid with Step-2 master overrides then channel data. Shared by BOTH publish
+// and the trace inspector so the dry-run is byte-for-byte the same body as the real
+// publish — the whole point of the trace ("body identik dengan publish").
+function buildPublishMasterData(
+  product: MasterProduct | null,
+  store: ChannelProductData | undefined,
+): Record<string, unknown> {
+  return {
+    ...(product ? transformMasterProductToSourceSchema(product) : {}),
+    ...(store?.masterOverrides ?? {}),
+    ...(store?.channelData ?? {}),
+  };
+}
 
 // ─── Status Badge ─────────────────────────────────────────────────────────────
 
@@ -316,6 +336,10 @@ export default function PublishDashboard({ masterProductId }: Props) {
   const [batchPublishing, setBatchPublishing] = useState(false);
   const [batchError, setBatchError] = useState<string | null>(null);
 
+  // Publish-trace inspector (developer diagnostic — opens a modal dry-run of the pipeline)
+  const [traceRequest, setTraceRequest] = useState<PublishTraceRequest | null>(null);
+  const [traceOpen, setTraceOpen] = useState(false);
+
   // Analysis state — seed selectedStoreId from ?storeId= so back-nav returns to the right tab
   const [selectedStoreId, setSelectedStoreId] = useState<string | null>(
     searchParams.get("storeId")
@@ -439,11 +463,7 @@ export default function PublishDashboard({ masterProductId }: Props) {
     setPublishingStores((prev) => new Set(prev).add(storeId));
     setBatchError(null);
     try {
-      const masterProductData: Record<string, unknown> = {
-        ...(product ? transformMasterProductToSourceSchema(product) : {}),
-        ...(store?.masterOverrides ?? {}),
-        ...(store?.channelData ?? {}),
-      };
+      const masterProductData = buildPublishMasterData(product, store);
 
       const priorAnalysis = store ? analysisByChannel[store.channelType] : null;
 
@@ -505,6 +525,24 @@ export default function PublishDashboard({ masterProductId }: Props) {
         return next;
       });
     }
+  }
+
+  // ─── Diagnose (publish-trace dry-run) ─────────────────────────────────────────
+  //
+  // Builds the SAME body handlePublishSingle sends (master + Step-2 overrides +
+  // channelData) so the trace mirrors the real publish exactly, then opens the
+  // inspector modal. Read-only: nothing is published.
+  function openDiagnose(storeId: string) {
+    const store = storeData.find((d) => d.storeId === storeId);
+    if (!store) return;
+    setTraceRequest({
+      masterProductId,
+      storeId,
+      organizationId: orgId,
+      channelId: store.channelType,
+      masterProductData: buildPublishMasterData(product, store),
+    });
+    setTraceOpen(true);
   }
 
   // ─── Batch publish ────────────────────────────────────────────────────────────
@@ -890,6 +928,15 @@ export default function PublishDashboard({ masterProductId }: Props) {
                             : <><Brain className="h-4 w-4 mr-2" />Cek kesiapan (opsional)</>
                           }
                         </Button>
+                        <span title="Dry-run pipeline publish untuk debugging teknis — tidak mengirim ke channel">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => openDiagnose(selectedStoreId)}
+                          >
+                            <Code className="h-4 w-4 mr-2" />Diagnostik
+                          </Button>
+                        </span>
                       </div>
                     </div>
                   </CardContent>
@@ -1033,6 +1080,12 @@ export default function PublishDashboard({ masterProductId }: Props) {
                               Lengkapi di Channel Fields →
                             </Link>
                           )}
+                          <button
+                            onClick={() => openDiagnose(currentStoreData.storeId)}
+                            className="mt-2 flex items-center gap-1 text-xs font-medium text-gray-500 dark:text-gray-400 hover:text-brand-600 dark:hover:text-brand-400 hover:underline"
+                          >
+                            <Code className="h-3.5 w-3.5" /> Kenapa gagal? Lihat diagnostik pipeline
+                          </button>
                         </div>
                       );
                     })()}
@@ -1042,6 +1095,15 @@ export default function PublishDashboard({ masterProductId }: Props) {
             )}
           </div>
         </div>
+      )}
+
+      {/* Publish-Trace Inspector (developer diagnostic — dry-run, nothing published) */}
+      {traceRequest && (
+        <PublishTraceInspector
+          isOpen={traceOpen}
+          onClose={() => setTraceOpen(false)}
+          request={traceRequest}
+        />
       )}
     </div>
   );
