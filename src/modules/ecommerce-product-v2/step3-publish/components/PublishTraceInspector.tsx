@@ -335,6 +335,57 @@ export default function PublishTraceInspector({ isOpen, onClose, request, storeN
                 </button>
               </Section>
 
+              {/* Gate — preflight + semantic (merge → jolt → GATE → DSL) */}
+              {trace.gate && (
+                <Section
+                  title="Gate — preflight + semantic"
+                  icon={trace.gate.wouldBlockPublish
+                    ? <AlertTriangle className="h-4 w-4 text-error-500" />
+                    : <CheckCircle2 className="h-4 w-4 text-success-500" />}
+                  hint="Di publish nyata memblokir; di trace hanya dicatat (pipeline diteruskan)."
+                >
+                  <div className={`rounded-lg border px-3 py-2 text-sm font-medium ${
+                    trace.gate.wouldBlockPublish
+                      ? "border-error-200 bg-error-50 text-error-700 dark:border-error-500/30 dark:bg-error-500/10 dark:text-error-400"
+                      : "border-success-200 bg-success-50 text-success-700 dark:border-success-500/30 dark:bg-success-500/10 dark:text-success-400"
+                  }`}>
+                    {trace.gate.wouldBlockPublish ? "Publish nyata AKAN diblok gate." : "Gate lolos — tak ada blocker."}
+                  </div>
+                  <div className="mt-2 grid grid-cols-1 gap-2 text-xs sm:grid-cols-2">
+                    <div className="rounded-lg border border-gray-200 px-3 py-2 dark:border-gray-800">
+                      <p className="mb-1 font-medium text-gray-700 dark:text-gray-300">Preflight (field wajib)</p>
+                      {!trace.gate.preflight?.ran ? (
+                        <p className="text-gray-400">tidak dijalankan</p>
+                      ) : trace.gate.preflight.passed ? (
+                        <p className="text-success-700 dark:text-success-400">lolos</p>
+                      ) : (
+                        <div className="flex flex-wrap gap-1">
+                          {trace.gate.preflight.missingFields?.map((f, i) => (
+                            <KeyPill key={i} tone="bad">{f.label || f.field || "field"}</KeyPill>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                    <div className="rounded-lg border border-gray-200 px-3 py-2 dark:border-gray-800">
+                      <p className="mb-1 font-medium text-gray-700 dark:text-gray-300">Semantic (anti-scramble)</p>
+                      {!trace.gate.semantic?.ran ? (
+                        <p className="text-warning-700 dark:text-warning-400">fail-open — knowledge base kosong (tak divalidasi)</p>
+                      ) : trace.gate.semantic.passed ? (
+                        <p className="text-success-700 dark:text-success-400">lolos</p>
+                      ) : (
+                        <div className="space-y-1">
+                          {trace.gate.semantic.violations?.map((v, i) => (
+                            <p key={i} className="font-mono text-[11px] text-error-700 dark:text-error-400">
+                              {v.sourceField} → {v.targetPath} ({v.sourceType ?? "?"} ≠ {v.targetType ?? "?"})
+                            </p>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </Section>
+              )}
+
               {/* 2. Field finder */}
               <Section
                 title="Cari field"

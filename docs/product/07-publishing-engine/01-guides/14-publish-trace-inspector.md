@@ -34,6 +34,7 @@ Body **sama** dengan endpoint publish (`masterProductId`, `masterProductData`, `
 | `channelAttributes[]` | channelAttributes final **persis** seperti `buildChannelAttributes` (termasuk `isSupportField`). |
 | `supportFieldsExcludedBySync` | Nama atribut ber-`isSupportField=true` — **dikecualikan dari body** oleh sync-service (penyebab "Image is required" tahap 2). |
 | `stagingKeysStripped` | `_`-key yang di-strip buildChannelAttributes (tak pernah masuk body). |
+| `gate` | **Preflight + semantic** (backend 2026-07-29). `wouldBlockPublish`, `preflight{ran,passed,missingFields[]}`, `semantic{ran,passed,knowledgeTokensLoaded,violations[]}`. Dievaluasi non-blocking: publish nyata memblokir, trace hanya mencatat & meneruskan pipeline. `semantic.ran=false` = fail-open (knowledge base kosong → tak divalidasi, bukan aman). |
 | `warnings` | Termasuk catatan fidelity v1. |
 
 ## Contoh diagnosis (bug hari ini)

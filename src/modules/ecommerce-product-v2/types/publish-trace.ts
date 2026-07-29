@@ -68,10 +68,67 @@ export interface PublishTraceChannelAttribute {
   [k: string]: unknown;
 }
 
+/** One merchant-fixable field the preflight gate flagged as missing/invalid. */
+export interface PublishTracePreflightMissingField {
+  field?: string;
+  /** Merchant-friendly label. */
+  label?: string;
+  /** Why it was flagged (from PublishError.message). */
+  reason?: string;
+  /** Origin code (from PublishError.errorCode). */
+  source?: string;
+  [k: string]: unknown;
+}
+
+/** `runPreflightGate` — blocks a real publish on merchant-fixable missing fields. */
+export interface PublishTracePreflightGate {
+  ran?: boolean;
+  passed?: boolean;
+  missingFields?: PublishTracePreflightMissingField[];
+  [k: string]: unknown;
+}
+
+/** One confident semantic mismatch: a shift leaf mapping two DIFFERENT known types. */
+export interface PublishTraceSemanticViolation {
+  sourceField?: string;
+  targetPath?: string;
+  sourceType?: string;
+  targetType?: string;
+  message?: string;
+  [k: string]: unknown;
+}
+
+/**
+ * `JoltSemanticValidator` — refuses a spec that scrambles field mappings.
+ * `ran: false` ⇒ FAIL-OPEN (field_semantic_knowledge cache empty) — "not validated", NOT "safe".
+ */
+export interface PublishTraceSemanticGate {
+  ran?: boolean;
+  passed?: boolean;
+  knowledgeTokensLoaded?: number;
+  violations?: PublishTraceSemanticViolation[];
+  [k: string]: unknown;
+}
+
+/**
+ * The two blocking gates, captured NON-BLOCKING in the trace: they are evaluated but the
+ * pipeline continues, so downstream (afterJolt / DSL) is still visible even when a real
+ * publish would be stopped. `wouldBlockPublish` = would a real publish halt before sync.
+ */
+export interface PublishTraceGate {
+  passed?: boolean;
+  wouldBlockPublish?: boolean;
+  preflight?: PublishTracePreflightGate;
+  semantic?: PublishTraceSemanticGate;
+  [k: string]: unknown;
+}
+
 export interface PublishTraceResponse {
   masterProductId?: string;
   channelId?: string;
   storeId?: string;
+  /** Preflight + semantic gate outcome (backend added 2026-07-29). Absent on older backends. */
+  gate?: PublishTraceGate;
   /** Master category slug used for the JOLT lookup. */
   resolvedCategory?: string;
   /** Native channel category id (e.g. Shopee `300242`) from Step-2. */

@@ -34,6 +34,7 @@ import type { ChannelType } from "@/modules/ecommerce-product-v2/step2-channel-f
 import { tracePublish } from "@/modules/ecommerce-product-v2/services/publish-trace.service";
 import type {
   PublishTraceChannelAttribute,
+  PublishTraceGate,
   PublishTraceRequest,
   PublishTraceResponse,
 } from "@/modules/ecommerce-product-v2/types/publish-trace";
@@ -187,6 +188,97 @@ function ColumnHeader({ icon, title, subtitle }: { icon: React.ReactNode; title:
   );
 }
 
+// ─── Gate stage (preflight + semantic) ───────────────────────────────────────────
+
+function GateSection({ gate }: { gate: PublishTraceGate }) {
+  const pf = gate.preflight;
+  const sem = gate.semantic;
+  const blocked = gate.wouldBlockPublish === true;
+  const semTokens = sem?.knowledgeTokensLoaded;
+
+  return (
+    <section className="mb-6">
+      <div className="mb-2 flex items-center gap-2">
+        {blocked
+          ? <AlertTriangle className="h-4 w-4 text-error-500" />
+          : <CheckCircle2 className="h-4 w-4 text-success-500" />}
+        <h3 className="text-sm font-semibold text-gray-800 dark:text-gray-200">Gate</h3>
+        <span className="text-[11px] text-gray-500 dark:text-gray-400">preflight + semantic — di publish nyata MEMBLOKIR (di trace hanya dicatat)</span>
+      </div>
+
+      {/* Overall verdict */}
+      <div className={`mb-3 rounded-lg border px-3 py-2 text-sm font-medium ${
+        blocked
+          ? "border-error-200 bg-error-50 text-error-700 dark:border-error-500/30 dark:bg-error-500/10 dark:text-error-400"
+          : "border-success-200 bg-success-50 text-success-700 dark:border-success-500/30 dark:bg-success-500/10 dark:text-success-400"
+      }`}>
+        {blocked ? "Publish nyata AKAN diblok gate — perbaiki penyebab di bawah." : "Gate lolos — tak ada blocker."}
+      </div>
+
+      <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+        {/* Preflight */}
+        <div className="rounded-lg border border-gray-200 p-3 dark:border-gray-800">
+          <p className="mb-1.5 text-xs font-semibold text-gray-700 dark:text-gray-300">Preflight — field wajib merchant</p>
+          {!pf?.ran ? (
+            <p className="text-xs text-gray-400">Tidak dijalankan.</p>
+          ) : pf.passed ? (
+            <p className="flex items-center gap-1.5 text-xs text-success-700 dark:text-success-400">
+              <CheckCircle2 className="h-3.5 w-3.5" /> Lolos — semua field wajib terisi.
+            </p>
+          ) : (
+            <div className="space-y-1.5">
+              <p className="text-xs text-error-700 dark:text-error-400">{pf.missingFields?.length ?? 0} field wajib hilang/invalid:</p>
+              <ul className="space-y-1">
+                {pf.missingFields?.map((f, i) => (
+                  <li key={i} className="flex flex-wrap items-baseline gap-1.5">
+                    <Pill tone="bad">{f.label || f.field || "field"}</Pill>
+                    {f.reason && <span className="text-[11px] text-gray-500 dark:text-gray-400">{f.reason}</span>}
+                    {f.source && <span className="font-mono text-[10px] text-gray-400">{f.source}</span>}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
+
+        {/* Semantic */}
+        <div className="rounded-lg border border-gray-200 p-3 dark:border-gray-800">
+          <p className="mb-1.5 text-xs font-semibold text-gray-700 dark:text-gray-300">Semantic validator — cegah scramble mapping</p>
+          {!sem?.ran ? (
+            <p className="flex items-start gap-1.5 text-xs text-warning-700 dark:text-warning-400">
+              <Info className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" />
+              Fail-open — knowledge base kosong{semTokens != null ? ` (${semTokens} token)` : ""}. Spec TIDAK divalidasi (bukan berarti aman).
+            </p>
+          ) : sem.passed ? (
+            <p className="flex items-center gap-1.5 text-xs text-success-700 dark:text-success-400">
+              <CheckCircle2 className="h-3.5 w-3.5" /> Lolos — tak ada mismatch{semTokens != null ? ` · ${semTokens} token` : ""}.
+            </p>
+          ) : (
+            <div className="space-y-1.5">
+              <p className="text-xs text-error-700 dark:text-error-400">{sem.violations?.length ?? 0} mismatch semantik:</p>
+              <ul className="space-y-1">
+                {sem.violations?.map((v, i) => (
+                  <li key={i} className="rounded border border-error-200 bg-error-50/60 px-2 py-1 dark:border-error-500/30 dark:bg-error-500/10">
+                    <span className="flex flex-wrap items-center gap-1.5 font-mono text-[11px]">
+                      <span className="text-gray-800 dark:text-gray-200">{v.sourceField}</span>
+                      <span className="text-gray-400">→</span>
+                      <span className="text-gray-800 dark:text-gray-200">{v.targetPath}</span>
+                      {(v.sourceType || v.targetType) && (
+                        <span className="text-error-600 dark:text-error-400">({v.sourceType ?? "?"} ≠ {v.targetType ?? "?"})</span>
+                      )}
+                    </span>
+                    {v.message && <p className="mt-0.5 text-[11px] text-gray-500 dark:text-gray-400">{v.message}</p>}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
+      </div>
+    </section>
+  );
+}
+
 // ─── Stashed payload ────────────────────────────────────────────────────────────
 
 interface Stashed {
@@ -318,6 +410,9 @@ export default function PublishTraceDiff({ masterProductId }: { masterProductId:
             <SummaryTile label="Resolved category" value={trace.resolvedCategory ?? "—"} />
             <SummaryTile label="Field ke body" value={`${sentCount} / ${lineage.length}`} />
           </div>
+
+          {/* GATE — preflight + semantic (merge → jolt → GATE → DSL) */}
+          {trace.gate && <GateSection gate={trace.gate} />}
 
           {/* HERO — aligned per-field lineage (JOLT → DSL/body) */}
           <div className="mb-6 overflow-hidden rounded-xl border border-gray-200 dark:border-gray-800">
