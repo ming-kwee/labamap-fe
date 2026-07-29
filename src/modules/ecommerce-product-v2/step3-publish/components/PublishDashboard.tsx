@@ -338,6 +338,7 @@ export default function PublishDashboard({ masterProductId }: Props) {
 
   // Publish-trace inspector (developer diagnostic — opens a modal dry-run of the pipeline)
   const [traceRequest, setTraceRequest] = useState<PublishTraceRequest | null>(null);
+  const [traceStoreName, setTraceStoreName] = useState<string | null>(null);
   const [traceOpen, setTraceOpen] = useState(false);
 
   // Analysis state — seed selectedStoreId from ?storeId= so back-nav returns to the right tab
@@ -542,6 +543,7 @@ export default function PublishDashboard({ masterProductId }: Props) {
       channelId: store.channelType,
       masterProductData: buildPublishMasterData(product, store),
     });
+    setTraceStoreName(store.storeName);
     setTraceOpen(true);
   }
 
@@ -1103,6 +1105,7 @@ export default function PublishDashboard({ masterProductId }: Props) {
           isOpen={traceOpen}
           onClose={() => setTraceOpen(false)}
           request={traceRequest}
+          storeName={traceStoreName ?? undefined}
         />
       )}
     </div>

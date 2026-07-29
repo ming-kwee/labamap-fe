@@ -184,6 +184,8 @@ interface Props {
   isOpen: boolean;
   onClose: () => void;
   request: PublishTraceRequest;
+  /** Human store label (e.g. "My Shopee Store") — passed through to the side-by-side page. */
+  storeName?: string;
 }
 
 const TONE_TEXT: Record<Tone, string> = {
@@ -193,7 +195,7 @@ const TONE_TEXT: Record<Tone, string> = {
   muted:"text-gray-600 dark:text-gray-400",
 };
 
-export default function PublishTraceInspector({ isOpen, onClose, request }: Props) {
+export default function PublishTraceInspector({ isOpen, onClose, request, storeName }: Props) {
   const router = useRouter();
   const [trace, setTrace] = useState<PublishTraceResponse | null>(null);
   const [loading, setLoading] = useState(false);
@@ -204,10 +206,10 @@ export default function PublishTraceInspector({ isOpen, onClose, request }: Prop
   // (sessionStorage survives same-tab navigation) so the page renders instantly and can re-run.
   const openSideBySide = useCallback(() => {
     try {
-      sessionStorage.setItem(`publishTrace_${request.masterProductId}`, JSON.stringify({ request, trace }));
+      sessionStorage.setItem(`publishTrace_${request.masterProductId}`, JSON.stringify({ request, trace, storeName }));
     } catch { /* quota — the page will re-run from a fresh trace if the stash is missing */ }
     router.push(`/products/${request.masterProductId}/publish/trace`);
-  }, [router, request, trace]);
+  }, [router, request, trace, storeName]);
 
   const run = useCallback(
     async (signal?: AbortSignal) => {

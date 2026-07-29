@@ -29,6 +29,8 @@ import {
   Zap,
 } from "@/shared/ui/icons/Icons";
 import Button from "@/shared/ui/button/Button";
+import ChannelTypeBadge from "@/modules/ecommerce-product-v2/step2-channel-fields/components/stores/ChannelTypeBadge";
+import type { ChannelType } from "@/modules/ecommerce-product-v2/step2-channel-fields/types/channelStore";
 import { tracePublish } from "@/modules/ecommerce-product-v2/services/publish-trace.service";
 import type {
   PublishTraceChannelAttribute,
@@ -190,6 +192,7 @@ function ColumnHeader({ icon, title, subtitle }: { icon: React.ReactNode; title:
 interface Stashed {
   request: PublishTraceRequest;
   trace: PublishTraceResponse | null;
+  storeName?: string;
 }
 
 function readStash(masterProductId: string): Stashed | null {
@@ -205,6 +208,7 @@ function readStash(masterProductId: string): Stashed | null {
 export default function PublishTraceDiff({ masterProductId }: { masterProductId: string }) {
   const [request, setRequest] = useState<PublishTraceRequest | null>(null);
   const [trace, setTrace] = useState<PublishTraceResponse | null>(null);
+  const [storeName, setStoreName] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const publishHref = `/products/${masterProductId}/publish`;
@@ -214,6 +218,7 @@ export default function PublishTraceDiff({ masterProductId }: { masterProductId:
     if (stash) {
       setRequest(stash.request);
       setTrace(stash.trace);
+      setStoreName(stash.storeName ?? null);
     }
   }, [masterProductId]);
 
@@ -264,10 +269,14 @@ export default function PublishTraceDiff({ masterProductId }: { masterProductId:
           <h1 className="flex items-center gap-2 text-xl font-semibold text-gray-900 dark:text-white">
             <Code className="h-5 w-5 text-brand-500" /> Publish Trace — JOLT | DSL
           </h1>
-          <p className="mt-0.5 text-sm text-gray-500 dark:text-gray-400">
-            Dry-run pipeline — apa yang benar-benar dikirim ke channel & kenapa.{" "}
-            <span className="font-mono text-xs">{request?.channelId ?? trace?.channelId ?? "?"}</span> ·{" "}
-            <span className="font-mono text-xs">{request?.storeId ?? trace?.storeId ?? "?"}</span>
+          {/* Which channel store this trace is for */}
+          <div className="mt-1.5 flex flex-wrap items-center gap-2">
+            <ChannelTypeBadge channelType={(request?.channelId ?? trace?.channelId ?? "") as ChannelType} size="sm" />
+            {storeName && <span className="text-sm font-medium text-gray-700 dark:text-gray-200">{storeName}</span>}
+            <span className="font-mono text-xs text-gray-400">{request?.storeId ?? trace?.storeId ?? "?"}</span>
+          </div>
+          <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+            Dry-run pipeline — apa yang benar-benar dikirim ke channel & kenapa.
           </p>
         </div>
         <Button variant="outline" size="sm" onClick={rerun} disabled={loading || !request}>
