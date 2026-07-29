@@ -178,13 +178,10 @@ export function transformMasterProductToSourceSchema(
     }
   });
 
-  // length / width / height / dimensionUnit are flat scalar fields on the product now,
-  // so the generic scalar loop above already copies them into sourceSchema verbatim.
-
-  if (product.weight !== undefined && product.weight !== null) {
-    sourceSchema['weight'] = product.weight;
-    sourceSchema['weight_unit'] = product.weightUnit || 'kg';
-  }
+  // weight / weightUnit and length / width / height / dimensionUnit are all flat scalar
+  // fields on the product, so the generic scalar loop above already copies them into
+  // sourceSchema verbatim (as `weightUnit`/`dimensionUnit`, matching the flat field names —
+  // no hardcoded unit default, no snake_case alias).
 
   if (product.variantOptions && product.variantOptions.length > 0) {
     sourceSchema['variant_options'] = product.variantOptions.map(opt => opt.name).join(', ');
