@@ -72,3 +72,10 @@ credential-free).
 | `publishing/model/response/PublishTraceResponse.java` | **baru** — DTO trace |
 | `publishing/service/ChannelPublishService.java` | `tracePublish` + `buildTrace` (reuse service produksi) |
 | `publishing/controller/ChannelPublishController.java` | endpoint `POST /publish/trace` |
+
+## Lihat juga
+
+- **Halaman side-by-side JOLT | DSL** (FE) — `/products/{id}/publish/trace`: menyejajarkan JOLT (kiri) dengan
+  lapisan DSL/body (kanan) + tabel lineage per-field. Dibuka dari tombol di section JOLT inspector.
+- **Usulan stage `gate`** — `docs/BACKEND-PUBLISH-TRACE-GATE-RECOMMENDATION.md`: menambah `PublishTraceResponse.gate`
+  (preflight + semantic validator) supaya stage gate tak lagi opak (kini hanya nyangkut di `warnings`).

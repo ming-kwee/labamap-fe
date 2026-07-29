@@ -13,6 +13,7 @@
  * lives behind a modal and is framed as a developer diagnostic, not merchant UI.
  */
 import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { Modal } from "@/shared/ui/modal";
 import Button from "@/shared/ui/button/Button";
 import {
@@ -23,6 +24,7 @@ import {
   Code,
   Copy,
   Database,
+  ExternalLink,
   Info,
   RefreshCw,
   Search,
@@ -192,10 +194,20 @@ const TONE_TEXT: Record<Tone, string> = {
 };
 
 export default function PublishTraceInspector({ isOpen, onClose, request }: Props) {
+  const router = useRouter();
   const [trace, setTrace] = useState<PublishTraceResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
+
+  // Hand off to the full-page side-by-side view: stash the request + already-fetched trace
+  // (sessionStorage survives same-tab navigation) so the page renders instantly and can re-run.
+  const openSideBySide = useCallback(() => {
+    try {
+      sessionStorage.setItem(`publishTrace_${request.masterProductId}`, JSON.stringify({ request, trace }));
+    } catch { /* quota — the page will re-run from a fresh trace if the stash is missing */ }
+    router.push(`/products/${request.masterProductId}/publish/trace`);
+  }, [router, request, trace]);
 
   const run = useCallback(
     async (signal?: AbortSignal) => {
@@ -313,6 +325,12 @@ export default function PublishTraceInspector({ isOpen, onClose, request }: Prop
                     dibangun ulang di post-processing.
                   </p>
                 )}
+                <button
+                  onClick={openSideBySide}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-brand-200 bg-brand-50 px-3 py-1.5 text-xs font-medium text-brand-700 hover:bg-brand-100 dark:border-brand-500/30 dark:bg-brand-500/10 dark:text-brand-300 dark:hover:bg-brand-500/20"
+                >
+                  <ExternalLink className="h-3.5 w-3.5" /> Buka side-by-side JOLT | DSL — lihat field per-field
+                </button>
               </Section>
 
               {/* 2. Field finder */}
