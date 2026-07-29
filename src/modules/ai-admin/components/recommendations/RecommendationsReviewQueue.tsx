@@ -595,6 +595,14 @@ function RecommendationDetail({
   const isPending = rec.status === "PENDING";
   const canApprove = reviewer.trim().length > 0;
 
+  // Failure-context (master product / attempt / error) and field-gap diagnosis are only
+  // populated when a recommendation is born from a real publish failure. For manual triggers
+  // these are empty by design — annotate that instead of rendering a bare, broken-looking "—".
+  const hasFailureContext = !!(rec.triggerContext?.masterProductId || rec.triggerContext?.publishAttemptId);
+  const hasFieldDiagnosis =
+    (rec.analysis?.affectedFields?.length ?? 0) > 0 ||
+    (rec.analysis?.missingChannelRequirements?.length ?? 0) > 0;
+
   return (
     <div
       className="fixed inset-0 z-[100000] flex justify-end bg-black/50 backdrop-blur-sm"
@@ -644,8 +652,17 @@ function RecommendationDetail({
                   <p className="text-red-700 dark:text-red-400">{rec.triggerContext.errorMessage}</p>
                 </div>
               )}
-              <DetailRow label="Master product" value={rec.triggerContext?.masterProductId ?? "—"} mono />
-              <DetailRow label="Publish attempt" value={rec.triggerContext?.publishAttemptId ?? "—"} mono />
+              {hasFailureContext ? (
+                <>
+                  <DetailRow label="Master product" value={rec.triggerContext?.masterProductId ?? "—"} mono />
+                  <DetailRow label="Publish attempt" value={rec.triggerContext?.publishAttemptId ?? "—"} mono />
+                </>
+              ) : (
+                <p className="rounded-lg bg-gray-50 dark:bg-gray-800/60 border border-gray-100 dark:border-gray-800 px-3 py-2 text-gray-500 dark:text-gray-400">
+                  Trigger manual — tidak ada produk / percobaan publish terkait. Konteks kegagalan
+                  (produk, attempt, pesan error) hanya terisi saat rekomendasi lahir dari publish yang gagal.
+                </p>
+              )}
               {rec.triggerContext?.sampleProductSnapshot != null && (
                 <JsonBlock label="Sample product snapshot" value={rec.triggerContext.sampleProductSnapshot} />
               )}
@@ -659,8 +676,18 @@ function RecommendationDetail({
                 <p className="text-gray-400 mb-0.5">Root cause</p>
                 <p className="text-gray-800 dark:text-gray-200">{rec.analysis?.rootCause ?? "—"}</p>
               </div>
-              <ChipList label="Affected fields" items={rec.analysis?.affectedFields} tone="blue" />
-              <ChipList label="Missing channel requirements" items={rec.analysis?.missingChannelRequirements} tone="amber" />
+              {hasFieldDiagnosis ? (
+                <>
+                  <ChipList label="Affected fields" items={rec.analysis?.affectedFields} tone="blue" />
+                  <ChipList label="Missing channel requirements" items={rec.analysis?.missingChannelRequirements} tone="amber" />
+                </>
+              ) : (
+                <p className="rounded-lg bg-gray-50 dark:bg-gray-800/60 border border-gray-100 dark:border-gray-800 px-3 py-2 text-gray-500 dark:text-gray-400">
+                  Diagnosis field-gap (affected / missing) tidak tersedia untuk rekomendasi ini — biasanya
+                  terisi saat dipicu publish gagal. Lihat <strong>Proposed Fix</strong> (perubahan mapping
+                  konkret) dan <strong>RAG Evidence</strong> (dasar keputusan) di bawah.
+                </p>
+              )}
             </div>
           </SectionCard>
 
@@ -674,13 +701,18 @@ function RecommendationDetail({
                 ⚠ Tidak ada ragEvidence — agent mungkin menebak, bukan grounded ke RAG. Tinjau ekstra hati-hati.
               </p>
             ) : (
-              <JsonBlock label={`${ragEvidence.length} evidence`} value={ragEvidence} defaultOpen />
+              <EvidenceList evidence={ragEvidence} />
             )}
           </SectionCard>
 
           {/* Proposed fix */}
           <SectionCard title="Proposed Fix" subtitle="perubahan JOLT yang diusulkan">
-            <JsonBlock label={rec.proposedFix?.type ?? "fix"} value={rec.proposedFix ?? {}} defaultOpen />
+            {rec.proposedFix?.type && (
+              <div className="mb-2">
+                <Badge tone="violet">{rec.proposedFix.type}</Badge>
+              </div>
+            )}
+            <JoltSummary proposedFix={rec.proposedFix} />
             {rec.agentSessionId && (
               <p className="mt-2 text-xs text-gray-400">
                 Sesi agent:{" "}
@@ -858,6 +890,241 @@ function JsonBlock({
           {json}
         </pre>
       )}
+    </div>
+  );
+}
+
+// ─── RAG evidence (parsed) ───────────────────────────────────────────────────
+//
+// A ragEvidence entry is usually a compact string the backend logs, e.g.
+//   "score=0.70 | channelId=shopify categoryId=clothing sourceFields=name description slug"
+// Dumping that as raw JSON tells a reviewer nothing. Parse the `key=value` markers
+// (values may contain spaces, like sourceFields) into a map so we can render score /
+// channel / category / the fields the mapping was grounded on as readable chips.
+
+function parseEvidence(entry: unknown): { fields: Record<string, string>; raw: string } {
+  if (entry && typeof entry === "object") {
+    const fields: Record<string, string> = {};
+    for (const [k, v] of Object.entries(entry as Record<string, unknown>)) {
+      fields[k] = Array.isArray(v) ? v.join(" ") : String(v);
+    }
+    return { fields, raw: JSON.stringify(entry) };
+  }
+  const raw = String(entry ?? "");
+  const fields: Record<string, string> = {};
+  const re = /([A-Za-z][\w.]*)=/g;
+  const markers: { key: string; valStart: number; start: number }[] = [];
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(raw)) !== null) {
+    markers.push({ key: m[1], valStart: m.index + m[0].length, start: m.index });
+  }
+  markers.forEach((mk, i) => {
+    const end = i + 1 < markers.length ? markers[i + 1].start : raw.length;
+    fields[mk.key] = raw.slice(mk.valStart, end).replace(/[|;,]\s*$/, "").trim();
+  });
+  return { fields, raw };
+}
+
+function evidenceScoreTone(score: number): Tone {
+  if (score >= 0.7) return "green";
+  if (score >= 0.5) return "amber";
+  return "red";
+}
+
+const EVIDENCE_KNOWN = new Set(["score", "channelId", "categoryId", "sourceFields", "targetFields"]);
+
+type ParsedEvidence = ReturnType<typeof parseEvidence>;
+
+function FieldChips({ label, items, tone }: { label: string; items: string[]; tone: Tone }) {
+  if (items.length === 0) return null;
+  return (
+    <div className="flex flex-wrap items-center gap-1.5">
+      <span className="text-gray-400">{label}</span>
+      {items.map((it, i) => (
+        <Badge key={i} tone={tone}>{it}</Badge>
+      ))}
+    </div>
+  );
+}
+
+function EvidenceCard({ parsed, index }: { parsed: ParsedEvidence; index: number }) {
+  const [showFields, setShowFields] = useState(false);
+  const { fields, raw } = parsed;
+  if (Object.keys(fields).length === 0) {
+    return <p className="text-[11px] font-mono text-gray-600 dark:text-gray-300 break-all">{raw}</p>;
+  }
+  const scoreNum = fields.score != null ? Number(fields.score) : NaN;
+  const srcItems = (fields.sourceFields ?? "").split(/\s+/).filter(Boolean);
+  const tgtItems = (fields.targetFields ?? "").split(/\s+/).filter(Boolean);
+  const others = Object.entries(fields).filter(([k]) => !EVIDENCE_KNOWN.has(k));
+  return (
+    <div className="rounded-lg border border-gray-200 dark:border-gray-700 px-3 py-2 space-y-2 text-xs">
+      <div className="flex items-center gap-2 flex-wrap">
+        <span className="text-[11px] font-medium text-gray-500 dark:text-gray-400">Rujukan #{index + 1}</span>
+        {!Number.isNaN(scoreNum) && (
+          <Badge tone={evidenceScoreTone(scoreNum)} dot>kemiripan {(scoreNum * 100).toFixed(0)}%</Badge>
+        )}
+        {fields.channelId && <ChannelBadge channelId={fields.channelId} />}
+        {fields.categoryId && <Badge tone="violet">{fields.categoryId}</Badge>}
+      </div>
+      {srcItems.length > 0 && (
+        <div>
+          <button
+            onClick={() => setShowFields((v) => !v)}
+            className="flex items-center gap-1.5 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
+          >
+            <span className={`transition-transform ${showFields ? "rotate-90" : ""}`}>▸</span>
+            {srcItems.length} field dirujuk mapping ini
+          </button>
+          {showFields && (
+            <div className="mt-1.5 flex flex-wrap gap-1.5">
+              {srcItems.map((it, i) => (
+                <Badge key={i} tone="blue">{it}</Badge>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+      {tgtItems.length > 0 && <FieldChips label="target fields" items={tgtItems} tone="amber" />}
+      {others.map(([k, v]) => (
+        <div key={k} className="flex gap-2 text-[11px]">
+          <span className="text-gray-400 shrink-0">{k}</span>
+          <span className="text-gray-700 dark:text-gray-300 break-all">{v}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function EvidenceList({ evidence }: { evidence: unknown[] }) {
+  const parsed = useMemo(() => evidence.map(parseEvidence), [evidence]);
+  // Low-diversity hint: if every retrieved reference shares the same channel+category, the agent
+  // leaned on one repeated pattern rather than several independent angles — worth flagging.
+  const scopeKeys = parsed.map((p) => `${p.fields.channelId ?? ""}/${p.fields.categoryId ?? ""}`);
+  const uniform = parsed.length > 1 && new Set(scopeKeys).size === 1;
+  return (
+    <div className="space-y-2">
+      <p className="text-[11px] text-gray-500 dark:text-gray-400 leading-relaxed">
+        Mapping/spec lama paling mirip yang dipakai AI sebagai <strong>contoh</strong> (grounding) — bukti
+        usulan berdasar pengetahuan nyata, bukan tebakan. <strong>Kemiripan</strong> = skor relevansi
+        (≳60% dianggap relevan). Makin banyak &amp; beragam rujukan, makin tepercaya.
+      </p>
+      {uniform && (
+        <p className="text-[11px] text-amber-600 dark:text-amber-400">
+          ⚠ {parsed.length} rujukan seragam (channel &amp; kategori sama) — AI bersandar pada satu pola berulang,
+          bukan beberapa sudut pandang berbeda.
+        </p>
+      )}
+      {parsed.map((p, i) => (
+        <EvidenceCard key={i} parsed={p} index={i} />
+      ))}
+      <JsonBlock label="Lihat data mentah" value={evidence} />
+    </div>
+  );
+}
+
+// ─── Proposed fix (JOLT summary) ─────────────────────────────────────────────
+//
+// proposedFix carries the concrete JOLT change — usually an array of { operation, spec }.
+// A "shift" op's spec maps source path → target path; that IS the field-mapping report a
+// reviewer wants, so flatten it to source→target rows instead of dumping raw JOLT.
+
+interface JoltOp {
+  operation: string;
+  spec: unknown;
+}
+
+function looksLikeJoltOp(x: unknown): x is JoltOp {
+  return !!x && typeof x === "object" && ("operation" in x || "spec" in x);
+}
+
+function opsFromArray(arr: unknown[]): JoltOp[] {
+  return arr.filter(looksLikeJoltOp).map((o) => ({
+    operation: String((o as JoltOp).operation ?? "shift"),
+    spec: (o as JoltOp).spec,
+  }));
+}
+
+function extractJoltOps(proposedFix: unknown): JoltOp[] {
+  if (Array.isArray(proposedFix)) return opsFromArray(proposedFix);
+  if (proposedFix && typeof proposedFix === "object") {
+    const obj = proposedFix as Record<string, unknown>;
+    // Prefer well-known containers, then fall back to any array of op-shaped objects.
+    for (const key of ["operations", "joltSpec", "spec", "proposedSpec", "newSpec", "transforms"]) {
+      if (Array.isArray(obj[key])) {
+        const ops = opsFromArray(obj[key] as unknown[]);
+        if (ops.length) return ops;
+      }
+    }
+    for (const v of Object.values(obj)) {
+      if (Array.isArray(v)) {
+        const ops = opsFromArray(v);
+        if (ops.length) return ops;
+      }
+    }
+    if (looksLikeJoltOp(obj)) return [{ operation: String(obj.operation ?? "shift"), spec: obj.spec }];
+  }
+  return [];
+}
+
+/** Flatten a JOLT shift spec into leaf source→target pairs (source = dotted key path). */
+function flattenShift(spec: unknown, prefix = ""): { source: string; target: string }[] {
+  const out: { source: string; target: string }[] = [];
+  if (spec && typeof spec === "object") {
+    for (const [k, v] of Object.entries(spec as Record<string, unknown>)) {
+      const src = prefix ? `${prefix}.${k}` : k;
+      if (typeof v === "string") out.push({ source: src, target: v });
+      else if (v && typeof v === "object") out.push(...flattenShift(v, src));
+    }
+  }
+  return out;
+}
+
+const OP_TONE: Record<string, Tone> = { shift: "blue", default: "violet", remove: "red" };
+
+function JoltSummary({ proposedFix }: { proposedFix: unknown }) {
+  const ops = useMemo(() => extractJoltOps(proposedFix), [proposedFix]);
+  if (ops.length === 0) {
+    return <JsonBlock label="proposed fix (raw)" value={proposedFix ?? {}} defaultOpen />;
+  }
+  return (
+    <div className="space-y-3">
+      {ops.map((op, i) => {
+        const pairs = op.operation.toLowerCase().includes("shift") ? flattenShift(op.spec) : [];
+        const keys = op.spec && typeof op.spec === "object" ? Object.keys(op.spec as object) : [];
+        return (
+          <div key={i} className="rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
+            <div className="flex items-center gap-2 px-3 py-1.5 bg-gray-50 dark:bg-gray-800/60 border-b border-gray-100 dark:border-gray-800">
+              <Badge tone={OP_TONE[op.operation.toLowerCase()] ?? "gray"}>{op.operation}</Badge>
+              <span className="text-[11px] text-gray-400">
+                {pairs.length > 0 ? `${pairs.length} field mapping` : `${keys.length} field`}
+              </span>
+            </div>
+            <div className="p-2">
+              {pairs.length > 0 ? (
+                <div className="space-y-1">
+                  {pairs.map((p, j) => (
+                    <div key={j} className="flex items-center gap-2 text-[11px] font-mono">
+                      <span className="text-blue-600 dark:text-blue-400 break-all">{p.source}</span>
+                      <span className="text-gray-400 shrink-0">→</span>
+                      <span className="text-gray-700 dark:text-gray-300 break-all">{p.target}</span>
+                    </div>
+                  ))}
+                </div>
+              ) : keys.length > 0 ? (
+                <div className="flex flex-wrap gap-1.5">
+                  {keys.map((k) => (
+                    <Badge key={k} tone="gray">{k}</Badge>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-[11px] text-gray-400">Tak ada detail field.</p>
+              )}
+            </div>
+          </div>
+        );
+      })}
+      <JsonBlock label="Lihat JOLT mentah" value={proposedFix ?? {}} />
     </div>
   );
 }
