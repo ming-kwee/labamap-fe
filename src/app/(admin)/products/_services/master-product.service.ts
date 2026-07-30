@@ -113,7 +113,9 @@ export const MasterProductService = {
         ? rawTags.split(/[,;]+/).map(t => t.trim()).filter(Boolean)
         : [];
 
-    const rawImages = attrs.images ?? attrs.gallery;
+    // Save path (product-mapper) writes the gallery under `galleryImages`, so read that
+    // first; `images`/`gallery` are kept as fallbacks for legacy/alternate backend shapes.
+    const rawImages = attrs.galleryImages ?? attrs.images ?? attrs.gallery;
     const images: string[] = Array.isArray(rawImages)
       ? rawImages.filter((u): u is string => typeof u === "string")
       : [];

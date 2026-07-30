@@ -18,6 +18,49 @@ export interface ProductGenerationOptions {
 }
 
 /**
+ * Normalize any image-field value into a clean array of URL strings.
+ *
+ * Guards the create/update payload so images always leave the frontend as a real
+ * JSON array — never a bracketed string ("[https://a.jpg, https://b.jpg]", the
+ * artifact of a Java List.toString()) and never a comma-joined string. Handles:
+ *   - a proper array of URLs (flattened + trimmed, empties dropped)
+ *   - a single URL string
+ *   - a JSON-array string:    '["https://a.jpg","https://b.jpg"]'
+ *   - a Java List.toString():  '[https://a.jpg, https://b.jpg]'
+ *   - a comma-joined string:   'https://a.jpg, https://b.jpg'
+ */
+export function normalizeImageUrls(value: unknown): string[] {
+  if (value == null) return [];
+
+  // Recurse so a stray stringified entry inside the array is also cleaned.
+  if (Array.isArray(value)) return value.flatMap(normalizeImageUrls);
+
+  if (typeof value !== 'string') return [];
+
+  let s = value.trim();
+  if (!s) return [];
+
+  if (s.startsWith('[') && s.endsWith(']')) {
+    // Prefer strict JSON (handles quoted entries); fall back to stripping the
+    // surrounding brackets left by List.toString().
+    try {
+      const parsed = JSON.parse(s);
+      if (Array.isArray(parsed)) return normalizeImageUrls(parsed);
+    } catch { /* not JSON — strip brackets below */ }
+    s = s.slice(1, -1);
+  }
+
+  // Split any remaining comma-joined tokens. GCS/marketplace image URLs contain no
+  // unencoded commas, so this stays safe on the corrupt-data recovery path.
+  return s.split(',').map((t) => t.trim()).filter(Boolean);
+}
+
+/** First clean URL from any image-field value, or '' — for single-image fields (mainImage). */
+export function normalizeSingleImageUrl(value: unknown): string {
+  return normalizeImageUrls(value)[0] ?? '';
+}
+
+/**
  * Generates a MasterProduct object from form data using schema configuration
  */
 export function generateMasterProduct(options: ProductGenerationOptions): MasterProduct {
@@ -69,18 +112,19 @@ export function generateMasterProduct(options: ProductGenerationOptions): Master
     }
 
     if (actualFieldName === 'images' || actualFieldName === 'galleryImages') {
-      (product as any)[actualFieldName] = Array.isArray(value) ? value : value ? [value] : [];
+      // Always emit a clean array of URL strings (never a bracketed/comma-joined string).
+      (product as any)[actualFieldName] = normalizeImageUrls(value);
       mappedFields.add(actualFieldName);
       continue;
     }
 
     if (actualFieldName === 'mainImage') {
-      // mainImage may become an array if backend sends multiple:true or maxItems>1
-      if (Array.isArray(value)) {
-        (product as any).mainImage = value[0] || '';
-        (product as any).galleryImages = value;
-      } else {
-        (product as any).mainImage = value;
+      // mainImage is a single URL string. If the backend configured it multi
+      // (multiple:true / maxItems>1) the first URL is featured and the rest seed the gallery.
+      const urls = normalizeImageUrls(value);
+      (product as any).mainImage = urls[0] || '';
+      if (Array.isArray(value) && urls.length > 1) {
+        (product as any).galleryImages = urls;
       }
       mappedFields.add(actualFieldName);
       continue;
