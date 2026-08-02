@@ -6,6 +6,14 @@
 1. Data RAG di-feed secara manual atau otomatis?
 2. Bagaimana RAG membantu menghasilkan JOLT yang benar?
 
+> **Catatan (2026-07-30): pemetaan gambar di contoh ini sudah historis.** Contoh di bawah memakai
+> `mainImage → product.images[0].src` sebagai kasus field ber-confidence lemah yang diselesaikan lewat
+> RAG + tool-call — alur penalaran itu masih valid untuk field pada umumnya. Namun **gambar produk kini
+> JOLT-independent**: `mainImage` + `galleryImages` digabung jadi satu array `images` kanonik saat input,
+> lalu tiap channel membangun field gambarnya di post-processing dari staging key `_sourceImages` (bukan
+> lewat JOLT), sehingga agent tidak lagi memetakan gambar. Perlakukan `mainImage` di sini sebagai contoh
+> field generik. Lihat `docs/product/07-publishing-engine/01-guides/05-post-processing-config.md`.
+
 ---
 
 ## Bagian 1 — Cara Data Masuk ke RAG

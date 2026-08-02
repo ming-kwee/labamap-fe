@@ -18,7 +18,7 @@ coordinated pipeline changes that produce it.
 | Concern | Legacy (old seed) | 202309 | Source |
 |---|---|---|---|
 | Product title | `product_name` | `title` | ✅ |
-| Images | `images:[{id}]` | `main_images:[{uri}]` | ✅ |
+| Images | `images:[{id}]` | `main_images:[{uri}]` (JOLT-independent — built from `_sourceImages`) | ✅ |
 | COD flag | `is_cod_open` | `is_cod_allowed` | ✅ |
 | Weight | `package_weight:""` (string) | `package_weight:{value, unit}` | ✅ (unit enum VERIFY) |
 | Dimensions | `package_length/width/height` (flat) | `package_dimensions:{length,width,height,unit}` | ✅ (unit enum VERIFY) |
@@ -35,15 +35,17 @@ It is a **coordinated** change (apiSchema is spec-of-record; support/reshape liv
 1. **apiSchema** — `ChannelConfigurationDataLoader.createTiktokshopApiSchema` mirrors the 202309 body.
    This is the authoritative target for APM / JOLT generation.
 2. **Default JOLT seed** — `DefaultJoltSpecDataLoader.buildTiktokshopJoltSpec` maps master → 202309
-   target names (`title`, `main_images`, `package_weight.value`, `category_id`, `brand_id`) and passes
+   target names (`title`, `package_weight.value`, `category_id`, `brand_id`) and passes
    the flat variant fields through at `skus[*].{color,size,price,stock,seller_sku,variantImages}`.
-   (Seed is a last-resort fallback; generated specs that target apiSchema win — keep them aligned.)
+   Product images are **JOLT-independent** — the seed maps neither `mainImage` nor `images`; `main_images`
+   is built in post-processing (see below). (Seed is a last-resort fallback; generated specs that target
+   apiSchema win — keep them aligned.)
 3. **Post-processing rules** — `createTiktokshopPostProcessingRules` reshapes the flat fields into
    202309 structures:
    | Rule | Produces |
    |---|---|
    | `set-product-defaults` | `save_mode=LISTING`, `package_weight.unit=KILOGRAM` (SET_FIELD) |
-   | `enrich-images` | `main_images:[{uri}]` (STRING_TO_OBJECT keyField `uri`) |
+   | `enrich-images` | `main_images:[{uri}]` from the canonical `_sourceImages` staging key (mainImage + gallery, de-duped; staged by `ChannelPublishService.collectSourceImageUrls`), wrapped via STRING_TO_OBJECT keyField `uri`. Runs after JOLT and overwrites `main_images`, so it behaves identically for the seed spec and every generated spec. |
    | `build-sales-attributes` | `sales_attributes` with attribute key `id` (`attributeKey`) |
    | `build-inventory` | `inventory:[{warehouse_id, quantity}]` (BUILD_STOCK_INFOS `targetField`/`stockKey`) |
    | `build-price` | `price:{amount(string), currency}` (TO_STRING + SET_DEFAULT + NEST_FIELD×2) |

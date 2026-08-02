@@ -7,6 +7,15 @@ Dokumen ini menelusuri **satu channel dari awal**, dengan data konkret di setiap
 memakai entitas & endpoint yang benar-benar ada di sistem (Phase 1–5).
 Tujuannya menunjukkan bagaimana kerja developer menyusut dari **~jam** → **~menit** → **nol**.
 
+> **Catatan (2026-07-30): pemetaan gambar di contoh ini sudah historis.** Contoh di bawah menampilkan
+> agent memetakan `mainImage → product.images[0].src` lewat JOLT — ini masih ilustrasi valid tentang
+> *alur* penalaran RAG + tool-call agent untuk field pada umumnya. Namun **gambar produk kini
+> JOLT-independent**: `mainImage` + `galleryImages` digabung jadi satu array `images` kanonik saat input,
+> lalu tiap channel membangun field gambarnya di post-processing dari staging key `_sourceImages`
+> (Shopify via rule `shopify-build-images`). JOLT tidak lagi memetakan gambar, dan agent tidak lagi perlu
+> me-mapping-nya — anggap `mainImage` di sini sebagai contoh field generik saja. Lihat
+> `docs/product/07-publishing-engine/01-guides/05-post-processing-config.md`.
+
 ---
 
 ## 0. Masalahnya: Cara Lama (tanpa AI)

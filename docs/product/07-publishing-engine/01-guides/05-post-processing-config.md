@@ -4,8 +4,8 @@
 
 ```json
 {
-  "name":       "shopify-enrich-images",
-  "sourcePath": "product.images",
+  "name":       "shopify-build-images",
+  "sourcePath": "_sourceImages",
   "targetPath": "product.images",
   "priority":   10,
   "enabled":    true,
@@ -17,7 +17,8 @@
         { "op": "SET_DEFAULT",      "field": "alt",      "value": "" },
         { "op": "AUTO_INCREMENT",   "field": "position", "startAt": 1 }
       ]
-    }
+    },
+    { "op": "REMOVE_PATH", "path": "product.gallery_images_raw" }
   ],
 
   "type":       null,
@@ -46,6 +47,7 @@ The last five fields (`type` through `configuration`) are **legacy-only**. Omit 
 
 - Paths reference the top-level transformed map (after JOLT, before wrapping)
 - Separator is `.` (period) — e.g. `product.variants`, `product.images`
+- **Reserved `_`-prefixed keys** are JOLT-spec-independent staging keys that `ChannelPublishService` places on the transformed map after JOLT (e.g. `_sourceImages` = canonical image URL list, `_source` = raw master data, `_resolvedLogistics`). Rules read them as an ordinary `sourcePath`; `buildChannelAttributes` strips all `_`-prefixed keys so they never leak into the outgoing payload. Building from a `_` key (not a JOLT-output path) makes a rule fire identically for the system-default seed spec and every AI-generated per-category spec — this is why product images are built from `_sourceImages`, not mapped in JOLT.
 - `setNestedValue()` creates intermediate maps automatically when writing
 - When `sourcePath == targetPath`, the list is transformed in-place
 - DOCUMENT-scope ops (`SET_FIELD`, `CONDITIONAL_SET`, `CROSS_LINK`, `CONCAT_INTO`) use their own `path` / `outputPath` / `sourcePath` / `targetPath` params rather than the rule-level paths
@@ -62,8 +64,8 @@ Rules are embedded in `channel_configurations.postProcessingRules`:
   "organizationId": null,
   "postProcessingRules": [
     {
-      "name":       "shopify-enrich-images",
-      "sourcePath": "product.images",
+      "name":       "shopify-build-images",
+      "sourcePath": "_sourceImages",
       "targetPath": "product.images",
       "priority":   10,
       "enabled":    true,
@@ -75,7 +77,8 @@ Rules are embedded in `channel_configurations.postProcessingRules`:
             { "op": "SET_DEFAULT",      "field": "alt",      "value": "" },
             { "op": "AUTO_INCREMENT",   "field": "position", "startAt": 1 }
           ]
-        }
+        },
+        { "op": "REMOVE_PATH", "path": "product.gallery_images_raw" }
       ]
     },
     {
@@ -104,8 +107,8 @@ Rules are embedded in `channel_configurations.postProcessingRules`:
 ```json
 [
   {
-    "name": "shopify-enrich-images",
-    "sourcePath": "product.images",
+    "name": "shopify-build-images",
+    "sourcePath": "_sourceImages",
     "targetPath": "product.images",
     "priority": 10,
     "enabled": true,
@@ -117,7 +120,8 @@ Rules are embedded in `channel_configurations.postProcessingRules`:
           { "op": "SET_DEFAULT",      "field": "alt",      "value": "" },
           { "op": "AUTO_INCREMENT",   "field": "position", "startAt": 1 }
         ]
-      }
+      },
+      { "op": "REMOVE_PATH", "path": "product.gallery_images_raw" }
     ]
   },
   {
@@ -341,7 +345,7 @@ Rules are embedded in `channel_configurations.postProcessingRules`:
 
 ## Naming Conventions
 
-- Use **kebab-case** with a **channel prefix**: `shopify-enrich-images`, `wix-build-choices`
+- Use **kebab-case** with a **channel prefix**: `shopify-build-images`, `wix-build-choices`
 - Include the operation type in the name: `...-enrich-...`, `...-generate-...`, `...-filter-...`
 - Names must be unique within a channel's `postProcessingRules` array
 - System-wide defaults have no org prefix; org overrides add org suffix: `shopify-enrich-variants-org123`

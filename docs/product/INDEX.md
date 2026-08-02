@@ -194,6 +194,12 @@ Module root (backend): `com.labamap.labamapomnichannelbe4fe.publishing`
 | `06-variant-value-id-translation.md` | Variant option value label → channel ID translation at publish time |
 | `07-data-driven-channel-config.md` | Removing hardcoded channel-type logic from services; sourcing channel behaviour from MongoDB |
 | `08-shopee-variant-groups.md` | Walkthrough of the Shopee `variantGroups` pipeline: why it was empty, `BUILD_MODEL`→`variants` in-place, `seller_stock`/`model_id`, `skus.` prefix mapping for `init_tier_variation` + `add_model` |
+| `15-jolt-agent-post-processing-split-konvergensi.md` | Why the AI JOLT-generation agent got stuck (mapping post-processing-owned fields, e.g. images → collision) and the fixes that make it converge: **#1** strip owned-target mappings at validation, **#2** coverage-aware completeness |
+| `16-jolt-agent-gap-recommendations.md` | **#3** data-driven post-processing op catalog surfaced to the agent; genuine gaps routed to the review queue via `AiRecommendation.Analysis.postProcessingGaps` (+ per-gap op suggestions) |
+
+> _Guides `09`–`14` also exist in the folder (channel capability, payload gaps, category-id fix, trace inspector); see the directory listing._
+>
+> **Frontend:** [`../FRONTEND-JOLT-AGENT-POST-PROCESSING-GAPS.md`](../FRONTEND-JOLT-AGENT-POST-PROCESSING-GAPS.md) — how the Review Queue UI should render `postProcessingGaps` / `postProcessingGapSuggestions` (distinct from `missingChannelRequirements`), plus the approve-warning and triage badge.
 
 ### 02-api-reference/
 

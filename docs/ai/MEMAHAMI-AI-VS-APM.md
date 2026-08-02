@@ -5,6 +5,14 @@
 > Ini pertanyaan yang tepat, dan kebingungannya wajar. Dokumen ini menjawabnya pelan-pelan.
 > Referensi: [`PROPOSED-SYSTEM.md`](./PROPOSED-SYSTEM.md), [`RAG-DATA-FEEDING-AND-JOLT-GUIDE.md`](./RAG-DATA-FEEDING-AND-JOLT-GUIDE.md)
 
+> **Catatan (2026-07-30): pemetaan gambar di contoh ini sudah historis.** Contoh memakai
+> `mainImage → product.images[0].src` untuk mengilustrasikan bagaimana AI paham makna field yang tak
+> bisa dicocokkan APM — ilustrasi itu tetap valid untuk field pada umumnya. Namun **gambar produk kini
+> JOLT-independent**: `mainImage` + `galleryImages` digabung jadi satu array `images` kanonik saat input,
+> lalu dibangun di post-processing dari staging key `_sourceImages` (bukan lewat JOLT/agent). Perlakukan
+> `mainImage` di sini sebagai contoh field generik. Lihat
+> `docs/product/07-publishing-engine/01-guides/05-post-processing-config.md`.
+
 ---
 
 ## 0. Jawaban singkat (baca ini dulu)
