@@ -16,7 +16,14 @@
 import Link from "next/link";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AiApiError, PageResponse } from "../../types/common";
-import { AiRecommendation, RecommendationStatus } from "../../types/recommendation";
+import {
+  AiRecommendation,
+  PostProcessingGapSuggestion,
+  RecommendationAnalysis,
+  RecommendationStatus,
+} from "../../types/recommendation";
+import { PostProcessingOp } from "../../types/opCatalog";
+import { OP_GLOSS_ID } from "./opCatalogGlossId";
 import { AiAdminService } from "../../services/aiAdmin.service";
 import { ProductTypeService } from "@/app/(admin)/omni-admin/product-types/_services/product-type.service";
 import type { ProductType } from "@/app/(admin)/omni-admin/product-types/_types/product-type";
@@ -51,11 +58,32 @@ const STATUS_TABS: Array<{ key: RecommendationStatus | "ALL"; label: string }> =
 
 const REVIEWER_KEY = "ai_admin_reviewer";
 
+/**
+ * Post-processing gaps = required fields the JOLT agent CANNOT build (image, tier_variation,
+ * model, …) with no rule yet. Unlike missingChannelRequirements, approving the JOLT does NOT
+ * fill these — a developer must add a post-processing rule. The whole `analysis` ships in the
+ * list response, so we can flag/triage gap items with no extra fetch.
+ * Contract: docs/FRONTEND-JOLT-AGENT-POST-PROCESSING-GAPS.md §3–§4.
+ */
+function postProcessingGapFields(analysis?: RecommendationAnalysis): string[] {
+  const gaps = analysis?.postProcessingGaps ?? [];
+  if (gaps.length > 0) return gaps;
+  // Fall back to suggestion fields if the gap list is absent but suggestions exist.
+  return (analysis?.postProcessingGapSuggestions ?? []).map((s) => s.field).filter(Boolean);
+}
+
+function hasPostProcessingGaps(rec: AiRecommendation): boolean {
+  return postProcessingGapFields(rec.analysis).length > 0;
+}
+
 export default function RecommendationsReviewQueue() {
   const { toast, show } = useToast();
 
   const [status, setStatus] = useState<RecommendationStatus | "ALL">("PENDING");
   const [channelFilter, setChannelFilter] = useState<string>("");
+  // Client-side triage toggle: show only items needing a post-processing rule (developer work,
+  // not a plain approve). Filters the loaded page — analysis ships in the list, so no extra fetch.
+  const [gapsOnly, setGapsOnly] = useState(false);
   const [page, setPage] = useState(0);
   const [size] = useState(20);
 
@@ -213,7 +241,9 @@ export default function RecommendationsReviewQueue() {
   }, [triggerChannel, triggerProductType, triggering, show, load, clearTriggerTimers]);
 
   const triggerElapsedLabel = `${Math.floor(triggerElapsed / 60)}:${String(triggerElapsed % 60).padStart(2, "0")}`;
-  const rows = data?.content ?? [];
+  const allRows = data?.content ?? [];
+  const gapCount = allRows.filter(hasPostProcessingGaps).length;
+  const rows = gapsOnly ? allRows.filter(hasPostProcessingGaps) : allRows;
 
   return (
     <div className="p-6 space-y-5">
@@ -275,6 +305,25 @@ export default function RecommendationsReviewQueue() {
               ))}
             </select>
           </div>
+
+          {/* Triage toggle: needs post-processing (developer work, not a plain approve). */}
+          <button
+            onClick={() => setGapsOnly((v) => !v)}
+            disabled={!gapsOnly && gapCount === 0}
+            title="Tampilkan hanya item yang butuh post-processing rule (butuh developer, bukan sekadar approve)"
+            className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded-lg border transition-colors disabled:opacity-40 ${
+              gapsOnly
+                ? "bg-violet-600 border-violet-600 text-white"
+                : "border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800"
+            }`}
+          >
+            <span>⚙</span> Perlu post-processing
+            {gapCount > 0 && (
+              <span className={`px-1.5 rounded ${gapsOnly ? "bg-white/20" : "bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300"}`}>
+                {gapCount}
+              </span>
+            )}
+          </button>
 
           <div className="ml-auto flex items-center gap-2">
             <select
@@ -479,9 +528,16 @@ function QueueRow({ rec, onOpen }: { rec: AiRecommendation; onOpen: () => void }
         <span className="text-xs text-gray-600 dark:text-gray-300 font-mono">{rec.triggerType ?? "—"}</span>
       </td>
       <td className="px-3 py-3 max-w-[280px]">
-        <span className="text-xs text-gray-700 dark:text-gray-300 line-clamp-1" title={rec.analysis?.rootCause}>
-          {rec.analysis?.rootCause ?? "—"}
-        </span>
+        <div className="flex items-center gap-1.5">
+          {hasPostProcessingGaps(rec) && (
+            <span title="Butuh post-processing rule (developer), bukan sekadar approve" className="shrink-0">
+              <Badge tone="violet">⚙</Badge>
+            </span>
+          )}
+          <span className="text-xs text-gray-700 dark:text-gray-300 line-clamp-1" title={rec.analysis?.rootCause}>
+            {rec.analysis?.rootCause ?? "—"}
+          </span>
+        </div>
       </td>
       <td className="px-3 py-3">
         <Badge tone={statusTone}>{rec.status}</Badge>
@@ -551,6 +607,24 @@ function RecommendationDetail({
       .finally(() => setLoadingFull(false));
   }, [initial]);
 
+  // Op catalog — only fetched when a gap actually suggests an op to explain. null = loading,
+  // empty Map = loaded (an op simply not present is handled as "not in catalog"). Keyed upper.
+  const [opCatalog, setOpCatalog] = useState<Map<string, PostProcessingOp> | null>(null);
+  useEffect(() => {
+    const hasOps = (rec.analysis?.postProcessingGapSuggestions ?? []).some((s) => s.suggestedOp);
+    if (!hasOps || opCatalog !== null) return;
+    let alive = true;
+    AiAdminService.getPostProcessingCatalog()
+      .then((cat) => {
+        if (!alive) return;
+        const m = new Map<string, PostProcessingOp>();
+        for (const op of cat.operations ?? []) if (op?.opCode) m.set(op.opCode.toUpperCase(), op);
+        setOpCatalog(m);
+      })
+      .catch(() => { if (alive) setOpCatalog(new Map()); });
+    return () => { alive = false; };
+  }, [rec.analysis, opCatalog]);
+
   const persistReviewer = (v: string) => {
     setReviewer(v);
     if (typeof window !== "undefined") window.localStorage.setItem(REVIEWER_KEY, v);
@@ -602,6 +676,8 @@ function RecommendationDetail({
   const hasFieldDiagnosis =
     (rec.analysis?.affectedFields?.length ?? 0) > 0 ||
     (rec.analysis?.missingChannelRequirements?.length ?? 0) > 0;
+  // Approving JOLT does NOT fill post-processing gaps — warn before approve when present. §3b
+  const hasGaps = hasPostProcessingGaps(rec);
 
   return (
     <div
@@ -681,13 +757,16 @@ function RecommendationDetail({
                   <ChipList label="Affected fields" items={rec.analysis?.affectedFields} tone="blue" />
                   <ChipList label="Missing channel requirements" items={rec.analysis?.missingChannelRequirements} tone="amber" />
                 </>
-              ) : (
+              ) : !hasGaps ? (
                 <p className="rounded-lg bg-gray-50 dark:bg-gray-800/60 border border-gray-100 dark:border-gray-800 px-3 py-2 text-gray-500 dark:text-gray-400">
                   Diagnosis field-gap (affected / missing) tidak tersedia untuk rekomendasi ini — biasanya
                   terisi saat dipicu publish gagal. Lihat <strong>Proposed Fix</strong> (perubahan mapping
                   konkret) dan <strong>RAG Evidence</strong> (dasar keputusan) di bawah.
                 </p>
-              )}
+              ) : null}
+              {/* Post-processing gaps — required fields JOLT can't build; distinct from
+                  missingChannelRequirements (which JOLT alone may fix). §3a */}
+              <PostProcessingGapsBlock analysis={rec.analysis} opCatalog={opCatalog} />
             </div>
           </SectionCard>
 
@@ -713,6 +792,13 @@ function RecommendationDetail({
               </div>
             )}
             <JoltSummary proposedFix={rec.proposedFix} />
+            {/* JOLT no longer maps image/support fields (tier_variation/model/…) — built by
+                post-processing. Note it so a reviewer doesn't read the diff as "images lost". §4 */}
+            <p className="mt-2 text-[11px] text-gray-400 dark:text-gray-500">
+              Field gambar &amp; support (<code className="font-mono">tier_variation</code>/
+              <code className="font-mono">model</code>/dll) sengaja tak ada di JOLT — dibangun post-processing,
+              bukan hilang dari spec.
+            </p>
             {rec.agentSessionId && (
               <p className="mt-2 text-xs text-gray-400">
                 Sesi agent:{" "}
@@ -759,6 +845,15 @@ function RecommendationDetail({
                   className="mt-1 w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-violet-400"
                 />
               </div>
+              {hasGaps && (
+                <InfoBanner tone="amber">
+                  <p>
+                    Spec ini punya <strong>post-processing gaps</strong>. Meng-approve JOLT{" "}
+                    <strong>tidak</strong> mengisi field ini — seorang <strong>developer</strong> harus
+                    menambah post-processing rule. Approve hanya menetapkan bagian JOLT-nya.
+                  </p>
+                </InfoBanner>
+              )}
               <div className="flex items-center gap-3 pt-1">
                 <button
                   onClick={() => setConfirmApprove(true)}
@@ -854,6 +949,203 @@ function ChipList({
         </div>
       ) : (
         <span className="text-gray-400">—</span>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Post-processing gaps block (§3a). Renders required fields the JOLT agent CANNOT build,
+ * visually distinct (violet ⚙) from missingChannelRequirements (amber chips) — because these
+ * need a developer to add a rule, not a reviewer approve. Best-effort `suggestedOp` per field
+ * (with its precedent `source`); absent op = no precedent, developer decides. Null-safe: renders
+ * nothing when there are no gaps. Contract: docs/FRONTEND-JOLT-AGENT-POST-PROCESSING-GAPS.md §3a.
+ */
+function PostProcessingGapsBlock({
+  analysis,
+  opCatalog,
+}: {
+  analysis?: RecommendationAnalysis;
+  opCatalog: Map<string, PostProcessingOp> | null;
+}) {
+  const fields = postProcessingGapFields(analysis);
+  if (fields.length === 0) return null;
+  const byField = new Map((analysis?.postProcessingGapSuggestions ?? []).map((s) => [s.field, s]));
+  return (
+    <div className="rounded-lg border border-violet-200 dark:border-violet-800 bg-violet-50/60 dark:bg-violet-900/15 px-3 py-2.5">
+      <p className="flex items-center gap-1.5 font-semibold text-violet-700 dark:text-violet-300">
+        <span aria-hidden>⚙</span> Post-processing gaps
+        <Badge tone="violet">{fields.length}</Badge>
+      </p>
+      <p className="mt-0.5 text-[11px] text-violet-600/90 dark:text-violet-400/90">
+        Butuh <strong>rule post-processing baru</strong> — JOLT tak bisa menghasilkan field ini. Approve JOLT
+        saja <strong>tidak</strong> menyelesaikannya. Klik op untuk lihat apa yang dihasilkannya.
+      </p>
+      <ul className="mt-2 space-y-1.5">
+        {fields.map((f) => (
+          <GapRow key={f} field={f} suggestion={byField.get(f)} opCatalog={opCatalog} />
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+/** One gap row: field → suggested op (click to expand its engine-catalog behavior). */
+function GapRow({
+  field,
+  suggestion,
+  opCatalog,
+}: {
+  field: string;
+  suggestion?: PostProcessingGapSuggestion;
+  opCatalog: Map<string, PostProcessingOp> | null;
+}) {
+  const [open, setOpen] = useState(false);
+  const op = suggestion?.suggestedOp;
+  return (
+    <li className="text-[11px]">
+      <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1">
+        <span className="font-mono font-medium text-violet-700 dark:text-violet-300">{field}</span>
+        {op ? (
+          <>
+            <span className="text-gray-400">→ usul op:</span>
+            <button
+              type="button"
+              onClick={() => setOpen((v) => !v)}
+              title="Klik untuk lihat apa yang dihasilkan op ini (dari katalog engine)"
+              className="inline-flex items-center gap-1 rounded-md bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300 px-2 py-0.5 font-medium hover:bg-blue-200 dark:hover:bg-blue-900/50 transition-colors"
+            >
+              <span className={`transition-transform ${open ? "rotate-90" : ""}`}>▸</span>
+              {op}
+            </button>
+            {suggestion?.source && (
+              <span className="text-gray-400">
+                (preseden: <code className="font-mono">{suggestion.source}</code>)
+              </span>
+            )}
+          </>
+        ) : (
+          <span className="text-gray-400">— belum ada preseden (developer memutuskan)</span>
+        )}
+      </div>
+      {op && open && (
+        <div className="mt-1.5 ml-1">
+          <OpDetail opCode={op} buildsTarget={suggestion?.buildsTarget} opCatalog={opCatalog} />
+        </div>
+      )}
+    </li>
+  );
+}
+
+/**
+ * What a suggested op actually does — grounded in the engine's op catalog, not guessed.
+ * Three states: loading, found (description + params + real jsonExample), or not-in-catalog
+ * (honest warning — the op is a best-effort precedent that the engine may not implement).
+ */
+function OpDetail({
+  opCode,
+  buildsTarget,
+  opCatalog,
+}: {
+  opCode: string;
+  buildsTarget?: string;
+  opCatalog: Map<string, PostProcessingOp> | null;
+}) {
+  if (opCatalog === null) {
+    return (
+      <p className="flex items-center gap-1.5 text-gray-400">
+        <Spinner size={11} /> Memuat detail op dari katalog engine…
+      </p>
+    );
+  }
+  const op = opCatalog.get(opCode.toUpperCase());
+  if (!op) {
+    return (
+      <div className="rounded-lg border border-amber-200 dark:border-amber-800 bg-amber-50/70 dark:bg-amber-900/15 px-3 py-2 text-amber-700 dark:text-amber-300">
+        <p>
+          ⚠ Op <code className="font-mono">{opCode}</code> <strong>belum ada</strong> di katalog engine
+          (dari {opCatalog.size} op terdaftar). Kemungkinan usulan preseden dari channel lain atau belum
+          diimplementasikan di engine — <strong>developer verifikasi manual</strong> sebelum membuat rule.
+        </p>
+      </div>
+    );
+  }
+  const params = op.params ?? [];
+  return (
+    <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-3 py-2 space-y-2">
+      <div className="flex flex-wrap items-center gap-1.5">
+        <span className="font-medium text-gray-600 dark:text-gray-300">Apa yang dihasilkan op ini</span>
+        {op.scope && <Badge tone="gray">{op.scope}</Badge>}
+        {buildsTarget && (
+          <span className="text-gray-400">
+            → field <code className="font-mono text-violet-600 dark:text-violet-400">{buildsTarget}</code>
+          </span>
+        )}
+      </div>
+      <OpDescription opCode={op.opCode} descriptionEn={op.description} />
+      {params.length > 0 && (
+        <div>
+          <p className="text-gray-400 mb-1">Parameter</p>
+          <div className="space-y-1">
+            {params.map((p) => (
+              <div key={p.name} className="flex flex-wrap items-baseline gap-x-1.5">
+                <code className="font-mono text-blue-600 dark:text-blue-400">{p.name}</code>
+                {p.type && <span className="text-gray-400">{p.type}</span>}
+                {p.required ? (
+                  <span className="text-red-500">wajib</span>
+                ) : (
+                  <span className="text-gray-400">opsional</span>
+                )}
+                {p.description && <span className="text-gray-500 dark:text-gray-400">— {p.description}</span>}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+      {op.jsonExample != null && (
+        <div>
+          <p className="text-gray-400 mb-1">Contoh konfigurasi (jsonExample)</p>
+          <pre className="max-h-48 overflow-auto text-[11px] font-mono bg-gray-50 dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700 rounded-lg p-2 text-gray-700 dark:text-gray-300">
+            {JSON.stringify(op.jsonExample, null, 2)}
+          </pre>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Op description in Indonesian (gloss) with the exact engine English one toggle away.
+ * Falls back to the English text when no gloss exists — never hides the engine's wording.
+ */
+function OpDescription({ opCode, descriptionEn }: { opCode: string; descriptionEn?: string }) {
+  const [showEn, setShowEn] = useState(false);
+  const id = OP_GLOSS_ID[opCode.toUpperCase()];
+  if (!id) {
+    // No gloss — show English as-is, labelled honestly.
+    return descriptionEn ? (
+      <div className="text-gray-700 dark:text-gray-300 leading-relaxed">
+        <p>{descriptionEn}</p>
+        <p className="mt-0.5 text-[10px] text-gray-400">deskripsi asli (EN) — belum diterjemahkan</p>
+      </div>
+    ) : null;
+  }
+  return (
+    <div className="text-gray-700 dark:text-gray-300 leading-relaxed">
+      <p>{id}</p>
+      {descriptionEn && (
+        <>
+          <button
+            type="button"
+            onClick={() => setShowEn((v) => !v)}
+            className="mt-0.5 text-[10px] text-blue-500 hover:underline"
+          >
+            {showEn ? "Sembunyikan teks asli (EN)" : "Lihat teks asli engine (EN)"}
+          </button>
+          {showEn && (
+            <p className="mt-1 text-[11px] text-gray-500 dark:text-gray-400 italic">{descriptionEn}</p>
+          )}
+        </>
       )}
     </div>
   );

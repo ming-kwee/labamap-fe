@@ -28,6 +28,7 @@ import {
   AiRecommendation,
   RecommendationListParams,
 } from "../types/recommendation";
+import { PostProcessingCatalog } from "../types/opCatalog";
 import {
   AiAgentSession,
   GenerateJoltParams,
@@ -240,6 +241,16 @@ export const AiAdminService = {
 
   getRecommendation(id: string): Promise<AiRecommendation> {
     return request<AiRecommendation>(`${BASE}/recommendations/${id}`);
+  },
+
+  /**
+   * Post-processing op catalog (engine source of truth). Lives under the publishing engine,
+   * NOT /admin/ai — so it uses API_ROOT directly. Used to show a developer what a gap's
+   * suggestedOp actually does (description, params, jsonExample). Cached by the caller.
+   * GET /post-processing/catalog
+   */
+  getPostProcessingCatalog(): Promise<PostProcessingCatalog> {
+    return request<PostProcessingCatalog>(`${API_ROOT}/post-processing/catalog`);
   },
 
   /** reviewedBy required; note optional — both are QUERY params. */
