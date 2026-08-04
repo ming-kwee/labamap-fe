@@ -1083,6 +1083,7 @@ function OpDetail({
         )}
       </div>
       <OpDescription opCode={op.opCode} descriptionEn={op.description} />
+      <OpExampleView op={op} />
       {params.length > 0 && (
         <div>
           <p className="text-gray-400 mb-1">Parameter</p>
@@ -1146,6 +1147,46 @@ function OpDescription({ opCode, descriptionEn }: { opCode: string; descriptionE
             <p className="mt-1 text-[11px] text-gray-500 dark:text-gray-400 italic">{descriptionEn}</p>
           )}
         </>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Authoritative before → after data schematic, straight from the engine op catalog
+ * (inputExample / outputExample / exampleCaption). Renders nothing for ops the catalog ships no
+ * example for (trivial ops). See guide 17-op-catalog-input-output-example-request.
+ */
+function OpExampleView({ op }: { op: PostProcessingOp }) {
+  const hasInput = op.inputExample !== undefined && op.inputExample !== null;
+  const hasOutput = op.outputExample !== undefined && op.outputExample !== null;
+  if (!hasInput && !hasOutput) return null;
+  const fmt = (v: unknown) => {
+    try {
+      return JSON.stringify(v, null, 2);
+    } catch {
+      return String(v);
+    }
+  };
+  return (
+    <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50/60 dark:bg-gray-800/40 p-2 space-y-1.5">
+      <div className="flex items-center gap-1.5">
+        <span className="font-medium text-gray-600 dark:text-gray-300">Cara kerja: sebelum → sesudah</span>
+        <Badge tone="gray">dari engine</Badge>
+      </div>
+      <div className="flex flex-col gap-1">
+        <p className="text-[10px] uppercase tracking-wide text-gray-400">Sebelum · input</p>
+        <pre className="max-h-40 overflow-auto text-[11px] font-mono bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-md p-2 text-gray-700 dark:text-gray-300">
+          {hasInput ? fmt(op.inputExample) : "—"}
+        </pre>
+        <p className="text-center text-gray-400" aria-hidden>▼ menjadi</p>
+        <p className="text-[10px] uppercase tracking-wide text-gray-400">Sesudah · output</p>
+        <pre className="max-h-40 overflow-auto text-[11px] font-mono bg-white dark:bg-gray-900 border border-blue-200 dark:border-blue-900 rounded-md p-2 text-gray-700 dark:text-gray-300">
+          {hasOutput ? fmt(op.outputExample) : "—"}
+        </pre>
+      </div>
+      {op.exampleCaption && (
+        <p className="text-[11px] text-gray-500 dark:text-gray-400">{op.exampleCaption}</p>
       )}
     </div>
   );

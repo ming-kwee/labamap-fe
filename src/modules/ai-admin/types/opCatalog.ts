@@ -22,7 +22,12 @@ export interface PostProcessingOp {
   scope?: string; // DOCUMENT | PER_ITEM | LIST | LEGACY
   description?: string;
   params?: PostProcessingOpParam[];
-  jsonExample?: unknown; // e.g. { "op": "BUILD_ATTRIBUTE_LIST" }
+  jsonExample?: unknown; // op CONFIG (how to write the rule), e.g. { "op": "BUILD_ATTRIBUTE_LIST" }
+  // Real before → after DATA example (shape-changing ops only; absent for trivial ops). Lets the
+  // UI render an authoritative "sebelum → sesudah" panel. See guide 17-op-catalog-input-output-example-request.
+  inputExample?: unknown;
+  outputExample?: unknown;
+  exampleCaption?: string;
 }
 
 export interface PostProcessingCatalog {
