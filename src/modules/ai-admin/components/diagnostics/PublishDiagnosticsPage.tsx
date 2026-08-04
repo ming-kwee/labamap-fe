@@ -25,6 +25,8 @@ import { AiApiError } from "../../types/common";
 import {
   AdaptivePatternMatchingResponse,
   FieldMapping,
+  SourceFieldScope,
+  SourceFieldTag,
 } from "@/modules/ecommerce-product-v2/types/channel-mapping";
 import { MasterProduct } from "@/modules/ecommerce-product-v2/types/product";
 import { ChannelProductData } from "@/modules/ecommerce-product-v2/step2-channel-fields/types/channelStore";
@@ -84,12 +86,53 @@ const SAMPLE_PRODUCT: MasterProduct = {
   status: "active",
 } as unknown as MasterProduct;
 
-const TIER_META: Array<{ key: keyof AdaptivePatternMatchingResponse["matchingMetadata"]; label: string; band: string; tone: Tone }> = [
-  { key: "knowledgeBasedMatches", label: "Knowledge-Based", band: "≥95%", tone: "green" },
-  { key: "semanticMatches", label: "Semantic", band: "≥85%", tone: "blue" },
-  { key: "similarityMatches", label: "Similarity", band: "60–90%", tone: "amber" },
-  { key: "patternMatches", label: "Pattern", band: "~75%", tone: "violet" },
-];
+// ─── Matching strategy breakdown (dynamic, keyed by actual strategy names) ────
+// Backend sends a Map<strategyName, count> keyed EXACTLY like each mapping's `matchStrategy`.
+// Render whatever keys exist (the set can grow) — the old fixed 4-tier panel read wrong keys
+// and had no ALIAS_MAPPING bucket, so it showed 0. Contract: docs/FRONTEND-APM-STRATEGY-BREAKDOWN.md.
+const STRATEGY_LABELS: Record<string, string> = {
+  CHANNEL_SPECIFIC: "Knowledge-Based (channel-specific/learned)",
+  SEMANTIC_KNOWLEDGE: "Semantic (tipe semantik sama)",
+  ALIAS_MAPPING: "Alias (tipe semantik sama + alias)",
+  PATTERN_MAPPING: "Pattern (regex)",
+  KEYWORD_SIMILARITY: "Similarity (keyword/Jaccard)",
+};
+const STRATEGY_TONE: Record<string, Tone> = {
+  CHANNEL_SPECIFIC: "green",
+  SEMANTIC_KNOWLEDGE: "blue",
+  ALIAS_MAPPING: "violet",
+  PATTERN_MAPPING: "amber",
+  KEYWORD_SIMILARITY: "amber",
+};
+
+function StrategyBreakdown({ breakdown }: { breakdown?: Record<string, number> }) {
+  const entries = Object.entries(breakdown ?? {}).filter(([, n]) => typeof n === "number");
+  if (entries.length === 0) {
+    return <p className="text-xs text-gray-400">Belum ada mapping untuk dihitung.</p>;
+  }
+  const total = entries.reduce((s, [, n]) => s + n, 0);
+  const sorted = [...entries].sort((a, b) => b[1] - a[1]);
+  return (
+    <div className="space-y-2">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        {sorted.map(([strategy, count]) => (
+          <div key={strategy} className="rounded-lg border border-gray-200 dark:border-gray-700 px-3 py-2.5">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-xs font-medium text-gray-700 dark:text-gray-200 leading-tight">
+                {STRATEGY_LABELS[strategy] ?? strategy}
+              </span>
+              <Badge tone={STRATEGY_TONE[strategy] ?? "gray"}>{count}</Badge>
+            </div>
+            <p className="text-[11px] text-gray-400 mt-1 font-mono truncate" title={strategy}>{strategy}</p>
+          </div>
+        ))}
+      </div>
+      <p className="text-[11px] text-gray-400">
+        Total {total} mapping · dihitung dari key strategi aktual (bukan tier tetap).
+      </p>
+    </div>
+  );
+}
 
 // ─── JOLT readiness parsing → table ───────────────────────────────────────────
 // Backend emits readiness as flat warning strings; parse the known shapes into
@@ -543,14 +586,172 @@ export default function PublishDiagnosticsPage() {
 
 // ─── Result ──────────────────────────────────────────────────────────────────
 
+// ─── Source field classification (universal vs channel-specific) ─────────────
+// Colour source fields so a developer sees at a glance which belong to the selected channel.
+// Relative to the selected channel; data-driven; best-effort (absent → neutral). See
+// docs/FRONTEND-APM-SOURCE-FIELD-CLASSIFICATION.md.
+
+const SCOPE_META: Record<SourceFieldScope, { label: string; text: string; chip: string; dot: string; hint: string }> = {
+  UNIVERSAL: {
+    label: "Universal",
+    text: "text-gray-500 dark:text-gray-400",
+    chip: "bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300",
+    dot: "bg-gray-400",
+    hint: "master field umum — bukan channel field",
+  },
+  CHANNEL_SHARED: {
+    label: "Channel-shared",
+    text: "text-blue-600 dark:text-blue-400",
+    chip: "bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300",
+    dot: "bg-blue-500",
+    hint: "channel field yang dibagi channel ini + channel lain",
+  },
+  CHANNEL_UNIQUE: {
+    label: "Channel-unique",
+    text: "text-orange-600 dark:text-orange-400 font-semibold",
+    chip: "bg-orange-50 dark:bg-orange-900/20 text-orange-700 dark:text-orange-300 font-semibold",
+    dot: "bg-orange-500",
+    hint: "channel field yang HANYA channel ini deklarasikan",
+  },
+};
+
+function leafName(path: string): string {
+  const i = path.lastIndexOf(".");
+  return i >= 0 ? path.slice(i + 1) : path;
+}
+
+/** Look up a source path's tag — exact key first, then the leaf name (classification is name-based). */
+function classifySourceField(
+  cls: Record<string, SourceFieldTag> | undefined,
+  path: string,
+): SourceFieldTag | undefined {
+  if (!cls) return undefined;
+  return cls[path] ?? cls[leafName(path)];
+}
+
+function scopeTooltip(tag: SourceFieldTag): string {
+  const meta = SCOPE_META[tag.scope];
+  const base = meta ? `${meta.label} — ${meta.hint}` : tag.scope;
+  const ch = tag.supportedChannels?.length ? ` · channel: ${tag.supportedChannels.join(", ")}` : "";
+  return base + ch;
+}
+
+function SourceScopeLegend() {
+  return (
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px]">
+      {(["UNIVERSAL", "CHANNEL_SHARED", "CHANNEL_UNIQUE"] as SourceFieldScope[]).map((s) => (
+        <span key={s} className="inline-flex items-center gap-1" title={SCOPE_META[s].hint}>
+          <span className={`w-2 h-2 rounded-full ${SCOPE_META[s].dot}`} />
+          <span className={SCOPE_META[s].text}>{SCOPE_META[s].label}</span>
+        </span>
+      ))}
+    </div>
+  );
+}
+
+/** A single source field name coloured by its scope, with a tooltip carrying supportedChannels. */
+function SourceFieldName({ path, cls, className = "" }: { path: string; cls?: Record<string, SourceFieldTag>; className?: string }) {
+  const tag = classifySourceField(cls, path);
+  const meta = tag ? SCOPE_META[tag.scope] : undefined;
+  return (
+    <code
+      className={`text-[11px] font-mono ${meta ? meta.text : "text-gray-700 dark:text-gray-300"} ${className}`}
+      title={tag ? scopeTooltip(tag) : undefined}
+    >
+      {path}
+    </code>
+  );
+}
+
+/** Full classification map as coloured chips + legend. Works for either analyze mode; hides when absent. */
+function SourceFieldClassificationCard({ classification }: { classification?: Record<string, SourceFieldTag> }) {
+  const entries = Object.entries(classification ?? {});
+  if (entries.length === 0) return null;
+  const order: Record<SourceFieldScope, number> = { CHANNEL_UNIQUE: 0, CHANNEL_SHARED: 1, UNIVERSAL: 2 };
+  const sorted = [...entries].sort(
+    (a, b) => (order[a[1].scope] ?? 9) - (order[b[1].scope] ?? 9) || a[0].localeCompare(b[0]),
+  );
+  const channelCount = entries.filter(([, t]) => t.isChannelField).length;
+  return (
+    <SectionCard
+      title="Klasifikasi source field"
+      subtitle="universal vs channel-specific (relatif ke channel terpilih)"
+      icon={<SearchIcon size={16} />}
+    >
+      <div className="space-y-2.5">
+        <SourceScopeLegend />
+        <div className="flex flex-wrap gap-1.5">
+          {sorted.map(([field, tag]) => {
+            const meta = SCOPE_META[tag.scope] ?? SCOPE_META.UNIVERSAL;
+            return (
+              <span
+                key={field}
+                title={scopeTooltip(tag)}
+                className={`inline-flex items-center gap-1 text-[11px] font-mono px-1.5 py-0.5 rounded ${meta.chip}`}
+              >
+                {field}
+                {tag.supportedChannels?.length ? (
+                  <span className="opacity-60">· {tag.supportedChannels.join(",")}</span>
+                ) : null}
+              </span>
+            );
+          })}
+        </div>
+        <p className="text-[11px] text-gray-400">
+          {channelCount} channel field dari {entries.length} source field. Klasifikasi relatif ke channel terpilih —
+          field yang unik di channel lain tampil sebagai universal di sini.
+        </p>
+      </div>
+    </SectionCard>
+  );
+}
+
+// ─── "Why" per mapping — surfaces the semanticType that drove the heuristic match ───────────
+// Turns a wrong match into an actionable KB fix: the developer sees which semanticType in
+// field_semantic_knowledge caused it. Contract: docs/FRONTEND-APM-INSPECTOR-REFRAME.md.
+function drivingSemanticType(m: FieldMapping): string | null {
+  if (m.sourceSemanticType) return m.sourceSemanticType;
+  if (m.targetSemanticType) return m.targetSemanticType;
+  const r = m.reasoning ?? "";
+  return (
+    r.match(/semanticType=([A-Za-z_]+)/)?.[1] ??
+    r.match(/Semantic type match:\s*([A-Za-z_]+)/)?.[1] ??
+    null
+  );
+}
+
+function WhyCell({ m }: { m: FieldMapping }) {
+  if (!m.reasoning) return <span className="text-gray-300 dark:text-gray-600">—</span>;
+  const sem = drivingSemanticType(m);
+  return (
+    <div className="flex items-start gap-1.5 max-w-[300px]" title={m.reasoning}>
+      {sem && <span className="shrink-0"><Badge tone="violet">{sem}</Badge></span>}
+      <span className="text-[10px] text-gray-500 dark:text-gray-400 line-clamp-2 break-words">{m.reasoning}</span>
+    </div>
+  );
+}
+
 function DiagnosticsResult({ result, channelId }: { result: AdaptivePatternMatchingResponse; channelId: string }) {
   const md = result.matchingMetadata;
   const conf = result.overallConfidence ?? 0;
   const confTone: Tone = conf >= 92 ? "green" : conf >= 70 ? "amber" : "red";
   const mappings = result.fieldMappings ?? [];
+  const cls = result.sourceFieldClassification;
+  const hasReasoning = mappings.some((m) => !!m.reasoning);
 
   return (
     <div className="space-y-4">
+      {/* Honest label — this mode is the pure-heuristic APM inspector, NOT a production answer. */}
+      <InfoBanner tone="amber">
+        <p className="font-semibold">Heuristic Matcher Inspector — APM murni (tanpa AI)</p>
+        <p>
+          Deterministik, tanpa kuota LLM, <strong>tidak menulis ke JOLT produksi</strong>. Alat untuk
+          mendiagnosis perilaku matcher + kesehatan KB (<code className="font-mono">field_semantic_knowledge</code>) —
+          <strong> bukan</strong> mapping siap-pakai. <strong>Confidence = kemiripan nama, bukan kebenaran.</strong>{" "}
+          Untuk mapping akurat pakai <strong>&quot;Dari My Products&quot;</strong> atau Generate Console → Recommendations.
+        </p>
+      </InfoBanner>
+
       {/* Engine outcome + confidence */}
       <SectionCard title="Keputusan engine" subtitle="engine mana yang menyelesaikan" icon={<GitBranchIcon size={16} />}
         right={<CascadeOutcomeBadge outcome={result} showDetail />}>
@@ -559,22 +760,12 @@ function DiagnosticsResult({ result, channelId }: { result: AdaptivePatternMatch
           <StatTile label="Fields mapped" value={mappings.length} tone="green" />
           <StatTile label="Unmapped" value={result.unmappedSourceFields?.length ?? 0} tone={(result.unmappedSourceFields?.length ?? 0) > 0 ? "amber" : "gray"} />
         </div>
-        {result.status && <p className="text-xs text-gray-400 mt-3">status: <span className="font-mono">{result.status}</span> · {md?.processingTimeMs ?? "?"}ms · {md?.totalMatches ?? 0} matches</p>}
+        {result.status && <p className="text-xs text-gray-400 mt-3">status: <span className="font-mono">{result.status}</span> · {md?.processingTimeMs ?? "?"}ms · {md?.matchedFields ?? mappings.length} matches</p>}
       </SectionCard>
 
-      {/* 5-tier breakdown */}
-      <SectionCard title="Matching strategy breakdown" subtitle="tier APM yang dipakai" icon={<ActivityIcon size={16} />}>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          {TIER_META.map((t) => (
-            <div key={t.label} className="rounded-lg border border-gray-200 dark:border-gray-700 px-3 py-2.5">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-medium text-gray-700 dark:text-gray-200">{t.label}</span>
-                <Badge tone={t.tone}>{Number(md?.[t.key] ?? 0)}</Badge>
-              </div>
-              <p className="text-[11px] text-gray-400 mt-1">{t.band} confidence</p>
-            </div>
-          ))}
-        </div>
+      {/* Strategy breakdown — dynamic, keyed by the actual strategy names (matches the table) */}
+      <SectionCard title="Matching strategy breakdown" subtitle="jumlah mapping per strategi (matchStrategyCount)" icon={<ActivityIcon size={16} />}>
+        <StrategyBreakdown breakdown={md?.matchStrategyCount} />
       </SectionCard>
 
       {/* JOLT readiness — parsed into a readable table (status + check) */}
@@ -587,6 +778,7 @@ function DiagnosticsResult({ result, channelId }: { result: AdaptivePatternMatch
       {/* Field mappings */}
       {mappings.length > 0 && (
         <SectionCard title={`Field mappings (${mappings.length})`} subtitle="source → target + confidence">
+          {cls && <div className="mb-2"><SourceScopeLegend /></div>}
           <div className="overflow-x-auto max-h-80 overflow-y-auto">
             <table className="w-full">
               <thead className="sticky top-0 bg-white dark:bg-gray-900">
@@ -594,15 +786,17 @@ function DiagnosticsResult({ result, channelId }: { result: AdaptivePatternMatch
                   <th className="px-2 py-1.5 text-[11px] font-medium text-gray-500">Source</th>
                   <th className="px-2 py-1.5 text-[11px] font-medium text-gray-500">Target</th>
                   <th className="px-2 py-1.5 text-[11px] font-medium text-gray-500">Strategy</th>
+                  {hasReasoning && <th className="px-2 py-1.5 text-[11px] font-medium text-gray-500">Why (semanticType penggerak)</th>}
                   <th className="px-2 py-1.5 text-[11px] font-medium text-gray-500 text-right">Conf.</th>
                 </tr>
               </thead>
               <tbody>
                 {mappings.map((m: FieldMapping, i) => (
                   <tr key={i} className="border-b border-gray-100 dark:border-gray-800">
-                    <td className="px-2 py-1.5"><code className="text-[11px] font-mono text-gray-700 dark:text-gray-300">{m.sourcePath}</code></td>
+                    <td className="px-2 py-1.5"><SourceFieldName path={m.sourcePath} cls={cls} /></td>
                     <td className="px-2 py-1.5"><code className="text-[11px] font-mono text-blue-600 dark:text-blue-400">{m.targetPath}</code></td>
                     <td className="px-2 py-1.5"><span className="text-[10px] text-gray-400">{m.matchStrategy}</span></td>
+                    {hasReasoning && <td className="px-2 py-1.5"><WhyCell m={m} /></td>}
                     <td className="px-2 py-1.5 text-right">
                       <span className={`text-[11px] font-medium ${m.confidence >= 90 ? "text-green-600 dark:text-green-400" : m.confidence >= 70 ? "text-amber-600 dark:text-amber-400" : "text-red-500"}`}>
                         {m.confidence}%
@@ -616,6 +810,9 @@ function DiagnosticsResult({ result, channelId }: { result: AdaptivePatternMatch
         </SectionCard>
       )}
 
+      {/* Source field classification (universal vs channel-specific) */}
+      <SourceFieldClassificationCard classification={cls} />
+
       {/* Unmapped */}
       {((result.unmappedSourceFields?.length ?? 0) > 0 || (result.unmappedTargetFields?.length ?? 0) > 0) && (
         <SectionCard title="Unmapped fields" subtitle="tak terpetakan (source & target)">
@@ -623,7 +820,19 @@ function DiagnosticsResult({ result, channelId }: { result: AdaptivePatternMatch
             <div>
               <p className="text-[11px] font-medium text-gray-500 mb-1">Source ({result.unmappedSourceFields?.length ?? 0})</p>
               <div className="flex flex-wrap gap-1">
-                {(result.unmappedSourceFields ?? []).map((f) => <Badge key={f} tone="gray">{f}</Badge>)}
+                {(result.unmappedSourceFields ?? []).map((f) => {
+                  const tag = classifySourceField(cls, f);
+                  const meta = tag ? SCOPE_META[tag.scope] : undefined;
+                  return (
+                    <span
+                      key={f}
+                      title={tag ? scopeTooltip(tag) : undefined}
+                      className={`text-[11px] font-mono px-1.5 py-0.5 rounded ${meta ? meta.chip : "bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300"}`}
+                    >
+                      {f}
+                    </span>
+                  );
+                })}
               </div>
             </div>
             <div>
@@ -845,6 +1054,16 @@ function AdaptiveMappingDetails({
             tapi spec <strong>belum lengkap</strong> — masih ada required target yang belum terpetakan. Jadi kualitas match bagus,
             namun belum siap publish. Lihat daftar pemeriksaan di bawah untuk yang kurang.
           </p>
+        </div>
+      )}
+
+      {/* Strategy breakdown — per-strategy mapping counts (dynamic, matches the strategy column) */}
+      {Object.keys(am.strategyBreakdown ?? {}).length > 0 && (
+        <div className="mb-4">
+          <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500 mb-2">
+            Strategy breakdown
+          </p>
+          <StrategyBreakdown breakdown={am.strategyBreakdown} />
         </div>
       )}
 
@@ -1088,6 +1307,9 @@ function PublishAnalysisResult({ result }: { result: PublishAnalysisResponse }) 
           <StageRow label="7 · Post-Processing" tone="gray" stats={[["rules", pp?.ruleCount ?? pp?.rules?.length]]} />
         </div>
       </SectionCard>
+
+      {/* Source field classification (universal vs channel-specific) */}
+      <SourceFieldClassificationCard classification={result.sourceFieldClassification} />
 
       {/* Stage-4 detail: mapping conflicts + JOLT readiness checks (parsed, not a chip dump) */}
       {(am?.warnings?.length ?? 0) > 0 && (

@@ -13,6 +13,8 @@
  * (one ERROR issue), so one renderer handles every case.
  */
 
+import type { SourceFieldTag } from "./channel-mapping";
+
 export type PublishIssueSeverity = "ERROR" | "WARNING" | "INFO";
 
 export interface PublishIssue {
@@ -51,6 +53,8 @@ export interface PublishStageAdaptiveMapping {
   status?: string; // "OK" | "WARNING" | "ERROR"
   overallConfidence?: number;
   totalMappings?: number;
+  // Count per matching strategy (same map as APM matchingMetadata.matchStrategyCount).
+  strategyBreakdown?: Record<string, number>;
   warnings?: string[];
   [k: string]: unknown;
 }
@@ -102,5 +106,7 @@ export interface PublishAnalysisResponse {
   postProcessing?: PublishStagePostProcessing;
   issues?: PublishIssue[];
   suggestions?: string[];
+  // Per-source-field universal/channel-specific marker (same as APM analyze; best-effort).
+  sourceFieldClassification?: Record<string, SourceFieldTag>;
   [k: string]: unknown;
 }

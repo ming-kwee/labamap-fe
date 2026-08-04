@@ -28,6 +28,31 @@ export interface FieldMapping {
   successRate?: number;
   dataTransformation?: string;
   channelBoost?: number;
+  // Heuristic-matcher inspector fields (APM analyze). `reasoning` explains WHY the match fired,
+  // including the driving semanticType — turns a wrong match into an actionable KB fix (edit
+  // field_semantic_knowledge). Contract: docs/FRONTEND-APM-INSPECTOR-REFRAME.md.
+  sourceFieldName?: string;
+  targetFieldName?: string;
+  sourceSemanticType?: string | null;
+  targetSemanticType?: string | null;
+  reasoning?: string;
+}
+
+// ============================================================================
+// SOURCE FIELD CLASSIFICATION (universal vs channel-specific)
+// ============================================================================
+// Per-source-field marker on the analyze response — lets the inspector colour which fields
+// belong to the selected channel. Classification is RELATIVE to the selected channel: a field
+// unique to channel A shows as UNIVERSAL when analysing channel B. Data-driven (read from
+// ecommerce_master_attributes), name-based, best-effort (absent when uncomputable → treat as
+// "no info", neutral). Contract: docs/FRONTEND-APM-SOURCE-FIELD-CLASSIFICATION.md.
+
+export type SourceFieldScope = "UNIVERSAL" | "CHANNEL_SHARED" | "CHANNEL_UNIQUE";
+
+export interface SourceFieldTag {
+  scope: SourceFieldScope;
+  isChannelField: boolean;
+  supportedChannels?: string[]; // channels declaring this field (omitted when universal)
 }
 
 // ============================================================================
@@ -55,14 +80,20 @@ export interface AdaptivePatternMatchingResponse {
   unmappedTargetFields: string[];
   status?: string;
   message?: string;
+  // Per-source-field universal/channel-specific marker (best-effort, @JsonInclude(NON_NULL)).
+  sourceFieldClassification?: Record<string, SourceFieldTag>;
   matchingMetadata: {
-    knowledgeBasedMatches: number;
-    semanticMatches: number;
-    similarityMatches: number;
-    patternMatches: number;
-    totalMatches: number;
-    processingTimeMs: number;
+    // Count per matching strategy — Map<strategyName, count>, keyed by the SAME value as each
+    // FieldMapping.matchStrategy (e.g. SEMANTIC_KNOWLEDGE, ALIAS_MAPPING, KEYWORD_SIMILARITY).
+    // Render dynamically from whatever keys are present — do NOT hardcode a fixed tier set.
+    // Contract: docs/FRONTEND-APM-STRATEGY-BREAKDOWN.md.
+    matchStrategyCount?: Record<string, number>;
+    matchedFields?: number;
+    totalSourceFields?: number;
+    totalTargetFields?: number;
+    processingTimeMs?: number;
     warnings?: string[];
+    [k: string]: unknown;
   };
 
   // ── Cascade block (APM → Agent) — addendum §4 (P1-M) ──────────────────────
