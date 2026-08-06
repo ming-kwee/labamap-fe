@@ -50,6 +50,54 @@ export interface BulkDeleteResponse {
   channelId: string;
 }
 
+// ─── Schema staleness (GET /admin/channel-jolt-specs/staleness) ────────────────
+// docs/FRONTEND-JOLT-SPEC-SCHEMA-STALENESS.md §3. Tri-state; `status` is the source
+// of truth (comparison is done by the backend). Additive — separate from the list.
+
+export type SpecStalenessStatus = "STALE" | "FRESH" | "UNKNOWN";
+
+export interface SpecStalenessItem {
+  /** Matches ChannelJoltSpec.id — join key. */
+  id: string;
+  channelId: string;
+  categoryId: string | null;
+  organizationId: string | null;
+  isSystemDefault: boolean;
+  generatedBy?: string | null;
+  /** apiVersion the spec targeted when generated vs the channel's current version. */
+  specApiVersion?: string | null;
+  channelApiVersion?: string | null;
+  /** Fingerprints (for tooltip/diagnostics only — comparison already done backend-side). */
+  specTargetSchemaHash?: string | null;
+  channelApiSchemaHash?: string | null;
+  status: SpecStalenessStatus;
+}
+
+export interface StalenessListParams {
+  /** Limit to one channel. */
+  channelId?: string;
+  /** true = only STALE rows (default false = all statuses). */
+  onlyStale?: boolean;
+}
+
+export function mapRawStalenessItem(raw: unknown): SpecStalenessItem {
+  const r = raw as Record<string, unknown>;
+  const status = String(r.status ?? "UNKNOWN").toUpperCase();
+  return {
+    id:              (r.id ?? r._id ?? "") as string,
+    channelId:       (r.channelId ?? "") as string,
+    categoryId:      r.categoryId != null ? String(r.categoryId) : null,
+    organizationId:  r.organizationId != null ? String(r.organizationId) : null,
+    isSystemDefault: Boolean(r.isSystemDefault ?? false),
+    generatedBy:          (r.generatedBy as string | null | undefined) ?? null,
+    specApiVersion:       (r.specApiVersion as string | null | undefined) ?? null,
+    channelApiVersion:    (r.channelApiVersion as string | null | undefined) ?? null,
+    specTargetSchemaHash: (r.specTargetSchemaHash as string | null | undefined) ?? null,
+    channelApiSchemaHash: (r.channelApiSchemaHash as string | null | undefined) ?? null,
+    status: (["STALE", "FRESH", "UNKNOWN"].includes(status) ? status : "UNKNOWN") as SpecStalenessStatus,
+  };
+}
+
 export interface JoltSpecListParams {
   channelId?: string;
   categoryId?: string;

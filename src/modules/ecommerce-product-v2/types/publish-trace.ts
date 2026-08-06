@@ -41,6 +41,20 @@ export interface PublishTraceJoltSpec {
   generatedBy?: string;
   version?: string;
   operations?: number;
+  /**
+   * Channel API version this spec targeted when it was generated (e.g. "2024-01").
+   * Null/absent for legacy specs written before schema versioning (Phase 0).
+   */
+  apiVersion?: string;
+  /**
+   * Schema-staleness tri-state (only meaningful for generated specs, i.e.
+   * `source === "channel_jolt_specs"`):
+   * - `true`  → STALE   (spec built against an OLDER apiSchema — regenerate).
+   * - `false` → FRESH   (fingerprint matches the channel's current apiSchema).
+   * - absent  → UNKNOWN (legacy/unstamped, or channel has no fingerprint yet).
+   * Absent (undefined) is NOT the same as `false`. See docs/FRONTEND-JOLT-SPEC-SCHEMA-STALENESS.md.
+   */
+  schemaStale?: boolean;
   [k: string]: unknown;
 }
 

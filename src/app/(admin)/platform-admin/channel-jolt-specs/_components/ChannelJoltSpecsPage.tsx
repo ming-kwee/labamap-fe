@@ -6,6 +6,8 @@ import {
   ChannelJoltSpec,
   UpdateJoltSpecRequest,
   SpecOrigin,
+  SpecStalenessItem,
+  SpecStalenessStatus,
   ORIGIN_LABELS,
   specOrigin,
   isAutoApplied,
@@ -56,6 +58,12 @@ const LayersIcon = () => (
 const BulkDeleteIcon = () => (
   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <path d="M3 6h18M8 6V4h8v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
+  </svg>
+);
+const RegenerateIcon = () => (
+  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/>
+    <path d="M3 22v-6h6"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/>
   </svg>
 );
 
@@ -122,6 +130,52 @@ function OriginBadge({ spec }: { spec: ChannelJoltSpec }) {
   );
 }
 
+// ─── Schema-staleness badge (tri-state, from GET /staleness) ──────────────────
+
+const STALENESS_STYLE: Record<SpecStalenessStatus, { cls: string; label: string; icon: string }> = {
+  STALE:   { cls: "bg-error-50 text-error-700 dark:bg-error-500/10 dark:text-error-400",       label: "Stale",       icon: "🔴" },
+  FRESH:   { cls: "bg-success-50 text-success-700 dark:bg-success-500/10 dark:text-success-400", label: "Fresh",       icon: "🟢" },
+  UNKNOWN: { cls: "bg-warning-50 text-warning-700 dark:bg-warning-500/10 dark:text-warning-400", label: "Unverified",  icon: "🟡" },
+};
+
+function stalenessTooltip(item: SpecStalenessItem): string {
+  const base =
+    item.status === "STALE"
+      ? `Spec dibuat untuk apiSchema${item.specApiVersion ? ` versi ${item.specApiVersion}` : ""}, channel kini di${item.channelApiVersion ? ` versi ${item.channelApiVersion}` : " versi lain"}. Regenerate agar tidak memetakan ke path yang dihapus/diganti.`
+      : item.status === "FRESH"
+      ? `Fingerprint cocok — spec dibuat terhadap apiSchema channel terkini${item.channelApiVersion ? ` (versi ${item.channelApiVersion})` : ""}.`
+      : "Belum ter-stamp fingerprint (spec legacy pra-versioning atau channel belum punya fingerprint). Regenerate untuk mengaktifkan deteksi.";
+  const hashes =
+    item.specTargetSchemaHash || item.channelApiSchemaHash
+      ? `\n\nspec:    ${item.specTargetSchemaHash ?? "—"}\nchannel: ${item.channelApiSchemaHash ?? "—"}`
+      : "";
+  return base + hashes;
+}
+
+/** Tri-state schema-staleness pill. Absent staleness data → subtle "—" (endpoint not loaded). */
+function SchemaStalenessBadge({ item }: { item?: SpecStalenessItem }) {
+  if (!item) {
+    return <span className="text-xs text-gray-300 dark:text-gray-600" title="Data staleness belum dimuat">—</span>;
+  }
+  const style = STALENESS_STYLE[item.status];
+  return (
+    <div className="flex flex-col items-start gap-1">
+      <span
+        className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-medium ${style.cls}`}
+        title={stalenessTooltip(item)}
+      >
+        {style.icon} {style.label}
+      </span>
+      {item.channelApiVersion && (
+        <span className="inline-flex items-center px-1 py-0.5 rounded text-[10px] font-mono bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400"
+          title={`apiVersion channel saat ini: ${item.channelApiVersion}`}>
+          api {item.channelApiVersion}
+        </span>
+      )}
+    </div>
+  );
+}
+
 const STRATEGY_COLORS: Record<string, string> = {
   CHANNEL_SPECIFIC:   "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300",
   SEMANTIC_KNOWLEDGE: "bg-teal-100 text-teal-700 dark:bg-teal-900/30 dark:text-teal-300",
@@ -155,19 +209,24 @@ const READINESS_BADGE: Record<ReadinessStatus, { cls: string; label: string }> =
 };
 
 function SpecRow({
-  spec, onEdit, onDelete,
+  spec, staleness, onEdit, onDelete, onRegenerate,
 }: {
   spec: ChannelJoltSpec;
+  staleness?: SpecStalenessItem;
   onEdit: (s: ChannelJoltSpec) => void;
   onDelete: (s: ChannelJoltSpec) => void;
+  onRegenerate: (s: ChannelJoltSpec) => void;
 }) {
-  const [expanded, setExpanded]         = useState(false);
-  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [expanded, setExpanded]           = useState(false);
+  const [confirmDelete, setConfirmDelete]   = useState(false);
+  const [confirmRegen, setConfirmRegen]     = useState(false);
 
   const meta      = spec.joltMetadata;
   const isLocked  = meta.isManuallyConfigured === true;
   const readiness = parseReadiness(meta.warnings);
   const badge     = READINESS_BADGE[readiness];
+  // Regenerate is offered for STALE (primary) and UNKNOWN (verify). FRESH → nothing to do.
+  const canRegenerate = staleness?.status === "STALE" || staleness?.status === "UNKNOWN";
 
   function formatDate(s?: string) {
     if (!s) return "—";
@@ -222,6 +281,11 @@ function SpecRow({
           <OriginBadge spec={spec} />
         </td>
 
+        {/* Schema staleness */}
+        <td className="px-3 py-2.5">
+          <SchemaStalenessBadge item={staleness} />
+        </td>
+
         {/* Flags */}
         <td className="px-3 py-2.5">
           <div className="flex flex-col gap-1">
@@ -266,6 +330,43 @@ function SpecRow({
               className="p-1.5 rounded hover:bg-indigo-50 dark:hover:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 transition-colors" title="Edit spec">
               <EditIcon />
             </button>
+
+            {/* Regenerate (STALE/UNKNOWN) — DELETE the spec; a fresh, stamped one is rebuilt on
+                next publish/analyse. Locked (human-owned) specs get a firm confirm (docs §4). */}
+            {canRegenerate && !confirmDelete && (
+              confirmRegen ? (
+                <span className="flex items-center gap-1">
+                  {isLocked && (
+                    <span className="text-[10px] text-amber-600 dark:text-amber-400"
+                      title="Spec ini dikunci (human-owned). Agent TIDAK meregenerasi otomatis — menghapus berarti hilang sampai dikonfigurasi manual lagi.">
+                      🔒 human-owned!
+                    </span>
+                  )}
+                  <button onClick={() => { setConfirmRegen(false); onRegenerate(spec); }}
+                    className="px-2 py-1 text-xs rounded bg-amber-100 hover:bg-amber-200 dark:bg-amber-900/30 dark:hover:bg-amber-900/50 text-amber-700 dark:text-amber-400 font-medium transition-colors">
+                    {isLocked ? "Tetap regenerate" : "Regenerate"}
+                  </button>
+                  <button onClick={() => setConfirmRegen(false)}
+                    className="px-2 py-1 text-xs rounded hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500 transition-colors">
+                    Batal
+                  </button>
+                </span>
+              ) : (
+                <button onClick={() => setConfirmRegen(true)}
+                  className={`inline-flex items-center gap-1 px-2 py-1 text-xs rounded font-medium transition-colors ${
+                    staleness?.status === "STALE"
+                      ? "bg-amber-50 hover:bg-amber-100 text-amber-700 dark:bg-amber-900/20 dark:hover:bg-amber-900/40 dark:text-amber-400"
+                      : "text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700"
+                  }`}
+                  title={staleness?.status === "STALE"
+                    ? "Regenerate: hapus spec usang; AI agent membangun ulang otomatis (ter-stamp fingerprint terkini) pada publish/analyse berikutnya"
+                    : "Regenerate untuk memverifikasi — spec belum ter-stamp fingerprint"}>
+                  <RegenerateIcon />
+                  {staleness?.status === "STALE" ? "Regenerate" : "Verifikasi"}
+                </button>
+              )
+            )}
+
             {confirmDelete ? (
               <span className="flex items-center gap-1">
                 <button onClick={() => { setConfirmDelete(false); onDelete(spec); }}
@@ -277,12 +378,12 @@ function SpecRow({
                   Cancel
                 </button>
               </span>
-            ) : (
+            ) : !confirmRegen ? (
               <button onClick={() => setConfirmDelete(true)}
                 className="p-1.5 rounded hover:bg-red-50 dark:hover:bg-red-900/20 text-red-500 dark:text-red-400 transition-colors" title="Delete spec (APM will regenerate)">
                 <TrashIcon />
               </button>
-            )}
+            ) : null}
           </div>
         </td>
       </tr>
@@ -290,7 +391,7 @@ function SpecRow({
       {/* Expanded: full JOLT spec */}
       {expanded && (
         <tr className="bg-gray-50/60 dark:bg-gray-900/40">
-          <td colSpan={6} className="px-4 py-3">
+          <td colSpan={8} className="px-4 py-3">
             <div className="grid grid-cols-2 gap-4 text-xs mb-3">
               <div className="space-y-1">
                 {spec.description && <ExpandItem label="Description" value={spec.description} />}
@@ -304,6 +405,11 @@ function SpecRow({
               <div className="space-y-1">
                 <ExpandItem label="isActive" value={String(spec.isActive)} />
                 {meta.supersetSchemaHash && <ExpandItem label="Schema hash" value={meta.supersetSchemaHash} mono />}
+                {staleness && <ExpandItem label="Schema status" value={staleness.status} />}
+                {staleness?.specApiVersion && <ExpandItem label="Spec apiVersion" value={staleness.specApiVersion} />}
+                {staleness?.channelApiVersion && <ExpandItem label="Channel apiVersion" value={staleness.channelApiVersion} />}
+                {staleness?.specTargetSchemaHash && <ExpandItem label="Spec target hash" value={staleness.specTargetSchemaHash} mono />}
+                {staleness?.channelApiSchemaHash && <ExpandItem label="Channel schema hash" value={staleness.channelApiSchemaHash} mono />}
                 <ExpandItem label="ID" value={spec.id} mono />
               </div>
             </div>
@@ -400,23 +506,39 @@ function ChannelJoltSpecsPageInner() {
   const deepLinkHandled  = useRef(false);
 
   const [specs, setSpecs]               = useState<ChannelJoltSpec[]>([]);
+  const [stalenessById, setStalenessById] = useState<Map<string, SpecStalenessItem>>(new Map());
   const [loading, setLoading]           = useState(true);
   const [error, setError]               = useState<string | null>(null);
   const [channelFilter, setChannelFilter] = useState<string>(deepLinkChannel ?? "all");
   const [lockedFilter, setLockedFilter] = useState<"all" | "locked" | "auto">("all");
   const [originFilter, setOriginFilter] = useState<"all" | SpecOrigin | "auto_applied">("all");
+  const [staleOnly, setStaleOnly]       = useState(false);
   const [editTarget, setEditTarget]     = useState<ChannelJoltSpec | null>(null);
   const [showBulkDelete, setShowBulkDelete] = useState(false);
+  const [confirmBulkRegen, setConfirmBulkRegen] = useState(false);
+  // Specs deleted for regeneration disappear from the list until APM/agent rebuilds them on
+  // the next publish/analyse — so we surface a persistent "awaiting regeneration" banner.
+  const [pendingRegen, setPendingRegen] = useState<{ channelId: string; categoryId: string }[]>([]);
   const [toast, setToast]               = useState<{ message: string; type: "success" | "error" } | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
+    const channelId = channelFilter !== "all" ? channelFilter : undefined;
     try {
-      const data = await ChannelJoltSpecService.listSpecs({
-        channelId: channelFilter !== "all" ? channelFilter : undefined,
-      });
+      // Specs are the primary list. Staleness is additive — fetch best-effort so a missing/older
+      // /staleness endpoint degrades gracefully (no badges) rather than breaking the whole page.
+      const [data, staleness] = await Promise.all([
+        ChannelJoltSpecService.listSpecs({ channelId }),
+        ChannelJoltSpecService.listStaleness({ channelId }).catch((e) => {
+          if (process.env.NODE_ENV === "development") {
+            console.warn("[ChannelJoltSpecs] staleness fetch failed (degrading gracefully):", e);
+          }
+          return [] as SpecStalenessItem[];
+        }),
+      ]);
       setSpecs(data);
+      setStalenessById(new Map(staleness.map((s) => [s.id, s])));
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -480,23 +602,78 @@ function ChannelJoltSpecsPageInner() {
     load();
   }
 
+  function noteAwaitingRegen(channelId: string, categoryId: string) {
+    setPendingRegen((prev) =>
+      prev.some((p) => p.channelId === channelId && p.categoryId === categoryId)
+        ? prev
+        : [...prev, { channelId, categoryId }],
+    );
+  }
+
+  // Regenerate = DELETE the stale spec. It is async: nothing is rebuilt now — a fresh, fingerprint-
+  // stamped spec appears on the NEXT publish/analyse. So we record it as "awaiting regeneration".
+  async function handleRegenerate(spec: ChannelJoltSpec) {
+    try {
+      await ChannelJoltSpecService.deleteSpec(spec.id);
+      const cat = spec.categoryId ?? "default";
+      noteAwaitingRegen(spec.channelId, cat);
+      showToast(
+        `Spec dihapus — menunggu regenerasi pada publish/analyse berikutnya untuk ${CHANNEL_TYPE_LABELS[spec.channelId] ?? spec.channelId} / ${cat}. Spec baru akan ter-stamp fingerprint terkini (FRESH).`,
+        "success",
+      );
+      load();
+    } catch (err) { showToast((err as Error).message, "error"); }
+  }
+
+  // Bulk: regenerate every STALE spec. Locked (isManuallyConfigured) specs are SKIPPED — the agent
+  // deliberately does not auto-rebuild human-owned specs; those need manual review (docs §4).
+  async function handleBulkRegenerateStale() {
+    setConfirmBulkRegen(false);
+    const targets = specs.filter(
+      (s) => stalenessById.get(s.id)?.status === "STALE" && !s.joltMetadata.isManuallyConfigured,
+    );
+    if (targets.length === 0) {
+      showToast("Tidak ada spec STALE non-locked untuk diregenerasi.", "error");
+      return;
+    }
+    let ok = 0;
+    for (const s of targets) {
+      try {
+        await ChannelJoltSpecService.deleteSpec(s.id);
+        ok++;
+        noteAwaitingRegen(s.channelId, s.categoryId ?? "default");
+      } catch { /* keep going — report the tally at the end */ }
+    }
+    const lockedSkipped = specs.filter(
+      (s) => stalenessById.get(s.id)?.status === "STALE" && s.joltMetadata.isManuallyConfigured,
+    ).length;
+    showToast(
+      `${ok}/${targets.length} spec STALE dihapus — menunggu regenerasi pada publish berikutnya.` +
+        (lockedSkipped ? ` ${lockedSkipped} spec terkunci dilewati (perlu review manual).` : ""),
+      "success",
+    );
+    load();
+  }
+
   const filtered = useMemo(() => specs
     .filter((s) => {
       if (lockedFilter === "locked" && !s.joltMetadata.isManuallyConfigured) return false;
       if (lockedFilter === "auto"   && s.joltMetadata.isManuallyConfigured)  return false;
       if (originFilter === "auto_applied" && !isAutoApplied(s)) return false;
       else if (originFilter !== "all" && originFilter !== "auto_applied" && specOrigin(s) !== originFilter) return false;
+      if (staleOnly && stalenessById.get(s.id)?.status !== "STALE") return false;
       return true;
     })
     .sort((a, b) => {
       if (a.channelId !== b.channelId) return a.channelId.localeCompare(b.channelId);
       return (a.categoryId ?? "default").localeCompare(b.categoryId ?? "default");
     }),
-  [specs, lockedFilter, originFilter]);
+  [specs, lockedFilter, originFilter, staleOnly, stalenessById]);
 
   const lockedCount  = specs.filter((s) => s.joltMetadata.isManuallyConfigured).length;
   const channelCount = new Set(specs.map((s) => s.channelId)).size;
   const aiAutoApplied = specs.filter((s) => specOrigin(s) === "AI_AGENT" && isAutoApplied(s)).length;
+  const staleCount   = specs.filter((s) => stalenessById.get(s.id)?.status === "STALE").length;
 
   return (
     <div className="p-6 space-y-5">
@@ -520,6 +697,28 @@ function ChannelJoltSpecsPageInner() {
           </div>
         </div>
         <div className="flex items-center gap-2">
+          {staleCount > 0 && (
+            confirmBulkRegen ? (
+              <span className="flex items-center gap-1.5">
+                <button onClick={handleBulkRegenerateStale}
+                  className="flex items-center gap-1.5 px-3 py-2 bg-amber-500 hover:bg-amber-600 text-white text-sm rounded-lg font-medium transition-colors">
+                  <RegenerateIcon />
+                  Regenerate {staleCount} stale
+                </button>
+                <button onClick={() => setConfirmBulkRegen(false)}
+                  className="px-3 py-2 text-sm rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-500 transition-colors">
+                  Batal
+                </button>
+              </span>
+            ) : (
+              <button onClick={() => setConfirmBulkRegen(true)}
+                className="flex items-center gap-1.5 px-3 py-2 border border-amber-300 dark:border-amber-700 hover:bg-amber-50 dark:hover:bg-amber-900/20 text-amber-700 dark:text-amber-400 text-sm rounded-lg transition-colors"
+                title="Hapus semua spec STALE non-locked; masing-masing diregenerasi pada publish/analyse berikutnya">
+                <RegenerateIcon />
+                Regenerate stale ({staleCount})
+              </button>
+            )
+          )}
           <button onClick={() => setShowBulkDelete(true)}
             className="flex items-center gap-1.5 px-3 py-2 border border-red-200 dark:border-red-800 hover:bg-red-50 dark:hover:bg-red-900/20 text-red-600 dark:text-red-400 text-sm rounded-lg transition-colors">
             <BulkDeleteIcon />
@@ -533,8 +732,9 @@ function ChannelJoltSpecsPageInner() {
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
         <StatCard label="Total Specs" value={specs.length} />
+        <StatCard label="Schema stale" value={staleCount} accent="error" />
         <StatCard label="AI auto-applied" value={aiAutoApplied} accent="violet" />
         <StatCard label="Protected (locked)" value={lockedCount} accent="amber" />
         <StatCard label="Channels" value={channelCount} accent="indigo" />
@@ -558,6 +758,12 @@ function ChannelJoltSpecsPageInner() {
             <strong>Audit provenance:</strong> kolom <strong>Generated by</strong> menunjukkan siapa yang menerapkan tiap spec —
             🤖 AI agent, ⚙️ APM, atau 👤 Manual — plus confidence. Filter <strong>“Auto-applied (≥92%)”</strong> untuk melihat
             JOLT yang diterapkan otomatis ke produksi <em>tanpa</em> melewati Review Queue.
+          </p>
+          <p>
+            <strong>Schema staleness:</strong> kolom <strong>Schema</strong> membandingkan fingerprint apiSchema saat spec dibuat vs channel sekarang —
+            🔴 <strong>Stale</strong> (dibuat terhadap apiSchema lama; bisa memetakan ke path yang dihapus/diganti → <strong>Regenerate</strong>),
+            🟢 <strong>Fresh</strong>, atau 🟡 <strong>Unverified</strong> (spec legacy belum ter-stamp). <strong>Regenerate</strong> menghapus spec;
+            AI agent membangun ulang otomatis pada publish/analyse berikutnya. Spec 🔒 terkunci tidak diregenerasi otomatis — perlu konfirmasi tegas.
           </p>
         </div>
       </div>
@@ -608,8 +814,39 @@ function ChannelJoltSpecsPageInner() {
           </div>
         </div>
 
+        <label className="flex items-center gap-1.5 cursor-pointer select-none"
+          title="Tampilkan hanya spec yang STALE (dibuat terhadap apiSchema lama)">
+          <input type="checkbox" checked={staleOnly} onChange={(e) => setStaleOnly(e.target.checked)}
+            className="h-3.5 w-3.5 rounded border-gray-300 text-error-600 focus:ring-error-500 dark:border-gray-600 dark:bg-gray-800" />
+          <span className="text-xs text-gray-600 dark:text-gray-400">🔴 Stale saja</span>
+        </label>
+
         <span className="ml-auto text-xs text-gray-400">{filtered.length} spec{filtered.length !== 1 ? "s" : ""}</span>
       </div>
+
+      {/* Awaiting-regeneration banner — regenerate is async; the spec reappears (FRESH) on the
+          next publish/analyse. Persist a reminder until the admin dismisses it. */}
+      {pendingRegen.length > 0 && (
+        <div className="flex items-start gap-3 px-4 py-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg">
+          <div className="text-amber-500 shrink-0 mt-0.5"><RegenerateIcon /></div>
+          <div className="flex-1 text-xs text-amber-800 dark:text-amber-300 space-y-1">
+            <p className="font-medium">Menunggu regenerasi pada publish/analyse berikutnya:</p>
+            <div className="flex flex-wrap gap-1.5">
+              {pendingRegen.map((p, i) => (
+                <span key={`${p.channelId}/${p.categoryId}/${i}`}
+                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-amber-100 dark:bg-amber-900/40 font-mono">
+                  {CHANNEL_TYPE_LABELS[p.channelId] ?? p.channelId} / {p.categoryId}
+                </span>
+              ))}
+            </div>
+            <p className="opacity-80">
+              Spec baru dibangun otomatis oleh AI agent (ter-stamp fingerprint terkini) — belum ada sampai publish/analyse berjalan.
+            </p>
+          </div>
+          <button onClick={() => setPendingRegen([])}
+            className="shrink-0 text-xs text-amber-600 dark:text-amber-400 hover:underline">Tutup</button>
+        </div>
+      )}
 
       {/* Table */}
       {error ? (
@@ -622,7 +859,7 @@ function ChannelJoltSpecsPageInner() {
       ) : loading ? (
         <div className="text-center py-12 text-sm text-gray-400">Loading…</div>
       ) : filtered.length === 0 ? (
-        <EmptyState hasFilters={channelFilter !== "all" || lockedFilter !== "all" || originFilter !== "all"} />
+        <EmptyState hasFilters={channelFilter !== "all" || lockedFilter !== "all" || originFilter !== "all" || staleOnly} />
       ) : (
         <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl overflow-hidden">
           <table className="w-full">
@@ -632,6 +869,7 @@ function ChannelJoltSpecsPageInner() {
                 <th className="px-3 py-2.5 text-left text-xs font-medium text-gray-500 dark:text-gray-400">Organization</th>
                 <th className="px-3 py-2.5 text-left text-xs font-medium text-gray-500 dark:text-gray-400">Mappings</th>
                 <th className="px-3 py-2.5 text-left text-xs font-medium text-gray-500 dark:text-gray-400">Generated by</th>
+                <th className="px-3 py-2.5 text-left text-xs font-medium text-gray-500 dark:text-gray-400">Schema</th>
                 <th className="px-3 py-2.5 text-left text-xs font-medium text-gray-500 dark:text-gray-400">Flags</th>
                 <th className="px-3 py-2.5 text-left text-xs font-medium text-gray-500 dark:text-gray-400">Version / Date</th>
                 <th className="px-3 py-2.5 text-left text-xs font-medium text-gray-500 dark:text-gray-400">Actions</th>
@@ -642,8 +880,10 @@ function ChannelJoltSpecsPageInner() {
                 <SpecRow
                   key={s.id}
                   spec={s}
+                  staleness={stalenessById.get(s.id)}
                   onEdit={(x) => setEditTarget(x)}
                   onDelete={handleDelete}
+                  onRegenerate={handleRegenerate}
                 />
               ))}
             </tbody>
@@ -671,11 +911,12 @@ function ChannelJoltSpecsPageInner() {
   );
 }
 
-function StatCard({ label, value, accent }: { label: string; value: number; accent?: "amber" | "indigo" | "gray" | "violet" }) {
+function StatCard({ label, value, accent }: { label: string; value: number; accent?: "amber" | "indigo" | "gray" | "violet" | "error" }) {
   const color =
     accent === "amber"  ? "text-amber-600 dark:text-amber-400" :
     accent === "indigo" ? "text-indigo-600 dark:text-indigo-400" :
     accent === "violet" ? "text-violet-600 dark:text-violet-400" :
+    accent === "error"  ? "text-error-600 dark:text-error-400" :
     accent === "gray"   ? "text-gray-500 dark:text-gray-400" :
     "text-gray-800 dark:text-white";
   return (

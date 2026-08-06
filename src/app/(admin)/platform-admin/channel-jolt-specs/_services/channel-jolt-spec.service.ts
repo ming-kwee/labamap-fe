@@ -9,7 +9,10 @@ import {
   UpdateJoltSpecRequest,
   BulkDeleteResponse,
   JoltSpecListParams,
+  SpecStalenessItem,
+  StalenessListParams,
   mapRawJoltSpec,
+  mapRawStalenessItem,
 } from "../_types/channel-jolt-spec";
 
 const BASE = "http://localhost:8888/labamap/api/v1/admin/channel-jolt-specs";
@@ -68,6 +71,21 @@ export const ChannelJoltSpecService = {
     }
 
     return normaliseArray(raw).map(mapRawJoltSpec);
+  },
+
+  /**
+   * GET /admin/channel-jolt-specs/staleness?channelId&onlyStale
+   * Per-spec schema-staleness report (tri-state STALE|FRESH|UNKNOWN). Additive endpoint —
+   * join to listSpecs() by `id`. docs/FRONTEND-JOLT-SPEC-SCHEMA-STALENESS.md §3.
+   */
+  async listStaleness(params?: StalenessListParams): Promise<SpecStalenessItem[]> {
+    const qs = buildQs({
+      channelId: params?.channelId,
+      onlyStale: params?.onlyStale,
+    });
+    const res = await fetch(`${BASE}/staleness${qs}`, { method: "GET", headers: JSON_HEADERS });
+    const raw = await handleResponse<unknown>(res);
+    return normaliseArray(raw).map(mapRawStalenessItem);
   },
 
   /** GET /admin/channel-jolt-specs/{id} */

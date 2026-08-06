@@ -35,6 +35,7 @@ import type {
   PublishTraceRequest,
   PublishTraceResponse,
 } from "@/modules/ecommerce-product-v2/types/publish-trace";
+import SchemaStaleBadge, { deriveStaleStatus } from "./SchemaStaleBadge";
 
 // ─── Small presentational helpers ─────────────────────────────────────────────
 
@@ -243,6 +244,11 @@ export default function PublishTraceInspector({ isOpen, onClose, request, storeN
 
   const jolt = trace?.joltSpec;
   const isGenerated = jolt?.generatedBy === "ai-agent-v1";
+  // Schema-staleness is only meaningful for a GENERATED spec (source="channel_jolt_specs").
+  // request/none sources have no stored spec to grade — don't show a badge (docs §6).
+  const isGeneratedSpec = jolt?.source === "channel_jolt_specs";
+  const staleStatus = deriveStaleStatus(jolt?.schemaStale);
+  const staleCategory = (jolt?.categoryId ?? trace?.resolvedCategory ?? "default") as string;
   const excludedSet = useMemo(
     () => new Set((trace?.supportFieldsExcludedBySync ?? []).map((n) => n.toLowerCase())),
     [trace],
@@ -315,10 +321,42 @@ export default function PublishTraceInspector({ isOpen, onClose, request, storeN
                     tone={isGenerated ? "warn" : "ok"}
                   />
                   <SummaryTile label="Version" value={jolt?.version ?? "—"} />
+                  <SummaryTile label="API version" value={jolt?.apiVersion ?? "—"} />
                   <SummaryTile label="Operations" value={jolt?.operations != null ? String(jolt.operations) : "—"} />
                   <SummaryTile label="Resolved category" value={trace.resolvedCategory ?? "—"} />
                   <SummaryTile label="Channel category id" value={trace.channelCategoryId ?? "—"} />
                 </div>
+
+                {/* Schema-staleness badge — is this generated spec built against the channel's
+                    CURRENT apiSchema? (STALE → regenerate). Only for a stored generated spec. */}
+                {isGeneratedSpec && (
+                  <div className="flex flex-col gap-2">
+                    <SchemaStaleBadge status={staleStatus} apiVersion={jolt?.apiVersion} showFresh />
+                    {staleStatus === "STALE" && (
+                      <p className="flex items-start gap-1.5 rounded-lg bg-error-50 px-3 py-2 text-xs text-error-700 dark:bg-error-500/10 dark:text-error-400">
+                        <AlertTriangle className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" />
+                        <span>
+                          Spec dibuat terhadap apiSchema lama — bisa memetakan ke path yang sudah dihapus/diganti
+                          (mis. nama produk gagal terpetakan). <strong>Regenerate</strong> = hapus spec; AI agent
+                          membangun ulang otomatis (ter-stamp fingerprint terkini) pada publish/analyse berikutnya.{" "}
+                          <button
+                            onClick={() =>
+                              router.push(
+                                `/platform-admin/channel-jolt-specs?channelId=${encodeURIComponent(
+                                  request.channelId ?? trace.channelId ?? "",
+                                )}&categoryId=${encodeURIComponent(staleCategory)}`,
+                              )
+                            }
+                            className="inline font-medium underline hover:no-underline"
+                          >
+                            Kelola spec di Admin →
+                          </button>
+                        </span>
+                      </p>
+                    )}
+                  </div>
+                )}
+
                 {isGenerated && (
                   <p className="flex items-start gap-1.5 rounded-lg bg-warning-50 px-3 py-2 text-xs text-warning-700 dark:bg-warning-500/10 dark:text-warning-400">
                     <AlertTriangle className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" />
