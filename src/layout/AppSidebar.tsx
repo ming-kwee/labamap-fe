@@ -90,6 +90,7 @@ const adminNavItems: NavItem[] = [
       // ── Tuning / config (change when channels update their APIs) ──────────
       { name: "Channel Configurations", path: "/platform-admin/channel-configurations", pro: false },
       { name: "Channel Category API Configs", path: "/platform-admin/channel-category-api-configs", pro: false },
+      { name: "Channel Contract Versions", path: "/platform-admin/channel-contract-versions", pro: false },
       // ── Onboarding setup (set once per new channel) ───────────────────────
       { name: "Channel Category Schemas", path: "/platform-admin/channel-category-schemas", pro: false },
     ],
