@@ -284,13 +284,19 @@ export async function generateMappingRequest(
 
   const sourceSchema = transformMasterProductToSourceSchema(product);
 
-  const response = await fetch(
-    `${BACKEND_BASE_URL}/channels/${channelId}/schema/complex?format=nested`,
-    {
-      method: 'GET',
-      headers: { 'Content-Type': 'application/json' },
-    }
-  );
+  // A0: pass the category so the target schema is the base apiSchema MERGED with the per-category
+  // extension (category-specific channel-unique fields become mapping targets). Without it the target
+  // is base-only and category fields can never be matched. "default"/blank is treated as base-only by
+  // the backend. Mirrors the product-aware analyze path (generateComplexTargetSchema(channelId, slug)).
+  const category = options.categoryId?.trim();
+  const schemaUrl =
+    `${BACKEND_BASE_URL}/channels/${channelId}/schema/complex?format=nested` +
+    (category ? `&categoryId=${encodeURIComponent(category)}` : '');
+
+  const response = await fetch(schemaUrl, {
+    method: 'GET',
+    headers: { 'Content-Type': 'application/json' },
+  });
 
   if (!response.ok) {
     throw new Error(`Failed to fetch channel schema: ${response.statusText}`);
