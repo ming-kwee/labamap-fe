@@ -348,7 +348,10 @@ export default function PublishDiagnosticsPage() {
     try {
       const resp = await fetchCategoryAttributeSchema(channelId, liveStoreId, liveCategoryId.trim(), orgId);
       if (!resp.schema || Object.keys(resp.schema).length === 0) {
-        setFetchLiveError("Tak ada atribut untuk kategori ini (cek channel categoryId / kredensial store).");
+        setFetchLiveError(
+          "Kosong. Fetch memanggil API channel sungguhan → butuh store terhubung + kredensial valid + " +
+          "channelCategoryId leaf yang benar. (Channel taxonomy-only seperti WIX tak punya attribute API.)"
+        );
       } else {
         setLiveChannelFieldsText(JSON.stringify(resp.schema, null, 2));
         // matched = fields whose name resolved to a real apiSchema path (via attributeMappings);
@@ -729,6 +732,11 @@ export default function PublishDiagnosticsPage() {
                     Fetch live
                   </button>
                 </div>
+                <p className="text-[10px] text-gray-400 dark:text-gray-500 mb-1">
+                  <strong>channelCategoryId</strong> = ID kategori <em>leaf</em> milik channel (mis. angka Shopee / GID Shopify),
+                  dari pohon kategori store — <strong>bukan</strong> slug master (<code>{categoryId || "clothing"}</code>) di atas.
+                  Fetch &amp; browse sama-sama butuh kredensial store.
+                </p>
                 {fetchLiveError && <p className="text-[11px] text-amber-600 dark:text-amber-400 mb-1">⚠ {fetchLiveError}</p>}
                 {fetchLiveInfo && !fetchLiveError && <p className="text-[11px] text-emerald-600 dark:text-emerald-400 mb-1">✓ {fetchLiveInfo}</p>}
                 <textarea
