@@ -250,6 +250,9 @@ export default function PublishDiagnosticsPage() {
   const [channelId, setChannelId] = useState("shopify");
   const [categoryId, setCategoryId] = useState("clothing");
   const [productText, setProductText] = useState(JSON.stringify(SAMPLE_PRODUCT, null, 2));
+  // A3: optional Step-2 channel fields (schema-level paste). Merged into the analyze SOURCE the same
+  // way publish merges channelData before JOLT, so channel-unique fields get classified + mapped.
+  const [channelFieldsText, setChannelFieldsText] = useState("");
 
   // ── Shared run state ────────────────────────────────────────────────────
   const [running, setRunning] = useState(false);
@@ -271,6 +274,21 @@ export default function PublishDiagnosticsPage() {
       return (e as Error).message;
     }
   }, [productText]);
+
+  // Parse the optional Step-2 channel fields box. Empty → no fields, no error. Must be a JSON object.
+  const { channelFields, channelFieldsError } = useMemo(() => {
+    const t = channelFieldsText.trim();
+    if (!t) return { channelFields: null as Record<string, unknown> | null, channelFieldsError: null as string | null };
+    try {
+      const parsed = JSON.parse(t);
+      if (parsed == null || typeof parsed !== "object" || Array.isArray(parsed)) {
+        return { channelFields: null, channelFieldsError: "harus berupa objek JSON { field: nilai }" };
+      }
+      return { channelFields: parsed as Record<string, unknown>, channelFieldsError: null };
+    } catch (e) {
+      return { channelFields: null, channelFieldsError: (e as Error).message };
+    }
+  }, [channelFieldsText]);
 
   // Load My Products (org-scoped) for the picker.
   const loadProducts = useCallback(async () => {
@@ -329,7 +347,7 @@ export default function PublishDiagnosticsPage() {
   const canRun =
     !running &&
     (mode === "json"
-      ? !jsonError && !!categoryId.trim()
+      ? !jsonError && !channelFieldsError && !!categoryId.trim()
       : // Product-aware endpoint only needs masterProductId; a store adds Step-2 context.
         !!selectedProductId);
 
@@ -361,7 +379,9 @@ export default function PublishDiagnosticsPage() {
           persistJolt: false,
           forceReanalyze: true,
         });
-        mergeStoreOverridesIntoRequest(request, null);
+        // A3: fold the optional Step-2 channel fields into the source (as channelData), reusing the
+        // same helper the merchant publish flow uses — so the paste path sees the real publish picture.
+        mergeStoreOverridesIntoRequest(request, channelFields ? { channelData: channelFields } : null);
         setResult(await analyzePatternMatching(request, controller.signal));
       } else {
         // Product-aware readiness → the backend loads the real product + Step-2 data
@@ -530,6 +550,34 @@ export default function PublishDiagnosticsPage() {
                   <p className="text-[11px] text-red-500 mt-1">JSON tidak valid: {jsonError}</p>
                 ) : (
                   <p className="text-[11px] text-gray-400 mt-1">JSON valid ✓ — produk hipotetis, tanpa override store.</p>
+                )}
+              </div>
+
+              {/* A3: optional Step-2 channel fields — merged into the analyze SOURCE (as channelData),
+                  mirroring how publish merges channelData before JOLT. Lets channel-unique fields be
+                  classified (Channel-unique/-shared) and mapped, so the paste path matches real publish. */}
+              <div>
+                <label className="text-xs text-gray-500 dark:text-gray-400">Channel fields — Step-2 (JSON, opsional)</label>
+                <p className="text-[10px] text-gray-400 dark:text-gray-500 mt-0.5 mb-1">
+                  Field channel-spesifik yang diisi merchant di Step 2 (mis. <code>days_to_ship</code>, <code>size_chart_id</code>).
+                  Digabung ke source seperti saat publish → field channel-unique ikut diklasifikasi &amp; dipetakan.
+                </p>
+                <textarea
+                  value={channelFieldsText}
+                  onChange={(e) => setChannelFieldsText(e.target.value)}
+                  spellCheck={false}
+                  rows={5}
+                  placeholder={'{ "days_to_ship": 3, "size_chart_id": "SC-123" }'}
+                  className={`w-full font-mono text-[11px] border rounded-lg px-3 py-2 bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100 focus:outline-none focus:ring-2 ${
+                    channelFieldsError ? "border-red-400 focus:ring-red-400" : "border-gray-200 dark:border-gray-700 focus:ring-violet-400"
+                  }`}
+                />
+                {channelFieldsError ? (
+                  <p className="text-[11px] text-red-500 mt-1">JSON tidak valid: {channelFieldsError}</p>
+                ) : channelFieldsText.trim() ? (
+                  <p className="text-[11px] text-gray-400 mt-1">Akan digabung ke source sebagai channel fields (Step-2).</p>
+                ) : (
+                  <p className="text-[11px] text-gray-400 mt-1">Kosongkan bila hanya menguji field master.</p>
                 )}
               </div>
             </>
