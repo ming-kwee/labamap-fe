@@ -251,7 +251,9 @@ export default function PublishDiagnosticsPage() {
   // ── JSON mode state ─────────────────────────────────────────────────────
   const [channelId, setChannelId] = useState("shopify");
   const [categoryId, setCategoryId] = useState("clothing");
-  const [productText, setProductText] = useState(JSON.stringify(SAMPLE_PRODUCT, null, 2));
+  // Start EMPTY — no dirty dummy on load. The static example is available on demand via
+  // 'reset ke contoh statis'; the usual path is 'Load from Product Type'.
+  const [productText, setProductText] = useState("");
   // A3: optional Step-2 channel fields (schema-level paste). Merged into the analyze SOURCE the same
   // way publish merges channelData before JOLT, so channel-unique fields get classified + mapped.
   const [channelFieldsText, setChannelFieldsText] = useState("");
@@ -280,6 +282,7 @@ export default function PublishDiagnosticsPage() {
   const timedOutRef = useRef(false);
 
   const jsonError = useMemo(() => {
+    if (!productText.trim()) return null; // empty is not an error — just not runnable yet
     try {
       JSON.parse(productText);
       return null;
@@ -412,7 +415,7 @@ export default function PublishDiagnosticsPage() {
   const canRun =
     !running &&
     (mode === "json"
-      ? !jsonError && !channelFieldsError && !liveChannelFieldsError && !!categoryId.trim()
+      ? !!productText.trim() && !jsonError && !channelFieldsError && !liveChannelFieldsError && !!categoryId.trim()
       : // Product-aware endpoint only needs masterProductId; a store adds Step-2 context.
         !!selectedProductId);
 
@@ -617,8 +620,10 @@ export default function PublishDiagnosticsPage() {
                 />
                 {jsonError ? (
                   <p className="text-[11px] text-red-500 mt-1">JSON tidak valid: {jsonError}</p>
-                ) : (
+                ) : productText.trim() ? (
                   <p className="text-[11px] text-gray-400 mt-1">JSON valid ✓ — produk hipotetis, tanpa override store.</p>
+                ) : (
+                  <p className="text-[11px] text-gray-400 mt-1">Kosong — <strong>Load from Product Type</strong>, paste JSON, atau <strong>reset ke contoh statis</strong>.</p>
                 )}
               </div>
 
