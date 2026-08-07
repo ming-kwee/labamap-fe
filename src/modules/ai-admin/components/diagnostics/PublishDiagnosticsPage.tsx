@@ -33,6 +33,7 @@ import { ChannelProductData } from "@/modules/ecommerce-product-v2/step2-channel
 import { ChannelProductDataService } from "@/modules/ecommerce-product-v2/step2-channel-fields/services/channelStore.service";
 import { analyzePatternMatching, fetchCategoryAttributeSchema } from "@/modules/ecommerce-product-v2/services/pattern-matching.service";
 import { ChannelStoreService } from "@/modules/ecommerce-product-v2/step2-channel-fields/services/channelStore.service";
+import { AiAdminService } from "../../services/aiAdmin.service";
 import { analyzePublish } from "@/modules/ecommerce-product-v2/services/publish-analyze.service";
 import type {
   PublishAnalysisRequest,
@@ -260,6 +261,9 @@ export default function PublishDiagnosticsPage() {
   // A2: optional live channel fields from the attribute API (attributeConfig). Merged into the analyze
   // TARGET, so category-live channel-unique fields become mapping targets (mirror of A3 on the target side).
   const [liveChannelFieldsText, setLiveChannelFieldsText] = useState("");
+  // Suggest for the channel-fields box: fill with this channel's Step-2 field names (offline, data-driven).
+  const [suggestingChannel, setSuggestingChannel] = useState(false);
+  const [channelFieldsNote, setChannelFieldsNote] = useState<string | null>(null);
   // A2+ auto-fetch: pull live/cached category attributes (needs a store for creds + a channel categoryId)
   // and fill the box above, instead of pasting by hand.
   const [liveStores, setLiveStores] = useState<Array<{ storeId: string; storeName: string }>>([]);
@@ -355,6 +359,26 @@ export default function PublishDiagnosticsPage() {
       setFetchLiveError(e instanceof Error ? e.message : "Gagal fetch");
     } finally {
       setFetchingLive(false);
+    }
+  }
+
+  // Fill the channel-fields box with this channel's known Step-2 field names (offline; no channel creds).
+  async function suggestChannelFields() {
+    if (suggestingChannel) return;
+    setSuggestingChannel(true); setChannelFieldsNote(null);
+    try {
+      const fields = await AiAdminService.getChannelFieldNames(channelId);
+      const keys = Object.keys(fields ?? {});
+      if (keys.length === 0) {
+        setChannelFieldsNote(`Channel ${channelId} tak punya field Step-2 khusus di katalog.`);
+      } else {
+        setChannelFieldsText(JSON.stringify(fields, null, 2));
+        setChannelFieldsNote(`${keys.length} field disarankan — isi nilainya lalu jalankan.`);
+      }
+    } catch (e) {
+      setChannelFieldsNote(e instanceof Error ? e.message : "Gagal memuat saran");
+    } finally {
+      setSuggestingChannel(false);
     }
   }
 
@@ -631,7 +655,18 @@ export default function PublishDiagnosticsPage() {
                   mirroring how publish merges channelData before JOLT. Lets channel-unique fields be
                   classified (Channel-unique/-shared) and mapped, so the paste path matches real publish. */}
               <div>
-                <label className="text-xs text-gray-500 dark:text-gray-400">Channel fields — Step-2 (JSON, opsional)</label>
+                <div className="flex items-center justify-between">
+                  <label className="text-xs text-gray-500 dark:text-gray-400">Channel fields — Step-2 (JSON, opsional)</label>
+                  <button
+                    type="button"
+                    onClick={suggestChannelFields}
+                    disabled={suggestingChannel}
+                    className="inline-flex items-center gap-1 text-[11px] text-blue-500 hover:underline disabled:opacity-50"
+                  >
+                    {suggestingChannel ? <Spinner size={11} /> : <SparklesIcon size={12} />}
+                    Suggest untuk {channelId}
+                  </button>
+                </div>
                 <p className="text-[10px] text-gray-400 dark:text-gray-500 mt-0.5 mb-1">
                   Field channel-spesifik yang diisi merchant di Step 2 (mis. <code>days_to_ship</code>, <code>size_chart_id</code>).
                   Digabung ke source seperti saat publish → field channel-unique ikut diklasifikasi &amp; dipetakan.
@@ -648,10 +683,12 @@ export default function PublishDiagnosticsPage() {
                 />
                 {channelFieldsError ? (
                   <p className="text-[11px] text-red-500 mt-1">JSON tidak valid: {channelFieldsError}</p>
+                ) : channelFieldsNote ? (
+                  <p className="text-[11px] text-emerald-600 dark:text-emerald-400 mt-1">✓ {channelFieldsNote}</p>
                 ) : channelFieldsText.trim() ? (
                   <p className="text-[11px] text-gray-400 mt-1">Akan digabung ke source sebagai channel fields (Step-2).</p>
                 ) : (
-                  <p className="text-[11px] text-gray-400 mt-1">Kosongkan bila hanya menguji field master.</p>
+                  <p className="text-[11px] text-gray-400 mt-1">Kosongkan bila hanya menguji field master, atau klik <strong>Suggest</strong>.</p>
                 )}
               </div>
 

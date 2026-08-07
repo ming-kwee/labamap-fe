@@ -134,6 +134,14 @@ export const AiAdminService = {
    * 404 (AiApiError kind "not_found") only when the catalog has no master attributes at
    * all — surface the message, do NOT fall back to a hardcoded example.
    */
+  /**
+   * The channel's Step-2 field names as a { fieldName: "" } map — offline seed for the diagnostics
+   * "Channel fields (Step-2)" box. GET /admin/ai/channel-fields?channelId=
+   */
+  getChannelFieldNames(channelId: string): Promise<Record<string, unknown>> {
+    return request<Record<string, unknown>>(`${BASE}/channel-fields${buildQs({ channelId })}`);
+  },
+
   getSampleMasterProduct(
     productTypeId: string,
     opts?: { channelId?: string; includeChannelFields?: boolean },
