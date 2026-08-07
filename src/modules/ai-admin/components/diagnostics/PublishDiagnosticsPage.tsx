@@ -31,7 +31,8 @@ import {
 import { MasterProduct } from "@/modules/ecommerce-product-v2/types/product";
 import { ChannelProductData } from "@/modules/ecommerce-product-v2/step2-channel-fields/types/channelStore";
 import { ChannelProductDataService } from "@/modules/ecommerce-product-v2/step2-channel-fields/services/channelStore.service";
-import { analyzePatternMatching } from "@/modules/ecommerce-product-v2/services/pattern-matching.service";
+import { analyzePatternMatching, fetchCategoryAttributeSchema } from "@/modules/ecommerce-product-v2/services/pattern-matching.service";
+import { ChannelStoreService } from "@/modules/ecommerce-product-v2/step2-channel-fields/services/channelStore.service";
 import { analyzePublish } from "@/modules/ecommerce-product-v2/services/publish-analyze.service";
 import type {
   PublishAnalysisRequest,
@@ -48,7 +49,7 @@ import { MasterProductService } from "@/app/(admin)/products/_services/master-pr
 import { useAuth } from "@/shared/contexts/AuthContext";
 import { CascadeOutcomeBadge } from "../shared/CascadeOutcomeBadge";
 import { ProductTypeSampleLoader } from "../shared/ProductTypeSampleLoader";
-import { ActivityIcon, GitBranchIcon, PlayIcon, RefreshIcon, SearchIcon, TerminalIcon } from "../shared/icons";
+import { ActivityIcon, GitBranchIcon, PlayIcon, RefreshIcon, SearchIcon, SparklesIcon, TerminalIcon } from "../shared/icons";
 import {
   Badge,
   Card,
@@ -257,6 +258,13 @@ export default function PublishDiagnosticsPage() {
   // A2: optional live channel fields from the attribute API (attributeConfig). Merged into the analyze
   // TARGET, so category-live channel-unique fields become mapping targets (mirror of A3 on the target side).
   const [liveChannelFieldsText, setLiveChannelFieldsText] = useState("");
+  // A2+ auto-fetch: pull live/cached category attributes (needs a store for creds + a channel categoryId)
+  // and fill the box above, instead of pasting by hand.
+  const [liveStores, setLiveStores] = useState<Array<{ storeId: string; storeName: string }>>([]);
+  const [liveStoreId, setLiveStoreId] = useState("");
+  const [liveCategoryId, setLiveCategoryId] = useState("");
+  const [fetchingLive, setFetchingLive] = useState(false);
+  const [fetchLiveError, setFetchLiveError] = useState<string | null>(null);
 
   // ── Shared run state ────────────────────────────────────────────────────
   const [running, setRunning] = useState(false);
@@ -308,6 +316,40 @@ export default function PublishDiagnosticsPage() {
       return { liveChannelFields: null, liveChannelFieldsError: (e as Error).message };
     }
   }, [liveChannelFieldsText]);
+
+  // A2+ : load this org's stores for the chosen channel, to pick creds for the live attribute fetch.
+  useEffect(() => {
+    if (mode !== "json" || !orgId) { setLiveStores([]); setLiveStoreId(""); return; }
+    let alive = true;
+    ChannelStoreService.listStores(orgId)
+      .then((all) => {
+        if (!alive) return;
+        const forChannel = all.filter((s) => s.channelType === channelId)
+          .map((s) => ({ storeId: s.storeId, storeName: s.storeName }));
+        setLiveStores(forChannel);
+        setLiveStoreId((prev) => (forChannel.some((s) => s.storeId === prev) ? prev : ""));
+      })
+      .catch(() => { if (alive) setLiveStores([]); });
+    return () => { alive = false; };
+  }, [mode, channelId, orgId]);
+
+  // A2+ : fetch live/cached category attributes as a target schema fragment → fill the box above.
+  async function fetchLive() {
+    if (!liveStoreId || !liveCategoryId.trim() || !orgId || fetchingLive) return;
+    setFetchingLive(true); setFetchLiveError(null);
+    try {
+      const resp = await fetchCategoryAttributeSchema(channelId, liveStoreId, liveCategoryId.trim(), orgId);
+      if (!resp.schema || Object.keys(resp.schema).length === 0) {
+        setFetchLiveError("Tak ada atribut untuk kategori ini (cek channel categoryId / kredensial store).");
+      } else {
+        setLiveChannelFieldsText(JSON.stringify(resp.schema, null, 2));
+      }
+    } catch (e) {
+      setFetchLiveError(e instanceof Error ? e.message : "Gagal fetch");
+    } finally {
+      setFetchingLive(false);
+    }
+  }
 
   // Load My Products (org-scoped) for the picker.
   const loadProducts = useCallback(async () => {
@@ -614,6 +656,34 @@ export default function PublishDiagnosticsPage() {
                   Field channel-unik yang hanya ada <em>live per-kategori</em> dari attribute API channel
                   (belum tentu tersimpan). Digabung ke <strong>target</strong> → jadi tujuan mapping.
                 </p>
+                {/* A2+ auto-fetch: pick a store (creds) + channel leaf categoryId → fill the box below. */}
+                <div className="flex items-center gap-1.5 mb-1.5">
+                  <select
+                    value={liveStoreId}
+                    onChange={(e) => setLiveStoreId(e.target.value)}
+                    disabled={liveStores.length === 0}
+                    className="min-w-0 flex-1 border border-gray-200 dark:border-gray-700 rounded-lg px-2 py-1 text-[11px] bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 disabled:opacity-50"
+                  >
+                    <option value="">{liveStores.length === 0 ? `Tak ada store ${channelId}` : "Pilih store…"}</option>
+                    {liveStores.map((s) => <option key={s.storeId} value={s.storeId}>{s.storeName || s.storeId}</option>)}
+                  </select>
+                  <input
+                    value={liveCategoryId}
+                    onChange={(e) => setLiveCategoryId(e.target.value)}
+                    placeholder="channel categoryId (leaf)"
+                    className="min-w-0 flex-1 border border-gray-200 dark:border-gray-700 rounded-lg px-2 py-1 text-[11px] bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300"
+                  />
+                  <button
+                    type="button"
+                    onClick={fetchLive}
+                    disabled={!liveStoreId || !liveCategoryId.trim() || fetchingLive}
+                    className="inline-flex items-center gap-1 whitespace-nowrap px-2.5 py-1 rounded-lg text-[11px] font-medium bg-violet-600 hover:bg-violet-700 text-white transition-colors disabled:opacity-50"
+                  >
+                    {fetchingLive ? <Spinner size={11} /> : <SparklesIcon size={12} />}
+                    Fetch live
+                  </button>
+                </div>
+                {fetchLiveError && <p className="text-[11px] text-amber-600 dark:text-amber-400 mb-1">⚠ {fetchLiveError}</p>}
                 <textarea
                   value={liveChannelFieldsText}
                   onChange={(e) => setLiveChannelFieldsText(e.target.value)}

@@ -120,3 +120,43 @@ export async function getAvailableChannels(): Promise<ChannelConfiguration[]> {
     .filter(ch => ch.isActive)
     .map(ch => transformChannelConfig(ch));
 }
+
+/** Category attributes returned as a target schema fragment (APM A2+ auto-fetch). */
+export interface CategoryAttributeSchemaResponse {
+  channelType: string;
+  storeId: string;
+  categoryId: string;
+  categoryName: string;
+  schema: Record<string, unknown>; // { fieldName: "" } — deep-merge into the analyze targetSchema
+  fieldCount: number;
+  requiredCount: number;
+  optionalCount: number;
+  requiredFieldNames: string[];
+}
+
+/**
+ * A2+ auto-fetch: live/cached channel category attributes as a TARGET schema fragment.
+ * GET /api/v1/categories/{channelType}/{storeId}/attributes/{categoryId}/schema?organizationId=
+ * Needs a store (for channel credentials) and the channel's leaf categoryId. Never throws a 5xx body
+ * — the backend returns an empty schema on failure.
+ */
+export async function fetchCategoryAttributeSchema(
+  channelType: string,
+  storeId: string,
+  categoryId: string,
+  organizationId: string,
+  signal?: AbortSignal,
+): Promise<CategoryAttributeSchemaResponse> {
+  const url =
+    `${BASE_URL}/categories/${encodeURIComponent(channelType)}/${encodeURIComponent(storeId)}` +
+    `/attributes/${encodeURIComponent(categoryId)}/schema?organizationId=${encodeURIComponent(organizationId)}`;
+  const response = await fetch(url, {
+    method: 'GET',
+    headers: { 'Content-Type': 'application/json' },
+    signal,
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to fetch category attributes: ${response.statusText}`);
+  }
+  return response.json();
+}
