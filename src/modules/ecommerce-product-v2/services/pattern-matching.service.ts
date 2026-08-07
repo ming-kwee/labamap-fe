@@ -127,11 +127,14 @@ export interface CategoryAttributeSchemaResponse {
   storeId: string;
   categoryId: string;
   categoryName: string;
-  schema: Record<string, unknown>; // { fieldName: "" } — deep-merge into the analyze targetSchema
+  // schema keys are the resolved apiSchema path when a field mapped (else the bare field name).
+  schema: Record<string, unknown>;
   fieldCount: number;
   requiredCount: number;
   optionalCount: number;
   requiredFieldNames: string[];
+  resolvedPaths: Record<string, string>; // fieldName → dotted apiSchema path (only fields that mapped)
+  matchedCount: number;                    // how many fields resolved to a real path
 }
 
 /**

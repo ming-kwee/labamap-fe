@@ -265,6 +265,7 @@ export default function PublishDiagnosticsPage() {
   const [liveCategoryId, setLiveCategoryId] = useState("");
   const [fetchingLive, setFetchingLive] = useState(false);
   const [fetchLiveError, setFetchLiveError] = useState<string | null>(null);
+  const [fetchLiveInfo, setFetchLiveInfo] = useState<string | null>(null);
 
   // ── Shared run state ────────────────────────────────────────────────────
   const [running, setRunning] = useState(false);
@@ -336,13 +337,16 @@ export default function PublishDiagnosticsPage() {
   // A2+ : fetch live/cached category attributes as a target schema fragment → fill the box above.
   async function fetchLive() {
     if (!liveStoreId || !liveCategoryId.trim() || !orgId || fetchingLive) return;
-    setFetchingLive(true); setFetchLiveError(null);
+    setFetchingLive(true); setFetchLiveError(null); setFetchLiveInfo(null);
     try {
       const resp = await fetchCategoryAttributeSchema(channelId, liveStoreId, liveCategoryId.trim(), orgId);
       if (!resp.schema || Object.keys(resp.schema).length === 0) {
         setFetchLiveError("Tak ada atribut untuk kategori ini (cek channel categoryId / kredensial store).");
       } else {
         setLiveChannelFieldsText(JSON.stringify(resp.schema, null, 2));
+        // matched = fields whose name resolved to a real apiSchema path (via attributeMappings);
+        // the rest keep their bare name (live-only category attrs typically have no stored mapping).
+        setFetchLiveInfo(`${resp.fieldCount} field · ${resp.matchedCount} ter-map ke apiSchema path`);
       }
     } catch (e) {
       setFetchLiveError(e instanceof Error ? e.message : "Gagal fetch");
@@ -684,6 +688,7 @@ export default function PublishDiagnosticsPage() {
                   </button>
                 </div>
                 {fetchLiveError && <p className="text-[11px] text-amber-600 dark:text-amber-400 mb-1">⚠ {fetchLiveError}</p>}
+                {fetchLiveInfo && !fetchLiveError && <p className="text-[11px] text-emerald-600 dark:text-emerald-400 mb-1">✓ {fetchLiveInfo}</p>}
                 <textarea
                   value={liveChannelFieldsText}
                   onChange={(e) => setLiveChannelFieldsText(e.target.value)}
