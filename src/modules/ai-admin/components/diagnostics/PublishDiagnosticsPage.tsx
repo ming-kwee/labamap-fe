@@ -42,6 +42,7 @@ import type {
 import {
   generateMappingRequest,
   mergeStoreOverridesIntoRequest,
+  mergeLiveChannelFieldsIntoTarget,
 } from "@/modules/ecommerce-product-v2/utils/product-mapper";
 import { MasterProductService } from "@/app/(admin)/products/_services/master-product.service";
 import { useAuth } from "@/shared/contexts/AuthContext";
@@ -253,6 +254,9 @@ export default function PublishDiagnosticsPage() {
   // A3: optional Step-2 channel fields (schema-level paste). Merged into the analyze SOURCE the same
   // way publish merges channelData before JOLT, so channel-unique fields get classified + mapped.
   const [channelFieldsText, setChannelFieldsText] = useState("");
+  // A2: optional live channel fields from the attribute API (attributeConfig). Merged into the analyze
+  // TARGET, so category-live channel-unique fields become mapping targets (mirror of A3 on the target side).
+  const [liveChannelFieldsText, setLiveChannelFieldsText] = useState("");
 
   // ── Shared run state ────────────────────────────────────────────────────
   const [running, setRunning] = useState(false);
@@ -289,6 +293,21 @@ export default function PublishDiagnosticsPage() {
       return { channelFields: null, channelFieldsError: (e as Error).message };
     }
   }, [channelFieldsText]);
+
+  // Parse the optional live attributeConfig (target) box. Same rules as the channel-fields box.
+  const { liveChannelFields, liveChannelFieldsError } = useMemo(() => {
+    const t = liveChannelFieldsText.trim();
+    if (!t) return { liveChannelFields: null as Record<string, unknown> | null, liveChannelFieldsError: null as string | null };
+    try {
+      const parsed = JSON.parse(t);
+      if (parsed == null || typeof parsed !== "object" || Array.isArray(parsed)) {
+        return { liveChannelFields: null, liveChannelFieldsError: "harus berupa objek JSON { path: … }" };
+      }
+      return { liveChannelFields: parsed as Record<string, unknown>, liveChannelFieldsError: null };
+    } catch (e) {
+      return { liveChannelFields: null, liveChannelFieldsError: (e as Error).message };
+    }
+  }, [liveChannelFieldsText]);
 
   // Load My Products (org-scoped) for the picker.
   const loadProducts = useCallback(async () => {
@@ -347,7 +366,7 @@ export default function PublishDiagnosticsPage() {
   const canRun =
     !running &&
     (mode === "json"
-      ? !jsonError && !channelFieldsError && !!categoryId.trim()
+      ? !jsonError && !channelFieldsError && !liveChannelFieldsError && !!categoryId.trim()
       : // Product-aware endpoint only needs masterProductId; a store adds Step-2 context.
         !!selectedProductId);
 
@@ -382,6 +401,9 @@ export default function PublishDiagnosticsPage() {
         // A3: fold the optional Step-2 channel fields into the source (as channelData), reusing the
         // same helper the merchant publish flow uses — so the paste path sees the real publish picture.
         mergeStoreOverridesIntoRequest(request, channelFields ? { channelData: channelFields } : null);
+        // A2: fold the optional live attributeConfig fields into the TARGET, so category-live
+        // channel-unique fields become mapping targets (mirror of A3 on the target side).
+        mergeLiveChannelFieldsIntoTarget(request, liveChannelFields);
         setResult(await analyzePatternMatching(request, controller.signal));
       } else {
         // Product-aware readiness → the backend loads the real product + Step-2 data
@@ -579,6 +601,35 @@ export default function PublishDiagnosticsPage() {
                   <p className="text-[11px] text-gray-400 mt-1">Akan digabung ke source sebagai channel fields (Step-2).</p>
                 ) : (
                   <p className="text-[11px] text-gray-400 mt-1">Kosongkan bila hanya menguji field master.</p>
+                )}
+              </div>
+
+              {/* A2: optional LIVE channel fields from the attribute API (attributeConfig) — merged into the
+                  analyze TARGET, so category-live channel-unique fields become mapping targets. Mirror of the
+                  channel-fields box, on the target side. Paste what the channel's attribute API returns for
+                  this category (auto-fetch is a future step; needs store credentials + a channel category ID). */}
+              <div>
+                <label className="text-xs text-gray-500 dark:text-gray-400">Live channel fields — attributeConfig (JSON, opsional)</label>
+                <p className="text-[10px] text-gray-400 dark:text-gray-500 mt-0.5 mb-1">
+                  Field channel-unik yang hanya ada <em>live per-kategori</em> dari attribute API channel
+                  (belum tentu tersimpan). Digabung ke <strong>target</strong> → jadi tujuan mapping.
+                </p>
+                <textarea
+                  value={liveChannelFieldsText}
+                  onChange={(e) => setLiveChannelFieldsText(e.target.value)}
+                  spellCheck={false}
+                  rows={5}
+                  placeholder={'{ "attributes": { "size_chart": "", "warranty_type": "" } }'}
+                  className={`w-full font-mono text-[11px] border rounded-lg px-3 py-2 bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100 focus:outline-none focus:ring-2 ${
+                    liveChannelFieldsError ? "border-red-400 focus:ring-red-400" : "border-gray-200 dark:border-gray-700 focus:ring-violet-400"
+                  }`}
+                />
+                {liveChannelFieldsError ? (
+                  <p className="text-[11px] text-red-500 mt-1">JSON tidak valid: {liveChannelFieldsError}</p>
+                ) : liveChannelFieldsText.trim() ? (
+                  <p className="text-[11px] text-gray-400 mt-1">Akan di-deep-merge ke target schema.</p>
+                ) : (
+                  <p className="text-[11px] text-gray-400 mt-1">Kosongkan bila kategori tak punya field live tambahan.</p>
                 )}
               </div>
             </>

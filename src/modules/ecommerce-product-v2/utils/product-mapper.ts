@@ -397,3 +397,36 @@ export function mergeStoreOverridesIntoRequest<T extends { sourceSchema: Record<
 
   return request;
 }
+
+function isPlainObject(x: unknown): x is Record<string, unknown> {
+  return typeof x === "object" && x !== null && !Array.isArray(x);
+}
+
+/** Deep-merge `add` into a copy of `base`. Objects recurse; arrays/primitives are leaves (add wins). */
+function deepMergeObjects(
+  base: Record<string, unknown>,
+  add: Record<string, unknown>,
+): Record<string, unknown> {
+  const out: Record<string, unknown> = { ...base };
+  for (const [k, v] of Object.entries(add)) {
+    const cur = out[k];
+    out[k] = isPlainObject(cur) && isPlainObject(v) ? deepMergeObjects(cur, v) : v;
+  }
+  return out;
+}
+
+/**
+ * A2: fold live channel (attributeConfig) fields into the analyze request's TARGET schema, so
+ * category-live channel-unique fields become mapping TARGETS. These are TARGET-side (channel body
+ * paths the channel expects for a category), the mirror of {@link mergeStoreOverridesIntoRequest}
+ * which enriches the SOURCE. Deep-merged so nested subtrees extend the base rather than replace it.
+ * Mutates and returns the request; empty/null is a no-op.
+ */
+export function mergeLiveChannelFieldsIntoTarget<T extends { targetSchema: Record<string, unknown> }>(
+  request: T,
+  liveFields: Record<string, unknown> | null | undefined,
+): T {
+  if (!liveFields || Object.keys(liveFields).length === 0) return request;
+  request.targetSchema = deepMergeObjects(request.targetSchema, liveFields);
+  return request;
+}
