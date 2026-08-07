@@ -160,7 +160,14 @@ export default function JoltGenerationConsole() {
   // silently defeat derivation. Only a value the admin actually types is an override.
   const [categoryId, setCategoryId] = useState("");
   const [productType, setProductType] = useState<ProductType | null>(null);
-  const [productText, setProductText] = useState(SAMPLE_PRODUCT);
+  // Start EMPTY — no dirty dummy on load. Static example on demand via 'reset ke contoh statis';
+  // usual path is 'Load from Product Type'.
+  const [productText, setProductText] = useState("");
+  // A3: optional Step-2 channel fields, merged into the sample source (mirrors publish-diagnostics),
+  // so the agent generates JOLT that also maps channel-unique Step-2 fields.
+  const [channelFieldsText, setChannelFieldsText] = useState("");
+  const [suggestingChannel, setSuggestingChannel] = useState(false);
+  const [channelFieldsNote, setChannelFieldsNote] = useState<string | null>(null);
   const [running, setRunning] = useState(false);
   const [result, setResult] = useState<GenerateJoltResult | null>(null);
   const [error, setError] = useState<unknown>(null);
@@ -173,6 +180,7 @@ export default function JoltGenerationConsole() {
   const timedOutRef = useRef(false); // distinguish timeout-abort from user-cancel
 
   const jsonError = useMemo(() => {
+    if (!productText.trim()) return null; // empty is not an error — just not runnable yet
     try {
       JSON.parse(productText);
       return null;
@@ -181,12 +189,47 @@ export default function JoltGenerationConsole() {
     }
   }, [productText]);
 
+  // Parse the optional Step-2 channel fields box. Empty → none, no error. Must be a JSON object.
+  const { channelFields, channelFieldsError } = useMemo(() => {
+    const t = channelFieldsText.trim();
+    if (!t) return { channelFields: null as Record<string, unknown> | null, channelFieldsError: null as string | null };
+    try {
+      const parsed = JSON.parse(t);
+      if (parsed == null || typeof parsed !== "object" || Array.isArray(parsed)) {
+        return { channelFields: null, channelFieldsError: "harus berupa objek JSON { field: nilai }" };
+      }
+      return { channelFields: parsed as Record<string, unknown>, channelFieldsError: null };
+    } catch (e) {
+      return { channelFields: null, channelFieldsError: (e as Error).message };
+    }
+  }, [channelFieldsText]);
+
   const clearTimers = useCallback(() => {
     if (timeoutRef.current) clearTimeout(timeoutRef.current);
     if (tickRef.current) clearInterval(tickRef.current);
     timeoutRef.current = null;
     tickRef.current = null;
   }, []);
+
+  // Fill the channel-fields box with this channel's known Step-2 field names (offline; no channel creds).
+  async function suggestChannelFields() {
+    if (suggestingChannel) return;
+    setSuggestingChannel(true); setChannelFieldsNote(null);
+    try {
+      const fields = await AiAdminService.getChannelFieldNames(channelId);
+      const keys = Object.keys(fields ?? {});
+      if (keys.length === 0) {
+        setChannelFieldsNote(`Channel ${channelId} tak punya field Step-2 khusus di katalog.`);
+      } else {
+        setChannelFieldsText(JSON.stringify(fields, null, 2));
+        setChannelFieldsNote(`${keys.length} field disarankan — isi nilainya (opsional) lalu jalankan.`);
+      }
+    } catch (e) {
+      setChannelFieldsNote(e instanceof Error ? e.message : "Gagal memuat saran");
+    } finally {
+      setSuggestingChannel(false);
+    }
+  }
 
   // Clean up on unmount (abort any in-flight request + timers).
   useEffect(() => {
@@ -233,6 +276,8 @@ export default function JoltGenerationConsole() {
 
     try {
       const product = JSON.parse(productText);
+      // A3: fold the optional Step-2 channel fields into the sample source so the agent maps them too.
+      const sample = channelFields ? { ...product, ...channelFields } : product;
       // Phase 0B: when a Product Type is picked, pass its id and let the BACKEND derive the
       // category from ProductType.categorySlug. Send categoryId only if the admin actually
       // typed one (an explicit override / the standalone value when no type is picked);
@@ -242,7 +287,7 @@ export default function JoltGenerationConsole() {
           channelId,
           categoryId: categoryId.trim(),
           productTypeId: productType?.id,
-          product,
+          product: sample,
         },
         controller.signal,
       ));
@@ -326,8 +371,14 @@ export default function JoltGenerationConsole() {
               <label className="text-xs text-gray-500 dark:text-gray-400">Master product (JSON)</label>
               <button onClick={() => setProductText(SAMPLE_PRODUCT)} className="text-[11px] text-blue-500 hover:underline">reset ke contoh statis</button>
             </div>
-            {/* Seed from a real Product Type's fields — and drive category from its categorySlug. */}
-            <ProductTypeSampleLoader onLoaded={setProductText} onProductTypeChange={setProductType} className="mb-2" />
+            {/* Seed from a real Product Type's fields — and drive category from its categorySlug.
+                channelId enables the loader's "sertakan channel fields" (Step-2) toggle. */}
+            <ProductTypeSampleLoader
+              onLoaded={setProductText}
+              onProductTypeChange={setProductType}
+              channelId={channelId}
+              className="mb-2"
+            />
             <textarea
               value={productText}
               onChange={(e) => setProductText(e.target.value)}
@@ -339,9 +390,47 @@ export default function JoltGenerationConsole() {
             />
             {jsonError ? (
               <p className="text-[11px] text-red-500 mt-1">JSON tidak valid: {jsonError}</p>
-            ) : (
+            ) : productText.trim() ? (
               <p className="text-[11px] text-gray-400 mt-1">JSON valid ✓</p>
+            ) : (
+              <p className="text-[11px] text-gray-400 mt-1">Kosong — <strong>Load from Product Type</strong>, paste JSON, atau <strong>reset ke contoh statis</strong>.</p>
             )}
+          </div>
+
+          {/* A3: optional Step-2 channel fields merged into the sample source (target side is auto-fetched
+              by the agent's get_channel_schema, so there is no separate "live channel" box here). */}
+          <div>
+            <div className="flex items-center justify-between mb-1">
+              <label className="text-xs text-gray-500 dark:text-gray-400">Channel fields — Step-2 (JSON, opsional)</label>
+              <button
+                type="button"
+                onClick={suggestChannelFields}
+                disabled={suggestingChannel}
+                className="inline-flex items-center gap-1 text-[11px] text-blue-500 hover:underline disabled:opacity-50"
+              >
+                {suggestingChannel ? <Spinner size={11} /> : <SparklesIcon size={12} />}
+                Suggest untuk {channelId}
+              </button>
+            </div>
+            <p className="text-[10px] text-gray-400 dark:text-gray-500 mb-1">
+              Field channel-spesifik Step-2 (mis. <code>days_to_ship</code>). Digabung ke source → agent
+              memetakannya juga. Kosongkan bila hanya field master.
+            </p>
+            <textarea
+              value={channelFieldsText}
+              onChange={(e) => setChannelFieldsText(e.target.value)}
+              spellCheck={false}
+              rows={4}
+              placeholder={'{ "days_to_ship": 3, "size_chart_id": "SC-123" }'}
+              className={`w-full font-mono text-[11px] border rounded-lg px-3 py-2 bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100 focus:outline-none focus:ring-2 ${
+                channelFieldsError ? "border-red-400 focus:ring-red-400" : "border-gray-200 dark:border-gray-700 focus:ring-violet-400"
+              }`}
+            />
+            {channelFieldsError ? (
+              <p className="text-[11px] text-red-500 mt-1">JSON tidak valid: {channelFieldsError}</p>
+            ) : channelFieldsNote ? (
+              <p className="text-[11px] text-emerald-600 dark:text-emerald-400 mt-1">✓ {channelFieldsNote}</p>
+            ) : null}
           </div>
 
           {/* §3 · pre-flight rate-limit warning */}
@@ -370,7 +459,7 @@ export default function JoltGenerationConsole() {
           ) : (
             <button
               onClick={run}
-              disabled={!!jsonError || (!categoryId.trim() && !productType)}
+              disabled={!productText.trim() || !!jsonError || !!channelFieldsError || (!categoryId.trim() && !productType)}
               className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-violet-600 hover:bg-violet-700 text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-60"
             >
               <PlayIcon size={14} /> Jalankan Agent
