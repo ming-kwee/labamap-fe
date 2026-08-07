@@ -31,7 +31,7 @@ import {
 import { MasterProduct } from "@/modules/ecommerce-product-v2/types/product";
 import { ChannelProductData } from "@/modules/ecommerce-product-v2/step2-channel-fields/types/channelStore";
 import { ChannelProductDataService } from "@/modules/ecommerce-product-v2/step2-channel-fields/services/channelStore.service";
-import { analyzePatternMatching, fetchCategoryAttributeSchema } from "@/modules/ecommerce-product-v2/services/pattern-matching.service";
+import { analyzePatternMatching, fetchCategoryAttributeSchema, fetchCategoryNodes, type ChannelCategoryNode } from "@/modules/ecommerce-product-v2/services/pattern-matching.service";
 import { ChannelStoreService } from "@/modules/ecommerce-product-v2/step2-channel-fields/services/channelStore.service";
 import { AiAdminService } from "../../services/aiAdmin.service";
 import { analyzePublish } from "@/modules/ecommerce-product-v2/services/publish-analyze.service";
@@ -272,6 +272,7 @@ export default function PublishDiagnosticsPage() {
   const [fetchingLive, setFetchingLive] = useState(false);
   const [fetchLiveError, setFetchLiveError] = useState<string | null>(null);
   const [fetchLiveInfo, setFetchLiveInfo] = useState<string | null>(null);
+  const [showBrowse, setShowBrowse] = useState(false);
 
   // ── Shared run state ────────────────────────────────────────────────────
   const [running, setRunning] = useState(false);
@@ -732,11 +733,28 @@ export default function PublishDiagnosticsPage() {
                     Fetch live
                   </button>
                 </div>
-                <p className="text-[10px] text-gray-400 dark:text-gray-500 mb-1">
-                  <strong>channelCategoryId</strong> = ID kategori <em>leaf</em> milik channel (mis. angka Shopee / GID Shopify),
-                  dari pohon kategori store — <strong>bukan</strong> slug master (<code>{categoryId || "clothing"}</code>) di atas.
-                  Fetch &amp; browse sama-sama butuh kredensial store.
-                </p>
+                <div className="flex items-center justify-between mb-1">
+                  <p className="text-[10px] text-gray-400 dark:text-gray-500">
+                    <strong>channelCategoryId</strong> = ID kategori <em>leaf</em> milik channel (mis. angka Shopee / GID Shopify),
+                    dari pohon kategori store — <strong>bukan</strong> slug master (<code>{categoryId || "clothing"}</code>) di atas.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => setShowBrowse((v) => !v)}
+                    disabled={!liveStoreId}
+                    className="whitespace-nowrap text-[11px] text-blue-500 hover:underline disabled:opacity-50"
+                  >
+                    {showBrowse ? "Tutup browse" : "Browse kategori…"}
+                  </button>
+                </div>
+                {showBrowse && liveStoreId && (
+                  <CategoryTreePicker
+                    channelId={channelId}
+                    storeId={liveStoreId}
+                    organizationId={orgId}
+                    onPick={(id) => { setLiveCategoryId(id); setShowBrowse(false); }}
+                  />
+                )}
                 {fetchLiveError && <p className="text-[11px] text-amber-600 dark:text-amber-400 mb-1">⚠ {fetchLiveError}</p>}
                 {fetchLiveInfo && !fetchLiveError && <p className="text-[11px] text-emerald-600 dark:text-emerald-400 mb-1">✓ {fetchLiveInfo}</p>}
                 <textarea
@@ -1550,6 +1568,82 @@ function PublishAnalysisResult({ result }: { result: PublishAnalysisResponse }) 
       <SectionCard title="Raw response" subtitle="PublishAnalysisResponse penuh">
         <JsonViewer label="raw" value={result} />
       </SectionCard>
+    </div>
+  );
+}
+
+/**
+ * Cascading category-tree picker for the channelCategoryId. Loads root nodes, then children as the user
+ * drills down; picking a leaf (no ›) calls onPick with its id. Uses the same category endpoints (and the
+ * same store credentials) as a real category browse — so it only works for a connected store.
+ */
+function CategoryTreePicker({
+  channelId,
+  storeId,
+  organizationId,
+  onPick,
+}: {
+  channelId: string;
+  storeId: string;
+  organizationId: string;
+  onPick: (id: string) => void;
+}) {
+  const [levels, setLevels] = useState<Array<{ nodes: ChannelCategoryNode[]; selected: string }>>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    if (!organizationId) { setError("organizationId tak tersedia."); setLevels([]); return; }
+    setLoading(true); setError(null); setLevels([]);
+    fetchCategoryNodes(channelId, storeId, null, organizationId)
+      .then((nodes) => {
+        if (!alive) return;
+        if (nodes.length === 0) setError("Kosong — cek koneksi store / kredensial.");
+        setLevels([{ nodes, selected: "" }]);
+      })
+      .catch((e) => { if (alive) setError(e instanceof Error ? e.message : "Gagal memuat kategori"); })
+      .finally(() => { if (alive) setLoading(false); });
+    return () => { alive = false; };
+  }, [channelId, storeId, organizationId]);
+
+  async function handleSelect(levelIdx: number, nodeId: string) {
+    const node = levels[levelIdx]?.nodes.find((n) => n.id === nodeId);
+    const next = levels.slice(0, levelIdx + 1);
+    next[levelIdx] = { ...next[levelIdx], selected: nodeId };
+    setLevels(next);
+    if (!node || !nodeId) return;
+    if (!node.hasChildren) { onPick(node.id); return; }
+    setLoading(true); setError(null);
+    try {
+      const children = await fetchCategoryNodes(channelId, storeId, node.id, organizationId);
+      if (children.length === 0) { onPick(node.id); return; } // no children returned → treat as leaf
+      setLevels([...next, { nodes: children, selected: "" }]);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Gagal memuat sub-kategori");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div className="rounded-lg border border-gray-200 dark:border-gray-700 p-2 mb-1 space-y-1.5">
+      {levels.map((lvl, i) => (
+        <select
+          key={i}
+          value={lvl.selected}
+          onChange={(e) => handleSelect(i, e.target.value)}
+          className="w-full border border-gray-200 dark:border-gray-700 rounded-lg px-2 py-1 text-[11px] bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300"
+        >
+          <option value="">{i === 0 ? "Pilih kategori…" : "Pilih sub-kategori…"}</option>
+          {lvl.nodes.map((n) => (
+            <option key={n.id} value={n.id}>{n.name}{n.hasChildren ? " ›" : ""}</option>
+          ))}
+        </select>
+      ))}
+      {loading && <p className="text-[11px] text-gray-400 flex items-center gap-1"><Spinner size={11} /> memuat…</p>}
+      {error && <p className="text-[11px] text-amber-600 dark:text-amber-400">⚠ {error}</p>}
+      <p className="text-[10px] text-gray-400">Pilih hingga kategori daun (tanpa ›) untuk mengisi channelCategoryId.</p>
     </div>
   );
 }

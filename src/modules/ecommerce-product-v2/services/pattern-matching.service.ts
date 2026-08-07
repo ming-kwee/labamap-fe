@@ -137,6 +137,42 @@ export interface CategoryAttributeSchemaResponse {
   matchedCount: number;                    // how many fields resolved to a real path
 }
 
+/** A node in the channel's category tree (for the channelCategoryId browse picker). */
+export interface ChannelCategoryNode {
+  id: string;
+  name: string;
+  hasChildren: boolean;
+  parentId?: string | null;
+}
+
+/**
+ * Browse the channel's category tree — root when parentId is null, else children of parentId.
+ * GET /api/v1/categories/{channelType}/{storeId}/(root | children/{parentId})?organizationId=
+ * Needs a connected store (creds). Returns [] on any failure.
+ */
+export async function fetchCategoryNodes(
+  channelType: string,
+  storeId: string,
+  parentId: string | null,
+  organizationId: string,
+  signal?: AbortSignal,
+): Promise<ChannelCategoryNode[]> {
+  const seg = parentId ? `children/${encodeURIComponent(parentId)}` : "root";
+  const url =
+    `${BASE_URL}/categories/${encodeURIComponent(channelType)}/${encodeURIComponent(storeId)}/${seg}` +
+    `?organizationId=${encodeURIComponent(organizationId)}`;
+  const response = await fetch(url, {
+    method: 'GET',
+    headers: { 'Content-Type': 'application/json' },
+    signal,
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to browse categories: ${response.statusText}`);
+  }
+  const data = await response.json();
+  return (data?.nodes ?? []) as ChannelCategoryNode[];
+}
+
 /**
  * A2+ auto-fetch: live/cached channel category attributes as a TARGET schema fragment.
  * GET /api/v1/categories/{channelType}/{storeId}/attributes/{categoryId}/schema?organizationId=
