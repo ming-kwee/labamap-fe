@@ -535,6 +535,7 @@ export default function PublishDiagnosticsPage() {
                 <ProductTypeSampleLoader
                   onLoaded={setProductText}
                   onProductTypeChange={(pt) => { if (pt) setCategoryId(pt.categorySlug ?? "default"); }}
+                  channelId={channelId}
                   className="mb-2"
                 />
                 <textarea

@@ -104,6 +104,7 @@ export interface SampleMasterProductMeta {
   typeSpecificFieldCount: number; // type-specific fields = ProductType.attributeCount
   variantDimensions: string[]; // variation axes, e.g. ["color", "size"]
   hasVariants: boolean; // whether the sample has variants[0].*
+  channelFieldCount?: number; // A1: channel-specific Step-2 fields included (0 unless includeChannelFields)
 }
 
 /** `.sample` seeds the textarea (editable); `.meta` describes the composition. */

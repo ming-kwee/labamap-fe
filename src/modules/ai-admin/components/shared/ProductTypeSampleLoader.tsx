@@ -27,17 +27,19 @@ import type { SampleMasterProductMeta } from "../../types/session";
 import { SparklesIcon } from "./icons";
 import { Spinner } from "./ui";
 
-/** "5 global · 2 khusus · axes: color, size" — accurate composition from the sample's meta. */
+/** "5 global · 2 khusus · axes: color, size · 3 channel" — accurate composition from the sample's meta. */
 function compositionLabel(meta: SampleMasterProductMeta): string {
   const parts = [`${meta.globalFieldCount} global`];
   if (meta.typeSpecificFieldCount > 0) parts.push(`${meta.typeSpecificFieldCount} khusus`);
   if (meta.variantDimensions.length) parts.push(`axes: ${meta.variantDimensions.join(", ")}`);
+  if (meta.channelFieldCount && meta.channelFieldCount > 0) parts.push(`${meta.channelFieldCount} channel`);
   return parts.join(" · ");
 }
 
 export function ProductTypeSampleLoader({
   onLoaded,
   onProductTypeChange,
+  channelId,
   className = "",
 }: {
   /** Called with the pretty-printed sample JSON when a Product Type sample loads. */
@@ -48,6 +50,12 @@ export function ProductTypeSampleLoader({
    * ProductType.categorySlug (Phase 0B) off the same picker used for sample seeding.
    */
   onProductTypeChange?: (pt: ProductType | null) => void;
+  /**
+   * A1 (optional) — when given, a "sertakan channel fields" toggle appears; enabling it makes the
+   * loaded sample ALSO include this channel's Step-2 channel-specific fields. Absent → toggle hidden
+   * and behaviour is unchanged (master-only sample), so other callers stay unaffected.
+   */
+  channelId?: string;
   className?: string;
 }) {
   const [types, setTypes] = useState<ProductType[]>([]);
@@ -56,6 +64,7 @@ export function ProductTypeSampleLoader({
   const [loading, setLoading] = useState(false);
   const [warning, setWarning] = useState<string | null>(null);
   const [meta, setMeta] = useState<SampleMasterProductMeta | null>(null);
+  const [includeChannel, setIncludeChannel] = useState(false);
 
   useEffect(() => {
     let alive = true;
@@ -74,7 +83,10 @@ export function ProductTypeSampleLoader({
     setMeta(null);
     try {
       // Response envelope { sample, meta }: `.sample` seeds the textarea, `.meta` labels it.
-      const { sample, meta } = await AiAdminService.getSampleMasterProduct(selectedId);
+      const { sample, meta } = await AiAdminService.getSampleMasterProduct(
+        selectedId,
+        channelId && includeChannel ? { channelId, includeChannelFields: true } : undefined,
+      );
       onLoaded(JSON.stringify(sample, null, 2));
       setMeta(meta);
     } catch (e) {
@@ -121,6 +133,17 @@ export function ProductTypeSampleLoader({
           Load from Product Type
         </button>
       </div>
+      {channelId && (
+        <label className="flex items-center gap-1.5 mt-1.5 text-[11px] text-gray-600 dark:text-gray-400 cursor-pointer select-none">
+          <input
+            type="checkbox"
+            checked={includeChannel}
+            onChange={(e) => setIncludeChannel(e.target.checked)}
+            className="h-3 w-3 rounded border-gray-300 dark:border-gray-600 text-violet-600 focus:ring-violet-400"
+          />
+          Sertakan channel fields (Step-2) untuk <strong>{channelId}</strong> — agar field channel-unique ikut terpetakan.
+        </label>
+      )}
       {warning ? (
         <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-1.5">
           ⚠ {warning}

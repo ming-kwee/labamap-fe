@@ -134,8 +134,18 @@ export const AiAdminService = {
    * 404 (AiApiError kind "not_found") only when the catalog has no master attributes at
    * all — surface the message, do NOT fall back to a hardcoded example.
    */
-  getSampleMasterProduct(productTypeId: string): Promise<SampleMasterProductResponse> {
-    return request<SampleMasterProductResponse>(`${BASE}/sample-master-product${buildQs({ productTypeId })}`);
+  getSampleMasterProduct(
+    productTypeId: string,
+    opts?: { channelId?: string; includeChannelFields?: boolean },
+  ): Promise<SampleMasterProductResponse> {
+    // A1: opt-in — when includeChannelFields + channelId are set, the sample also carries that channel's
+    // Step-2 channel-specific fields, so the schema-level path sees the real publish source picture.
+    const qs = buildQs({
+      productTypeId,
+      channelId: opts?.includeChannelFields ? opts?.channelId : undefined,
+      includeChannelFields: opts?.includeChannelFields ? true : undefined,
+    });
+    return request<SampleMasterProductResponse>(`${BASE}/sample-master-product${qs}`);
   },
 
   /**
