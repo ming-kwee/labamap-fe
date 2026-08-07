@@ -137,6 +137,38 @@ export interface CategoryAttributeSchemaResponse {
   matchedCount: number;                    // how many fields resolved to a real path
 }
 
+/** Resolved category-tree endpoints for a store (drives the CATEGORY_TREE picker). */
+export interface CategoryTreeConfigResponse {
+  rootEndpoint: string;
+  childEndpoint: string;
+  searchEndpoint: string | null; // null = channel has no full-tree search endpoint
+}
+
+/**
+ * Resolved category-tree endpoint URLs for a (channel, store) — single backend source of truth
+ * (which channels have a search endpoint lives there, not in the FE).
+ * GET /api/v1/categories/{channelType}/{storeId}/tree-config?organizationId=
+ */
+export async function fetchCategoryTreeConfig(
+  channelType: string,
+  storeId: string,
+  organizationId: string,
+  signal?: AbortSignal,
+): Promise<CategoryTreeConfigResponse> {
+  const url =
+    `${BASE_URL}/categories/${encodeURIComponent(channelType)}/${encodeURIComponent(storeId)}/tree-config` +
+    `?organizationId=${encodeURIComponent(organizationId)}`;
+  const response = await fetch(url, {
+    method: 'GET',
+    headers: { 'Content-Type': 'application/json' },
+    signal,
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to fetch category tree config: ${response.statusText}`);
+  }
+  return response.json();
+}
+
 /**
  * A2+ auto-fetch: live/cached channel category attributes as a TARGET schema fragment.
  * GET /api/v1/categories/{channelType}/{storeId}/attributes/{categoryId}/schema?organizationId=

@@ -31,7 +31,7 @@ import {
 import { MasterProduct } from "@/modules/ecommerce-product-v2/types/product";
 import { ChannelProductData } from "@/modules/ecommerce-product-v2/step2-channel-fields/types/channelStore";
 import { ChannelProductDataService } from "@/modules/ecommerce-product-v2/step2-channel-fields/services/channelStore.service";
-import { analyzePatternMatching, fetchCategoryAttributeSchema } from "@/modules/ecommerce-product-v2/services/pattern-matching.service";
+import { analyzePatternMatching, fetchCategoryAttributeSchema, fetchCategoryTreeConfig } from "@/modules/ecommerce-product-v2/services/pattern-matching.service";
 import { ChannelStoreService } from "@/modules/ecommerce-product-v2/step2-channel-fields/services/channelStore.service";
 import Step2CategoryTreePicker from "@/modules/ecommerce-product-v2/step2-channel-fields/components/wizard/CategoryTreePicker";
 import type { ChannelFormField } from "@/modules/ecommerce-product-v2/step2-channel-fields/types/channelStore";
@@ -69,10 +69,6 @@ import {
 } from "../shared/ui";
 
 const RUN_TIMEOUT_MS = 120_000;
-
-// Channels whose category tree has a full-text search endpoint (mirrors the backend
-// ChannelStepSchemaService.SEARCH_ENABLED_CHANNELS). Others fall back to client-side level filter.
-const SEARCH_ENABLED_CHANNELS = new Set(["shopify", "amazon", "tiktokshop", "lazada", "shopee", "ebay"]);
 
 const SAMPLE_PRODUCT: MasterProduct = {
   id: "diag-sample",
@@ -332,26 +328,31 @@ export default function PublishDiagnosticsPage() {
   }, [liveChannelFieldsText]);
 
   // Synthesize a CATEGORY_TREE field so we can reuse the Step-2 CategoryTreePicker (browse + search)
-  // instead of a bespoke picker. Endpoints mirror ChannelStepSchemaService (root/child = /categories,
-  // search = /merchant-data), fully resolved with store + orgId. Null until a store is chosen.
-  const categoryField = useMemo<ChannelFormField | null>(() => {
-    if (!liveStoreId || !orgId) return null;
-    const c = encodeURIComponent(channelId), s = encodeURIComponent(liveStoreId), o = encodeURIComponent(orgId);
-    return {
-      fieldName: "channelCategoryId",
-      fieldType: "CATEGORY_TREE",
-      label: "Kategori channel",
-      required: false,
-      categoryTreeConfig: {
-        rootEndpoint: `/categories/${c}/${s}/root?organizationId=${o}`,
-        childEndpoint: `/categories/${c}/${s}/children/{parentId}?organizationId=${o}`,
-        maxDepth: 6,
-        requireLeafNode: true,
-        searchEndpoint: SEARCH_ENABLED_CHANNELS.has(channelId.toLowerCase())
-          ? `/merchant-data/${c}/${s}/categories/search?organizationId=${o}`
-          : undefined,
-      },
-    } as ChannelFormField;
+  // instead of a bespoke picker. The endpoint URLs (incl. whether the channel has a search endpoint)
+  // come from the backend tree-config — single source of truth, no FE-side channel list.
+  const [categoryField, setCategoryField] = useState<ChannelFormField | null>(null);
+  useEffect(() => {
+    if (!liveStoreId || !orgId) { setCategoryField(null); return; }
+    let alive = true;
+    fetchCategoryTreeConfig(channelId, liveStoreId, orgId)
+      .then((cfg) => {
+        if (!alive) return;
+        setCategoryField({
+          fieldName: "channelCategoryId",
+          fieldType: "CATEGORY_TREE",
+          label: "Kategori channel",
+          required: false,
+          categoryTreeConfig: {
+            rootEndpoint: cfg.rootEndpoint,
+            childEndpoint: cfg.childEndpoint,
+            maxDepth: 6,
+            requireLeafNode: true,
+            searchEndpoint: cfg.searchEndpoint ?? undefined,
+          },
+        } as ChannelFormField);
+      })
+      .catch(() => { if (alive) setCategoryField(null); });
+    return () => { alive = false; };
   }, [channelId, liveStoreId, orgId]);
 
   // A2+ : load this org's stores for the chosen channel, to pick creds for the live attribute fetch.
