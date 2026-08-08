@@ -8,6 +8,10 @@ export interface ImageUploadResponse {
   thumbnailUrl: string;
   filename: string;
   size: number;
+  /** Original image width in px — present since images I0; null/absent when the bytes couldn't be decoded. */
+  width?: number;
+  /** Original image height in px — present since images I0; null/absent when the bytes couldn't be decoded. */
+  height?: number;
   mimeType: string;
   uploadedAt: string;
   organizationId: string;
