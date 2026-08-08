@@ -16,6 +16,7 @@ import {
 import ChannelFieldInput from "./ChannelFieldInput";
 import VariantOverridesTable from "./VariantOverridesTable";
 import MasterOverrideSection from "./MasterOverrideSection";
+import StoreImageOverrideEditor from "./StoreImageOverrideEditor";
 import { ProductTypeService } from "@/app/(admin)/omni-admin/product-types/_services/product-type.service";
 import { normaliseChannelType, applyChannelCategoryDefault } from "../../utils/categoryPrefill";
 
@@ -540,6 +541,26 @@ export default function ChannelStoreTab({ schema, values, onChange, isSaving, la
     const next = { ...values.masterOverrides };
     if (value === null) { delete next[fieldName]; } else { next[fieldName] = value; }
     onChange({ ...values, masterOverrides: next });
+  }
+
+  // ── Images I4: per-store image override (channelData.images) ─────────────────
+  // Canonical master gallery for the read-only reference. Prefer the snapshot's merged `images`;
+  // fall back to [mainImage, ...galleryImages] until the backend snapshot ships `images`.
+  const masterImages = useMemo(() => {
+    const list =
+      masterProduct?.images && masterProduct.images.length
+        ? masterProduct.images
+        : [masterProduct?.mainImage, ...(masterProduct?.galleryImages ?? [])];
+    return (list ?? []).filter((u): u is string => typeof u === "string" && u.trim().length > 0);
+  }, [masterProduct]);
+
+  // Non-destructive: write channelData.images only when there's a real override; empty → drop the key
+  // so publish falls back to the master gallery (contract docs/images/06 §3).
+  function handleImagesOverrideChange(urls: string[] | undefined) {
+    const nextChannelData = { ...values.channelData };
+    if (urls && urls.length > 0) nextChannelData.images = urls;
+    else delete nextChannelData.images;
+    onChange({ ...values, channelData: nextChannelData });
   }
 
   // ── Category field deduplication ─────────────────────────────────────────
@@ -1162,6 +1183,16 @@ export default function ChannelStoreTab({ schema, values, onChange, isSaving, la
 
       {/* ── Scenario D: category-specific injected fields ───────────────────── */}
       {renderCategoryAttributeSection()}
+
+      {/* ── Images I4: per-store image override editor ───────────────────────── */}
+      <StoreImageOverrideEditor
+        channelType={schema.channelType}
+        orgId={orgId}
+        masterProductId={masterProductId ?? ""}
+        masterImages={masterImages}
+        value={Array.isArray(values.channelData.images) ? (values.channelData.images as string[]) : undefined}
+        onChange={handleImagesOverrideChange}
+      />
     </div>
   );
 }

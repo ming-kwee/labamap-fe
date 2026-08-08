@@ -425,6 +425,14 @@ export interface MasterProductSnapshot {
   weight?: number;
   dimensions?: { length: number; width: number; height: number; unit: string };
   mainImage?: string;
+  /**
+   * Images I4: canonical master image gallery (mainImage merged with galleryImages, mainImage first),
+   * shown read-only in the Step-2 per-store image editor as the inheritance baseline. Optional — when
+   * the backend snapshot omits it the editor falls back to `[mainImage, ...galleryImages]`.
+   */
+  images?: string[];
+  /** Images I4: raw gallery images (excl. mainImage). Fallback source when `images` is absent. */
+  galleryImages?: string[];
   variants?: Array<{
     sku: string;
     variantLabel: string;
@@ -535,6 +543,73 @@ export interface ChannelStepRequest {
   storeId?: string;
   /** @deprecated Backend now fetches variants from DB using masterProductId. No longer sent. */
   masterVariants?: Array<{ sku: string; label: string }>;
+}
+
+// ─── Images I2/I4: per-channel image spec + validation ───────────────────────
+// The channel's image constraints modelled as DATA (docs/images/03), read at runtime and never
+// hardcoded in the FE. Served by GET /api/v1/admin/channel-image-specs/{channelType}. All fields are
+// optional because the seeder fills a verified subset per channel (warning-first / fill-if-null).
+
+/** Variant-image-specific overrides of the base spec (some channels cap variant images differently). */
+export interface ChannelImageSpecVariantRule {
+  maxCount?: number;
+  minWidth?: number;
+  minHeight?: number;
+  maxWidth?: number;
+  maxHeight?: number;
+}
+
+export interface ChannelImageSpec {
+  channelType: string;
+  /** Optional category scope — some channels vary requirements per category. */
+  categorySlug?: string;
+  /** Max number of images (e.g. Shopee 9, Shopify 250). */
+  maxCount?: number;
+  minWidth?: number;
+  minHeight?: number;
+  maxWidth?: number;
+  maxHeight?: number;
+  /** e.g. ["1:1","3:4"] — empty/absent = any ratio allowed. */
+  allowedAspectRatios?: string[];
+  /** Shortcut for the common "main image must be square" rule. */
+  requireSquare?: boolean;
+  maxBytes?: number;
+  /** e.g. ["jpeg","png","webp"]. */
+  allowedFormats?: string[];
+  /** e.g. Amazon main image requires a WHITE background. */
+  backgroundRequirement?: "NONE" | "WHITE" | string;
+  variant?: ChannelImageSpecVariantRule;
+  /** true = channel pulls the image from our public URL (Shopee/TikTok) → URL must be publicly fetchable. */
+  channelSideUpload?: boolean;
+}
+
+export type ImageIssueSeverity = "ERROR" | "WARNING" | "INFO";
+
+/**
+ * One spec violation returned by the validate endpoint. Observe-first: these are surfaced as
+ * inline warnings in Step-2, never blocking save (docs/images/03 §4, docs/images/06 §4).
+ * `code` ∈ { MAX_COUNT, MIN_WIDTH, MIN_HEIGHT, ASPECT_RATIO, MAX_BYTES, FORMAT_NOT_ALLOWED, … }.
+ */
+export interface ImageIssue {
+  severity: ImageIssueSeverity | string;
+  code: string;
+  message: string;
+  /** The offending image URL, when the issue is per-image (count issues have no url). */
+  url?: string;
+}
+
+/** One image to validate. Dimensions are filled server-side from the recorded ImageAsset (I2b). */
+export interface ImageValidationItem {
+  url: string;
+  width?: number;
+  height?: number;
+  bytes?: number;
+  format?: string;
+}
+
+export interface ImageValidationRequest {
+  categorySlug?: string;
+  images: ImageValidationItem[];
 }
 
 // ─── OAuth Initiation Types (Phase B) ────────────────────────────────────────

@@ -37,6 +37,7 @@
     "react-dnd-html5-backend": "^16.0.1",
     "react-dom": "^19.1.1",
     "react-dropzone": "^14.3.5",
+    "react-easy-crop": "^6.2.3",
     "swiper": "^11.2.0",
     "tailwind-merge": "^2.6.0",
     "uuid": "^14.0.1"
