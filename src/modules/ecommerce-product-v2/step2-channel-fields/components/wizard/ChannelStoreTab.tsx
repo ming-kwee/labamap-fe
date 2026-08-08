@@ -1192,6 +1192,11 @@ export default function ChannelStoreTab({ schema, values, onChange, isSaving, la
         masterImages={masterImages}
         value={Array.isArray(values.channelData.images) ? (values.channelData.images as string[]) : undefined}
         onChange={handleImagesOverrideChange}
+        variants={masterProduct?.variants}
+        variantOverrides={values.variantOverrides}
+        onVariantImagesChange={(sku, urls) =>
+          handleVariantChange(sku, "variantImages", urls && urls.length > 0 ? urls : undefined)
+        }
       />
     </div>
   );

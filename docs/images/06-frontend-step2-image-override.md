@@ -57,16 +57,23 @@ Panel **"Images (per store)"** di `ChannelFieldsWizard` (atau field type `IMAGE_
 - [x] Crop/resize menghasilkan derivative (upload), bukan menimpa master.
 - [x] Simpan menulis `channelData.images` (urut); kosong = tak mengirim `images` (fallback master).
 - [x] Validasi channel-spec ditampilkan inline sebagai warning (tak memblokir).
-- [ ] Variant image per-store (opsional) via `channelData.variantImages` — *belum; pola sama, menyusul.*
+- [x] Variant image per-store via **per-SKU** `variantOverrides[sku].variantImages` (bukan flat
+      `channelData.variantImages` — master variant image bersifat per-SKU, jadi override-nya per-SKU).
 
 > **Implementasi FE (v9, 2026-08-08):** `StoreImageOverrideEditor.tsx` + `ImageCropModal.tsx`
 > (react-easy-crop) + `utils/image-crop.ts` + `services/channelImageSpec.service.ts`, di-render di
-> `ChannelStoreTab` di bawah field sections. Master images baseline read-only (dari
-> `MasterProductSnapshot.images` ?? `[mainImage, …galleryImages]`); "Customise" mem-fork override;
-> reorder (panah)/set-main/crop/remove; upload via `uploadViaPresign` → fallback `uploadImage`;
-> validasi debounce ke `/admin/channel-image-specs/{ch}/validate` (degrade diam bila endpoint absen).
-> Non-destruktif: list kosong → `channelData.images` di-drop → publish jatuh ke master. Tersisa: QA
-> visual terhadap backend berjalan + variant-image override.
+> `ChannelStoreTab` di bawah field sections. Inti list-editor (`ImageListEditor`) dipakai ulang untuk
+> gambar level-produk **dan** tiap SKU. Master images baseline read-only (dari
+> `MasterProductSnapshot.images` ?? `[mainImage, …galleryImages]`; variant dari `variant.variantImages`);
+> "Customise" mem-fork override; reorder (panah)/set-main/crop/remove; upload via `uploadViaPresign` →
+> fallback `uploadImage`; validasi debounce ke `/admin/channel-image-specs/{ch}/validate` (degrade diam
+> bila endpoint absen). Non-destruktif: list kosong → key di-drop → publish jatuh ke master.
+> - Product override → `channelData.images` (lewat handler ChannelStoreTab).
+> - Variant override → `variantOverrides[sku].variantImages` (lewat `handleVariantChange` yang sudah ada
+>   → simpan/hydrate/merge otomatis; backend menerapkan `URL_ARRAY_TO_SRC_OBJECTS` seperti biasa).
+>
+> **Tersisa:** QA visual terhadap backend berjalan + endpoint spec/validate aktif; validasi spec khusus
+> variant (`ChannelImageSpec.variant`) belum di-surface (product-level saja untuk saat ini).
 
 ## 6. Yang JANGAN
 
