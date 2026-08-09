@@ -114,6 +114,52 @@ Any variant field NOT in `processedFieldNames` is emitted as a passthrough entry
 
 This ensures channel-specific fields injected by the post-JOLT variant override step (`barcode`, `inventory_policy`, etc.) always reach the sync API even when absent from the database attribute mapping.
 
+### Passthrough must not resurrect a post-processing-consumed field (Step-2 variant image edit)
+
+> **Status: ✅ Fixed.** `PostProcessingContractService.variantSourceFieldsConsumed()` +
+> `ChannelPublishService.applyVariantOverridesPostJolt(..., consumed)`. Regression covered by
+> `PostProcessingContractServiceTest` and `ChannelPublishServiceVariantOverrideTest`.
+
+**Symptom.** Editing a variant's images in Step 2 produced a malformed entry *in addition to* the
+correct one — a raw URL array forwarded untransformed:
+
+```
+channelVariant { vrntId:"passthrough_variantImages"  chnlVrntName:"product.variants.variantImages"
+                 chnlVrntValue:"[\"…a.jpg\",\"…b.jpg\"]"  chnlVrntType:"TEXT" }               // WRONG
+channelVariant { vrntId:"channel_variant_images"      chnlVrntName:"product.variants.images"
+                 chnlVrntValue:"[{\"src\":\"…a.jpg\"},…]"  chnlVrntType:"object[]"  isSupportField:true } // correct
+```
+
+A sibling variant that was *not* edited produced only the correct `channel_variant_images` entry.
+
+**Root cause — an ordering interaction, not a bad mapping.** The raw source field `variantImages` is
+transformed by the `transform-variant-images` post-processing rule
+(`WRAP_ARRAY_TO_OBJECTS field=variantImages toField=images`), which wraps URLs to `[{src}]` and
+**deletes** `variantImages`. But an edited variant's override is stored under the raw key
+`variantImages` in `variantOverrides[sku]`, and it is applied **twice**:
+
+1. **Pre-JOLT** (`loadAndMergeChannelData`) — correct; the value is in place when the wrap rule runs.
+2. **Post-JOLT** (`applyVariantOverridesPostJolt`, *after* post-processing) — this **re-injected** the
+   raw `variantImages` into the already-transformed variant node. Pass 2 above then had an unmapped
+   `variantImages` again and emitted it as `passthrough_variantImages`.
+
+Non-edited variants have no override, so nothing re-injects `variantImages` post-JOLT — hence they
+were always correct. (The same class of leak is why `shopify-map-variants-to-options` sets
+`removeSourceFields:true` to strip raw axis fields.)
+
+**Fix (data-driven).** The post-JOLT merge now skips any override key that a post-processing rule
+already consumed on the variants array. `variantSourceFieldsConsumed(channelConfig)` derives that set
+from the rules themselves — `WRAP_ARRAY_TO_OBJECTS` (when `toField` renames), `RENAME_FIELD`/`NEST_FIELD`
+(`from`), `REMOVE_FIELD` (`field`) — no field names hardcoded. Skipping is safe because the override was
+already applied pre-JOLT, so the transform still saw it; only the harmful raw re-injection is dropped.
+Genuinely channel-specific fields JOLT drops (e.g. `barcode`) are **not** in the consumed set and still
+pass through. Ops that strip dynamically-resolved fields (`MAP_TO_INDEXED removeSourceFields`) are out of
+scope (axis names resolve at runtime).
+
+**Product-level images are unaffected.** They are built JOLT-independently from `_sourceImages` (staged
+by `collectSourceImageUrls`); Step-2 product image edits merge into `masterProductData` *before* JOLT and
+there is **no** post-JOLT re-merge for product-level fields, so no raw image field is ever resurrected.
+
 ---
 
 ## buildOptionGroups

@@ -232,6 +232,38 @@ The `errors[].details` field maps to `PublishError.suggestion` in the publish re
 
 ---
 
+## Workflow polling & terminal-state detection
+
+> **Status: ✅ Hardened.** The publish is POST-then-poll: `POST /sync_channel_product_impl` returns a
+> `workflowId`, then the backend polls `GET /channel_product_workflow/{workflowId}` every 2s until a
+> terminal state. See `ChannelPublishService` (`isTerminalSyncStatus`/`isSyncSucceeded`/
+> `isProcessingSyncStatus`) and `WorkflowStatusResponse`. Regression covered by
+> `ChannelPublishServiceSyncStatusTest` and `WorkflowStatusResponseTest`.
+
+**Symptom fixed.** A publish whose sync workflow clearly succeeded showed **failed** on the page, and
+only a **refresh** revealed success.
+
+**Root cause — blacklist terminal predicate.** The poll stopped on the first status that was *not*
+exactly `"PROCESSING"` and then required exactly `"COMPLETED"` for success. So any other value —
+`PENDING`, an empty/transient status, or `null` from a wire field-name mismatch (`status` vs
+`syncStatus`) — was read as a *finished, non-completed* (i.e. failed) workflow on the very first poll
+(~2s), even while the workflow kept running and later completed. The sync service, being the source of
+truth for the channel-product record, then recorded success — hence refresh showed success.
+
+**Fix — three parts:**
+
+1. **Whitelist terminal states.** Only `COMPLETED`/`FAILED` (case-insensitive) stop the poll. Everything
+   else — `PROCESSING`, `PENDING`, `null`, empty, transient/unknown — means *keep polling* until a real
+   terminal state or timeout.
+2. **Field-name tolerance.** `WorkflowStatusResponse` accepts the status/id/error fields under both
+   camelCase and snake_case (and the sync service's plain `status`/`message`) via `@JsonAlias`, so a
+   wire-name difference can never deserialize the status to `null`.
+3. **Timeout ≠ failure.** Poll timeout is `${app.sync.poll-timeout-seconds:180}` (raised from 120s;
+   image-heavy products upload each image as a separate channel call). On timeout the backend returns a
+   **non-terminal** response (`success=false`, `syncStatus="PROCESSING"`, a "still processing" warning)
+   instead of a hard failure, and status persistence is **skipped** (see below) — a later refresh reflects
+   the true outcome.
+
 ## Status Update after Publish
 
 After the sync API responds, `ChannelPublishService` updates `channel_product_data`:
@@ -239,7 +271,33 @@ After the sync API responds, `ChannelPublishService` updates `channel_product_da
 | Sync result | Status set |
 |-------------|-----------|
 | `response.success = true` | `PUBLISHED` (via `channelProductDataService.markPublished`) |
-| `response.success = false` | `FAILED` (via `channelProductDataService.markFailed`, stores first error message) |
+| `response.success = false` **and terminal** | `FAILED` (via `channelProductDataService.markFailed`, stores first error message) |
+| `syncStatus = PROCESSING`/`PENDING` (poll timed out, still running) | **No update** — prior status left intact so refresh shows the true outcome |
 | `dryRun = true` | No update |
 
 Failures here are logged but do not fail the overall publish response — the channel product was already published or failed independently.
+
+---
+
+## Frontend consumption (Step 3 — Publish)
+
+The frontend mirrors the same **whitelist-terminal** contract so it never repeats the blacklist bug
+(a still-running publish shown as *failed* until a refresh). See
+`step2-channel-fields/services/channelStore.service.ts` and
+`step3-publish/components/PublishDashboard.tsx`.
+
+1. **`classifyPublishOutcome(response)`** maps a publish/sync response to `PUBLISHED` | `FAILED` |
+   `PROCESSING`, reading `success`, `syncStatus`, then `status` (case-insensitive). Only
+   `COMPLETED`/`PUBLISHED` → `PUBLISHED` and `FAILED` → `FAILED` are terminal; **everything else —
+   `PROCESSING`, `PENDING`, `null`, empty, unknown — is `PROCESSING` (non-terminal), never a failure.**
+   `PublishSingleResponse` carries `success`/`syncStatus`/`workflowId` optionally, so plainer bodies
+   still deserialize.
+2. **Polling contract — `ChannelProductDataService.pollUntilTerminal(masterProductId, storeId)`.** On a
+   `PROCESSING` verdict (server-side poll timed out, workflow still running) the FE re-reads
+   `channel_product_data` every 2s (matching the backend cadence) up to a 60s window, until the store's
+   status settles to `PUBLISHED`/`FAILED` — reconciling automatically instead of forcing a manual refresh.
+3. **Status table (frontend mirror).** Terminal `PUBLISHED`/`FAILED` update the store badge; a lingering
+   `PROCESSING` leaves the prior badge intact and surfaces a "still publishing" state (Step 3 shows a
+   *Publishing…* pill + refresh hint), so a later refresh reflects the true outcome. Applies to both
+   single publish and batch. Pre-flight `BLOCKED` (HTTP 400) is unchanged — a distinct, terminal
+   merchant-fixable verdict.

@@ -113,6 +113,24 @@ export const ChannelStoreAdminService = {
     return handleResponse<unknown>(res).then(mapRawStore);
   },
 
+  /**
+   * PUT /api/v1/channel-stores/{storeId}/api-version?organizationId=X[&apiVersion=Y]
+   * Phase 3 per-store version pin. apiVersion set → pin the store to that frozen contract version;
+   * omitted/empty → CLEAR the pin (store follows the channel's ACTIVE version). 404 if store not found.
+   * Returns the updated store (response now carries `apiVersion`).
+   */
+  async setApiVersionPin(
+    organizationId: string,
+    storeId: string,
+    apiVersion?: string,
+  ): Promise<AdminChannelStore> {
+    const res = await fetch(
+      `${BASE}/${encodeURIComponent(storeId)}/api-version${qs({ organizationId, apiVersion })}`,
+      { method: "PUT", headers: JSON_HEADERS },
+    );
+    return handleResponse<unknown>(res).then(mapRawStore);
+  },
+
   /** PUT /api/v1/channel-stores/{storeId}/deactivate?organizationId=X */
   async deactivateStore(organizationId: string, storeId: string): Promise<void> {
     const res = await fetch(

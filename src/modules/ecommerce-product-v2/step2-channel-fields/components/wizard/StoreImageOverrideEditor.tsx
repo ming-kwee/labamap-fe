@@ -388,6 +388,11 @@ interface Props {
   variantOverrides?: Record<string, Record<string, unknown>>;
   /** Write a SKU's variant-image override (non-empty) or clear it (undefined = fall back to master). */
   onVariantImagesChange?: (sku: string, urls: string[] | undefined) => void;
+  /**
+   * Embedded mode (merchant view): the parent card already provides the collapse toggle + chrome, so
+   * render the content directly — no outer card, no header, always expanded (one click, not two).
+   */
+  embedded?: boolean;
 }
 
 export default function StoreImageOverrideEditor({
@@ -400,6 +405,7 @@ export default function StoreImageOverrideEditor({
   variants,
   variantOverrides,
   onVariantImagesChange,
+  embedded = false,
 }: Props) {
   const [expanded, setExpanded] = useState(false);
   const [variantsExpanded, setVariantsExpanded] = useState(false);
@@ -466,50 +472,9 @@ export default function StoreImageOverrideEditor({
   if (spec?.maxBytes) reqParts.push(`≤ ${(spec.maxBytes / (1024 * 1024)).toFixed(0)}MB`);
   if (spec?.allowedFormats?.length) reqParts.push(spec.allowedFormats.join("/").toUpperCase());
 
-  return (
-    <div className="rounded-xl border border-l-4 border-l-sky-400 dark:border-l-sky-500 border-sky-200/70 dark:border-sky-500/20 bg-sky-50/40 dark:bg-sky-500/5">
-      {/* Header */}
-      <button
-        type="button"
-        onClick={() => setExpanded((v) => !v)}
-        className="w-full text-left px-4 py-3 flex items-center justify-between gap-2 rounded-xl hover:brightness-[0.98] dark:hover:brightness-110 transition"
-      >
-        <div className="flex items-center gap-2.5 min-w-0">
-          <span className="text-[10px] font-bold text-sky-500 dark:text-sky-400 uppercase tracking-wider flex-shrink-0">
-            Images
-          </span>
-          <span className="text-sm font-semibold text-gray-800 dark:text-gray-200 truncate">Images (per store)</span>
-          <span
-            className={`text-xs px-1.5 py-0.5 rounded-md font-medium flex-shrink-0 ${
-              overrideActive
-                ? "bg-sky-100 dark:bg-sky-500/15 text-sky-700 dark:text-sky-300"
-                : "bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400"
-            }`}
-          >
-            {overrideActive ? `${productList.length} custom` : `Master · ${masterImages.length}`}
-          </span>
-          {variantOverrideCount > 0 && (
-            <span className="text-xs px-1.5 py-0.5 rounded-md font-medium bg-sky-100 dark:bg-sky-500/15 text-sky-700 dark:text-sky-300 flex-shrink-0">
-              {variantOverrideCount} variant{variantOverrideCount > 1 ? "s" : ""}
-            </span>
-          )}
-          {issues.length > 0 && (
-            <span className="text-xs px-1.5 py-0.5 rounded-md font-medium bg-amber-100 dark:bg-amber-500/15 text-amber-700 dark:text-amber-400 flex-shrink-0">
-              {issues.length} warning{issues.length > 1 ? "s" : ""}
-            </span>
-          )}
-        </div>
-        <svg
-          className={`h-4 w-4 text-gray-400 transition-transform ${expanded ? "rotate-180" : ""}`}
-          viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
-        >
-          <polyline points="6 9 12 15 18 9" />
-        </svg>
-      </button>
-
-      {expanded && (
-        <div className="px-4 pb-4 space-y-4">
-          {reqParts.length > 0 && (
+  const content = (
+    <div className="space-y-4">
+      {reqParts.length > 0 && (
             <p className="text-[11px] text-gray-500 dark:text-gray-400">
               <span className="font-medium text-gray-600 dark:text-gray-300">{channelType} requirements:</span>{" "}
               {reqParts.join(" · ")}
@@ -615,7 +580,53 @@ export default function StoreImageOverrideEditor({
             </div>
           )}
         </div>
-      )}
+  );
+
+  // Embedded (merchant view): the parent GuideCard already provides the toggle — show content directly.
+  if (embedded) return content;
+
+  // Standalone / developer view: own collapsible card with a summary header.
+  return (
+    <div className="rounded-xl border border-l-4 border-l-sky-400 dark:border-l-sky-500 border-sky-200/70 dark:border-sky-500/20 bg-sky-50/40 dark:bg-sky-500/5">
+      <button
+        type="button"
+        onClick={() => setExpanded((v) => !v)}
+        className="w-full text-left px-4 py-3 flex items-center justify-between gap-2 rounded-xl hover:brightness-[0.98] dark:hover:brightness-110 transition"
+      >
+        <div className="flex items-center gap-2.5 min-w-0">
+          <span className="text-[10px] font-bold text-sky-500 dark:text-sky-400 uppercase tracking-wider flex-shrink-0">
+            Images
+          </span>
+          <span className="text-sm font-semibold text-gray-800 dark:text-gray-200 truncate">Images (per store)</span>
+          <span
+            className={`text-xs px-1.5 py-0.5 rounded-md font-medium flex-shrink-0 ${
+              overrideActive
+                ? "bg-sky-100 dark:bg-sky-500/15 text-sky-700 dark:text-sky-300"
+                : "bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400"
+            }`}
+          >
+            {overrideActive ? `${productList.length} custom` : `Master · ${masterImages.length}`}
+          </span>
+          {variantOverrideCount > 0 && (
+            <span className="text-xs px-1.5 py-0.5 rounded-md font-medium bg-sky-100 dark:bg-sky-500/15 text-sky-700 dark:text-sky-300 flex-shrink-0">
+              {variantOverrideCount} variant{variantOverrideCount > 1 ? "s" : ""}
+            </span>
+          )}
+          {issues.length > 0 && (
+            <span className="text-xs px-1.5 py-0.5 rounded-md font-medium bg-amber-100 dark:bg-amber-500/15 text-amber-700 dark:text-amber-400 flex-shrink-0">
+              {issues.length} warning{issues.length > 1 ? "s" : ""}
+            </span>
+          )}
+        </div>
+        <svg
+          className={`h-4 w-4 text-gray-400 transition-transform ${expanded ? "rotate-180" : ""}`}
+          viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
+        >
+          <polyline points="6 9 12 15 18 9" />
+        </svg>
+      </button>
+
+      {expanded && <div className="px-4 pb-4">{content}</div>}
     </div>
   );
 }

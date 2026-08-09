@@ -14,6 +14,8 @@ export interface AdminChannelStore {
   reconnectRequired?: boolean;
   disconnectedAt?: string;
   disconnectReason?: string;
+  /** Phase 3 per-store channel API version pin. null/absent = follow the channel's ACTIVE version. */
+  apiVersion?: string | null;
 }
 
 export interface CredentialFieldSchema {
@@ -99,5 +101,6 @@ export function mapRawStore(raw: unknown): AdminChannelStore {
     reconnectRequired: r.reconnectRequired as boolean | undefined,
     disconnectedAt:   r.disconnectedAt as string | undefined,
     disconnectReason: r.disconnectReason as string | undefined,
+    apiVersion:       (r.apiVersion as string | null | undefined) ?? null,
   };
 }

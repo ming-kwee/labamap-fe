@@ -678,13 +678,39 @@ export interface StorePublishResult {
    * Backend may return "COMPLETED" (workflow terminal state) — treat same as "PUBLISHED".
    * "BLOCKED" is the pre-flight gate verdict: publish never reached the channel because a
    * merchant-fixable field is missing (see `fieldErrors`) — distinct from a real "FAILED".
+   * "PROCESSING" is a NON-terminal verdict: the sync workflow is still running (the server-side
+   * poll timed out) — it is NOT a failure. The FE keeps polling the persisted store status until
+   * it settles (see `classifyPublishOutcome` / `pollUntilTerminal`, doc 04 §"Workflow polling").
    */
-  status: "PUBLISHED" | "COMPLETED" | "FAILED" | "BLOCKED";
+  status: "PUBLISHED" | "COMPLETED" | "FAILED" | "BLOCKED" | "PROCESSING";
   publishedAt?: string;
   /** Human-readable summary (joined field messages, or a system error message). */
   error?: string;
   /** Structured per-field errors from the pre-flight gate — for inline field highlighting. */
   fieldErrors?: PublishFieldError[];
+}
+
+/**
+ * Response of `POST /channels/publish` — mirrors the sync API's `SyncApiResponse`
+ * (doc 04-sync-api-integration.md §SyncApiResponse / §"Workflow polling").
+ *
+ * The publish is POST-then-poll on the backend; on server-side poll timeout the backend
+ * returns a NON-terminal body (`success:false`, `syncStatus:"PROCESSING"`) instead of a hard
+ * failure. Fields beyond `status` are optional so older/plainer bodies keep deserializing.
+ */
+export interface PublishSingleResponse {
+  /** Workflow/sync status: "COMPLETED" | "PUBLISHED" | "FAILED" | "PROCESSING" | "PENDING" | … */
+  status?: string;
+  /** Terminal success flag from the sync API — `true` is an explicit terminal success. */
+  success?: boolean;
+  /** Sync workflow status; may arrive instead of / alongside `status`. */
+  syncStatus?: string;
+  /** Sync workflow id (POST-then-poll handle); present when the backend hands the poll back. */
+  workflowId?: string;
+  publishedAt?: string;
+  message?: string;
+  warnings?: string[];
+  errors?: Array<{ code?: string; message?: string; field?: string; details?: string }>;
 }
 
 export interface BatchPublishRequest {

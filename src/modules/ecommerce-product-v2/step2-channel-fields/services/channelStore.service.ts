@@ -14,6 +14,7 @@ import type {
   ChannelStepStoresResponse,
   ChannelStepRequest,
   PublishSingleRequest,
+  PublishSingleResponse,
   PublishFieldError,
   BatchPublishRequest,
   BatchPublishResponse,
@@ -316,6 +317,36 @@ export const ChannelProductDataService = {
   },
 
   /**
+   * Poll a store's persisted status until it reaches a terminal state
+   * (`PUBLISHED` / `FAILED`), mirroring the backend's POST-then-poll cadence.
+   *
+   * This is the frontend half of the polling contract (doc 04-sync-api-integration.md
+   * §"Workflow polling"): when a publish returns a non-terminal `PROCESSING` verdict —
+   * the server-side poll timed out while the sync workflow keeps running — we reconcile
+   * by re-reading `channel_product_data` instead of forcing the merchant to refresh.
+   * Only `PUBLISHED`/`FAILED` are terminal; everything else means keep polling. On
+   * timeout the last snapshot (still non-terminal) is returned, so callers leave the
+   * prior status intact — a later manual refresh still reflects the true outcome.
+   */
+  async pollUntilTerminal(
+    masterProductId: string,
+    storeId: string,
+    opts: { intervalMs?: number; timeoutMs?: number; signal?: AbortSignal } = {},
+  ): Promise<ChannelProductData> {
+    const intervalMs = opts.intervalMs ?? 2000;   // match the backend's 2s poll cadence
+    const timeoutMs = opts.timeoutMs ?? 60000;     // FE reconciliation window
+    const deadline = Date.now() + timeoutMs;
+    let last = await this.getStoreData(masterProductId, storeId);
+    while (last.status !== "PUBLISHED" && last.status !== "FAILED" && Date.now() < deadline) {
+      if (opts.signal?.aborted) break;
+      await new Promise((res) => setTimeout(res, intervalMs));
+      if (opts.signal?.aborted) break;
+      last = await this.getStoreData(masterProductId, storeId);
+    }
+    return last;
+  },
+
+  /**
    * Save / upsert Step 2 form values for one store
    * POST /api/v1/ecommerce/channel-product-data/save?organizationId=...
    */
@@ -413,17 +444,52 @@ export const MerchantDataService = {
   },
 };
 
+/**
+ * Terminal verdict for a publish/sync response.
+ * `PROCESSING` is non-terminal — the sync workflow is still running (keep polling).
+ */
+export type PublishOutcome = "PUBLISHED" | "FAILED" | "PROCESSING";
+
+const normStatus = (s?: string | null): string => (s ?? "").trim().toUpperCase();
+
+/**
+ * Classify a publish/sync response into a terminal verdict, mirroring the backend's
+ * WHITELIST-terminal contract (doc 04-sync-api-integration.md §"Workflow polling"):
+ *
+ *  - `success === true`, or status/syncStatus is `COMPLETED`/`PUBLISHED`  → `PUBLISHED` (terminal)
+ *  - status/syncStatus is `FAILED`                                         → `FAILED` (terminal)
+ *  - everything else — `PROCESSING`, `PENDING`, `null`, empty, unknown     → `PROCESSING` (non-terminal)
+ *
+ * Only `COMPLETED`/`PUBLISHED`/`FAILED` are terminal. An unknown or blank status is NEVER
+ * read as a failure — that blacklist bug is exactly what showed a live product as "failed"
+ * until a refresh. `syncStatus` wins over `status` when both are present.
+ */
+export function classifyPublishOutcome(
+  r: { success?: boolean; status?: string; syncStatus?: string } | null | undefined,
+): PublishOutcome {
+  if (!r) return "PROCESSING";
+  if (r.success === true) return "PUBLISHED";
+  const s = normStatus(r.syncStatus) || normStatus(r.status);
+  if (s === "COMPLETED" || s === "PUBLISHED") return "PUBLISHED";
+  if (s === "FAILED") return "FAILED";
+  return "PROCESSING";
+}
+
 export const PublishService = {
   /**
    * Publish a product to a single store
    * POST /api/v1/channels/publish
+   *
+   * The response mirrors the sync API's `SyncApiResponse`; on server-side poll timeout it is
+   * NON-terminal (`success:false`, `syncStatus:"PROCESSING"`). Use `classifyPublishOutcome`
+   * to interpret it — do NOT treat a non-`PUBLISHED` status as a failure.
    */
-  publishToStore(request: PublishSingleRequest): Promise<{ status: string; publishedAt: string }> {
+  publishToStore(request: PublishSingleRequest): Promise<PublishSingleResponse> {
     return fetch(`${BASE}/channels/publish`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(request),
-    }).then((r) => handleResponse<{ status: string; publishedAt: string }>(r));
+    }).then((r) => handleResponse<PublishSingleResponse>(r));
   },
 
   /**

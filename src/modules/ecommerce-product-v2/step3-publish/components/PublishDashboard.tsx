@@ -20,6 +20,8 @@ import type {
   ChannelProductData,
   ChannelProductStatus,
   StorePublishResult,
+  PublishSingleResponse,
+  PublishFieldError,
 } from "../../step2-channel-fields/types/channelStore";
 
 // ─── Effective value helpers ──────────────────────────────────────────────────
@@ -79,6 +81,8 @@ import {
   ChannelProductDataService,
   PublishService,
   ChannelApiError,
+  classifyPublishOutcome,
+  type PublishOutcome,
 } from "../../step2-channel-fields/services/channelStore.service";
 import { useAuth } from "@/shared/contexts/AuthContext";
 import ChannelTypeBadge from "../../step2-channel-fields/components/stores/ChannelTypeBadge";
@@ -97,6 +101,9 @@ import {
 import { MasterProductService } from "@/app/(admin)/products/_services/master-product.service";
 import PublishTraceInspector from "./PublishTraceInspector";
 import type { PublishTraceRequest } from "@/modules/ecommerce-product-v2/types/publish-trace";
+import { useWizardViewMode } from "@/modules/ecommerce-product-v2/utils/viewMode";
+import ViewModeToggle from "@/modules/ecommerce-product-v2/components/ViewModeToggle";
+import MerchantPublishView from "./MerchantPublishView";
 
 // ─── Publish payload builder ──────────────────────────────────────────────────
 //
@@ -117,12 +124,17 @@ function buildPublishMasterData(
 
 // ─── Status Badge ─────────────────────────────────────────────────────────────
 
-function statusBadge(status: ChannelProductStatus) {
+// Badge covers the persisted statuses plus the transient, non-terminal "PROCESSING"
+// verdict (publish still running after the FE poll window — doc 04 §"Workflow polling").
+type BadgeStatus = ChannelProductStatus | "PROCESSING";
+
+function statusBadge(status: BadgeStatus) {
   const variants: Record<string, { cls: string; dot: string; label: string }> = {
-    PUBLISHED: { cls: "bg-success-50 dark:bg-success-500/10 text-success-700 dark:text-success-400", dot: "bg-success-500", label: "Published" },
-    READY:     { cls: "bg-brand-50 dark:bg-brand-500/10 text-brand-700 dark:text-brand-400",       dot: "bg-brand-500",   label: "Ready" },
-    FAILED:    { cls: "bg-error-50 dark:bg-error-500/10 text-error-700 dark:text-error-400",       dot: "bg-error-500",   label: "Failed" },
-    DRAFT:     { cls: "bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400",             dot: "bg-gray-400",    label: "Draft" },
+    PUBLISHED:  { cls: "bg-success-50 dark:bg-success-500/10 text-success-700 dark:text-success-400", dot: "bg-success-500",         label: "Published" },
+    READY:      { cls: "bg-brand-50 dark:bg-brand-500/10 text-brand-700 dark:text-brand-400",       dot: "bg-brand-500",            label: "Ready" },
+    PROCESSING: { cls: "bg-warning-50 dark:bg-warning-500/10 text-warning-700 dark:text-warning-400", dot: "bg-warning-500 animate-pulse", label: "Publishing…" },
+    FAILED:     { cls: "bg-error-50 dark:bg-error-500/10 text-error-700 dark:text-error-400",       dot: "bg-error-500",            label: "Failed" },
+    DRAFT:      { cls: "bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400",             dot: "bg-gray-400",             label: "Draft" },
   };
   const v = variants[status] ?? variants.DRAFT;
   return (
@@ -325,6 +337,9 @@ export default function PublishDashboard({ masterProductId }: Props) {
   const { organization } = useAuth();
   const orgId = organization?.organizationId ?? "";
 
+  // Merchant (guided) vs developer (dashboard + diagnostics) layout — shared with Step 2.
+  const [viewMode, setViewMode] = useWizardViewMode();
+
   // Store data
   const [storeData, setStoreData] = useState<ChannelProductData[]>([]);
   const [loading, setLoading] = useState(true);
@@ -457,6 +472,58 @@ export default function PublishDashboard({ masterProductId }: Props) {
     }
   }, [product, storeData, persistJolt]);
 
+  // ─── Settle a store's publish outcome (status table + polling contract) ───────
+  //
+  // Maps a publish/sync response to a terminal verdict (doc 04 §"Workflow polling"):
+  //  • PUBLISHED / FAILED are terminal → update the store badge + result.
+  //  • PROCESSING is non-terminal (server-side poll timed out, workflow still running) →
+  //    poll the persisted store status to reconcile instead of forcing a manual refresh.
+  //    If still unsettled after the FE window, leave the prior badge intact and surface a
+  //    "still publishing" result so a later refresh shows the true outcome (backend also
+  //    skips status persistence on timeout).
+  async function settleStore(
+    storeId: string,
+    raw: PublishSingleResponse & { error?: string; fieldErrors?: PublishFieldError[] },
+  ): Promise<PublishOutcome> {
+    let outcome = classifyPublishOutcome(raw);
+    let publishedAt = raw.publishedAt;
+
+    if (outcome === "PROCESSING") {
+      const settled = await ChannelProductDataService
+        .pollUntilTerminal(masterProductId, storeId)
+        .catch(() => null);
+      if (settled?.status === "PUBLISHED") { outcome = "PUBLISHED"; publishedAt = settled.publishedAt ?? publishedAt; }
+      else if (settled?.status === "FAILED") { outcome = "FAILED"; }
+    }
+
+    const status: StorePublishResult["status"] =
+      outcome === "PUBLISHED" ? "PUBLISHED" : outcome === "FAILED" ? "FAILED" : "PROCESSING";
+
+    setPublishResults((prev) => ({
+      ...prev,
+      [storeId]: {
+        storeId,
+        status,
+        publishedAt,
+        error: outcome === "FAILED" ? (raw.error ?? raw.message ?? "Publish failed") : undefined,
+        fieldErrors: outcome === "FAILED" ? raw.fieldErrors : undefined,
+      },
+    }));
+
+    // Persisted-status table: only terminal outcomes touch the badge. PROCESSING leaves the
+    // prior status intact so a later refresh reflects the true outcome.
+    if (outcome !== "PROCESSING") {
+      setStoreData((prev) =>
+        prev.map((d) =>
+          d.storeId === storeId
+            ? { ...d, status: outcome as ChannelProductStatus, publishedAt }
+            : d
+        )
+      );
+    }
+    return outcome;
+  }
+
   // ─── Publish single store ─────────────────────────────────────────────────────
 
   async function handlePublishSingle(storeId: string) {
@@ -486,24 +553,9 @@ export default function PublishDashboard({ masterProductId }: Props) {
         variantOverrides: store?.variantOverrides ?? {},
         masterOverrides: store?.masterOverrides ?? {},
       });
-      // Backend returns status "COMPLETED" (workflow terminal state) or "PUBLISHED".
-      // Both indicate success — treat either as PUBLISHED on the frontend.
-      const isSuccess = result.status === "PUBLISHED" || result.status === "COMPLETED";
-      setPublishResults((prev) => ({
-        ...prev,
-        [storeId]: {
-          storeId,
-          status: isSuccess ? "PUBLISHED" : "FAILED",
-          publishedAt: result.publishedAt,
-        },
-      }));
-      setStoreData((prev) =>
-        prev.map((d) =>
-          d.storeId === storeId
-            ? { ...d, status: (isSuccess ? "PUBLISHED" : "FAILED") as ChannelProductStatus, publishedAt: result.publishedAt }
-            : d
-        )
-      );
+      // Whitelist-terminal contract: PUBLISHED/COMPLETED → published, FAILED → failed, and
+      // anything non-terminal (PROCESSING/PENDING/blank) → keep polling, never a false failure.
+      await settleStore(storeId, result);
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Publish failed";
       // Pre-flight gate (HTTP 400) carries per-field errors — surface them individually
@@ -562,18 +614,23 @@ export default function PublishDashboard({ masterProductId }: Props) {
         organizationId: orgId,
         storeIds: readyStores,
       });
+      // Seed the raw batch results first (so BLOCKED + fieldErrors render immediately),
+      // then settle each per the status table + polling contract.
       const resultsMap: Record<string, StorePublishResult> = {};
       for (const r of resp.results) resultsMap[r.storeId] = r;
       setPublishResults((prev) => ({ ...prev, ...resultsMap }));
-      setStoreData((prev) =>
-        prev.map((d) => {
-          const r = resultsMap[d.storeId];
-          if (!r) return d;
-          // Both FAILED and a pre-flight BLOCKED collapse to FAILED for the store badge;
-          // the raw result (incl. BLOCKED + fieldErrors) is kept in publishResults.
-          const normalizedStatus: ChannelProductStatus =
-            r.status === "PUBLISHED" || r.status === "COMPLETED" ? "PUBLISHED" : "FAILED";
-          return { ...d, status: normalizedStatus, publishedAt: r.publishedAt, publishError: r.error };
+
+      await Promise.all(
+        resp.results.map(async (r) => {
+          // Pre-flight BLOCKED never reached the channel — terminal; the badge collapses to
+          // FAILED while the raw result (BLOCKED + fieldErrors) is kept in publishResults.
+          if (r.status === "BLOCKED") {
+            setStoreData((prev) =>
+              prev.map((d) => (d.storeId === r.storeId ? { ...d, status: "FAILED", publishError: r.error } : d))
+            );
+            return;
+          }
+          await settleStore(r.storeId, r);
         })
       );
     } catch (err) {
@@ -604,10 +661,14 @@ export default function PublishDashboard({ masterProductId }: Props) {
     ? `/products/${masterProductId}/channel-fields?storeId=${encodeURIComponent(selectedStoreId)}`
     : `/products/${masterProductId}/channel-fields`;
 
-  const currentPublishStatus: ChannelProductStatus = (() => {
+  const currentPublishStatus: BadgeStatus = (() => {
     if (!selectedStoreId) return "DRAFT";
     const r = publishResults[selectedStoreId];
-    if (r) return (r.status === "PUBLISHED" || r.status === "COMPLETED") ? "PUBLISHED" : "FAILED";
+    if (r) {
+      if (r.status === "PUBLISHED" || r.status === "COMPLETED") return "PUBLISHED";
+      if (r.status === "PROCESSING") return "PROCESSING";
+      return "FAILED";
+    }
     return currentStoreData?.status ?? "DRAFT";
   })();
 
@@ -631,6 +692,7 @@ export default function PublishDashboard({ masterProductId }: Props) {
             Cek kesiapan produk, lalu publish ke toko yang terhubung.
           </p>
         </div>
+        <ViewModeToggle value={viewMode} onChange={setViewMode} />
       </div>
 
       {/* Breadcrumb */}
@@ -675,8 +737,28 @@ export default function PublishDashboard({ masterProductId }: Props) {
         </div>
       )}
 
-      {/* ─── Main 3-col Layout ──────────────────────────────────────────────── */}
-      {!loading && !loadError && storeData.length > 0 && (
+      {/* ─── Merchant view: channel-grid go-live flow ───────────────────────── */}
+      {!loading && !loadError && storeData.length > 0 && viewMode === "merchant" && (
+        <MerchantPublishView
+          product={product}
+          masterProductId={masterProductId}
+          storeData={storeData}
+          publishResults={publishResults}
+          publishingStores={publishingStores}
+          batchPublishing={batchPublishing}
+          batchError={batchError}
+          publishedCount={publishedCount}
+          onPublishStore={handlePublishSingle}
+          channelFieldsUrlFor={(storeId) =>
+            `/products/${masterProductId}/channel-fields?storeId=${encodeURIComponent(storeId)}`
+          }
+          onViewProduct={() => router.push(`/products/${masterProductId}`)}
+          onCreateAnother={() => router.push("/products/v2/create")}
+        />
+      )}
+
+      {/* ─── Developer view: 3-col dashboard + diagnostics ──────────────────── */}
+      {!loading && !loadError && storeData.length > 0 && viewMode === "developer" && (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
 
           {/* ─── Left Sidebar ───────────────────────────────────────────────── */}
@@ -759,9 +841,10 @@ export default function PublishDashboard({ masterProductId }: Props) {
                   const isSelected = selectedStoreId === data.storeId;
                   const hasAnalysis = !!analysisByChannel[data.channelType];
                   const prStatus = publishResults[data.storeId]?.status;
-                  const storeStatus: ChannelProductStatus =
+                  const storeStatus: BadgeStatus =
                     prStatus === "PUBLISHED" || prStatus === "COMPLETED" ? "PUBLISHED"
                     : prStatus === "FAILED" || prStatus === "BLOCKED" ? "FAILED"
+                    : prStatus === "PROCESSING" ? "PROCESSING"
                     : data.status;
 
                   return (
@@ -1028,6 +1111,11 @@ export default function PublishDashboard({ masterProductId }: Props) {
                           <CheckCircle2 className="h-5 w-5" />
                           <span className="font-medium">Published successfully!</span>
                         </div>
+                      ) : currentPublishStatus === "PROCESSING" ? (
+                        <div className="flex items-center gap-2 text-warning-600 dark:text-warning-400">
+                          <RefreshCw className="h-5 w-5 animate-spin" />
+                          <span className="font-medium">Masih diproses…</span>
+                        </div>
                       ) : (
                         <Button
                           onClick={() => handlePublishSingle(currentStoreData.storeId)}
@@ -1040,6 +1128,24 @@ export default function PublishDashboard({ masterProductId }: Props) {
                         </Button>
                       )}
                     </div>
+                    {currentPublishStatus === "PROCESSING" && (
+                      <div className="mt-3 p-3 rounded-lg border bg-warning-50 dark:bg-warning-500/10 border-warning-200 dark:border-warning-500/30">
+                        <p className="text-sm font-medium flex items-center gap-2 text-warning-700 dark:text-warning-400">
+                          <RefreshCw className="h-4 w-4 flex-shrink-0 animate-spin" />
+                          Masih diproses di channel
+                        </p>
+                        <p className="mt-1 text-sm text-warning-600 dark:text-warning-300">
+                          Publish belum selesai — listing dengan banyak gambar bisa butuh waktu lebih lama.
+                          Status akan diperbarui otomatis; kalau perlu, muat ulang untuk melihat hasil akhirnya.
+                        </p>
+                        <button
+                          onClick={loadData}
+                          className="mt-2 inline-flex items-center gap-1 text-xs font-medium text-brand-600 dark:text-brand-400 hover:underline"
+                        >
+                          <RefreshCw className="h-3.5 w-3.5" /> Muat ulang status
+                        </button>
+                      </div>
+                    )}
                     {(() => {
                       const r = selectedStoreId ? publishResults[selectedStoreId] : undefined;
                       if (!r || (r.status !== "FAILED" && r.status !== "BLOCKED")) return null;

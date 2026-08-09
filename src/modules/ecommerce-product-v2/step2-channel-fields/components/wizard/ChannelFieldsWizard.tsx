@@ -15,6 +15,8 @@ import { isFieldVisible, isFieldRequired } from "../../hooks/useChannelFieldVisi
 import { useAuth } from "@/shared/contexts/AuthContext";
 import ChannelTypeBadge from "../stores/ChannelTypeBadge";
 import ChannelStoreTab from "./ChannelStoreTab";
+import { useWizardViewMode } from "@/modules/ecommerce-product-v2/utils/viewMode";
+import ViewModeToggle from "@/modules/ecommerce-product-v2/components/ViewModeToggle";
 
 const BASE_API = "http://localhost:8888/labamap/api/v1";
 
@@ -87,6 +89,9 @@ export default function ChannelFieldsWizard({ masterProductId }: Props) {
 
   // Active tab — starts at the store specified by ?storeId= query param, or 0
   const [activeStoreIndex, setActiveStoreIndex] = useState(0);
+
+  // Merchant (guided) vs developer (schema-role form) layout — shared with Step 3, persisted per browser.
+  const [viewMode, setViewMode] = useWizardViewMode();
 
   // ── Lazy per-store schema (scales to many stores) ──────────────────────────
   // The tab bar renders instantly from a lightweight /stores list (skeleton channels
@@ -669,10 +674,16 @@ export default function ChannelFieldsWizard({ masterProductId }: Props) {
           <span>›</span>
           <Link href={`/products/${masterProductId}/publish`} className="hover:text-brand-500 transition-colors">Step 3: Preview &amp; Publish</Link>
         </div>
-        <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Channel-Specific Fields</h1>
-        <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-          {doneCount}/{channels.length} stores complete · autosaves every 30 s
-        </p>
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Channel-Specific Fields</h1>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+              {doneCount}/{channels.length} stores complete · autosaves every 30 s
+            </p>
+          </div>
+          {/* View toggle: merchant (guided) vs developer (schema-role form) — shared with Step 3 */}
+          <ViewModeToggle value={viewMode} onChange={setViewMode} />
+        </div>
       </div>
 
       {/* Tab bar */}
@@ -739,6 +750,7 @@ export default function ChannelFieldsWizard({ masterProductId }: Props) {
             masterProductId={masterProductId}
             fieldErrors={activeTabFieldErrors}
             orgId={orgId}
+            viewMode={viewMode}
           />
         )}
       </div>

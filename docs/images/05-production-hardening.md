@@ -61,11 +61,18 @@ Dua kondisi production yang `02/03` belum tuntas:
      yang sudah fail-safe).
    - untuk channel `channelSideUpload=true`, URL yang dikirim harus sudah publicly-fetchable (H7).
 
-## H6. Lifecycle / GC orphan
+## H6. Lifecycle / GC orphan  — ✅ I5 (dry-run + gated purge)
 
 Ganti/hapus gambar meninggalkan blob yatim. Perbaikan: hapus eksplisit (sudah ada) **plus** GC
 terjadwal untuk asset tanpa referensi (tak dipakai master/`channelData` mana pun) setelah masa tenggang.
 Karena key berbasis hash (H3), hindari hapus blob yang masih dirujuk produk lain (hitung referensi).
+
+**Terimplementasi (`ImageGcService` + `/admin/image-gc/*`):** DRY-RUN (`findOrphanCandidates`, report-only)
++ PURGE confirm-gated (`purgeOrphans`, `?confirm=true`). **Tak terjadwal by default** (opt-in — hindari
+hapus tak sengaja). Referensi dikumpulkan **over-inclusive** (master `productAttributes`/`imageUrl`/variants
++ `channelData`/variantOverrides, reuse `ImageService.extractImageUrls`) → err ke arah menyimpan.
+**Batasan jujur:** hanya asset ber-`ImageAsset` (upload sejak I2b) yang dipertimbangkan — blob pra-I2b tak
+tersentuh (aman, tapi tak ter-GC). Ref-count berbasis hash (H3) belum ada → cocokkan `publicUrl` persis.
 
 ## H7. Backward-compat (JANGAN merusak data & alur yang ada)
 
@@ -100,7 +107,9 @@ Karena key berbasis hash (H3), hindari hapus blob yang masih dirujuk produk lain
   **I4** ✅ (FE `v9`): plumbing FE (presign/finalize/dims di `MediaUploadService`) + **editor visual
   Step-2** (`StoreImageOverrideEditor`/`ImageCropModal`/`channelImageSpec.service`, react-easy-crop) per
   kontrak ([`06`](06-frontend-step2-image-override.md)); sisa QA visual + variant-image override →
-  **I5** ⏳: GC orphan.
+  **I5** ✅ *(dry-run, `bff-v12`)*: `ImageGcService.findOrphanCandidates` (report-only) + `purgeOrphans`
+  (confirm-gated) via `/api/v1/admin/image-gc/{orphans,purge}`; referensi over-inclusive (master +
+  channelData); **tak terjadwal** (opt-in). Hanya menyentuh asset ber-`ImageAsset` (pre-I2b aman).
 - I0–I1 nol perubahan perilaku (hanya refactor + field additif); risiko kerusakan sistem minimal — terverifikasi.
 
 ## Verdict

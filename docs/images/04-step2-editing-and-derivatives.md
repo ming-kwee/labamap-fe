@@ -47,8 +47,21 @@ channel_product_data.channelData.images = [ derivativeUrl1, … ]   (override pe
 _sourceImages (staging)  ─post-processing per-channel→  field image channel
 ```
 - Bila store **tak** meng-override → jatuh ke master `images` (perilaku sekarang, tak berubah).
+- **Baseline master images di Step 2** dibaca FE dari `MasterProductSnapshot.images` (fallback
+  `[mainImage, …galleryImages]`). Snapshot dulu hanya mengekspos `mainImage`, jadi galeri produk
+  (mis. 1 mainImage + 2 galleryImages) tampil sebagai **1 gambar** — bug di BE, bukan FE. Sudah
+  diperbaiki: `ChannelStepSchemaService.buildMasterSnapshot` kini mengisi `images` (list kanonik
+  hasil `MasterProductDataService.normalizeImages` — main dulu, dedup; dibangun ulang dari
+  `mainImage`+`galleryImages` untuk produk lama) plus `galleryImages`. Regresi: `ChannelStepSchemaServiceImagesTest`.
 - Variant image per store: pola sama (`channelData.variantImages` / per-SKU override), lalu
   `URL_ARRAY_TO_SRC_OBJECTS` seperti biasa.
+  - ⚠️ Override variant image disimpan di bawah key mentah `variantImages`. Post-processing
+    (`transform-variant-images`, `WRAP_ARRAY_TO_OBJECTS`) mengubahnya jadi `images` `[{src}]` dan
+    **menghapus** `variantImages`. Merge override **post-JOLT** dulu menyuntikkan lagi `variantImages`
+    mentah → bocor sebagai entri `passthrough_variantImages` (`TEXT`) di samping yang benar. Sudah
+    diperbaiki: merge post-JOLT kini melewati key yang sudah dikonsumsi post-processing. Detail:
+    [`../product/07-publishing-engine/01-guides/03-attribute-conversion.md`](../product/07-publishing-engine/01-guides/03-attribute-conversion.md)
+    (§ buildVariantGroups → Pass 2).
 
 ## 5. Guardrail
 

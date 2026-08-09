@@ -92,4 +92,6 @@ CdnUrlResolver.publicUrl(key):
 | **I3** | Presign upload + finalize + derivative async | skala + derivative per-channel | ✅ *(sebagian)* `bff-v12`: presign+finalize endpoint + provider signing/exists. Derivative-async + magic-byte sniffing **ditunda** (butuh worker/event infra) |
 | **I4** | Step-2 editing (crop/resize/reorder) → derivative override | §04 | ✅ FE `v9`: plumbing (presign/finalize/dims) + **editor visual** (`StoreImageOverrideEditor` + `ImageCropModal` + `channelImageSpec.service`) per kontrak [`06`](06-frontend-step2-image-override.md); sisa: QA visual + variant-image override |
 
+| **I5** | GC orphan (H6) | hemat storage + bersih | ✅ `bff-v12`: dry-run report + purge confirm-gated (`/admin/image-gc/*`); **tak terjadwal** (opt-in). Destruktif → mulai dari dry-run |
+
 Tiap fase additive; I0/I1 tanpa perubahan perilaku (terverifikasi: default config → URL identik, test hijau).

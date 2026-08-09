@@ -13,6 +13,7 @@ import {
   CHANNEL_COLORS,
 } from "../_types/channel-store-admin";
 import { ChannelStoreAdminService } from "../_services/channel-store-admin.service";
+import VersionPinModal from "./VersionPinModal";
 
 // ─── Icons ─────────────────────────────────────────────────────────────────────
 
@@ -92,6 +93,32 @@ function StatusBadge({ store }: { store: AdminChannelStore }) {
     <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-xs font-medium ${v.cls}`}>
       <span className={`h-1.5 w-1.5 rounded-full ${v.dot}`} />{v.label}
     </span>
+  );
+}
+
+const PinIcon = () => (
+  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <line x1="12" y1="17" x2="12" y2="22"/><path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z"/>
+  </svg>
+);
+
+/** Per-store API version pin indicator + trigger (Phase 3). null pin → "Follow active". */
+function VersionPinCell({ store, onClick }: { store: AdminChannelStore; onClick: () => void }) {
+  const pinned = store.apiVersion != null && store.apiVersion !== "";
+  return (
+    <button
+      onClick={onClick}
+      title={pinned
+        ? `Pinned to ${store.apiVersion} — click to change`
+        : "Following the channel's active version — click to pin"}
+      className={`inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium border transition-colors ${
+        pinned
+          ? "border-brand-200 bg-brand-50 text-brand-700 dark:border-brand-500/30 dark:bg-brand-500/10 dark:text-brand-300"
+          : "border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800"
+      }`}
+    >
+      {pinned ? <><PinIcon /> {store.apiVersion}</> : "Follow active"}
+    </button>
   );
 }
 
@@ -637,6 +664,7 @@ export default function ChannelStoreAdminPage() {
   const [editStore, setEditStore]               = useState<AdminChannelStore | null>(null);
   const [credStore, setCredStore]               = useState<AdminChannelStore | null>(null);
   const [deleteStore, setDeleteStore]           = useState<AdminChannelStore | null>(null);
+  const [versionStore, setVersionStore]         = useState<AdminChannelStore | null>(null);
   const [actioning, setActioning]               = useState<string | null>(null);
 
   const showToast = useCallback((message: string, type: "success" | "error") => {
@@ -728,6 +756,17 @@ export default function ChannelStoreAdminPage() {
     setStores((p) => p.filter((s) => s.storeId !== storeId));
     setDeleteStore(null);
     showToast("Store connection deleted", "success");
+  }
+
+  function handleVersionSaved(updated: AdminChannelStore) {
+    setStores((p) => p.map((s) => (s.storeId === updated.storeId ? updated : s)));
+    setVersionStore(null);
+    showToast(
+      updated.apiVersion
+        ? `${updated.storeName} pinned to API version ${updated.apiVersion}`
+        : `${updated.storeName} now follows the channel's active version`,
+      "success",
+    );
   }
 
   // ── KPIs ────────────────────────────────────────────────────────────────────
@@ -904,7 +943,7 @@ export default function ChannelStoreAdminPage() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="bg-gray-50 dark:bg-gray-800/50 border-b border-gray-200 dark:border-gray-700">
-                  {["Store", "Channel", "URL", "Region", "Status", "Connected", "Order", "Actions"].map((h) => (
+                  {["Store", "Channel", "URL", "Region", "Status", "API Version", "Connected", "Order", "Actions"].map((h) => (
                     <th key={h} className="text-left px-4 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider whitespace-nowrap">
                       {h}
                     </th>
@@ -940,6 +979,11 @@ export default function ChannelStoreAdminPage() {
                     {/* Status */}
                     <td className="px-4 py-3 whitespace-nowrap">
                       <StatusBadge store={store} />
+                    </td>
+
+                    {/* API Version pin */}
+                    <td className="px-4 py-3 whitespace-nowrap">
+                      <VersionPinCell store={store} onClick={() => setVersionStore(store)} />
                     </td>
 
                     {/* Connected */}
@@ -1032,6 +1076,9 @@ export default function ChannelStoreAdminPage() {
       )}
       {deleteStore && (
         <DeleteConfirmModal orgId={orgId} store={deleteStore} onClose={() => setDeleteStore(null)} onDeleted={handleDeleted} />
+      )}
+      {versionStore && (
+        <VersionPinModal orgId={orgId} store={versionStore} onClose={() => setVersionStore(null)} onSaved={handleVersionSaved} />
       )}
 
       {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}

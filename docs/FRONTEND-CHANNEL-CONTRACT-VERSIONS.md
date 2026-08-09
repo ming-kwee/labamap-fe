@@ -105,7 +105,10 @@ lebih dulu** (belum ada). Prioritas rendah; berguna untuk diagnostik saat multi-
 - **Editor apiSchema/rules kontrak.** Kontrak bersifat **immutable per versi**; tak ada endpoint tulis
   selain transisi lifecycle. Jangan buat form edit apiSchema di kontrak (edit dilakukan di config →
   di-snapshot migrasi).
-- **UI pin versi per-store.** Itu **Fase 3** (belum ada endpoint). Jangan buat sampai backend-nya ada.
+- **UI pin versi per-store.** ~~Itu Fase 3 (belum ada endpoint).~~ **UPDATE: backend Fase 3 sudah live**
+  (`PUT /api/v1/channel-stores/{storeId}/api-version`). UI-nya sekarang boleh dibangun — kontrak & rekomendasi
+  ada di [`FRONTEND-STORE-VERSION-PIN.md`](FRONTEND-STORE-VERSION-PIN.md). Tetap **bukan** di halaman ini
+  (pin ada di halaman Channel Stores, bukan di kelola-versi-kontrak).
 - **Tombol "regenerate contract".** Tak ada; kontrak ACTIVE otomatis di-refresh dari config saat restart
   (model A).
 
@@ -119,7 +122,7 @@ lebih dulu** (belum ada). Prioritas rendah; berguna untuk diagnostik saat multi-
 | Admin ingin melihat versi kontrak | R1 (halaman read) — nilai penuh saat Fase 3 |
 | Admin ingin promote/deprecate/retire via UI | R2 (tombol lifecycle) — satu-satunya gap UI dari 2c |
 | Ingin diagnostik versi di trace | R3 (butuh field BE kecil dulu) |
-| Pin per-store / rollback-live | Tunggu **Fase 3** |
+| Pin per-store / rollback-live | **Fase 3 backend live** → lihat [`FRONTEND-STORE-VERSION-PIN.md`](FRONTEND-STORE-VERSION-PIN.md) |
 
 **Rekomendasi akhir:** tidak ada yang mendesak. Kalau mau proaktif, kerjakan **R1 + R2** sebagai satu
 halaman admin "Contract Versions" — itu menyiapkan operator untuk saat versi channel benar-benar di-bump

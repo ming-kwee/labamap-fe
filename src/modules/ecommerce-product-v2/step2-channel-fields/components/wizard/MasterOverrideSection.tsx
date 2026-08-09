@@ -8,6 +8,11 @@ interface Props {
   values: Record<string, unknown>;
   channelName: string;
   onChange: (fieldName: string, value: unknown | null) => void;
+  /**
+   * Embedded mode (merchant view): the parent card already provides the collapse toggle, so render the
+   * fields directly — no inner header, always expanded (one click, not two).
+   */
+  embedded?: boolean;
 }
 
 const ChevronIcon = ({ expanded }: { expanded: boolean }) => (
@@ -20,11 +25,36 @@ const ChevronIcon = ({ expanded }: { expanded: boolean }) => (
   </svg>
 );
 
-export default function MasterOverrideSection({ fields, values, channelName, onChange }: Props) {
+export default function MasterOverrideSection({ fields, values, channelName, onChange, embedded = false }: Props) {
   const overrideCount = fields.filter((f) => values[f.fieldName] != null).length;
   const [expanded, setExpanded] = useState(overrideCount > 0);
 
   if (fields.length === 0) return null;
+
+  const body = (
+    <>
+      {/* Context banner */}
+      <p className="text-xs text-gray-500 dark:text-gray-400 px-1">
+        Changes here apply to <strong>{channelName}</strong> only — all other channels keep the master value.
+      </p>
+
+      {/* Override field cards */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        {fields.map((field) => (
+          <div key={field.fieldName} className={field.fieldType === "TEXTAREA" ? "md:col-span-2" : ""}>
+            <MasterOverrideField
+              field={field}
+              value={values[field.fieldName]}
+              channelName={channelName}
+              onChange={onChange}
+            />
+          </div>
+        ))}
+      </div>
+    </>
+  );
+
+  if (embedded) return <div className="space-y-2">{body}</div>;
 
   return (
     <div className="space-y-2">
@@ -65,28 +95,7 @@ export default function MasterOverrideSection({ fields, values, channelName, onC
         </div>
       </button>
 
-      {expanded && (
-        <>
-          {/* Context banner */}
-          <p className="text-xs text-gray-500 dark:text-gray-400 px-1">
-            Changes here apply to <strong>{channelName}</strong> only — all other channels keep the master value.
-          </p>
-
-          {/* Override field cards */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            {fields.map((field) => (
-              <div key={field.fieldName} className={field.fieldType === "TEXTAREA" ? "md:col-span-2" : ""}>
-                <MasterOverrideField
-                  field={field}
-                  value={values[field.fieldName]}
-                  channelName={channelName}
-                  onChange={onChange}
-                />
-              </div>
-            ))}
-          </div>
-        </>
-      )}
+      {expanded && body}
     </div>
   );
 }

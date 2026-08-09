@@ -8,6 +8,7 @@ import type {
   ChannelFormField,
   ResolvedVariantAxis,
   AxisValidationIssue,
+  SectionName,
 } from "../../types/channelStore";
 import {
   useChannelFieldVisibility,
@@ -17,6 +18,7 @@ import ChannelFieldInput from "./ChannelFieldInput";
 import VariantOverridesTable from "./VariantOverridesTable";
 import MasterOverrideSection from "./MasterOverrideSection";
 import StoreImageOverrideEditor from "./StoreImageOverrideEditor";
+import MerchantChannelView from "./MerchantChannelView";
 import { ProductTypeService } from "@/app/(admin)/omni-admin/product-types/_services/product-type.service";
 import { normaliseChannelType, applyChannelCategoryDefault } from "../../utils/categoryPrefill";
 
@@ -43,6 +45,11 @@ interface Props {
   savedCompletionPct?: number;
   /** Real organization ID from auth context — required for merchant-data API calls. */
   orgId?: string;
+  /**
+   * Which layout to render. "developer" (default) = the schema-role sectioned form; "merchant" = the
+   * guided, plain-language flow (MerchantChannelView). Both consume identical data + handlers.
+   */
+  viewMode?: "developer" | "merchant";
 }
 
 // ── SVG chevron — animated rotation via className ─────────────────────────────
@@ -374,7 +381,7 @@ function VariantAxisSummary({
 
 // ── Main component ────────────────────────────────────────────────────────────
 
-export default function ChannelStoreTab({ schema, values, onChange, isSaving, lastSaved, masterProduct, masterProductId, fieldErrors, orgId = "" }: Props) {
+export default function ChannelStoreTab({ schema, values, onChange, isSaving, lastSaved, masterProduct, masterProductId, fieldErrors, orgId = "", viewMode = "developer" }: Props) {
   const [optionalExpanded, setOptionalExpanded] = useState(false);
 
   // ── Scenario D: Category-Dependent Dynamic Field Injection ────────────────
@@ -1089,6 +1096,93 @@ export default function ChannelStoreTab({ schema, values, onChange, isSaving, la
     ? 100
     : Math.round((localStats.requiredFilled / localStats.requiredTotal) * 100);
   const hasNoRequired = localStats.requiredTotal === 0;
+
+  // ── Merchant (end-user) view ──────────────────────────────────────────────
+  // Same computed data + handlers as the developer view below, re-laid-out as a guided, plain-language
+  // flow (category → required → details → photos → variations → optional). Fields still render through
+  // the exact same FieldsGrid / ChannelFieldInput / VariantOverridesTable, so behaviour can't diverge.
+  if (viewMode === "merchant") {
+    const fieldsOf = (n: SectionName) => schema.sections.find((s) => s.sectionName === n)?.fields ?? [];
+    const notCat = (f: ChannelFormField) => !categorySpecificFieldNames.has(f.fieldName);
+    const notMainCat = (f: ChannelFormField) => f.fieldName !== mainCategoryField?.fieldName;
+    const merchantRequired = fieldsOf("required").filter((f) => notCat(f) && notMainCat(f));
+    const merchantRecommended = fieldsOf("recommended").filter(notCat);
+    const merchantOptional = [...fieldsOf("optional"), ...fieldsOf("merchant_data")].filter((f) => notCat(f) && notMainCat(f));
+    const merchantMasterOverrides = fieldsOf("master_overrides");
+
+    const variantSection = sections.find((s) => s.sectionName === "variant_overrides");
+    const hasVariants = Boolean(variantSection?.variants?.length) || resolvedAxes.length > 0;
+    const showAxisSummary = resolvedAxes.length > 0 || axisValidation.length > 0;
+
+    const selectedPath = mainCategoryField?.categoryTreeConfig?.selectedPath ?? [];
+    const categoryBreadcrumb = selectedPath.length
+      ? selectedPath.map((n) => n.name).filter(Boolean).join(" › ")
+      : categoryAttrs
+      ? [...(categoryAttrs.categoryPath ?? []), categoryAttrs.categoryName].filter(Boolean).join(" › ")
+      : null;
+
+    return (
+      <MerchantChannelView
+        storeName={schema.storeName}
+        channelType={schema.channelType}
+        isSaving={isSaving}
+        lastSaved={lastSaved}
+        pct={pct}
+        requiredTotal={stats.requiredTotal}
+        requiredFilled={stats.requiredFilled}
+        hasNoRequired={hasNoRequired}
+        categoryExists={Boolean(mainCategoryField)}
+        categorySet={Boolean(categoryId)}
+        categoryBreadcrumb={categoryBreadcrumb}
+        requiredFields={merchantRequired}
+        categoryRequiredFields={categoryAttrs?.requiredFields ?? []}
+        recommendedFields={merchantRecommended}
+        optionalFields={merchantOptional}
+        categoryOptionalFields={categoryAttrs?.optionalFields ?? []}
+        masterOverrideFields={merchantMasterOverrides}
+        hasVariants={hasVariants}
+        isVisible={(name) => visibility.isVisible(name)}
+        isRequired={(name) => visibility.isRequired(name)}
+        isFilled={(name) => {
+          const v = values.channelData[name];
+          return v !== undefined && v !== null && v !== "";
+        }}
+        renderFields={(f) => (
+          <FieldsGrid fields={f} channelData={values.channelData} onChange={handleFieldChange} fieldErrors={fieldErrors} visibility={visibility} />
+        )}
+        renderMasterOverrides={(f) => (
+          <MasterOverrideSection fields={f} values={values.masterOverrides} channelName={schema.storeName} onChange={handleMasterOverrideChange} embedded />
+        )}
+        renderCategoryField={() =>
+          mainCategoryField ? (
+            <ChannelFieldInput field={mainCategoryField} value={values.channelData[mainCategoryField.fieldName]} onChange={handleFieldChange} />
+          ) : null
+        }
+        renderVariants={() => (variantSection ? renderSection(variantSection) : null)}
+        renderAxisSummary={() =>
+          showAxisSummary ? (
+            <VariantAxisSummary axes={resolvedAxes} channelName={schema.storeName} validation={axisValidation} />
+          ) : null
+        }
+        renderImages={() => (
+          <StoreImageOverrideEditor
+            channelType={schema.channelType}
+            orgId={orgId}
+            masterProductId={masterProductId ?? ""}
+            masterImages={masterImages}
+            value={Array.isArray(values.channelData.images) ? (values.channelData.images as string[]) : undefined}
+            onChange={handleImagesOverrideChange}
+            variants={masterProduct?.variants}
+            variantOverrides={values.variantOverrides}
+            onVariantImagesChange={(sku, urls) =>
+              handleVariantChange(sku, "variantImages", urls && urls.length > 0 ? urls : undefined)
+            }
+            embedded
+          />
+        )}
+      />
+    );
+  }
 
   return (
     <div className="space-y-5">
