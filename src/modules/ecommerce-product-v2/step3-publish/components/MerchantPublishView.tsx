@@ -10,7 +10,7 @@ import {
   Trash2,
   Clock,
 } from "@/shared/ui/icons/Icons";
-import ChannelTypeBadge from "../../step2-channel-fields/components/stores/ChannelTypeBadge";
+import { getChannelMeta } from "../../step2-channel-fields/components/stores/ChannelTypeBadge";
 import type {
   ChannelProductData,
   StorePublishResult,
@@ -21,15 +21,18 @@ import {
   deriveLifecycle,
   operationMessage,
   TONE_PILL,
+  TONE_DOT,
   type Lifecycle,
 } from "../utils/listing-lifecycle";
 
 /**
  * Merchant (end-user) layout for Step 3 — a go-live flow modelled on Ginee / BigSeller / ChannelAdvisor:
- * a product preview + one card per connected channel with a clear listing status and a contextual
- * primary action (Publish / Update / Retry / Publish ulang), plus per-listing Delist + Riwayat and a
- * one-click "Publish all ready". No engine internals (APM / JOLT / diagnostics) — those live in the
- * developer view. All lifecycle logic comes from the shared `deriveLifecycle` state machine (§3).
+ * a product preview + a backlog-style list with one compact row per connected channel (clear listing
+ * status + a contextual primary action: Publish / Update / Retry / Publish ulang), plus per-listing
+ * Delist + Riwayat and a one-click "Publish all ready". Uniform rows keep live listings just as visible
+ * as the ones still needing work (unlike the old cards, which shrank once published). No engine internals
+ * (APM / JOLT / diagnostics) — those live in the developer view. All lifecycle logic comes from the
+ * shared `deriveLifecycle` state machine (§3).
  *
  * Owns no publish/delist logic: it calls the same handlers the developer view uses.
  */
@@ -153,10 +156,10 @@ export default function MerchantPublishView({
         {batchError && <p className="mt-3 text-sm text-error-600 dark:text-error-400">{batchError}</p>}
       </div>
 
-      {/* ── Channel cards ───────────────────────────────────────────────────── */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      {/* ── Channel backlog: one framed row per connected channel ───────────── */}
+      <div className="space-y-2.5">
         {storeData.map((d) => (
-          <ChannelCard
+          <ChannelRow
             key={d.storeId}
             data={d}
             lc={lifecycleOf(d)}
@@ -203,8 +206,15 @@ export default function MerchantPublishView({
   );
 }
 
-// ── Channel card ──────────────────────────────────────────────────────────────
-function ChannelCard({
+// ── Channel row (backlog item) ─────────────────────────────────────────────────
+// Shared classes for a square icon button in a row — framed so the trailing controls read as
+// one tidy, consistent toolbar rather than floating glyphs of differing weight.
+const ICON_BTN =
+  "inline-flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 text-gray-500 transition-colors hover:bg-gray-50 hover:text-gray-700 dark:border-gray-700 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-gray-200";
+const ICON_BTN_DANGER =
+  "inline-flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 text-gray-500 transition-colors hover:border-error-200 hover:bg-error-50 hover:text-error-600 dark:border-gray-700 dark:text-gray-400 dark:hover:border-error-500/30 dark:hover:bg-error-500/10 dark:hover:text-error-400";
+
+function ChannelRow({
   data,
   lc,
   result,
@@ -224,13 +234,9 @@ function ChannelCard({
   fixUrl: string;
 }) {
   const label = CHANNEL_LABEL[data.channelType] ?? data.channelType;
+  const meta = getChannelMeta(data.channelType);
   const state = lc.state;
-  const accent =
-    lc.isLive ? "border-l-success-400 dark:border-l-success-500"
-    : state === "failed" ? "border-l-error-400 dark:border-l-error-500"
-    : state === "blocked" || state === "draft" || state === "processing" ? "border-l-warning-400 dark:border-l-warning-500"
-    : state === "delisted" ? "border-l-gray-300 dark:border-l-gray-600"
-    : "border-l-brand-400 dark:border-l-brand-500";
+  const inFlight = state === "publishing" || state === "processing";
 
   // Idempotent-update gate (Delist & re-publish) — either from a live attempt that came back
   // BLOCKED, or pre-emptively from the dirty-state diff (decision=UPDATE_BLOCKED).
@@ -238,230 +244,257 @@ function ChannelCard({
     (result?.status === "BLOCKED" && result.operation === "UPDATE") ||
     (state === "live_changed" && lc.updateBlocked);
   const publishedTime = result?.publishedAt || data.publishedAt;
+  const showFix = state === "failed" || (state === "blocked" && !updateGate);
+  const canHistory = lc.isLive || state === "delisted" || (data.publishAttempts ?? 0) > 0;
+
+  // One-line status detail under the channel name — keeps every row the same height so a
+  // published listing stays just as visible as one that still needs work.
+  const substatus: React.ReactNode = (() => {
+    if (state === "draft") {
+      return (
+        <span className="flex items-center gap-2">
+          <span className="h-1.5 w-16 flex-shrink-0 overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700">
+            <span className="block h-full rounded-full bg-warning-500" style={{ width: `${data.completionPercentage}%` }} />
+          </span>
+          <span className="tabular-nums">{data.completionPercentage}% · lengkapi info wajib</span>
+        </span>
+      );
+    }
+    if (state === "ready") return <span>Siap tayang</span>;
+    if (inFlight) {
+      return (
+        <span className="flex items-center gap-1.5 text-warning-600 dark:text-warning-400">
+          <RefreshCw className="h-3 w-3 animate-spin flex-shrink-0" />
+          {state === "processing" ? "Masih diproses — cek lagi sebentar" : "Publishing…"}
+        </span>
+      );
+    }
+    if (state === "live" || state === "live_changed") {
+      return (
+        <span className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+          <span className="text-success-600 dark:text-success-400">
+            Live{publishedTime ? ` · ${new Date(publishedTime).toLocaleDateString()}` : ""}
+          </span>
+          {result?.operation && (
+            <span className="text-gray-400 dark:text-gray-500">· {operationMessage(result.operation).text}</span>
+          )}
+        </span>
+      );
+    }
+    if (state === "update_failed") return <span className="text-success-600 dark:text-success-400">Masih tayang — update terakhir gagal</span>;
+    if (state === "delisted") return <span>Dihapus dari channel · publish ulang untuk listing baru</span>;
+    if (updateGate) return <span className="text-warning-600 dark:text-warning-400">Update belum tersedia — delist lalu publish ulang</span>;
+    if (showFix) {
+      return (
+        <span className={state === "blocked" ? "text-warning-600 dark:text-warning-400" : "text-error-600 dark:text-error-400"}>
+          {state === "blocked" ? "Ada info wajib yang belum lengkap" : "Publishing gagal — belum tayang"}
+        </span>
+      );
+    }
+    return null;
+  })();
 
   return (
-    <div className={`rounded-2xl border border-l-4 ${accent} border-gray-200 dark:border-gray-800 bg-white dark:bg-white/[0.02] p-4 flex flex-col gap-3`}>
-      {/* Header */}
-      <div className="flex items-start justify-between gap-2">
-        <div className="flex items-center gap-2.5 min-w-0">
-          <ChannelTypeBadge channelType={data.channelType} size="sm" />
-          <div className="min-w-0">
-            <p className="text-sm font-semibold text-gray-900 dark:text-white truncate">{label}</p>
-            <p className="text-xs text-gray-400 dark:text-gray-500 truncate">{data.storeName ?? data.storeId}</p>
+    <div className="rounded-xl border border-gray-200 bg-white p-3 transition-colors hover:border-gray-300 dark:border-gray-800 dark:bg-white/[0.02] dark:hover:border-gray-700 sm:px-4">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+        {/* Identity + status */}
+        <div className="flex min-w-0 flex-1 items-center gap-3">
+          {/* status dot */}
+          <span className="relative flex h-2.5 w-2.5 flex-shrink-0">
+            {lc.badge.pulse && (
+              <span className={`absolute inline-flex h-full w-full animate-ping rounded-full opacity-60 ${TONE_DOT[lc.badge.tone]}`} />
+            )}
+            <span className={`relative inline-flex h-2.5 w-2.5 rounded-full ${TONE_DOT[lc.badge.tone]}`} />
+          </span>
+          {/* channel avatar */}
+          <span
+            className={`flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg text-[11px] font-bold ${meta.bg} ${meta.text}`}
+            title={label}
+          >
+            {meta.code}
+          </span>
+          {/* name + substatus */}
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+              <p className="truncate text-sm font-semibold text-gray-900 dark:text-white">{label}</p>
+              <span className={`flex-shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${TONE_PILL[lc.badge.tone]}`}>
+                {lc.badge.label}
+              </span>
+            </div>
+            <div className="mt-0.5 flex min-w-0 items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
+              <span className="truncate">{data.storeName ?? data.storeId}</span>
+              {substatus && <span aria-hidden className="text-gray-300 dark:text-gray-600">·</span>}
+              {substatus && <span className="min-w-0 truncate">{substatus}</span>}
+            </div>
           </div>
         </div>
-        <span className={`flex-shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${TONE_PILL[lc.badge.tone]}`}>
-          {lc.badge.label}
-        </span>
+
+        {/* Actions — primary CTA + one framed secondary toolbar */}
+        <div className="flex flex-shrink-0 items-center gap-2 sm:pl-2">
+          <RowAction
+            state={state}
+            lc={lc}
+            updateGate={updateGate}
+            showFix={showFix}
+            fixUrl={fixUrl}
+            onPublish={onPublish}
+            onDelistThenRepublish={onDelistThenRepublish}
+          />
+          {(lc.channelUrl || canHistory || lc.isDelistable) && (
+            <div className="flex items-center gap-1.5">
+              {lc.channelUrl && (
+                <a href={lc.channelUrl} target="_blank" rel="noopener noreferrer" title="Lihat di channel" className={ICON_BTN}>
+                  <ExternalLink className="h-4 w-4" />
+                </a>
+              )}
+              {canHistory && (
+                <button type="button" onClick={onHistory} title="Riwayat" className={ICON_BTN}>
+                  <Clock className="h-4 w-4" />
+                </button>
+              )}
+              {lc.isDelistable && (
+                <button type="button" onClick={onDelist} title="Delist" className={ICON_BTN_DANGER}>
+                  <Trash2 className="h-4 w-4" />
+                </button>
+              )}
+            </div>
+          )}
+        </div>
       </div>
 
-      {/* Body by state */}
-      {state === "draft" && (
-        <div className="space-y-1.5">
-          <div className="flex items-center gap-2">
-            <div className="flex-1 h-1.5 rounded-full bg-gray-200 dark:bg-gray-700 overflow-hidden">
-              <div className="h-full rounded-full bg-warning-500" style={{ width: `${data.completionPercentage}%` }} />
+      {/* Detail strip — only when there's something to fix (keeps clean rows uniform) */}
+      {(showFix || updateGate) && (
+        <div className="mt-2.5 sm:pl-[3.25rem]">
+          {showFix && <FixList result={result} blocked={state === "blocked"} />}
+          {updateGate && (
+            <div className="rounded-lg border border-warning-200 bg-warning-50 px-3 py-2 dark:border-warning-500/30 dark:bg-warning-500/10">
+              <p className="flex items-center gap-1.5 text-xs font-medium text-warning-700 dark:text-warning-400">
+                <AlertTriangle className="h-3.5 w-3.5 flex-shrink-0" /> Update belum tersedia
+              </p>
+              <p className="mt-1 text-xs text-warning-600 dark:text-warning-300">
+                Mengubah listing yang sudah tayang belum aktif untuk channel ini. Delist lalu publish ulang.
+              </p>
             </div>
-            <span className="text-xs font-medium text-gray-500 dark:text-gray-400 tabular-nums">{data.completionPercentage}%</span>
-          </div>
-          <p className="text-xs text-gray-500 dark:text-gray-400">Some required info is still missing.</p>
-        </div>
-      )}
-
-      {state === "ready" && (
-        <p className="text-xs text-gray-500 dark:text-gray-400">All required info is filled — ready to go live.</p>
-      )}
-
-      {state === "processing" && (
-        <p className="text-xs text-warning-600 dark:text-warning-400 flex items-center gap-1.5">
-          <RefreshCw className="h-3.5 w-3.5 animate-spin flex-shrink-0" />
-          Still publishing — image-heavy listings can take a bit. Refresh to see the final result.
-        </p>
-      )}
-
-      {(state === "live" || state === "live_changed") && (
-        <div className="space-y-1.5">
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-            <p className="text-xs text-success-600 dark:text-success-400 flex items-center gap-1.5">
-              <CheckCircle2 className="h-3.5 w-3.5" />
-              Live{publishedTime ? ` · ${new Date(publishedTime).toLocaleDateString()}` : ""}
-            </p>
-            {lc.channelUrl && (
-              <a
-                href={lc.channelUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-1 text-xs font-medium text-brand-600 dark:text-brand-400 hover:underline"
-              >
-                <ExternalLink className="h-3.5 w-3.5" /> Lihat di channel
-              </a>
-            )}
-          </div>
-          {/* Result of the last update push (§4a) — UPDATE / NO-OP feedback */}
-          {result?.operation && (
-            <p className={`inline-block rounded px-2 py-0.5 text-xs ${TONE_PILL[operationMessage(result.operation).tone]}`}>
-              {operationMessage(result.operation).text}
-            </p>
           )}
         </div>
       )}
-
-      {state === "update_failed" && (
-        <div className="rounded-lg border border-success-200 dark:border-success-500/30 bg-success-50 dark:bg-success-500/10 px-3 py-2">
-          <p className="text-xs font-medium flex items-center gap-1.5 text-success-700 dark:text-success-400">
-            <CheckCircle2 className="h-3.5 w-3.5 flex-shrink-0" /> Masih tayang — update terakhir gagal
-          </p>
-          <p className="mt-1 text-xs text-success-700/80 dark:text-success-300">
-            Listing tetap aktif dan bisa dibeli. Coba update lagi.
-          </p>
-        </div>
-      )}
-
-      {state === "delisted" && (
-        <p className="text-xs text-gray-500 dark:text-gray-400 flex items-center gap-1.5">
-          <Trash2 className="h-3.5 w-3.5 flex-shrink-0" />
-          Dihapus dari channel. Publish ulang untuk membuat listing baru.
-        </p>
-      )}
-
-      {updateGate && (
-        <div className="rounded-lg border border-warning-200 dark:border-warning-500/30 bg-warning-50 dark:bg-warning-500/10 px-3 py-2">
-          <p className="text-xs font-medium flex items-center gap-1.5 text-warning-700 dark:text-warning-400">
-            <AlertTriangle className="h-3.5 w-3.5 flex-shrink-0" /> Update belum tersedia
-          </p>
-          <p className="mt-1 text-xs text-warning-600 dark:text-warning-300">
-            Mengubah listing yang sudah tayang belum aktif untuk channel ini. Delist lalu publish ulang.
-          </p>
-        </div>
-      )}
-
-      {(state === "failed" || (state === "blocked" && !updateGate)) && (
-        <FixList result={result} blocked={state === "blocked"} />
-      )}
-
-      {/* Action */}
-      <div className="mt-auto pt-1 space-y-2">
-        {state === "publishing" && (
-          <button disabled className="w-full inline-flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm font-medium bg-brand-500/70 text-white cursor-wait">
-            <RefreshCw className="h-4 w-4 animate-spin" /> Publishing…
-          </button>
-        )}
-        {state === "processing" && (
-          <button disabled className="w-full inline-flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm font-medium bg-warning-500/70 text-white cursor-wait">
-            <RefreshCw className="h-4 w-4 animate-spin" /> Still publishing…
-          </button>
-        )}
-        {state === "ready" && (
-          <PrimaryButton onClick={onPublish} icon={<Send className="h-4 w-4" />}>Publish</PrimaryButton>
-        )}
-        {state === "draft" && (
-          <Link
-            href={fixUrl}
-            className="w-full inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium border border-warning-300 dark:border-warning-500/40 text-warning-700 dark:text-warning-400 hover:bg-warning-50 dark:hover:bg-warning-500/10 transition-colors"
-          >
-            Finish setup →
-          </Link>
-        )}
-        {/* Live listing — diff-aware update action (DiffEngine). "Up to date" (disabled) when the
-            authoritative diff says nothing changed; "Perbarui listing (N)" when it does. The
-            update-gate (can't push yet) is handled by the Delist & re-publish button below. */}
-        {state === "live" && lc.diffKnown && (
-          <button disabled className="w-full inline-flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm font-medium border border-gray-200 dark:border-gray-700 text-gray-400 dark:text-gray-500 cursor-default">
-            <CheckCircle2 className="h-4 w-4" /> Up to date
-          </button>
-        )}
-        {state === "live" && !lc.diffKnown && (
-          <button
-            type="button"
-            onClick={onPublish}
-            title="Kirim perubahan ke channel — kalau tak ada perubahan, sistem melewatinya (NO-OP)"
-            className="w-full inline-flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm font-semibold border border-brand-300 dark:border-brand-500/40 text-brand-600 dark:text-brand-400 hover:bg-brand-50 dark:hover:bg-brand-500/10 transition-colors"
-          >
-            <RefreshCw className="h-4 w-4" /> Perbarui listing
-          </button>
-        )}
-        {state === "live_changed" && !updateGate && (
-          <PrimaryButton onClick={onPublish} icon={<RefreshCw className="h-4 w-4" />}>
-            {`Perbarui listing${lc.changeCount ? ` (${lc.changeCount})` : ""}`}
-          </PrimaryButton>
-        )}
-        {state === "delisted" && (
-          <PrimaryButton onClick={onPublish} icon={<Send className="h-4 w-4" />}>Publish ulang</PrimaryButton>
-        )}
-        {state === "update_failed" && (
-          <PrimaryButton onClick={onPublish} icon={<RefreshCw className="h-4 w-4" />}>Coba update lagi</PrimaryButton>
-        )}
-        {updateGate && (
-          <PrimaryButton onClick={onDelistThenRepublish} icon={<RefreshCw className="h-4 w-4" />} tone="warning">
-            Delist &amp; Publish ulang
-          </PrimaryButton>
-        )}
-        {(state === "failed" || (state === "blocked" && !updateGate)) && (
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={onPublish}
-              className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium bg-brand-500 text-white hover:bg-brand-600 transition-colors"
-            >
-              <RefreshCw className="h-4 w-4" /> Coba lagi
-            </button>
-            <Link
-              href={fixUrl}
-              className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
-            >
-              Fix in setup →
-            </Link>
-          </div>
-        )}
-
-        {/* Secondary actions — Delist (live listings) + Riwayat */}
-        {(lc.isDelistable || lc.isLive || state === "delisted" || (data.publishAttempts ?? 0) > 0) && (
-          <div className="flex items-center justify-between gap-2 pt-1">
-            {lc.isDelistable ? (
-              <button
-                type="button"
-                onClick={onDelist}
-                className="inline-flex items-center gap-1.5 text-xs font-medium text-error-600 dark:text-error-400 hover:underline"
-              >
-                <Trash2 className="h-3.5 w-3.5" /> Delist
-              </button>
-            ) : <span />}
-            <button
-              type="button"
-              onClick={onHistory}
-              className="inline-flex items-center gap-1.5 text-xs font-medium text-gray-500 dark:text-gray-400 hover:text-brand-600 dark:hover:text-brand-400 hover:underline"
-            >
-              <Clock className="h-3.5 w-3.5" /> Riwayat
-            </button>
-          </div>
-        )}
-      </div>
     </div>
   );
 }
 
-function PrimaryButton({
+/** Contextual primary action for a channel row (compact, auto-width). */
+function RowAction({
+  state,
+  lc,
+  updateGate,
+  showFix,
+  fixUrl,
+  onPublish,
+  onDelistThenRepublish,
+}: {
+  state: Lifecycle["state"];
+  lc: Lifecycle;
+  updateGate: boolean;
+  showFix: boolean;
+  fixUrl: string;
+  onPublish: () => void;
+  onDelistThenRepublish: () => void;
+}) {
+  if (state === "publishing")
+    return <RowButton disabled icon={<RefreshCw className="h-4 w-4 animate-spin" />}>Publishing…</RowButton>;
+  if (state === "processing")
+    return <RowButton disabled tone="warning" icon={<RefreshCw className="h-4 w-4 animate-spin" />}>Memproses…</RowButton>;
+  if (state === "ready")
+    return <RowButton onClick={onPublish} icon={<Send className="h-4 w-4" />}>Publish</RowButton>;
+  if (state === "draft")
+    return <RowLink href={fixUrl} tone="warning">Lengkapi setup →</RowLink>;
+  if (updateGate)
+    return (
+      <RowButton onClick={onDelistThenRepublish} tone="warning" icon={<RefreshCw className="h-4 w-4" />}>
+        Delist &amp; publish ulang
+      </RowButton>
+    );
+  if (state === "live_changed")
+    return (
+      <RowButton onClick={onPublish} icon={<RefreshCw className="h-4 w-4" />}>
+        {`Perbarui${lc.changeCount ? ` (${lc.changeCount})` : ""}`}
+      </RowButton>
+    );
+  if (state === "live")
+    return lc.diffKnown ? (
+      <span className="inline-flex items-center gap-1 px-2 text-xs font-medium text-gray-400 dark:text-gray-500">
+        <CheckCircle2 className="h-4 w-4" /> Tersinkron
+      </span>
+    ) : (
+      <RowGhost onClick={onPublish} icon={<RefreshCw className="h-4 w-4" />}>Perbarui</RowGhost>
+    );
+  if (state === "delisted")
+    return <RowButton onClick={onPublish} icon={<Send className="h-4 w-4" />}>Publish ulang</RowButton>;
+  if (state === "update_failed")
+    return <RowButton onClick={onPublish} icon={<RefreshCw className="h-4 w-4" />}>Coba update lagi</RowButton>;
+  if (showFix)
+    return (
+      <>
+        <RowButton onClick={onPublish} icon={<RefreshCw className="h-4 w-4" />}>Coba lagi</RowButton>
+        <RowLink href={fixUrl}>Perbaiki</RowLink>
+      </>
+    );
+  return null;
+}
+
+function RowButton({
   onClick,
   icon,
   tone = "brand",
+  disabled,
   children,
 }: {
-  onClick: () => void;
+  onClick?: () => void;
   icon: React.ReactNode;
   tone?: "brand" | "warning";
+  disabled?: boolean;
   children: React.ReactNode;
 }) {
-  const cls = tone === "warning"
-    ? "bg-warning-500 hover:bg-warning-600"
-    : "bg-brand-500 hover:bg-brand-600";
+  const cls = disabled
+    ? "bg-gray-200 dark:bg-gray-700 text-gray-400 dark:text-gray-500 cursor-wait"
+    : tone === "warning"
+    ? "bg-warning-500 hover:bg-warning-600 text-white"
+    : "bg-brand-500 hover:bg-brand-600 text-white";
   return (
     <button
       type="button"
       onClick={onClick}
-      className={`w-full inline-flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm font-semibold text-white transition-colors ${cls}`}
+      disabled={disabled}
+      className={`inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-lg px-3 py-1.5 text-sm font-semibold transition-colors ${cls}`}
     >
       {icon} {children}
     </button>
+  );
+}
+
+function RowGhost({ onClick, icon, children }: { onClick: () => void; icon: React.ReactNode; children: React.ReactNode }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-lg border border-brand-300 px-3 py-1.5 text-sm font-semibold text-brand-600 transition-colors hover:bg-brand-50 dark:border-brand-500/40 dark:text-brand-400 dark:hover:bg-brand-500/10"
+    >
+      {icon} {children}
+    </button>
+  );
+}
+
+function RowLink({ href, tone = "neutral", children }: { href: string; tone?: "neutral" | "warning"; children: React.ReactNode }) {
+  const cls = tone === "warning"
+    ? "border-warning-300 text-warning-700 hover:bg-warning-50 dark:border-warning-500/40 dark:text-warning-400 dark:hover:bg-warning-500/10"
+    : "border-gray-300 text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-800";
+  return (
+    <Link
+      href={href}
+      className={`inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors ${cls}`}
+    >
+      {children}
+    </Link>
   );
 }
 
