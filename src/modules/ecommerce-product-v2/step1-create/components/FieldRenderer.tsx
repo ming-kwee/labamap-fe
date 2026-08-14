@@ -10,6 +10,9 @@ import React from 'react';
 import { Info, HelpCircle, AlertCircle } from '@/shared/ui/icons/Icons';
 import ImageUploadField from './ImageUploadField';
 import CategorySelectField from './CategorySelectField';
+import MoneyInput from './inputs/MoneyInput';
+import QuantityInput from './inputs/QuantityInput';
+import { classifyNumericField, inputBaseClass } from './inputs/field-format';
 
 interface FieldRendererProps {
   field: any;
@@ -19,6 +22,8 @@ interface FieldRendererProps {
   productId: string;
   onChange: (fieldName: string, value: any) => void;
   onBlur: (field: any) => void;
+  /** ISO currency code for money-classified fields. Defaults to IDR (platform default). */
+  currency?: string;
 }
 
 export default function FieldRenderer({
@@ -29,15 +34,13 @@ export default function FieldRenderer({
   productId,
   onChange,
   onBlur,
+  currency = 'IDR',
 }: FieldRendererProps) {
   const fieldName = field.name || field.fieldName;
   // Normalise: lowercase + underscores → hyphens so "CATEGORY_SELECT" and "category-select" both match
   const fieldType = (field.fieldType || '').toLowerCase().replace(/_/g, '-');
 
-  const errorClass = error
-    ? 'border-red-500 focus:ring-red-500 focus:border-red-500'
-    : 'border-gray-300 focus:ring-blue-500 focus:border-blue-500';
-  const baseClass = `w-full px-3 py-2 border rounded-md shadow-sm ${errorClass} transition-colors dark:bg-gray-800 dark:text-white`;
+  const baseClass = inputBaseClass(!!error);
 
   let input: React.ReactNode;
 
@@ -113,11 +116,53 @@ export default function FieldRenderer({
         disabled={field.readOnly}
       />
     );
+  } else if (fieldType === 'number' || fieldType === 'currency' || fieldType === 'integer') {
+    // Name-based routing keeps product-level price/stock consistent with the variant table:
+    // money → currency mask, quantity → integer stepper, everything else → plain decimal.
+    const kind = fieldType === 'currency' ? 'money' : fieldType === 'integer' ? 'quantity' : classifyNumericField(fieldName);
+    if (kind === 'money') {
+      input = (
+        <MoneyInput
+          name={fieldName}
+          value={value}
+          currency={currency}
+          error={!!error}
+          onChange={(v) => onChange(fieldName, v ?? '')}
+          onBlur={() => onBlur(field)}
+          placeholder={field.placeholder}
+          aria-label={field.label}
+        />
+      );
+    } else if (kind === 'quantity') {
+      input = (
+        <QuantityInput
+          name={fieldName}
+          value={value}
+          error={!!error}
+          onChange={(v) => onChange(fieldName, v ?? '')}
+          onBlur={() => onBlur(field)}
+          aria-label={field.label}
+        />
+      );
+    } else {
+      input = (
+        <input
+          name={fieldName}
+          type="text"
+          inputMode="decimal"
+          placeholder={field.placeholder}
+          value={value ?? ''}
+          onChange={(e) => onChange(fieldName, e.target.value.replace(/[^\d.]/g, ''))}
+          onBlur={() => onBlur(field)}
+          className={baseClass}
+        />
+      );
+    }
   } else {
     input = (
       <input
         name={fieldName}
-        type={fieldType === 'number' ? 'number' : fieldType === 'email' ? 'email' : 'text'}
+        type={fieldType === 'email' ? 'email' : 'text'}
         placeholder={field.placeholder}
         value={value || ''}
         onChange={(e) => onChange(fieldName, e.target.value)}

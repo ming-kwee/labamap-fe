@@ -10,6 +10,10 @@
 import React, { useState, useMemo } from 'react';
 import VariantMultiImageUpload from './VariantMultiImageUpload';
 import SkuMatrixPreview from './SkuMatrixPreview';
+import MoneyInput from './inputs/MoneyInput';
+import QuantityInput from './inputs/QuantityInput';
+import { classifyNumericField, cssColorOrNull, inputBaseClass } from './inputs/field-format';
+import { Trash2 } from '@/shared/ui/icons/Icons';
 import type { VariantDimension as ProductTypeVariantDimension } from '@/app/(admin)/omni-admin/product-types/_types/product-type';
 
 // Module-level constant — must not be inside the component or a useMemo,
@@ -56,6 +60,8 @@ interface VariantConfiguratorProps {
   productTypeName?: string | null;
   /** True while the ProductType + attribute options are being fetched. */
   isLoadingVariantOptions?: boolean;
+  /** ISO currency code for per-variant money cells. Defaults to IDR (platform default). */
+  currency?: string;
 }
 
 const VariantConfigurator: React.FC<VariantConfiguratorProps> = ({
@@ -69,6 +75,7 @@ const VariantConfigurator: React.FC<VariantConfiguratorProps> = ({
   dimensionOptions,
   productTypeName,
   isLoadingVariantOptions = false,
+  currency = 'IDR',
 }) => {
   function isFieldVisible(field: any, currentFormData: any): boolean {
     if (!field.conditionalVisibility) return true;
@@ -231,7 +238,7 @@ const VariantConfigurator: React.FC<VariantConfiguratorProps> = ({
   // matched master-attribute has zero options (the primary path filters `options.length > 0`).
   // Surfaced only in development so a "missing axis" isn't a silent mystery; never in production.
   const droppedDimensions = useMemo(() => {
-    if (!(productTypeDimensions.length > 0 && dimensionOptions.size > 0)) return [];
+    if (!(productTypeDimensions.length > 0 && dimensionOptions && dimensionOptions.size > 0)) return [];
     return productTypeDimensions.filter(dim => !(dimensionOptions.get(dim.attributeCode)?.length));
   }, [productTypeDimensions, dimensionOptions]);
 
@@ -444,6 +451,27 @@ const VariantConfigurator: React.FC<VariantConfiguratorProps> = ({
     updateParent(updated, selectedOptions);
   };
 
+  // Bulk-apply one value to a column across every generated SKU (Shopify/Ginee "edit all").
+  const applyToAll = (field: string, newValue: any) => {
+    const updated = variants.map(v => ({ ...v, [field]: newValue }));
+    setVariants(updated);
+    updateParent(updated, selectedOptions);
+  };
+  const [bulkPrice, setBulkPrice] = useState<number | undefined>(undefined);
+  const [bulkStock, setBulkStock] = useState<number | undefined>(undefined);
+
+  // Select-all / clear per option axis — replaces per-checkbox clicking for wide axes.
+  const setAxis = (dimensionName: string, values: string[]) => {
+    setSelectedOptions(prev => ({ ...prev, [dimensionName]: values }));
+  };
+
+  // Split generated columns: dimensions collapse into one identity cell; the rest stay editable.
+  const dimensionCols = effectiveVariantConfig.filter((f: any) => f.type === 'select');
+  const valueCols = effectiveVariantConfig.filter((f: any) => f.type !== 'select');
+  // First money / quantity column drives the bulk-edit bar (Set price / Set stock for all).
+  const priceCol = valueCols.find((f: any) => f.type === 'number' && classifyNumericField(f.name) === 'money');
+  const stockCol = valueCols.find((f: any) => f.type === 'number' && classifyNumericField(f.name) === 'quantity');
+
   const totalCombinations = effectiveDimensions.reduce((total, dim) => {
     const selectedCount = selectedOptions[dim.name]?.length || 0;
     return selectedCount > 0 ? total * selectedCount : total;
@@ -501,30 +529,63 @@ const VariantConfigurator: React.FC<VariantConfiguratorProps> = ({
         </div>
       )}
 
-      {/* Option selectors */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {effectiveDimensions.map(dimension => (
-          <div key={dimension.name}>
-            <h4 className="font-medium mb-3">
-              {dimension.label}
-            </h4>
-            <div className="flex flex-wrap gap-2">
-              {dimension.options.map(option => (
-                <label key={option} className="flex items-center space-x-2 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={(selectedOptions[dimension.name] || []).includes(option)}
-                    onChange={(e) => handleOptionChange(dimension.name, option, e.target.checked)}
-                  />
-                  <span className="text-sm px-2 py-1 bg-gray-100 rounded">{option}</span>
-                </label>
-              ))}
+      {/* Option selectors — pill toggles (one axis per card) */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        {effectiveDimensions.map(dimension => {
+          const selected = selectedOptions[dimension.name] || [];
+          const allSelected = dimension.options.length > 0 && selected.length === dimension.options.length;
+          return (
+            <div
+              key={dimension.name}
+              className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900/40 p-4"
+            >
+              <div className="flex items-center justify-between mb-3">
+                <h4 className="font-medium text-sm text-gray-800 dark:text-gray-100">
+                  {dimension.label}
+                  <span className="ml-2 text-xs font-normal text-gray-400">
+                    {selected.length}/{dimension.options.length}
+                  </span>
+                </h4>
+                <button
+                  type="button"
+                  onClick={() => setAxis(dimension.name, allSelected ? [] : [...dimension.options])}
+                  className="text-xs font-medium text-brand-600 hover:text-brand-700 dark:text-brand-400 dark:hover:text-brand-300"
+                >
+                  {allSelected ? 'Clear' : 'Select all'}
+                </button>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {dimension.options.map(option => {
+                  const isOn = selected.includes(option);
+                  const swatch = cssColorOrNull(option);
+                  return (
+                    <button
+                      key={option}
+                      type="button"
+                      aria-pressed={isOn}
+                      onClick={() => handleOptionChange(dimension.name, option, !isOn)}
+                      className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-sm font-medium transition-colors ${
+                        isOn
+                          ? 'border-brand-500 bg-brand-500 text-white shadow-sm'
+                          : 'border-gray-300 bg-white text-gray-700 hover:border-brand-400 hover:text-brand-600 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300 dark:hover:border-brand-400'
+                      }`}
+                    >
+                      {swatch && (
+                        <span
+                          className={`inline-block h-3 w-3 rounded-full ring-1 ${
+                            isOn ? 'ring-white/60' : 'ring-black/10 dark:ring-white/20'
+                          }`}
+                          style={{ backgroundColor: swatch }}
+                        />
+                      )}
+                      {option}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
-            <div className="mt-2 text-xs text-gray-500">
-              {selectedOptions[dimension.name]?.length || 0} of {dimension.options.length} selected
-            </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       {/* SKU matrix live preview */}
@@ -538,17 +599,17 @@ const VariantConfigurator: React.FC<VariantConfiguratorProps> = ({
           type="button"
           onClick={generateVariants}
           disabled={totalCombinations === 1}
-          className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50"
+          className="inline-flex items-center gap-2 rounded-lg bg-brand-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-brand-700 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 dark:focus:ring-offset-gray-900"
         >
-          Confirm Variants
+          {variants.length > 0 ? 'Regenerate SKUs' : 'Generate SKUs'}
           {effectiveDimensions.length > 0 && (
-            <span className="ml-2">
-              ({effectiveDimensions.map(dim => selectedOptions[dim.name]?.length || 0).join(' × ')} = {totalCombinations} SKUs)
+            <span className="rounded-md bg-white/20 px-2 py-0.5 text-xs font-medium">
+              {effectiveDimensions.map(dim => selectedOptions[dim.name]?.length || 0).join(' × ')} = {totalCombinations}
             </span>
           )}
         </button>
         {effectiveDimensions.length > 0 && (
-          <div className="text-sm text-gray-600">
+          <div className="text-sm text-gray-500 dark:text-gray-400">
             {effectiveDimensions.length} option{effectiveDimensions.length !== 1 ? 's' : ''} available
           </div>
         )}
@@ -556,69 +617,175 @@ const VariantConfigurator: React.FC<VariantConfiguratorProps> = ({
 
       {/* Variants table */}
       {variants.length > 0 && (
-        <div className="space-y-3">
-          <h4 className="font-medium">Generated SKUs ({variants.length})</h4>
+        <div className="rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
+          {/* Header: title + bulk-edit bar */}
+          <div className="flex flex-col gap-3 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+            <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-200">
+              Generated SKUs
+              <span className="ml-2 rounded-full bg-brand-50 px-2 py-0.5 text-xs font-medium text-brand-600 dark:bg-brand-500/10 dark:text-brand-400">
+                {variants.length}
+              </span>
+            </h4>
+            {(priceCol || stockCol) && (
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-xs font-medium text-gray-500 dark:text-gray-400">Bulk edit:</span>
+                {priceCol && (
+                  <div className="flex items-center gap-1">
+                    <MoneyInput
+                      compact
+                      currency={currency}
+                      value={bulkPrice}
+                      onChange={setBulkPrice}
+                      aria-label="Bulk price"
+                      className="w-32"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => bulkPrice !== undefined && applyToAll(priceCol.name, bulkPrice)}
+                      disabled={bulkPrice === undefined}
+                      className="rounded-md border border-gray-300 bg-white px-2.5 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-40 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700/50"
+                    >
+                      Set price
+                    </button>
+                  </div>
+                )}
+                {stockCol && (
+                  <div className="flex items-center gap-1">
+                    <QuantityInput
+                      compact
+                      value={bulkStock}
+                      onChange={setBulkStock}
+                      aria-label="Bulk stock"
+                      className="w-28"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => bulkStock !== undefined && applyToAll(stockCol.name, bulkStock)}
+                      disabled={bulkStock === undefined}
+                      className="rounded-md border border-gray-300 bg-white px-2.5 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-40 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700/50"
+                    >
+                      Set stock
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Table */}
           <div className="overflow-x-auto">
-            <table className="w-full border-collapse border border-gray-300">
-              <thead className="bg-gray-50">
-                <tr>
-                  {effectiveVariantConfig.map((field: any) => (
-                    <th key={field.name} className="border border-gray-300 px-3 py-2 text-left">{field.label}</th>
+            <table className="w-full text-sm">
+              <thead className="sticky top-0 z-10 bg-gray-50 dark:bg-gray-800/70 backdrop-blur">
+                <tr className="text-left text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                  {dimensionCols.length > 0 && <th className="px-4 py-2.5">Variant</th>}
+                  {valueCols.map((field: any) => (
+                    <th key={field.name} className="px-3 py-2.5 whitespace-nowrap">{field.label}</th>
                   ))}
-                  <th className="border border-gray-300 px-3 py-2 text-left">Actions</th>
+                  <th className="px-3 py-2.5 text-right">Actions</th>
                 </tr>
               </thead>
-              <tbody>
+              <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
                 {variants.map((variant, idx) => (
-                  <tr key={variant.id ?? variant.sku ?? idx} className="hover:bg-gray-50">
-                    {effectiveVariantConfig.map((field: any) => (
-                      <td key={field.name} className="border border-gray-300 px-3 py-2">
-                        {field.type === 'images' ? (
-                          <VariantMultiImageUpload
-                            variantId={variant.id}
-                            currentImages={variant[field.name] || []}
-                            onImagesChange={(imageUrls) => updateVariant(variant.id, field.name, imageUrls)}
-                            organizationId={organizationId}
-                            productId={productId}
-                            maxImages={5}
-                          />
-                        ) : field.name.toLowerCase().includes('color') && typeof variant[field.name] === 'string' ? (
-                          <div className="flex items-center">
-                            <div className="w-6 h-6 rounded border inline-block mr-2" style={{ backgroundColor: variant[field.name] }} />
-                            {variant[field.name]}
-                          </div>
-                        ) : field.type === 'number' ? (
-                          <input
-                            type="number"
-                            value={variant[field.name] || 0}
-                            onChange={(e) => updateVariant(variant.id, field.name, Number(e.target.value))}
-                            className="w-20 p-1 border rounded"
-                            step={['price', 'comparePrice'].includes(field.name) ? '0.01' : '1'}
-                            min="0"
-                          />
-                        ) : field.type === 'text' ? (
-                          <input
-                            type="text"
-                            value={variant[field.name] || ''}
-                            onChange={(e) => updateVariant(variant.id, field.name, e.target.value)}
-                            className="w-24 p-1 border rounded text-xs"
-                          />
-                        ) : (
-                          <span>{variant[field.name] || '-'}</span>
-                        )}
+                  <tr
+                    key={variant.id ?? variant.sku ?? idx}
+                    className="group bg-white even:bg-gray-50/40 hover:bg-brand-50/40 dark:bg-transparent dark:even:bg-gray-800/20 dark:hover:bg-brand-500/5 transition-colors"
+                  >
+                    {/* Identity cell — dimension values as pills */}
+                    {dimensionCols.length > 0 && (
+                      <td className="px-4 py-2.5 align-middle">
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          {dimensionCols.map((dimCol: any) => {
+                            const val = variant[dimCol.name];
+                            if (val == null || val === '') return null;
+                            const swatch = cssColorOrNull(val);
+                            return (
+                              <span
+                                key={dimCol.name}
+                                className="inline-flex items-center gap-1 rounded-md bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-700 dark:bg-gray-700/60 dark:text-gray-200"
+                              >
+                                {swatch && (
+                                  <span
+                                    className="inline-block h-2.5 w-2.5 rounded-full ring-1 ring-black/10 dark:ring-white/20"
+                                    style={{ backgroundColor: swatch }}
+                                  />
+                                )}
+                                {String(val)}
+                              </span>
+                            );
+                          })}
+                        </div>
                       </td>
-                    ))}
-                    <td className="border border-gray-300 px-3 py-2">
+                    )}
+
+                    {/* Value cells — type-aware inputs */}
+                    {valueCols.map((field: any) => {
+                      const kind = field.type === 'number' ? classifyNumericField(field.name) : field.type;
+                      return (
+                        <td key={field.name} className="px-3 py-2 align-middle">
+                          {field.type === 'images' ? (
+                            <VariantMultiImageUpload
+                              variantId={variant.id}
+                              currentImages={variant[field.name] || []}
+                              onImagesChange={(imageUrls) => updateVariant(variant.id, field.name, imageUrls)}
+                              organizationId={organizationId}
+                              productId={productId}
+                              maxImages={5}
+                            />
+                          ) : kind === 'money' ? (
+                            <MoneyInput
+                              compact
+                              currency={currency}
+                              value={variant[field.name]}
+                              onChange={(v) => updateVariant(variant.id, field.name, v ?? 0)}
+                              aria-label={field.label}
+                              className="w-32"
+                            />
+                          ) : kind === 'quantity' ? (
+                            <QuantityInput
+                              compact
+                              value={variant[field.name]}
+                              onChange={(v) => updateVariant(variant.id, field.name, v ?? 0)}
+                              aria-label={field.label}
+                              className="w-28"
+                            />
+                          ) : field.type === 'number' ? (
+                            <input
+                              type="text"
+                              inputMode="decimal"
+                              value={variant[field.name] ?? ''}
+                              onChange={(e) => updateVariant(variant.id, field.name, e.target.value.replace(/[^\d.]/g, ''))}
+                              aria-label={field.label}
+                              className={`${inputBaseClass(false, true)} w-24`}
+                            />
+                          ) : field.type === 'text' ? (
+                            <input
+                              type="text"
+                              value={variant[field.name] || ''}
+                              onChange={(e) => updateVariant(variant.id, field.name, e.target.value)}
+                              aria-label={field.label}
+                              className={`${inputBaseClass(false, true)} w-32`}
+                            />
+                          ) : (
+                            <span className="text-gray-500 dark:text-gray-400">{variant[field.name] || '—'}</span>
+                          )}
+                        </td>
+                      );
+                    })}
+
+                    {/* Actions */}
+                    <td className="px-3 py-2 text-right align-middle">
                       <button
                         type="button"
+                        title="Remove SKU"
+                        aria-label="Remove SKU"
                         onClick={() => {
                           const updated = variants.filter(v => v.id !== variant.id);
                           setVariants(updated);
                           updateParent(updated, selectedOptions);
                         }}
-                        className="text-red-600 hover:text-red-800 text-sm"
+                        className="inline-flex h-8 w-8 items-center justify-center rounded-md text-gray-400 opacity-0 transition-all hover:bg-red-50 hover:text-red-600 focus:opacity-100 group-hover:opacity-100 dark:hover:bg-red-500/10 dark:hover:text-red-400"
                       >
-                        Remove
+                        <Trash2 className="h-4 w-4" />
                       </button>
                     </td>
                   </tr>
@@ -627,10 +794,9 @@ const VariantConfigurator: React.FC<VariantConfiguratorProps> = ({
             </table>
           </div>
 
-          <div className="p-3 bg-blue-50 rounded border">
-            <div className="text-sm text-blue-800">
-              {variants.length} SKU{variants.length !== 1 ? 's' : ''} · {effectiveDimensions.length} option{effectiveDimensions.length !== 1 ? 's' : ''} ({effectiveDimensions.map(d => d.label).join(', ')})
-            </div>
+          {/* Footer summary */}
+          <div className="border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 px-4 py-2.5 text-xs text-gray-500 dark:text-gray-400">
+            {variants.length} SKU{variants.length !== 1 ? 's' : ''} · {effectiveDimensions.length} option{effectiveDimensions.length !== 1 ? 's' : ''} ({effectiveDimensions.map(d => d.label).join(', ')})
           </div>
         </div>
       )}
