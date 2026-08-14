@@ -1,5 +1,6 @@
 "use client";
 import React, { useEffect, useRef, useState,useCallback } from "react";
+import { createPortal } from "react-dom";
 import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
@@ -152,10 +153,26 @@ const AppSidebar: React.FC = () => {
     isMobileOpen,
     isHovered,
     setIsHovered,
-    toggleSidebar,
     toggleMobileSidebar,
   } = useSidebar();
   const pathname = usePathname();
+
+  // Icon-rail tooltip: when collapsed, hovering an icon shows its label without flinging
+  // the whole rail open. Rendered via a portal so it isn't clipped by the nav's overflow
+  // container or offset by the sidebar's transform. Only meaningful in the collapsed state.
+  const [tooltip, setTooltip] = useState<{ label: string; top: number } | null>(null);
+  const showTooltip = useCallback(
+    (e: React.MouseEvent<HTMLElement>, label: string) => {
+      if (isExpanded || isHovered || isMobileOpen) return;
+      const r = e.currentTarget.getBoundingClientRect();
+      setTooltip({ label, top: r.top + r.height / 2 });
+    },
+    [isExpanded, isHovered, isMobileOpen]
+  );
+  // The rail is expanding/expanded (or mobile) → labels are visible, so drop the tooltip.
+  useEffect(() => {
+    if (isExpanded || isHovered || isMobileOpen) setTooltip(null);
+  }, [isExpanded, isHovered, isMobileOpen]);
 
    const renderMenuItems = (
     navItems: NavItem[],
@@ -167,6 +184,8 @@ const AppSidebar: React.FC = () => {
           {nav.subItems ? (
             <button
               onClick={() => handleSubmenuToggle(index, menuType)}
+              onMouseEnter={(e) => showTooltip(e, nav.name)}
+              onMouseLeave={() => setTooltip(null)}
               className={`menu-item group  ${
                 openSubmenu?.type === menuType && openSubmenu?.index === index
                   ? "menu-item-active"
@@ -205,6 +224,8 @@ const AppSidebar: React.FC = () => {
               <Link
                 href={nav.path}
                 onClick={handleNavLinkClick}
+                onMouseEnter={(e) => showTooltip(e, nav.name)}
+                onMouseLeave={() => setTooltip(null)}
                 className={`menu-item group ${
                   isActive(nav.path) ? "menu-item-active" : "menu-item-inactive"
                 }`}
@@ -299,34 +320,38 @@ const AppSidebar: React.FC = () => {
   // the natural mouse movement after a click fires onMouseLeave → setIsHovered(false)
   // before the navigation completes, making the sidebar snap to 90 px.
   const hoverLeaveTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const hoverEnterTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   const handleMouseEnter = useCallback(() => {
     if (hoverLeaveTimerRef.current) clearTimeout(hoverLeaveTimerRef.current);
-    if (!isExpanded) setIsHovered(true);
+    if (isExpanded) return;
+    // Hover-intent delay: expand only on a deliberate hover, so the rail doesn't fling
+    // open on an incidental pass. During this window the per-icon tooltip is what shows.
+    if (hoverEnterTimerRef.current) clearTimeout(hoverEnterTimerRef.current);
+    hoverEnterTimerRef.current = setTimeout(() => setIsHovered(true), 350);
   }, [isExpanded, setIsHovered]);
 
   const handleMouseLeave = useCallback(() => {
+    if (hoverEnterTimerRef.current) clearTimeout(hoverEnterTimerRef.current);
+    setTooltip(null);
     hoverLeaveTimerRef.current = setTimeout(() => setIsHovered(false), 300);
   }, [setIsHovered]);
 
   /**
    * Called by every navigation Link inside the sidebar.
    *
-   * Mobile  → close the drawer immediately so the user returns to the page.
-   * Desktop (hover-expand mode, isExpanded=false) → pin the sidebar to fully
-   *   expanded so it doesn't auto-collapse after the mouse drifts away post-click.
-   * Desktop (already pinned, isExpanded=true) → nothing to do.
+   * Mobile  → close the drawer so the user returns to the page.
+   * Desktop → do nothing. The collapse/expand mode (icon-rail vs pinned) is the
+   *   user's explicit, persisted preference and must NOT be silently changed by a
+   *   navigation click. If the rail is only temporarily hover-expanded, the
+   *   existing handleMouseLeave debounce collapses it back to the rail once the
+   *   mouse actually leaves — smoothly, without snapping mid-click.
    */
   const handleNavLinkClick = useCallback(() => {
     if (isMobileOpen) {
       toggleMobileSidebar();
-    } else if (!isExpanded && isHovered) {
-      // Cancel the pending hover-leave timer so the width transition is clean
-      if (hoverLeaveTimerRef.current) clearTimeout(hoverLeaveTimerRef.current);
-      toggleSidebar();   // isExpanded → true
-      setIsHovered(false);
     }
-  }, [isMobileOpen, isExpanded, isHovered, toggleMobileSidebar, toggleSidebar, setIsHovered]);
+  }, [isMobileOpen, toggleMobileSidebar]);
 
   // const isActive = (path: string) => path === pathname;
    const isActive = useCallback((path: string) => path === pathname, [pathname]);
@@ -396,8 +421,9 @@ const AppSidebar: React.FC = () => {
   };
 
   return (
+    <>
     <aside
-      className={`fixed mt-16 flex flex-col lg:mt-0 top-0 px-5 left-0 bg-white dark:bg-gray-900 dark:border-gray-800 text-gray-900 h-screen transition-all duration-300 ease-in-out z-50 border-r border-gray-200 
+      className={`fixed mt-16 flex flex-col lg:mt-0 top-0 px-5 left-0 bg-white dark:bg-gray-900 dark:border-gray-800 text-gray-900 h-screen transition-all duration-300 ease-in-out z-50 border-r border-gray-200
         ${
           isExpanded || isMobileOpen
             ? "w-[290px]"
@@ -481,6 +507,21 @@ const AppSidebar: React.FC = () => {
         {/* {isExpanded || isHovered || isMobileOpen ? <SidebarWidget /> : null} */}
       </div>
     </aside>
+
+    {/* Collapsed-rail tooltip — portalled to <body> so it escapes the nav's overflow
+        clipping and the sidebar's transform containing-block. */}
+    {tooltip && !isExpanded && !isHovered && !isMobileOpen && typeof document !== "undefined" &&
+      createPortal(
+        <div
+          role="tooltip"
+          className="pointer-events-none fixed z-[70] hidden -translate-y-1/2 rounded-md bg-gray-900 px-2.5 py-1 text-xs font-medium text-white shadow-lg lg:block dark:bg-gray-700"
+          style={{ left: 84, top: tooltip.top }}
+        >
+          {tooltip.label}
+        </div>,
+        document.body
+      )}
+    </>
   );
 };
 

@@ -1,5 +1,8 @@
 "use client";
-import React, { createContext, useContext, useState, useEffect } from "react";
+import React, { createContext, useContext, useState, useEffect, useRef } from "react";
+
+// Remembers the desktop pin preference (icon-rail vs expanded) across reloads.
+const SIDEBAR_STORAGE_KEY = "sidebar:expanded";
 
 type SidebarContextType = {
   isExpanded: boolean;
@@ -50,6 +53,32 @@ export const SidebarProvider: React.FC<{ children: React.ReactNode }> = ({
       window.removeEventListener("resize", handleResize);
     };
   }, []);
+
+  // Restore the persisted pin preference after mount (kept out of the initial state to
+  // avoid an SSR/localStorage hydration mismatch).
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(SIDEBAR_STORAGE_KEY);
+      if (saved !== null) setIsExpanded(saved === "true");
+    } catch {
+      /* localStorage unavailable — fall back to the default */
+    }
+  }, []);
+
+  // Persist on change. Skip the very first run so the default doesn't overwrite the
+  // value the restore effect is about to apply.
+  const skipFirstPersist = useRef(true);
+  useEffect(() => {
+    if (skipFirstPersist.current) {
+      skipFirstPersist.current = false;
+      return;
+    }
+    try {
+      localStorage.setItem(SIDEBAR_STORAGE_KEY, String(isExpanded));
+    } catch {
+      /* ignore */
+    }
+  }, [isExpanded]);
 
   const toggleSidebar = () => {
     setIsExpanded((prev) => !prev);
