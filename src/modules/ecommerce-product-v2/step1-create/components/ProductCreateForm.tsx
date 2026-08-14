@@ -502,7 +502,7 @@ export default function ProductCreateForm({
         {viewLevel !== 'full' && (
           <button
             type="button"
-            className="text-blue-600 dark:text-blue-400 hover:underline focus:outline-none"
+            className="font-medium text-brand-600 dark:text-brand-400 hover:underline focus:outline-none"
             onClick={() => setViewLevel(viewLevel === 'essential' ? 'standard' : 'full')}
           >
             {viewLevel === 'essential' ? '+ Show recommended fields' : '+ Show all fields'}
