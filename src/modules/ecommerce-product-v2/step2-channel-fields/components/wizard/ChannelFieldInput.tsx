@@ -2,6 +2,9 @@
 import React, { useState, useEffect } from "react";
 import type { ChannelFormField, MasterMappedSuggestion } from "../../types/channelStore";
 import CategoryTreePicker from "./CategoryTreePicker";
+import MoneyInput from "../../../components/inputs/MoneyInput";
+import QuantityInput from "../../../components/inputs/QuantityInput";
+import { classifyNumericField } from "../../../components/inputs/field-format";
 
 const BASE = "http://localhost:8888/labamap/api/v1";
 
@@ -286,19 +289,49 @@ export default function ChannelFieldInput({ field, value, onChange, disabled, va
         </label>
       );
 
-    case "NUMBER":
+    case "NUMBER": {
+      // Same masking as Step 1: money → currency prefix + thousand grouping, quantity →
+      // integer stepper, everything else → plain decimal. No native spinners.
+      const kind = classifyNumericField(field.fieldName);
+      const numValue = value as number | string | undefined;
+      if (kind === "money") {
+        return (
+          <MoneyInput
+            value={numValue}
+            currency="IDR"
+            onChange={(v) => onChange(field.fieldName, v ?? "")}
+            disabled={disabled}
+            placeholder={field.placeholder ?? undefined}
+            aria-label={field.label}
+            className="w-full rounded-xl"
+          />
+        );
+      }
+      if (kind === "quantity") {
+        return (
+          <QuantityInput
+            value={numValue}
+            min={effectiveValidation?.min ?? 0}
+            max={effectiveValidation?.max}
+            onChange={(v) => onChange(field.fieldName, v ?? "")}
+            disabled={disabled}
+            aria-label={field.label}
+            className="w-full rounded-xl"
+          />
+        );
+      }
       return (
         <input
-          type="number"
-          value={(value as number) ?? ""}
-          onChange={(e) => onChange(field.fieldName, e.target.valueAsNumber)}
+          type="text"
+          inputMode="decimal"
+          value={numValue ?? ""}
+          onChange={(e) => onChange(field.fieldName, e.target.value.replace(/[^\d.]/g, ""))}
           placeholder={field.placeholder ?? ""}
           disabled={disabled}
-          min={effectiveValidation?.min}
-          max={effectiveValidation?.max}
           className={baseClass}
         />
       );
+    }
 
     case "DATE":
       return (

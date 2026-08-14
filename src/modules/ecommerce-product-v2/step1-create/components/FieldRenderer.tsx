@@ -10,9 +10,9 @@ import React from 'react';
 import { Info, HelpCircle, AlertCircle } from '@/shared/ui/icons/Icons';
 import ImageUploadField from './ImageUploadField';
 import CategorySelectField from './CategorySelectField';
-import MoneyInput from './inputs/MoneyInput';
-import QuantityInput from './inputs/QuantityInput';
-import { classifyNumericField, inputBaseClass } from './inputs/field-format';
+import MoneyInput from '../../components/inputs/MoneyInput';
+import QuantityInput from '../../components/inputs/QuantityInput';
+import { classifyNumericField, inputBaseClass } from '../../components/inputs/field-format';
 
 interface FieldRendererProps {
   field: any;

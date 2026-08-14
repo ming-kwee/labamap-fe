@@ -10,9 +10,9 @@
 import React, { useState, useMemo } from 'react';
 import VariantMultiImageUpload from './VariantMultiImageUpload';
 import SkuMatrixPreview from './SkuMatrixPreview';
-import MoneyInput from './inputs/MoneyInput';
-import QuantityInput from './inputs/QuantityInput';
-import { classifyNumericField, cssColorOrNull, inputBaseClass } from './inputs/field-format';
+import MoneyInput from '../../components/inputs/MoneyInput';
+import QuantityInput from '../../components/inputs/QuantityInput';
+import { classifyNumericField, cssColorOrNull, inputBaseClass } from '../../components/inputs/field-format';
 import { Trash2 } from '@/shared/ui/icons/Icons';
 import type { VariantDimension as ProductTypeVariantDimension } from '@/app/(admin)/omni-admin/product-types/_types/product-type';
 

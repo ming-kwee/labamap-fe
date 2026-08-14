@@ -16,6 +16,7 @@ import { useAuth } from "@/shared/contexts/AuthContext";
 import ChannelTypeBadge from "../stores/ChannelTypeBadge";
 import ChannelStoreTab from "./ChannelStoreTab";
 import ListingDirtyBadge from "./ListingDirtyBadge";
+import StoreSidebar, { type StoreSidebarItem } from "./StoreSidebar";
 import { useWizardViewMode } from "@/modules/ecommerce-product-v2/utils/viewMode";
 import ViewModeToggle from "@/modules/ecommerce-product-v2/components/ViewModeToggle";
 
@@ -682,6 +683,28 @@ export default function ChannelFieldsWizard({ masterProductId }: Props) {
     return comp.status === "PUBLISHED" || comp.pct === 100;
   }).length;
 
+  // Sidebar rows — same badge logic the old tab bar used (done / partial / live %).
+  const storeItems: StoreSidebarItem[] = channels.map((ch) => {
+    const comp = storeCompletion[ch.storeId] ?? { pct: ch.completionPercentage, status: ch.completionStatus };
+    const hasNoRequired = (ch.completionStats?.requiredTotal ?? 0) === 0;
+    const livePct = localPctByStore[ch.storeId] ?? comp.pct;
+    const isDone = comp.status === "PUBLISHED" || livePct === 100 || hasNoRequired;
+    return {
+      storeId: ch.storeId,
+      storeName: ch.storeName,
+      storeUrl: ch.storeUrl,
+      channelType: ch.channelType,
+      livePct,
+      isDone,
+      isPartial: !isDone && livePct > 0,
+    };
+  });
+
+  const handleSidebarSelect = (storeId: string) => {
+    const idx = channels.findIndex((c) => c.storeId === storeId);
+    if (idx >= 0) switchTab(idx);
+  };
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -705,135 +728,113 @@ export default function ChannelFieldsWizard({ masterProductId }: Props) {
         </div>
       </div>
 
-      {/* Tab bar */}
-      <div className="flex flex-wrap gap-1.5 border-b border-gray-200 dark:border-gray-800 pb-3">
-        {channels.map((ch, idx) => {
-          const comp = storeCompletion[ch.storeId] ?? { pct: ch.completionPercentage, status: ch.completionStatus };
-          const isActive = idx === activeStoreIndex;
-          const hasNoRequired = (ch.completionStats?.requiredTotal ?? 0) === 0;
-          const livePct = localPctByStore[ch.storeId] ?? comp.pct;
-          const isDone = comp.status === "PUBLISHED" || livePct === 100 || hasNoRequired;
-          const isPartial = !isDone && livePct > 0;
-          return (
-            <button
-              key={ch.storeId}
-              onClick={() => switchTab(idx)}
-              className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-medium transition-colors ${
-                isActive
-                  ? "bg-brand-50 dark:bg-brand-500/10 text-brand-700 dark:text-brand-400 border border-brand-200 dark:border-brand-500/30"
-                  : "text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 border border-transparent"
-              }`}
-            >
-              <span>{ch.storeName}</span>
-              <ChannelTypeBadge channelType={ch.channelType} size="sm" />
-              {/* Completion badge — replaces the tiny 2px dot */}
-              <span className={`text-[11px] font-semibold tabular-nums px-1.5 py-0.5 rounded-md flex-shrink-0 ${
-                isDone
-                  ? "bg-success-50 dark:bg-success-500/15 text-success-700 dark:text-success-400"
-                  : isPartial
-                  ? "bg-warning-50 dark:bg-warning-500/15 text-warning-700 dark:text-warning-400"
-                  : "bg-gray-100 dark:bg-gray-800 text-gray-400 dark:text-gray-500"
-              }`}>
-                {isDone ? "✓" : `${livePct}%`}
-              </span>
-            </button>
-          );
-        })}
-      </div>
-
-      {/* Active tab content */}
-      <div className="bg-white dark:bg-white/[0.03] border border-gray-200 dark:border-gray-800 rounded-2xl p-6">
-        <div className="mb-5 flex items-start justify-between gap-3">
-          <div>
-            <div className="flex items-center gap-2 flex-wrap">
-              <h2 className="font-semibold text-gray-900 dark:text-white text-lg">{activeChannel.storeName}</h2>
-              {/* Live-listing dirty-state: only appears once the listing is published — tells the
-                  merchant whether the current (possibly unsaved) edits still need a re-publish. */}
-              <ListingDirtyBadge
-                masterProductId={masterProductId}
-                storeId={activeStoreId}
-                live={storeCompletion[activeStoreId]?.status === "PUBLISHED"}
-                desired={buildDesiredForDiff(masterProductSnapshot, activeValues)}
-              />
-            </div>
-            <p className="text-sm text-gray-400 dark:text-gray-500">{activeChannel.storeUrl}</p>
-          </div>
-          <ChannelTypeBadge channelType={activeChannel.channelType} />
-        </div>
-        {activeChannel.sections.length === 0 ? (
-          // Schema for this store is still loading (lazy per-store fetch).
-          <div className="flex flex-col items-center justify-center py-16 text-center">
-            <div className="h-8 w-8 rounded-full border-2 border-brand-500 border-t-transparent animate-spin mb-3" />
-            <p className="text-sm text-gray-500 dark:text-gray-400">
-              {hydratingStoreId === activeStoreId ? "Memuat field channel…" : "Menyiapkan…"}
-            </p>
-          </div>
-        ) : (
-          <ChannelStoreTab
-            schema={activeChannel}
-            values={activeValues}
-            onChange={(vals) => handleValuesChange(activeStoreId, activeChannel, vals)}
-            isSaving={savingStoreId === activeStoreId}
-            lastSaved={lastSaved[activeStoreId]}
-            masterProduct={masterProductSnapshot ?? undefined}
-            masterProductId={masterProductId}
-            fieldErrors={activeTabFieldErrors}
-            orgId={orgId}
-            viewMode={viewMode}
+      {/* Store workspace: sidebar navigator + active store form (scales past 10 stores + search) */}
+      <div className="flex flex-col gap-6 lg:flex-row">
+        <aside className="lg:w-72 lg:flex-shrink-0">
+          <StoreSidebar
+            items={storeItems}
+            activeStoreId={activeStoreId}
+            doneCount={doneCount}
+            onSelect={handleSidebarSelect}
           />
-        )}
-      </div>
+        </aside>
 
-      {/* Navigation */}
-      {activeBlockingAxis.length > 0 && (
-        <div className="rounded-xl bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/30 px-4 py-3 space-y-1">
-          <p className="text-sm font-medium text-red-700 dark:text-red-400">
-            Variant-option issues on {activeChannel.storeName} must be fixed before publishing:
-          </p>
-          {activeBlockingAxis.map((i, idx) => (
-            <p key={`${i.code}-${i.dimension}-${idx}`} className="text-sm text-red-600 dark:text-red-300">
-              • <strong>{i.dimension}</strong>: {i.message}
-            </p>
-          ))}
-        </div>
-      )}
-      {continueWarning && (
-        <div className="rounded-xl bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/30 px-4 py-3 space-y-1">
-          {continueWarning.split("\n").map((line, i) => (
-            <p key={i} className={`text-sm ${i === 0 ? "font-medium text-red-700 dark:text-red-400" : "text-red-600 dark:text-red-300"}`}>
-              {line}
-            </p>
-          ))}
-        </div>
-      )}
-      <div className="flex items-center justify-between gap-4">
-        <button
-          onClick={handlePreviousStep}
-          className="px-5 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
-        >
-          ← Previous Step
-        </button>
-        <div className="flex items-center gap-3">
-          {!isLastTab && (
+        <div className="min-w-0 flex-1 space-y-6">
+          {/* Active store content */}
+          <div className="bg-white dark:bg-white/[0.03] border border-gray-200 dark:border-gray-800 rounded-2xl p-6">
+            <div className="mb-5 flex items-start justify-between gap-3">
+              <div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h2 className="font-semibold text-gray-900 dark:text-white text-lg">{activeChannel.storeName}</h2>
+                  {/* Live-listing dirty-state: only appears once the listing is published — tells the
+                      merchant whether the current (possibly unsaved) edits still need a re-publish. */}
+                  <ListingDirtyBadge
+                    masterProductId={masterProductId}
+                    storeId={activeStoreId}
+                    live={storeCompletion[activeStoreId]?.status === "PUBLISHED"}
+                    desired={buildDesiredForDiff(masterProductSnapshot, activeValues)}
+                  />
+                </div>
+                <p className="text-sm text-gray-400 dark:text-gray-500">{activeChannel.storeUrl}</p>
+              </div>
+              <ChannelTypeBadge channelType={activeChannel.channelType} />
+            </div>
+            {activeChannel.sections.length === 0 ? (
+              // Schema for this store is still loading (lazy per-store fetch).
+              <div className="flex flex-col items-center justify-center py-16 text-center">
+                <div className="h-8 w-8 rounded-full border-2 border-brand-500 border-t-transparent animate-spin mb-3" />
+                <p className="text-sm text-gray-500 dark:text-gray-400">
+                  {hydratingStoreId === activeStoreId ? "Memuat field channel…" : "Menyiapkan…"}
+                </p>
+              </div>
+            ) : (
+              <ChannelStoreTab
+                schema={activeChannel}
+                values={activeValues}
+                onChange={(vals) => handleValuesChange(activeStoreId, activeChannel, vals)}
+                isSaving={savingStoreId === activeStoreId}
+                lastSaved={lastSaved[activeStoreId]}
+                masterProduct={masterProductSnapshot ?? undefined}
+                masterProductId={masterProductId}
+                fieldErrors={activeTabFieldErrors}
+                orgId={orgId}
+                viewMode={viewMode}
+              />
+            )}
+          </div>
+
+          {/* Navigation */}
+          {activeBlockingAxis.length > 0 && (
+            <div className="rounded-xl bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/30 px-4 py-3 space-y-1">
+              <p className="text-sm font-medium text-red-700 dark:text-red-400">
+                Variant-option issues on {activeChannel.storeName} must be fixed before publishing:
+              </p>
+              {activeBlockingAxis.map((i, idx) => (
+                <p key={`${i.code}-${i.dimension}-${idx}`} className="text-sm text-red-600 dark:text-red-300">
+                  • <strong>{i.dimension}</strong>: {i.message}
+                </p>
+              ))}
+            </div>
+          )}
+          {continueWarning && (
+            <div className="rounded-xl bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/30 px-4 py-3 space-y-1">
+              {continueWarning.split("\n").map((line, i) => (
+                <p key={i} className={`text-sm ${i === 0 ? "font-medium text-red-700 dark:text-red-400" : "text-red-600 dark:text-red-300"}`}>
+                  {line}
+                </p>
+              ))}
+            </div>
+          )}
+          <div className="flex items-center justify-between gap-4">
             <button
-              onClick={handleNext}
+              onClick={handlePreviousStep}
               className="px-5 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
             >
-              Next: {channels[activeStoreIndex + 1]?.storeName ?? "Next"} →
+              ← Previous Step
             </button>
-          )}
-          <button
-            onClick={handleContinueToPreview}
-            disabled={activeBlockingAxis.length > 0}
-            title={activeBlockingAxis.length > 0 ? "Resolve the variant-option issues above before continuing" : undefined}
-            className={`px-6 py-2.5 rounded-xl text-sm font-medium transition-colors ${
-              activeBlockingAxis.length > 0
-                ? "bg-gray-200 dark:bg-gray-700 text-gray-400 dark:text-gray-500 cursor-not-allowed"
-                : "bg-brand-500 text-white hover:bg-brand-600"
-            }`}
-          >
-            Continue to Preview →
-          </button>
+            <div className="flex items-center gap-3">
+              {!isLastTab && (
+                <button
+                  onClick={handleNext}
+                  className="px-5 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+                >
+                  Next: {channels[activeStoreIndex + 1]?.storeName ?? "Next"} →
+                </button>
+              )}
+              <button
+                onClick={handleContinueToPreview}
+                disabled={activeBlockingAxis.length > 0}
+                title={activeBlockingAxis.length > 0 ? "Resolve the variant-option issues above before continuing" : undefined}
+                className={`px-6 py-2.5 rounded-xl text-sm font-medium transition-colors ${
+                  activeBlockingAxis.length > 0
+                    ? "bg-gray-200 dark:bg-gray-700 text-gray-400 dark:text-gray-500 cursor-not-allowed"
+                    : "bg-brand-500 text-white hover:bg-brand-600"
+                }`}
+              >
+                Continue to Preview →
+              </button>
+            </div>
+          </div>
         </div>
       </div>
     </div>
