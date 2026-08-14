@@ -7,16 +7,11 @@ import { useAuth } from "@/shared/contexts/AuthContext";
 import { MasterProductService } from "../_services/master-product.service";
 import type { MasterProductDetail, ChannelDistributionCard, ChannelSyncStatus } from "../_types/master-product";
 import { ChannelStoreService } from "@/modules/ecommerce-product-v2/step2-channel-fields/services/channelStore.service";
-import type { ChannelStoreConnection } from "@/modules/ecommerce-product-v2/step2-channel-fields/types/channelStore";
+import { getChannelMeta } from "@/modules/ecommerce-product-v2/step2-channel-fields/components/stores/ChannelTypeBadge";
+import type { ChannelStoreConnection, ChannelType } from "@/modules/ecommerce-product-v2/step2-channel-fields/types/channelStore";
 import TagInput from "@/shared/ui/tag-input/TagInput";
 
 const BASE_API = "http://localhost:8888/labamap/api/v1";
-
-const CHANNEL_EMOJI: Record<string, string> = {
-  shopify: "🛍", woocommerce: "🟣", amazon: "📦", tiktok: "🎵",
-  ebay: "🔨", etsy: "🎨", lazada: "🛒", tokopedia: "🟢",
-  facebook: "📘", shopee: "🧡", walmart: "🔵", wix: "⬛",
-};
 
 // ─── Status helpers ───────────────────────────────────────────────────────────
 
@@ -40,6 +35,16 @@ function formatRelativeTime(iso: string | null | undefined): string {
   const h = Math.floor(m / 60);
   if (h < 24) return `${h}h ago`;
   return `${Math.floor(h / 24)}d ago`;
+}
+
+/**
+ * Was this store touched in the last few minutes? Used to highlight recently-published/synced
+ * rows IN PLACE (never reorder them), so the merchant can spot what they just worked on.
+ */
+function isRecentlyUpdated(iso: string | null | undefined, withinMinutes = 5): boolean {
+  if (!iso) return false;
+  const ms = Date.now() - new Date(iso).getTime();
+  return ms >= 0 && ms < withinMinutes * 60_000;
 }
 
 // ─── Icons ────────────────────────────────────────────────────────────────────
@@ -72,10 +77,24 @@ const WrenchIcon = () => (
     <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>
   </svg>
 );
+const SendIcon = () => (
+  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M22 2 11 13"/><path d="M22 2 15 22 11 13 2 9 22 2z"/>
+  </svg>
+);
 
-// ─── Store publish card (published + unpublished states) ─────────────────────
+// ─── Store row (Step-3 backlog style) ────────────────────────────────────────
 
-function StorePublishCard({
+const ROW_BTN =
+  "inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors";
+const ROW_BTN_BRAND = `${ROW_BTN} bg-brand-500 text-white hover:bg-brand-600`;
+const ROW_BTN_ERROR = `${ROW_BTN} bg-error-500 text-white hover:bg-error-600`;
+const ROW_BTN_GHOST = `${ROW_BTN} border border-brand-300 text-brand-600 hover:bg-brand-50 dark:border-brand-500/40 dark:text-brand-400 dark:hover:bg-brand-500/10`;
+// Framed square icon button — same tidy toolbar treatment as Step 3.
+const ROW_ICON_BTN =
+  "inline-flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 text-gray-500 transition-colors hover:bg-gray-50 hover:text-gray-700 dark:border-gray-700 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-gray-200";
+
+function StoreRow({
   store, published, masterProductId, currency, onResync,
 }: {
   store: ChannelStoreConnection;
@@ -85,231 +104,111 @@ function StorePublishCard({
   onResync: (storeId: string) => Promise<void>;
 }) {
   const [syncing, setSyncing] = useState(false);
-  const emoji = CHANNEL_EMOJI[store.channelType.toLowerCase()] ?? "🔗";
+  const meta = getChannelMeta(store.channelType.toLowerCase() as ChannelType);
   const channelFieldsUrl = `/products/${masterProductId}/channel-fields?storeId=${encodeURIComponent(store.storeId)}`;
+  const publishUrl = `/products/${masterProductId}/publish?storeId=${encodeURIComponent(store.storeId)}`;
+  const storeName = published?.storeName ?? store.storeName;
 
   async function handleResync() {
     setSyncing(true);
     try { await onResync(store.storeId); } finally { setSyncing(false); }
   }
 
-  if (!published) {
-    // Not yet published to this store
-    return (
-      <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-white/[0.02] p-4 space-y-3">
-        <div className="flex items-center justify-between gap-2">
-          <div className="flex items-center gap-2 min-w-0">
-            <span className="text-base leading-none">{emoji}</span>
-            <span className="text-sm font-semibold text-gray-900 dark:text-white truncate">{store.storeName}</span>
-          </div>
-          <span className="text-xs text-gray-400 dark:text-gray-500 px-2 py-0.5 rounded-full bg-gray-100 dark:bg-gray-800">
-            Not published
-          </span>
-        </div>
-        <p className="text-xs text-gray-400 dark:text-gray-500 leading-relaxed">
-          Fill in the {store.channelType} fields (category mapping, shipping class, etc.) then publish.
-        </p>
-        <Link
-          href={channelFieldsUrl}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-brand-500 hover:bg-brand-600 text-white transition-colors"
-        >
-          <PlusIcon /> Set up &amp; publish
-        </Link>
-      </div>
-    );
-  }
+  const cfg = published ? statusConfig(published.syncStatus) : null;
+  const dotClass = cfg?.dot ?? "bg-gray-400";
+  const badgeLabel = cfg?.label ?? "Not published";
+  const badgeClass = cfg ? `${cfg.bg} ${cfg.text}` : "bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400";
+  const isSyncing = syncing || published?.syncStatus === "SYNCING";
+  const isFailed = published?.syncStatus === "FAILED";
+  const isDraft = published?.syncStatus === "DRAFT";
+  // Recently published/synced → highlight in place (never reorder); clears on the next load.
+  const recent = isRecentlyUpdated(published?.lastSyncedAt);
 
-  const cfg = statusConfig(published.syncStatus);
-  return (
-    <div className={`rounded-xl border ${cfg.border} ${cfg.bg} p-4 space-y-3`}>
-      {/* Header */}
-      <div className="flex items-center justify-between gap-2">
-        <div className="flex items-center gap-2 min-w-0">
-          <span className="text-base leading-none">{emoji}</span>
-          <span className="text-sm font-semibold text-gray-900 dark:text-white truncate">{published.storeName}</span>
-        </div>
-        <span className={`flex items-center gap-1.5 text-xs font-medium px-2 py-0.5 rounded-full flex-shrink-0 ${cfg.text}`}>
-          <span className={`w-1.5 h-1.5 rounded-full ${cfg.dot}`} />
-          {cfg.label}
-        </span>
-      </div>
-
-      {/* Error / sync time */}
-      {(published.syncStatus === "FAILED" || published.syncStatus === "WARNING") && published.errorMessage ? (
-        <p className={`text-xs leading-relaxed ${published.syncStatus === "FAILED" ? "text-error-600 dark:text-error-400" : "text-warning-600 dark:text-warning-400"}`}>
+  // One-line status detail — error, draft progress, or synced summary (time · price · SKU).
+  const substatus: React.ReactNode = (() => {
+    if (!published) return <span className="truncate">Not set up — fill channel fields to publish</span>;
+    if ((isFailed || published.syncStatus === "WARNING") && published.errorMessage) {
+      return (
+        <span className={`truncate ${isFailed ? "text-error-600 dark:text-error-400" : "text-warning-600 dark:text-warning-400"}`}>
           {published.errorMessage}
-        </p>
-      ) : published.lastSyncedAt ? (
-        <p className="text-xs text-gray-400 dark:text-gray-500">Last sync: {formatRelativeTime(published.lastSyncedAt)}</p>
-      ) : null}
-
-      {/* Channel price / SKU */}
-      {(published.channelPrice != null || published.channelSku) && (
-        <div className="flex flex-wrap gap-x-4 gap-y-1">
-          {published.channelPrice != null && (
-            <div>
-              <span className="text-[10px] uppercase tracking-wider text-gray-400 dark:text-gray-500">Price</span>
-              <p className="text-sm font-medium text-gray-800 dark:text-gray-200">{currency ?? ""} {published.channelPrice.toLocaleString()}</p>
-            </div>
-          )}
-          {published.channelSku && (
-            <div>
-              <span className="text-[10px] uppercase tracking-wider text-gray-400 dark:text-gray-500">SKU</span>
-              <p className="text-sm font-mono text-gray-800 dark:text-gray-200">{published.channelSku}</p>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Completion bar for drafts */}
-      {published.completionPercentage > 0 && published.syncStatus === "DRAFT" && (
-        <div className="space-y-1">
-          <div className="flex items-center justify-between">
-            <span className="text-[10px] uppercase tracking-wider text-gray-400 dark:text-gray-500">Fields complete</span>
-            <span className="text-xs font-medium text-gray-500 dark:text-gray-400">{published.completionPercentage}%</span>
-          </div>
-          <div className="h-1.5 rounded-full bg-gray-200 dark:bg-gray-700 overflow-hidden">
-            <div className="h-full rounded-full bg-brand-500 transition-all" style={{ width: `${published.completionPercentage}%` }} />
-          </div>
-        </div>
-      )}
-
-      {/* Actions */}
-      <div className="flex items-center gap-2 pt-1">
-        {published.syncStatus === "FAILED" ? (
-          <Link href={channelFieldsUrl} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-error-500 hover:bg-error-600 text-white transition-colors">
-            <WrenchIcon /> Fix issue
-          </Link>
-        ) : (
-          <Link href={channelFieldsUrl} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
-            <EditIcon /> Edit fields
-          </Link>
-        )}
-        <Link
-          href={`/products/${masterProductId}/publish?storeId=${encodeURIComponent(store.storeId)}`}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border border-brand-300 dark:border-brand-700 text-brand-600 dark:text-brand-400 hover:bg-brand-50 dark:hover:bg-brand-500/10 transition-colors"
-        >
-          ⚡ Analyse &amp; Publish
-        </Link>
-        <button
-          onClick={handleResync}
-          disabled={syncing || published.syncStatus === "SYNCING"}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors disabled:opacity-50"
-        >
-          <RefreshIcon spinning={syncing || published.syncStatus === "SYNCING"} />
-          {syncing ? "Syncing…" : "Re-sync"}
-        </button>
-      </div>
-    </div>
-  );
-}
-
-// ─── Channel-group accordion (detail view) ───────────────────────────────────
-// Groups stores of the same channel type into a collapsible section so that
-// 10+ stores per channel never turns the page into a wall of cards.
-
-function ChannelGroupAccordion({
-  channelType,
-  stores,
-  channelDistribution,
-  masterProductId,
-  currency,
-  onResync,
-}: {
-  channelType: string;
-  stores: ChannelStoreConnection[];
-  channelDistribution: ChannelDistributionCard[];
-  masterProductId: string;
-  currency?: string | null;
-  onResync: (storeId: string) => Promise<void>;
-}) {
-  const published  = stores.filter(s => channelDistribution.some(c => c.storeId === s.storeId));
-  const statuses   = published.map(s => channelDistribution.find(c => c.storeId === s.storeId)!.syncStatus);
-  const hasFailed  = statuses.includes("FAILED");
-  const hasWarning = statuses.includes("WARNING");
-  const allSynced  = published.length === stores.length && statuses.every(s => s === "SYNCED");
-
-  // Auto-expand when there are issues; collapse healthy groups
-  const [open, setOpen] = React.useState(hasFailed || hasWarning || published.length < stores.length);
-
-  const emoji = CHANNEL_EMOJI[channelType.toLowerCase()] ?? "🔗";
-  const label = channelType.charAt(0).toUpperCase() + channelType.slice(1);
-
-  const summaryColor =
-    hasFailed  ? "text-red-600 dark:text-red-400" :
-    hasWarning ? "text-amber-600 dark:text-amber-400" :
-    allSynced  ? "text-green-600 dark:text-green-400" :
-    "text-gray-400 dark:text-gray-500";
-
-  const summaryText =
-    hasFailed  ? `${statuses.filter(s => s === "FAILED").length} failed` :
-    hasWarning ? `${statuses.filter(s => s === "WARNING").length} warning` :
-    allSynced  ? "All synced" :
-    published.length === 0 ? "Not published" :
-    `${published.length}/${stores.length} published`;
-
-  async function handleSyncChannel() {
-    await Promise.allSettled(published.map(s => onResync(s.storeId)));
-  }
+        </span>
+      );
+    }
+    if (isDraft && published.completionPercentage > 0) {
+      return (
+        <span className="flex items-center gap-2">
+          <span className="h-1.5 w-16 flex-shrink-0 overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700">
+            <span className="block h-full rounded-full bg-brand-500" style={{ width: `${published.completionPercentage}%` }} />
+          </span>
+          <span className="tabular-nums">{published.completionPercentage}% fields complete</span>
+        </span>
+      );
+    }
+    const parts: string[] = [];
+    if (published.lastSyncedAt) parts.push(`Synced ${formatRelativeTime(published.lastSyncedAt)}`);
+    if (published.channelPrice != null) parts.push(`${currency ?? ""} ${published.channelPrice.toLocaleString()}`.trim());
+    if (published.channelSku) parts.push(published.channelSku);
+    return <span className="truncate">{parts.join(" · ") || "Published"}</span>;
+  })();
 
   return (
-    <div className="rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
-      {/* Section header — always visible */}
-      <button
-        type="button"
-        onClick={() => setOpen(o => !o)}
-        className="w-full flex items-center gap-3 px-4 py-3 bg-gray-50 dark:bg-gray-800/60 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors text-left"
-      >
-        <span className="text-lg leading-none flex-shrink-0">{emoji}</span>
-        <span className="text-sm font-semibold text-gray-800 dark:text-gray-200 flex-1">{label}</span>
-        <span className="text-xs text-gray-400 dark:text-gray-500 tabular-nums mr-2">
-          {stores.length} store{stores.length !== 1 ? "s" : ""}
-        </span>
-        <span className={`text-xs font-medium ${summaryColor} flex items-center gap-1 mr-2`}>
-          <span className={`h-1.5 w-1.5 rounded-full flex-shrink-0 ${
-            hasFailed ? "bg-red-500" : hasWarning ? "bg-amber-400" : allSynced ? "bg-green-500" : "bg-gray-300 dark:bg-gray-600"
-          }`} />
-          {summaryText}
-        </span>
-        {published.length > 0 && (
+    <div
+      className={`rounded-xl border p-3 transition-colors sm:px-4 ${
+        recent
+          ? "border-brand-200 bg-brand-50/50 ring-1 ring-brand-100 dark:border-brand-500/30 dark:bg-brand-500/[0.06] dark:ring-brand-500/20"
+          : "border-gray-200 bg-white hover:border-gray-300 dark:border-gray-800 dark:bg-white/[0.02] dark:hover:border-gray-700"
+      }`}
+    >
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+        {/* Identity + status */}
+        <div className="flex min-w-0 flex-1 items-center gap-3">
+          <span className={`h-2.5 w-2.5 flex-shrink-0 rounded-full ${dotClass}`} />
           <span
-            role="button"
-            tabIndex={0}
-            onClick={e => { e.stopPropagation(); handleSyncChannel(); }}
-            onKeyDown={e => e.key === "Enter" && (e.stopPropagation(), handleSyncChannel())}
-            className="text-xs text-gray-400 dark:text-gray-500 hover:text-brand-500 dark:hover:text-brand-400 mr-2 transition-colors"
-            title={`Re-sync all ${label} stores`}
+            className={`flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg text-[11px] font-bold ${meta.bg} ${meta.text}`}
+            title={meta.label}
           >
-            <RefreshIcon />
+            {meta.code}
           </span>
-        )}
-        <svg
-          width="14" height="14" viewBox="0 0 24 24" fill="none"
-          stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
-          className={`text-gray-400 flex-shrink-0 transition-transform ${open ? "rotate-180" : ""}`}
-        >
-          <path d="m6 9 6 6 6-6"/>
-        </svg>
-      </button>
-
-      {/* Stores list — expandable */}
-      {open && (
-        <div className="divide-y divide-gray-100 dark:divide-gray-700/50 bg-white dark:bg-white/[0.02]">
-          {stores.map(store => {
-            const pub = channelDistribution.find(c => c.storeId === store.storeId) ?? null;
-            return (
-              <StorePublishCard
-                key={store.storeId}
-                store={store}
-                published={pub}
-                masterProductId={masterProductId}
-                currency={currency}
-                onResync={onResync}
-              />
-            );
-          })}
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+              <p className="truncate text-sm font-semibold text-gray-900 dark:text-white">{storeName}</p>
+              <span className={`flex-shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${badgeClass}`}>{badgeLabel}</span>
+              {recent && (
+                <span className="flex-shrink-0 rounded-full bg-brand-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-brand-700 dark:bg-brand-500/20 dark:text-brand-300">
+                  Just updated
+                </span>
+              )}
+            </div>
+            <div className="mt-0.5 flex min-w-0 items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
+              {substatus}
+            </div>
+          </div>
         </div>
-      )}
+
+        {/* Actions — primary CTA + framed secondary toolbar */}
+        <div className="flex flex-shrink-0 items-center gap-2 sm:pl-2">
+          {!published ? (
+            <Link href={channelFieldsUrl} className={ROW_BTN_BRAND}><PlusIcon /> Set up &amp; publish</Link>
+          ) : isFailed ? (
+            <Link href={channelFieldsUrl} className={ROW_BTN_ERROR}><WrenchIcon /> Fix issue</Link>
+          ) : (
+            <Link href={publishUrl} className={ROW_BTN_GHOST}><SendIcon /> Publish</Link>
+          )}
+          {/* Only Re-sync here — the primary CTA already covers edit/publish (Fix issue &
+              Set up both open channel fields), so a separate "Edit" icon was redundant. */}
+          {published && (
+            <button
+              type="button"
+              onClick={handleResync}
+              disabled={isSyncing}
+              title="Re-sync"
+              className={`${ROW_ICON_BTN} disabled:opacity-50`}
+            >
+              <RefreshIcon spinning={isSyncing} />
+            </button>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
@@ -557,7 +456,18 @@ export default function ProductDetailPage({ masterProductId }: { masterProductId
         ChannelStoreService.listStores(orgId).catch(() => [] as ChannelStoreConnection[]),
       ]);
       setProduct(data);
-      setStores(storeList.filter(s => s.isActive));
+      // Stable, deterministic order so a store never jumps rows between visits — the API can
+      // return stores in a different order (e.g. by updatedAt) after one is published/edited.
+      setStores(
+        storeList
+          .filter((s) => s.isActive)
+          .sort(
+            (a, b) =>
+              a.channelType.localeCompare(b.channelType) ||
+              (a.storeName || "").localeCompare(b.storeName || "") ||
+              a.storeId.localeCompare(b.storeId)
+          )
+      );
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load product");
     } finally {
@@ -730,30 +640,22 @@ export default function ProductDetailPage({ masterProductId }: { masterProductId
                 first, then come back to publish this product.
               </p>
             </div>
-          ) : (() => {
-            // Group stores by channel type — one accordion per channel
-            const groups = new Map<string, ChannelStoreConnection[]>();
-            for (const s of stores) {
-              const arr = groups.get(s.channelType) ?? [];
-              arr.push(s);
-              groups.set(s.channelType, arr);
-            }
-            return (
-              <div className="space-y-2">
-                {[...groups.entries()].map(([channelType, channelStores]) => (
-                  <ChannelGroupAccordion
-                    key={channelType}
-                    channelType={channelType}
-                    stores={channelStores}
-                    channelDistribution={product.channelDistribution}
-                    masterProductId={masterProductId}
-                    currency={product.currency}
-                    onResync={handleResync}
-                  />
-                ))}
-              </div>
-            );
-          })()}
+          ) : (
+            // Flat backlog list — one framed row per store (channel shown by its avatar),
+            // matching the Step 3 layout.
+            <div className="space-y-2.5">
+              {stores.map((store) => (
+                <StoreRow
+                  key={store.storeId}
+                  store={store}
+                  published={product.channelDistribution.find((c) => c.storeId === store.storeId) ?? null}
+                  masterProductId={masterProductId}
+                  currency={product.currency}
+                  onResync={handleResync}
+                />
+              ))}
+            </div>
+          )}
         </div>
       </div>
     </div>
