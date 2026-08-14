@@ -97,7 +97,12 @@ export {
   normalizeSectionKey,
 } from './utils/form-utils';
 
-export { onVariantsEnabled, onVariantsDisabled } from './utils/variant-scope';
+export {
+  onVariantsEnabled,
+  onVariantsDisabled,
+  resolveDualFieldNames,
+  resolveBothFieldNames,
+} from './utils/variant-scope';
 
 // ── Step 2: Channel Fields ──────────────────────────────────────────────────
 

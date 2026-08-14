@@ -16,11 +16,19 @@ import type {
   PublishSingleRequest,
   PublishSingleResponse,
   PublishFieldError,
+  PublishOperation,
   BatchPublishRequest,
   BatchPublishResponse,
   CredentialFieldSchema,
   OAuthInitiateRequest,
   OAuthInitiateResponse,
+  ChannelProductStatus,
+  ListingState,
+  PublishHistoryEntry,
+  DelistRequest,
+  DelistResponse,
+  PublishDiffRequest,
+  PublishDiffResponse,
 } from "../types/channelStore";
 
 const BASE = "http://localhost:8888/labamap/api/v1";
@@ -317,6 +325,30 @@ export const ChannelProductDataService = {
   },
 
   /**
+   * Listing-state per store for one product (P0-1) — the badge + contextual-action source.
+   * GET /api/v1/ecommerce/channel-product-data/{masterProductId}/listings
+   * Returns `status, channelProductId, channelUrl, publishAttempts, publishedAt, lastAttemptAt,
+   * publishError, syncWorkflowId` per store. Empty array when nothing has been published yet.
+   */
+  getListings(masterProductId: string): Promise<ListingState[]> {
+    return fetch(
+      `${BASE}/ecommerce/channel-product-data/${encodeURIComponent(masterProductId)}/listings`,
+      { method: "GET", headers: { "Content-Type": "application/json" } }
+    ).then((r) => handleResponse<ListingState[]>(r));
+  },
+
+  /**
+   * Publish history for one listing (P0-1) — append-only audit timeline, newest first.
+   * GET /api/v1/ecommerce/channel-product-data/{masterProductId}/{storeId}/history
+   */
+  getPublishHistory(masterProductId: string, storeId: string): Promise<PublishHistoryEntry[]> {
+    return fetch(
+      `${BASE}/ecommerce/channel-product-data/${encodeURIComponent(masterProductId)}/${encodeURIComponent(storeId)}/history`,
+      { method: "GET", headers: { "Content-Type": "application/json" } }
+    ).then((r) => handleResponse<PublishHistoryEntry[]>(r));
+  },
+
+  /**
    * Poll a store's persisted status until it reaches a terminal state
    * (`PUBLISHED` / `FAILED`), mirroring the backend's POST-then-poll cadence.
    *
@@ -331,13 +363,22 @@ export const ChannelProductDataService = {
   async pollUntilTerminal(
     masterProductId: string,
     storeId: string,
-    opts: { intervalMs?: number; timeoutMs?: number; signal?: AbortSignal } = {},
+    opts: {
+      intervalMs?: number;
+      timeoutMs?: number;
+      signal?: AbortSignal;
+      /** Statuses that end the poll. Default: publish terminals (PUBLISHED/FAILED).
+       *  Delist passes ["DELISTED"] — on delist failure the listing stays PUBLISHED (unchanged),
+       *  so only DELISTED is terminal; a timeout leaves the prior badge intact. */
+      terminalStatuses?: ChannelProductStatus[];
+    } = {},
   ): Promise<ChannelProductData> {
     const intervalMs = opts.intervalMs ?? 2000;   // match the backend's 2s poll cadence
     const timeoutMs = opts.timeoutMs ?? 60000;     // FE reconciliation window
+    const terminals = opts.terminalStatuses ?? ["PUBLISHED", "FAILED"];
     const deadline = Date.now() + timeoutMs;
     let last = await this.getStoreData(masterProductId, storeId);
-    while (last.status !== "PUBLISHED" && last.status !== "FAILED" && Date.now() < deadline) {
+    while (!terminals.includes(last.status) && Date.now() < deadline) {
       if (opts.signal?.aborted) break;
       await new Promise((res) => setTimeout(res, intervalMs));
       if (opts.signal?.aborted) break;
@@ -447,8 +488,10 @@ export const MerchantDataService = {
 /**
  * Terminal verdict for a publish/sync response.
  * `PROCESSING` is non-terminal — the sync workflow is still running (keep polling).
+ * `BLOCKED` is the idempotent-update gate (P0-2 §5.3): editing a live listing while
+ * `channel-update-enabled` is off. No channel call happened — actionable, NOT a failure.
  */
-export type PublishOutcome = "PUBLISHED" | "FAILED" | "PROCESSING";
+export type PublishOutcome = "PUBLISHED" | "FAILED" | "PROCESSING" | "BLOCKED";
 
 const normStatus = (s?: string | null): string => (s ?? "").trim().toUpperCase();
 
@@ -456,23 +499,34 @@ const normStatus = (s?: string | null): string => (s ?? "").trim().toUpperCase()
  * Classify a publish/sync response into a terminal verdict, mirroring the backend's
  * WHITELIST-terminal contract (doc 04-sync-api-integration.md §"Workflow polling"):
  *
+ *  - status/syncStatus is `BLOCKED`                                        → `BLOCKED` (idempotent-update gate)
  *  - `success === true`, or status/syncStatus is `COMPLETED`/`PUBLISHED`  → `PUBLISHED` (terminal)
  *  - status/syncStatus is `FAILED`                                         → `FAILED` (terminal)
  *  - everything else — `PROCESSING`, `PENDING`, `null`, empty, unknown     → `PROCESSING` (non-terminal)
  *
- * Only `COMPLETED`/`PUBLISHED`/`FAILED` are terminal. An unknown or blank status is NEVER
+ * Only `COMPLETED`/`PUBLISHED`/`FAILED`/`BLOCKED` are terminal. An unknown or blank status is NEVER
  * read as a failure — that blacklist bug is exactly what showed a live product as "failed"
- * until a refresh. `syncStatus` wins over `status` when both are present.
+ * until a refresh. `syncStatus` wins over `status` when both are present. BLOCKED is checked first
+ * because the backend may set `success:false` alongside it, and it is not a hard failure.
  */
 export function classifyPublishOutcome(
   r: { success?: boolean; status?: string; syncStatus?: string } | null | undefined,
 ): PublishOutcome {
   if (!r) return "PROCESSING";
-  if (r.success === true) return "PUBLISHED";
   const s = normStatus(r.syncStatus) || normStatus(r.status);
+  if (s === "BLOCKED") return "BLOCKED";
+  if (r.success === true) return "PUBLISHED";
   if (s === "COMPLETED" || s === "PUBLISHED") return "PUBLISHED";
   if (s === "FAILED") return "FAILED";
   return "PROCESSING";
+}
+
+/** Normalise the idempotent `operation` off a publish/delist response (CREATE/NOOP/UPDATE/DELIST). */
+export function operationOf(
+  r: { operation?: string } | null | undefined,
+): PublishOperation | undefined {
+  const op = normStatus(r?.operation);
+  return op === "CREATE" || op === "NOOP" || op === "UPDATE" || op === "DELIST" ? op : undefined;
 }
 
 export const PublishService = {
@@ -502,6 +556,41 @@ export const PublishService = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(request),
     }).then((r) => handleResponse<BatchPublishResponse>(r));
+  },
+
+  /**
+   * Delist (remove) a live listing from its channel — P0-2/G6.
+   * POST /api/v1/channels/publish/delist  { masterProductId, storeId, organizationId }
+   *
+   * Idempotent: a 404 on the channel (listing already gone) still resolves to DELISTED.
+   * On the backend a delist failure leaves the listing PUBLISHED (unchanged) — the caller
+   * polls the persisted status (terminal = DELISTED) to reconcile a `PROCESSING` verdict.
+   * The 409 pre-condition ("nothing to delist": not PUBLISHED or no channelProductId) surfaces
+   * as a ChannelApiError so callers can guard the button on `isDelistable`.
+   */
+  delist(request: DelistRequest): Promise<DelistResponse> {
+    return fetch(`${BASE}/channels/publish/delist`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(request),
+    }).then((r) => handleResponse<DelistResponse>(r));
+  },
+
+  /**
+   * Read-only dirty-state diff for one (product × store) — DiffEngine 02-frontend-dirty-state.
+   * POST /api/v1/channels/publish/diff  { masterProductId, storeId, masterProductData? }
+   *
+   * Runs the desired-state extractor + diff planner + operation decider WITHOUT publishing, so it
+   * is the authoritative "is anything changed since last publish?" signal (cross-step, per-store).
+   * Nothing is written and no channel call is made — safe to poll/debounce. Callers should treat
+   * a 404 as "endpoint not deployed yet" and fall back to always-offering the update action.
+   */
+  publishDiff(request: PublishDiffRequest): Promise<PublishDiffResponse> {
+    return fetch(`${BASE}/channels/publish/diff`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(request),
+    }).then((r) => handleResponse<PublishDiffResponse>(r));
   },
 
   // Publish readiness dry-run (POST /channels/publish/analyze) lives in

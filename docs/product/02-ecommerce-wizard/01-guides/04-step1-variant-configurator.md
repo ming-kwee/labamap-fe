@@ -158,6 +158,27 @@ export function onVariantsDisabled(variants, dualFieldNames) {
 
 ---
 
+## Both-Scope Fields — Product-Level AND Per-Variant (`variantScope: "both"`)
+
+Some fields carry a **distinct product-level value that coexists with per-variant values** — they are *not* either/or like `dual`. The canonical case is WIX, whose create body has **both** `product.sku` and `product.variants[*].sku` (same for `product.priceData.price` vs `variants[*].price`, and `product.weight` vs `variants[*].weight`). The product-level value is genuinely different from the variant values (e.g. a parent/handle SKU vs each SKU's own code).
+
+As of this change, `sku`, `price`, and `weight` are `variantScope: "both"` (previously `dual`). Behaviour:
+
+| Field state | `dual` (old) | `both` (new) |
+|---|---|---|
+| `hasVariants = false` | product-level field | product-level field (identical) |
+| `hasVariants = true` | **hidden** from product level; value → first variant | **stays** product-level **and** gets a per-variant column — two independent values |
+
+**Frontend contract for `both`:**
+- Resolve the list from **`schema.metadata.productAndVariantFields`** (explicit backend list), or by scanning fields for `variantScope === "both"`.
+- These fields **must NOT** be added to `dualFieldNames` — do **not** hide them at product level when `hasVariants` flips to `true` (that is exactly the bug being fixed: the product-level `product.sku` became invisible/uneditable for variant products, frozen at whatever create wrote).
+- Also render them as a **variant-table column** (like dual fields) so each SKU keeps its own value. So a `both` field is present in *both* places at once.
+- On submit, send both layers: the product-level value stays in the product object (→ `productAttributes.sku`, mapped to `product.sku`), and each variant keeps its own (`variants[*].sku`).
+
+`inventory`, `comparePrice`, `costPrice`, `barcode` remain `dual` — a product-level value is meaningless once variants exist (total stock is the sum of variant stock; each variant has its own barcode).
+
+---
+
 ## State Persistence
 
 The entire variant configuration is serialized to a JSON string and stored in `formData.variantConfigurator`:

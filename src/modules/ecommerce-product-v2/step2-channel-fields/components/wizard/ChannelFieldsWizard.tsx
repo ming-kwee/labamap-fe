@@ -15,6 +15,7 @@ import { isFieldVisible, isFieldRequired } from "../../hooks/useChannelFieldVisi
 import { useAuth } from "@/shared/contexts/AuthContext";
 import ChannelTypeBadge from "../stores/ChannelTypeBadge";
 import ChannelStoreTab from "./ChannelStoreTab";
+import ListingDirtyBadge from "./ListingDirtyBadge";
 import { useWizardViewMode } from "@/modules/ecommerce-product-v2/utils/viewMode";
 import ViewModeToggle from "@/modules/ecommerce-product-v2/components/ViewModeToggle";
 
@@ -30,6 +31,24 @@ interface StoreFormValues {
   masterOverrides: Record<string, unknown>;
   channelData: Record<string, unknown>;
   variantOverrides: Record<string, Record<string, unknown>>;
+}
+
+/**
+ * Build the draft desired-state for the dirty-state diff (ListingDirtyBadge): the master snapshot
+ * scalars overlaid with the current Step-2 overrides + channel data — mirroring the publish body so
+ * the diff reflects exactly what a re-publish would send. Product-type metadata is dropped (not part
+ * of the channel payload). Best-effort: sent to the read-only publish-diff endpoint.
+ */
+function buildDesiredForDiff(
+  snapshot: MasterProductSnapshot | null | undefined,
+  values: StoreFormValues,
+): Record<string, unknown> {
+  const masterScalars: Record<string, unknown> = { ...((snapshot ?? {}) as Record<string, unknown>) };
+  // Product-type metadata isn't part of the channel payload — drop it so it can't skew the hash.
+  delete masterScalars.productTypeId;
+  delete masterScalars.productTypeName;
+  delete masterScalars.productTypeVariantDimensions;
+  return { ...masterScalars, ...values.masterOverrides, ...values.channelData };
 }
 
 function extractInitialValues(schema: ChannelSchemaPerStore): StoreFormValues {
@@ -726,7 +745,17 @@ export default function ChannelFieldsWizard({ masterProductId }: Props) {
       <div className="bg-white dark:bg-white/[0.03] border border-gray-200 dark:border-gray-800 rounded-2xl p-6">
         <div className="mb-5 flex items-start justify-between gap-3">
           <div>
-            <h2 className="font-semibold text-gray-900 dark:text-white text-lg">{activeChannel.storeName}</h2>
+            <div className="flex items-center gap-2 flex-wrap">
+              <h2 className="font-semibold text-gray-900 dark:text-white text-lg">{activeChannel.storeName}</h2>
+              {/* Live-listing dirty-state: only appears once the listing is published — tells the
+                  merchant whether the current (possibly unsaved) edits still need a re-publish. */}
+              <ListingDirtyBadge
+                masterProductId={masterProductId}
+                storeId={activeStoreId}
+                live={storeCompletion[activeStoreId]?.status === "PUBLISHED"}
+                desired={buildDesiredForDiff(masterProductSnapshot, activeValues)}
+              />
+            </div>
             <p className="text-sm text-gray-400 dark:text-gray-500">{activeChannel.storeUrl}</p>
           </div>
           <ChannelTypeBadge channelType={activeChannel.channelType} />

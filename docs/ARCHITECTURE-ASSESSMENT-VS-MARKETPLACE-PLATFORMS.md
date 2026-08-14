@@ -104,13 +104,13 @@ Versi awal menyebut ini "gejala blind-spot AI". **Trace membuktikan sebaliknya:*
 memakai **seed** (`category_id=default`, `generated_by=DefaultJoltSpecDataLoader`), bukan spec AI. Akar
 sebenarnya = **layering pipeline**, yang muncul apa pun asal spec-nya:
 
-| Bug | Akar SEBENARNYA | Kelas (dikoreksi) |
-|---|---|---|
-| `CategoryId is required` | `category_id` tak diproduksi JOLT **maupun** post-processing (belum ada rule) | gap pipeline (bukan AI) |
-| `Image is required` (1) | atribut `image` tak dibangun untuk spec yang tak memetakannya | gap pipeline |
-| `image_id_list` = URL | BFF mengisi target write-back milik sync-service | **kontrak implisit BFF↔sync** |
-| `Image is required` (2) | `image` di-flag `isSupportField=true` → dikecualikan dari body | **flag salah** |
-| `Attribute mandatory 200134/200162` | tak ada builder `attribute_list` dari channelData + support-excluded | gap pipeline |
+| Bug                                 | Akar SEBENARNYA                                                               | Kelas (dikoreksi)             |
+|-------------------------------------|-------------------------------------------------------------------------------|-------------------------------|
+| `CategoryId is required`            | `category_id` tak diproduksi JOLT **maupun** post-processing (belum ada rule) | gap pipeline (bukan AI)       |
+| `Image is required` (1)             | atribut `image` tak dibangun untuk spec yang tak memetakannya                 | gap pipeline                  |
+| `image_id_list` = URL               | BFF mengisi target write-back milik sync-service                              | **kontrak implisit BFF↔sync** |
+| `Image is required` (2)             | `image` di-flag `isSupportField=true` → dikecualikan dari body                | **flag salah**                |
+| `Attribute mandatory 200134/200162` | tak ada builder `attribute_list` dari channelData + support-excluded          | gap pipeline                  |
 
 Semua diperbaiki lewat **post-processing deterministik** — bukan "menambal AI", melainkan **melengkapi
 pipeline**. Ini memperkuat poin sebenarnya: **kekuatan sistem ada di lapisan deterministiknya**, dan AI

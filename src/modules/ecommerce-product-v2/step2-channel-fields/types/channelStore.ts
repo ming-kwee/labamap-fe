@@ -92,11 +92,33 @@ export interface CredentialFieldSchema {
 // ─── Channel Product Data Types ───────────────────────────────────────────────
 // Corresponds to the channel_product_data MongoDB collection
 
-export type ChannelProductStatus = "DRAFT" | "READY" | "PUBLISHED" | "FAILED";
+/**
+ * Listing lifecycle status per (masterProduct × store) — backend P0-1/P0-2.
+ * `DELISTED` (P0-2/G6) = removed from the channel; product data kept for audit and re-publish.
+ */
+export type ChannelProductStatus = "DRAFT" | "READY" | "PUBLISHED" | "FAILED" | "DELISTED";
+
+/**
+ * Idempotent publish operation the backend actually performed (P0-2).
+ *  - CREATE — a new listing was created on the channel.
+ *  - NOOP   — content unchanged since the last publish; no channel call was made.
+ *  - UPDATE — an existing live listing was updated (behind `channel-update-enabled`).
+ *  - DELIST — the listing was removed from the channel (delist flow).
+ */
+export type PublishOperation = "CREATE" | "NOOP" | "UPDATE" | "DELIST";
+
+/**
+ * Sync/workflow status. `PROCESSING`/`PENDING` are non-terminal (keep polling).
+ * `BLOCKED` = idempotent-update gate: editing a live listing while `channel-update-enabled`
+ * is off — actionable, NOT a hard failure (the merchant delists then re-publishes).
+ */
+export type SyncStatus = "COMPLETED" | "FAILED" | "PROCESSING" | "PENDING" | "BLOCKED" | "DRY_RUN";
 
 export interface ChannelProductData {
   masterProductId: string;
   storeId: string;
+  /** Human-readable store name (falls back to storeId when the backend omits it). */
+  storeName?: string;
   channelType: ChannelType;
   organizationId: string;
   status: ChannelProductStatus;
@@ -109,6 +131,136 @@ export interface ChannelProductData {
   publishedAt?: string;
   publishError?: string;
   savedAt: string;
+
+  // ── Listing identity (P0-1) — present once a listing has been created on the channel ──
+  /** External listing id returned by the channel (Shopify product id, Shopee item_id, …). */
+  channelProductId?: string;
+  /** Deep-link to the listing in the channel admin. */
+  channelUrl?: string;
+  /** Monotonic count of publish attempts for this listing. */
+  publishAttempts?: number;
+  /** Time of the last attempt (success or failure) — differs from publishedAt (success only). */
+  lastAttemptAt?: string;
+  /** Sync workflow id of the last attempt (POST-then-poll handle; admin Temporal deep-link). */
+  syncWorkflowId?: string;
+}
+
+// ─── Listing lifecycle read models (P0-1) ─────────────────────────────────────
+
+/**
+ * Lightweight listing-state projection — `GET …/channel-product-data/{masterProductId}/listings`.
+ * One row per (masterProduct × store): the badge + contextual action source of truth for Step 3.
+ */
+export interface ListingState {
+  storeId: string;
+  channelType: ChannelType;
+  status: ChannelProductStatus;
+  channelProductId?: string;
+  channelUrl?: string;
+  publishAttempts?: number;
+  publishedAt?: string;
+  lastAttemptAt?: string;
+  publishError?: string;
+  syncWorkflowId?: string;
+}
+
+/**
+ * One per-hit step inside a publish attempt (masked), from the sync `step_results[]`.
+ * Powers granular progress ("upload image 2/5", "create product") and points at the failed step.
+ */
+export interface PublishStep {
+  stepName: string;
+  status: "OK" | "ERROR" | "SKIP";
+  httpStatus?: number;
+  channelSuccess?: boolean;
+  iterationIndex?: number;
+  durationMs?: number;
+  errorCode?: string;
+  errorMessage?: string;
+  at?: string;
+}
+
+/**
+ * One publish attempt — `GET …/channel-product-data/{masterProductId}/{storeId}/history`.
+ * Append-only audit timeline (newest first).
+ */
+export interface PublishHistoryEntry {
+  id?: string;
+  publishId?: string;
+  operation?: PublishOperation;
+  success: boolean;
+  syncStatus?: SyncStatus | string;
+  channelProductId?: string;
+  errorCode?: string;
+  errorMessage?: string;
+  durationMs?: number;
+  dryRun?: boolean;
+  userId?: string;
+  steps?: PublishStep[];
+  syncWorkflowId?: string;
+  createdAt: string;
+}
+
+// ─── Delist (P0-2/G6) ─────────────────────────────────────────────────────────
+
+export interface DelistRequest {
+  masterProductId: string;
+  storeId: string;
+  organizationId: string;
+}
+
+export interface DelistResponse {
+  success?: boolean;
+  operation?: PublishOperation;
+  /** Sync/workflow status — `PROCESSING` means keep polling; delist is idempotent. */
+  syncStatus?: SyncStatus | string;
+  status?: string;
+  channelProductId?: string;
+  message?: string;
+}
+
+// ─── Publish diff (dirty-state) — DiffEngine 02-frontend-dirty-state ───────────
+//
+// Authoritative "is anything changed since last publish?" per (product × store).
+// FE cannot compute this reliably (baseline content-hashes live only in the backend
+// listing-state), so it asks the read-only `POST /channels/publish/diff` endpoint, which
+// runs the desired-state extractor + diff planner + operation decider WITHOUT publishing.
+
+/** The operation a publish would perform right now — `UPDATE_BLOCKED` = dirty but UPDATE not wired. */
+export type PublishDiffDecision = "CREATE" | "NOOP" | "UPDATE" | "UPDATE_BLOCKED";
+export type PublishDiffListingStatus = "NEVER_PUBLISHED" | "PUBLISHED" | "DELISTED";
+
+/** Per-resource add/update/delete/noop buckets (SKUs, or "SKU::url" for variant images). */
+export interface PublishDiffBuckets {
+  add?: string[];
+  update?: string[];
+  delete?: string[];
+  noop?: string[];
+}
+
+export interface PublishDiffRequest {
+  masterProductId: string;
+  storeId: string;
+  /** Optional unsaved draft desired-state; omit to let the backend hydrate from stored master + Step-2. */
+  masterProductData?: Record<string, unknown>;
+}
+
+export interface PublishDiffResponse {
+  masterProductId: string;
+  storeId: string;
+  channelType: ChannelType;
+  listingStatus: PublishDiffListingStatus;
+  decision: PublishDiffDecision;
+  /** Primary signal: `false` ⟺ decision NOOP (publish would touch nothing → "Up to date"). */
+  dirty: boolean;
+  /** `false` → this channel doesn't support UPDATE yet (decision may be UPDATE_BLOCKED). */
+  updateSupported?: boolean;
+  /** Product body (name/description/price) changed? */
+  product?: { changed: boolean };
+  variants?: PublishDiffBuckets;
+  productImages?: PublishDiffBuckets;
+  variantImages?: PublishDiffBuckets;
+  summary?: { variantsChanged?: number; imagesChanged?: number; totalChanges?: number };
 }
 
 export interface ChannelStepSaveRequest {
@@ -682,12 +834,18 @@ export interface StorePublishResult {
    * poll timed out) — it is NOT a failure. The FE keeps polling the persisted store status until
    * it settles (see `classifyPublishOutcome` / `pollUntilTerminal`, doc 04 §"Workflow polling").
    */
-  status: "PUBLISHED" | "COMPLETED" | "FAILED" | "BLOCKED" | "PROCESSING";
+  status: "PUBLISHED" | "COMPLETED" | "FAILED" | "BLOCKED" | "PROCESSING" | "DELISTED";
   publishedAt?: string;
   /** Human-readable summary (joined field messages, or a system error message). */
   error?: string;
   /** Structured per-field errors from the pre-flight gate — for inline field highlighting. */
   fieldErrors?: PublishFieldError[];
+  /** Idempotent operation the backend performed (P0-2) — CREATE/NOOP/UPDATE/DELIST. */
+  operation?: PublishOperation;
+  /** External listing id (present once created); enables the "Live + link" badge. */
+  channelProductId?: string;
+  /** Deep-link to the listing in the channel admin. */
+  channelUrl?: string;
 }
 
 /**
@@ -711,6 +869,14 @@ export interface PublishSingleResponse {
   message?: string;
   warnings?: string[];
   errors?: Array<{ code?: string; message?: string; field?: string; details?: string }>;
+  /** Idempotent operation performed (P0-2): CREATE / NOOP / UPDATE / DELIST. */
+  operation?: PublishOperation;
+  /** External listing id — the "Live + link" badge source. */
+  channelProductId?: string;
+  /** Deep-link to the listing in the channel admin. */
+  channelUrl?: string;
+  /** Per-hit granular steps for this attempt (create → media → variants). */
+  syncSteps?: PublishStep[];
 }
 
 export interface BatchPublishRequest {

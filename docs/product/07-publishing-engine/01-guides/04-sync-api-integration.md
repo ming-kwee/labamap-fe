@@ -208,27 +208,22 @@ Credentials are injected into `request.publishOptions.customOptions` by the data
 
 ---
 
-## SyncApiResponse
+## SyncApiResponse (POST `/sync_channel_product_impl` → 200)
+
+The POST is **accept-then-poll**, not synchronous. It returns only a handle:
 
 ```json
-{
-  "success":          true,
-  "message":          "Product published successfully",
-  "channelProductId": "8234567890123",
-  "eventId":          "pub_1746000000000_shopify_prod_abc123",
-  "status":           "COMPLETED",
-  "data":             { ... },
-  "warnings":         [],
-  "errors":           [],
-  "metadata":         { ... }
-}
+{ "workflowId": "...", "entityId": "...", "status": "ACCEPTED" | "ALREADY_PROCESSED" }
 ```
 
-`status` values observed: `"COMPLETED"`, `"PENDING"`, `"FAILED"`.
+- `workflowId` — opaque token; echo it into the poll URL, do **not** construct it. Kalix returns the bare
+  `<eventId>`; Temporal returns `sync-<eventId>` (the Temporal poll route accepts either form).
+- `entityId` — the channel-product entity id (same as `SyncRequest.id`). `SyncApiResponse.channelProductId`
+  reads it via `@JsonAlias({"entityId"})`.
+- `status` — `ACCEPTED` (workflow started) or `ALREADY_PROCESSED` (a run with that `workflowId` already
+  exists — idempotent). The final `COMPLETED`/`FAILED` outcome comes from the **poll**, not here.
 
-`errors[]` shape: `{ "code": string, "message": string, "field": string, "details": string }`.
-
-The `errors[].details` field maps to `PublishError.suggestion` in the publish response.
+Both sync backends (Kalix and Temporal) emit this exact POST shape, so either is drop-in behind the BFF.
 
 ---
 
@@ -239,6 +234,12 @@ The `errors[].details` field maps to `PublishError.suggestion` in the publish re
 > terminal state. See `ChannelPublishService` (`isTerminalSyncStatus`/`isSyncSucceeded`/
 > `isProcessingSyncStatus`) and `WorkflowStatusResponse`. Regression covered by
 > `ChannelPublishServiceSyncStatusTest` and `WorkflowStatusResponseTest`.
+>
+> **Canonical route, both backends.** `GET /channel_product_workflow/{workflowId}` is served identically
+> by the Kalix and Temporal sync services (Temporal also keeps `GET /channel_product_state?workflowId=`
+> as a legacy alias), and the poll body field names are aligned (`syncStatus` / `externalChannelProductId`
+> / `failureReason` / `step_results`). So the BFF poll URL is backend-agnostic — no BFF change when the
+> sync service is swapped.
 
 **Symptom fixed.** A publish whose sync workflow clearly succeeded showed **failed** on the page, and
 only a **refresh** revealed success.

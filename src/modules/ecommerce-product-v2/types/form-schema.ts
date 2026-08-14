@@ -131,7 +131,10 @@ export interface FormField {
   width?: 'full' | 'half' | 'third' | 'quarter';
   appearance?: Record<string, any>;
 
-  variantScope?: 'dual' | 'variant_only' | null;
+  // 'dual'  → product-level XOR variant-level (hidden at product level when hasVariants=true)
+  // 'both'  → product-level AND per-variant simultaneously, independent values (e.g. WIX
+  //           product.sku vs variants[*].sku). NOT hidden at product level; see metadata.productAndVariantFields.
+  variantScope?: 'dual' | 'both' | 'variant_only' | 'product_only' | null;
 }
 
 // Field Dependencies
@@ -231,6 +234,9 @@ export interface DynamicFormSchema {
     conditionalFieldCount: number;
     formStage?: 'essential' | 'type-specific';
     variantScopedFields?: string[] | null;
+    /** Fields that are product-level AND per-variant at once (variantScope: "both") —
+     *  e.g. WIX product.sku vs variants[*].sku. Distinct from variantScopedFields (dual). */
+    productAndVariantFields?: string[] | null;
     variantDimensions?: string[] | null;
     // Phase 4 / Section 10 fields
     isInitialLoad?: boolean;       // true when no productTypeId was in the request

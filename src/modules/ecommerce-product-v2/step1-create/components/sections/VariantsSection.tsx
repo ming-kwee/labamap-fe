@@ -3,7 +3,7 @@
 import React from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/shared/ui/card/Card';
 import VariantConfigurator from '../VariantConfigurator';
-import { onVariantsEnabled, onVariantsDisabled } from '../../../utils/variant-scope';
+import { onVariantsEnabled, onVariantsDisabled, resolveDualFieldNames } from '../../../utils/variant-scope';
 import type { VariantDimension } from '@/app/(admin)/omni-admin/product-types/_types/product-type';
 
 interface VariantsSectionProps {
@@ -37,12 +37,10 @@ export default function VariantsSection({
   const hasVariantsEnabled = !!formData['hasVariants'];
 
   const handleHasVariantsChange = (enabled: boolean) => {
-    const dualFieldNames: string[] =
-      schema?.metadata?.variantScopedFields ||
-      schema?.fields
-        ?.filter((f: any) => f.variantScope === 'dual')
-        .map((f: any) => f.fieldName || f.name) ||
-      [];
+    // Only `dual` fields migrate to/from the first variant. `both` fields (sku/price/weight)
+    // are deliberately excluded — they stay product-level AND get their own per-variant column,
+    // so they must not be hidden or copied into _variantDefaults.
+    const dualFieldNames: string[] = resolveDualFieldNames(schema);
 
     if (enabled && dualFieldNames.length > 0) {
       const variantDefaults = onVariantsEnabled(formData, dualFieldNames);

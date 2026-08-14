@@ -70,7 +70,9 @@ Set `productCategory` to `""` for initial load (returns essential + basic fields
       "requiredFieldCount":  4,
       "productTypeId":       "6623a1b2c3d4e5f6a7b8c9e1",
       "productTypeName":     "Smartphone",
-      "variantDimensions":   ["color", "storage_capacity"]
+      "variantDimensions":   ["color", "storage_capacity"],
+      "variantScopedFields":     ["comparePrice", "costPrice", "inventory", "barcode"],
+      "productAndVariantFields": ["sku", "price", "weight"]
     }
   },
   "metadata": {
@@ -175,7 +177,11 @@ interface FormField {
   hidden:    boolean;
 
   displayLevel?: 'essential' | 'basic' | 'advanced' | 'optional' | 'category-specific';
-  variantScope?: 'dual' | 'variant_only' | null;
+  // 'product_only' → always product-level; 'variant_only' → variant axis (per-SKU only);
+  // 'dual' → product-level XOR variant-level (hidden at product level when hasVariants=true);
+  // 'both' → product-level AND per-variant simultaneously, independent values (e.g. WIX product.sku
+  //          vs variants[*].sku). Do NOT hide 'both' fields at product level. See metadata.productAndVariantFields.
+  variantScope?: 'dual' | 'both' | 'variant_only' | 'product_only' | null;
   section?:  string;            // e.g. "basic-info", "pricing"
   order?:    number;
 

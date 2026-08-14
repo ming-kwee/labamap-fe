@@ -140,16 +140,41 @@ const VariantConfigurator: React.FC<VariantConfiguratorProps> = ({
         return variantField.validationRules.variantFields;
       }
 
+      type VariantColumn = { name: string; label: string; type: string };
+      const nameOf = (f: any) => f.fieldName || f.name || '';
+      const humanize = (n: string) => n.replace(/[_-]+/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+      const toColumn = (f: any): VariantColumn => ({
+        name: nameOf(f),
+        label: f.label || humanize(nameOf(f)),
+        type: f.fieldType === 'NUMBER' || f.fieldType === 'number' ? 'number' : 'text',
+      });
+      const isDimensionName = (n: string) => dimensions.some(d => d.name === n);
+
+      // `dual` fields: product-level XOR variant — become variant columns when hasVariants.
       const dualFields = schema.fields.filter((f: any) => f.variantScope === 'dual');
-      if (dualFields.length > 0) {
+
+      // `both` fields: product-level AND per-variant simultaneously, independent values
+      // (e.g. WIX product.sku vs variants[*].sku). Resolved from metadata.productAndVariantFields
+      // (explicit backend list) or by scanning variantScope === "both". They stay product-level
+      // AND also render here as a variant column so each SKU keeps its own value.
+      const bothFieldNames: string[] =
+        schema.metadata?.productAndVariantFields ||
+        schema.fields.filter((f: any) => f.variantScope === 'both').map(nameOf);
+      const bothFields = bothFieldNames
+        .map((n: string) => schema.fields.find((f: any) => nameOf(f) === n) || { fieldName: n })
+        .filter((f: any) => !isDimensionName(nameOf(f)));
+
+      if (dualFields.length > 0 || bothFields.length > 0) {
+        const dualCols: VariantColumn[] = dualFields.map(toColumn);
+        const dualNames = new Set(dualCols.map((c: VariantColumn) => c.name));
+        // Avoid duplicating a column that's already a dual column (scopes are disjoint by
+        // contract, but stay defensive against a transitional backend).
+        const bothCols = bothFields.map(toColumn).filter((c: VariantColumn) => !dualNames.has(c.name));
         return [
           ...dimensions.map(dim => ({ name: dim.name, label: dim.label, type: 'select' })),
           { name: 'variantImages', label: 'Images', type: 'images' },
-          ...dualFields.map((f: any) => ({
-            name: f.fieldName || f.name,
-            label: f.label,
-            type: f.fieldType === 'NUMBER' || f.fieldType === 'number' ? 'number' : 'text'
-          })),
+          ...dualCols,
+          ...bothCols,
         ];
       }
 

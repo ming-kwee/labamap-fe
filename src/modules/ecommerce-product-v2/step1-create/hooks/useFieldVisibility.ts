@@ -27,6 +27,9 @@ export function useFieldVisibility(): UseFieldVisibilityReturn {
 
     if (field.variantScope === 'variant_only') return false;
     if (field.variantScope === 'dual' && formData['hasVariants']) return false;
+    // `both`-scope fields (e.g. WIX product.sku vs variants[*].sku) intentionally stay visible at
+    // product level even with variants — they carry a distinct product-level value alongside the
+    // per-variant column. Hiding them here was the bug: product.sku became frozen/uneditable.
 
     if (!field.conditionalVisibility) return true;
 

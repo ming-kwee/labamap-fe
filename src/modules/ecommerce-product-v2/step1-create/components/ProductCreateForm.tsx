@@ -27,6 +27,7 @@ import { useFieldVisibility } from '../hooks/useFieldVisibility';
 import { useFieldValidation } from '../hooks/useFieldValidation';
 import { useProductSubmit } from '../hooks/useProductSubmit';
 import { useProductTypeVariants } from '../hooks/useProductTypeVariants';
+import MasterEditDirtyBanner from './MasterEditDirtyBanner';
 import {
   getSectionMetadata,
   groupFieldsBySection,
@@ -484,6 +485,11 @@ export default function ProductCreateForm({
           <span className="h-1.5 w-1.5 rounded-full bg-amber-400" />
           {showJsonPreview ? 'Hide JSON' : 'JSON Preview'}
         </button>
+      )}
+
+      {/* Live-listing awareness (edit mode): master edits need a re-publish to reach live channels */}
+      {mode === 'edit' && productId && (
+        <MasterEditDirtyBanner masterProductId={productId} desired={formData} />
       )}
 
       {/* Progressive disclosure controls */}
