@@ -206,11 +206,18 @@ export function transformMasterProductToSourceSchema(
     if (Array.isArray(value)) {
       if (value.length === 0) return;
       if (typeof value[0] === 'string') {
-        sourceSchema[key] = value.join(', ');
+        // Image arrays must stay ARRAYS. Joining them with ', ' produces a single field whose value is
+        // "urlA, urlB", which the backend's image collector then treats as ONE image with a two-URL src —
+        // the channel rejects it (Shopify 422 "Image URL is invalid"). The backend reads galleryImages/
+        // images as a list and builds the channel image field from it (JOLT maps no images), so pass the
+        // real array. The `${key}_${n}` indexed keys are kept for any consumer that wants them flat.
         if (key === 'galleryImages' || key === 'images') {
+          sourceSchema[key] = value;
           value.forEach((item, index) => {
             sourceSchema[`${key}_${index + 1}`] = item;
           });
+        } else {
+          sourceSchema[key] = value.join(', ');
         }
       } else {
         sourceSchema[key] = value;
