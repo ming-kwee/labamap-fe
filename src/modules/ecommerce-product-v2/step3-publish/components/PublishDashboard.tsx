@@ -440,25 +440,26 @@ export default function PublishDashboard({ masterProductId }: Props) {
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-
-    // Fast path: already in session
-    const raw = sessionStorage.getItem(`product_${masterProductId}`);
-    if (raw) {
-      try { setProduct(JSON.parse(raw)); return; } catch { /* fall through */ }
-    }
-
-    // API fallback — requires orgId from auth (may be empty on first render)
     if (!orgId) return;
 
+    // Always load the CURRENT master product from the API so the publish body reflects the latest edits.
+    // A stale sessionStorage snapshot (written by an earlier Step-1/publish session) would re-publish images
+    // the user has since DELETED and miss ones they added — the channel diff keys off exactly this desired set
+    // (images + mainImage + galleryImages), so it must be fresh. sessionStorage is used only as an offline
+    // fallback if the API call fails.
     MasterProductService.getById(masterProductId, orgId)
       .then(detail => {
-        const fallback: MasterProduct = {
+        // Gallery = all saved images minus the featured/main one (mirrors the edit page). The old fallback
+        // dropped galleryImages entirely, so deletions/additions never reached the publish body.
+        const galleryImages = (detail.images ?? []).filter((u: string) => u !== detail.imageUrl);
+        const fresh: MasterProduct = {
           id: detail.id,
           name: detail.name,
           sku: detail.sku ?? "",
           price: detail.basePrice ?? 0,
           category: undefined,
           mainImage: detail.imageUrl ?? undefined,
+          galleryImages: galleryImages.length > 0 ? galleryImages : undefined,
           description: detail.description ?? undefined,
           tags: detail.tags ?? undefined,
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -475,11 +476,16 @@ export default function PublishDashboard({ masterProductId }: Props) {
           createdAt: detail.createdAt,
           updatedAt: detail.updatedAt,
         };
-        // Write back so the next navigation uses the fast path
-        try { sessionStorage.setItem(`product_${masterProductId}`, JSON.stringify(fallback)); } catch { /**/ }
-        setProduct(fallback);
+        // Refresh the cache so other readers see the current product too.
+        try { sessionStorage.setItem(`product_${masterProductId}`, JSON.stringify(fresh)); } catch { /**/ }
+        setProduct(fresh);
       })
-      .catch(() => setProductMissing(true));
+      .catch(() => {
+        // Offline fallback: use a cached snapshot if present, else mark missing.
+        const raw = sessionStorage.getItem(`product_${masterProductId}`);
+        if (raw) { try { setProduct(JSON.parse(raw)); return; } catch { /* fall through */ } }
+        setProductMissing(true);
+      });
   }, [masterProductId, orgId]);
 
   // Load store completion data + overlay the listing-state (P0-1) so badges show the true
