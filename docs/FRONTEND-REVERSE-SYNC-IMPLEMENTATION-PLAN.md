@@ -1,9 +1,11 @@
 # Frontend — Reverse Sync (Channel → Platform): Rencana Implementasi
 
-> **Audiens:** tim frontend. **Backend:** sudah TERIMPLEMENTASI (R0–R5, BFF-only, 70 tes hijau). Dokumen ini =
-> kontrak API + peta menu/halaman (baru vs ditingkatkan) + alur pengguna + fase. Sumber kebenaran arsitektur:
-> [`docs/reversesync/05`](reversesync/05-config-source-of-truth.md). **Tak ada perubahan jalur forward** — reverse
-> hidup berdampingan, menulis ke Step-2/draft, tak pernah menimpa master global secara diam-diam.
+> **Audiens:** tim frontend. **Status backend: SEMUA KONTRAK LENGKAP & SIAP** — reconcile (A) + import (B) +
+> re-import update-draft + browse/list + suggestions inbox + archive/delete guardrail. Semua **gap BE (#1–#5)
+> tertutup**, 90 tes hijau, BFF-only, aditif. **Tak ada blocker BE** untuk FE-0 s/d FE-4. Dokumen ini = kontrak
+> API + peta menu/halaman (baru vs ditingkatkan) + alur pengguna + fase. Arsitektur:
+> [`docs/reversesync/05`](reversesync/05-config-source-of-truth.md) + [`06`](reversesync/06-import-channel-native.md).
+> **Tak ada perubahan jalur forward** — reverse menulis ke Step-2/draft, master global tak pernah ditimpa diam-diam.
 
 ---
 
@@ -118,6 +120,8 @@ Detail: [`docs/reversesync/06`](reversesync/06-import-channel-native.md).
   "candidateSku":"red-m", "candidateName":"test 123",
   "channelDataWritten":["200134"], "preview": {…} }
 // /import → 201 (create) / 200 (link). Preview → created=null.
+// RE-IMPORT UPDATE-DRAFT (perbaiki draft yg salah): { masterProductId, updateExistingDraft:true }
+//   → merge master attrs ke DRAFT itu (non-destruktif; status tetap DRAFT). Master non-DRAFT → 409.
 ```
 
 ### 2.6 Suggestions (draft-review inbox)
@@ -143,6 +147,16 @@ GET /api/v1/categories/{channelType}/{storeId}/attributes/{categoryId}/schema?or
     → form schema; tiap field punya fieldName (= native attribute_id) + label
     // FE bangun lookup { "200134": "[S]Material", … } untuk seksi channel-only di P2
 ```
+
+### 2.6c Hapus/arsipkan master (My Products) — guardrail non-live
+```
+POST   /api/v1/admin/master-products/{productId}/archive?organizationId=   ← DEFAULT (soft-delete, reversible)
+DELETE /api/v1/admin/master-products/{productId}?organizationId=           ← hard-delete + cascade linkage
+```
+- **Guardrail:** keduanya **409** bila ada store yang **PUBLISHED** (listing masih live). Pesan memuat daftar
+  `storeId:status` yang memblokir → FE tampilkan "Delist dulu di: {store}". DELISTED/DRAFT/FAILED/READY = boleh.
+- **FE UX:** tombol default = **Arsipkan** (aman, reversible). "Hapus permanen" hanya untuk draft/disposable, dengan
+  konfirmasi. Untuk repair import salah → **jangan hapus**; pakai re-import update-draft (§2a).
 
 ### 2.7 (admin/debug) `GET /jolt-spec/{channelId}` — proyeksi reverse-JOLT inspectable
 ```jsonc
@@ -192,14 +206,15 @@ GET /api/v1/categories/{channelType}/{storeId}/attributes/{categoryId}/schema?or
 
 | # | Item | Tipe | Endpoint dipakai | Prioritas |
 |---|---|---|---|---|
-| **P0** | **(B) "Import Listings"** di Store — buat master baru dari item channel | **baru** | `/import/preview`, `/import` | **P0** |
+| **P0** | **(B) "Import Listings"** di Store — buat master baru dari item channel (+ re-import update-draft utk perbaiki) | **baru** | `/import/list`, `/import/preview`, `/import` | **P0** |
 | P1 | **(A) Tombol "Tarik dari Channel"** (di product-store view) | tingkatkan | `/pull` | P0 |
 | P2 | **Reverse Preview / Diff** (modal atau page) | baru | `/pull`, `/preview`, `/pull/apply`, `/apply`, `/review`, `/import*` | P0 |
 | P3 | **Inbox "Saran dari Channel"** (draft-review) | baru | `/suggestions/*` | P0 |
 | P4 | **Kolom status reverse** di product-store matrix | tingkatkan | (data dari product-store) | P1 |
-| P5 | **Admin — Reverse Write Policy** per atribut master | tingkatkan (master-attribute admin) | (admin master-attr) | P1 |
+| P5 | **Admin — Reverse Write Policy** per atribut master | tingkatkan (master-attribute admin) | `PATCH …/reverse-policy` | P1 |
 | P6 | **Admin — Reverse-JOLT Inspector** | tingkatkan (JOLT admin) | `/jolt-spec/{channelId}` | P2 |
 | P7 | **Admin — Webhook & Config reverse** per channel | tingkatkan (channel config admin) | (channel config) | P2 |
+| P8 | **Arsipkan/Hapus master** (My Products) — guardrail non-live | **baru** | `…/{id}/archive`, `DELETE …/{id}` | P1 |
 
 > Menu nav: tambahkan grup **"Reverse Sync"** (atau lipat ke "Products"/"Channels" yang ada) dengan sub-item
 > **Suggestions** (P3). P1/P2/P4 hidup di dalam halaman produk/store yang sudah ada. P5–P7 di area Admin.
@@ -289,6 +304,14 @@ Di channel-config admin, tampilkan (read-only cukup untuk v1) ringkasan `reverse
   tak menerima apa pun.
 - **Tegaskan scope:** webhook = **reconcile** produk ter-link saja; **tidak** auto-import produk baru (lihat Flow C).
 
+### P8 — Arsipkan / Hapus master (My Products) dengan guardrail non-live
+- **Default = Arsipkan** (`POST …/{id}/archive`) — soft-delete, reversible, pertahankan history + linkage.
+- **Hapus permanen** (`DELETE …/{id}`) — hanya untuk produk disposable (mis. draft import salah); cascade linkage.
+- **Guardrail:** keduanya **409** bila ada store **PUBLISHED** — body memuat daftar `storeId:status` pemblokir →
+  FE tampilkan "Delist dulu di: {store}", disable tombol Hapus, arahkan ke delist.
+- **UX:** tombol utama = Arsipkan; "Hapus permanen" di menu sekunder + dialog konfirmasi. Untuk memperbaiki import
+  salah, **jangan hapus** — pakai re-import update-draft (§2a).
+
 ---
 
 ## 5. Alur pengguna (flows)
@@ -351,6 +374,27 @@ atau `[Link ke existing] POST /import {masterProductId} 200`.
 5. ✅ **Browse/LIST listing channel** — `GET /import/list?storeId=&limit=&offset=` (Shopify di-seed;
    Shopee belum → kirim `channelPayload`). Sisa: paginasi cursor Shopify (v1 limit/offset) + LIST Shopee (signing).
 
+### 7a. Inventaris endpoint BE (semua SUDAH ADA — konfirmasi cepat untuk FE)
+
+| Fitur | Endpoint | Status |
+|---|---|---|
+| Import: browse | `GET  …/reverse/import/list` | ✅ |
+| Import: preview / commit | `POST …/reverse/import/preview` · `POST …/reverse/import` | ✅ |
+| Import: re-import update-draft | `POST …/reverse/import` (`updateExistingDraft:true`) | ✅ |
+| Reconcile: pull | `POST …/reverse/pull` · `POST …/reverse/pull/apply` | ✅ |
+| Reconcile: preview/apply payload | `POST …/reverse/preview` · `POST …/reverse/apply` | ✅ |
+| Route by policy | `POST …/reverse/review` | ✅ |
+| Suggestions inbox + badge | `GET …/reverse/suggestions?…` · `…/suggestions/count` · `…/suggestions/{mpId}` | ✅ |
+| Suggestion accept/reject | `POST …/suggestions/{id}/accept` · `…/reject` | ✅ |
+| Reverse-JOLT inspector | `GET …/reverse/jolt-spec/{channelId}` | ✅ |
+| Policy editor | `PATCH /api/v1/admin/master-attributes/{id}/reverse-policy` | ✅ |
+| Category attribute labels | `GET /api/v1/categories/{ch}/{store}/attributes/{cat}/schema` | ✅ |
+| Product-store reverse fields | (di response `channel-product-data` yang sudah ada) | ✅ |
+| Archive / delete master | `POST …/master-products/{id}/archive` · `DELETE …/master-products/{id}` | ✅ |
+
+**Tidak ada endpoint yang perlu ditunggu.** Sisa follow-up non-blocking (bukan gap kontrak): paginasi cursor
+Shopify, LIST Shopee (signing), webhook `products-create`→auto-import (di-gate, opsional).
+
 **Non-fungsional:**
 - **Idempotensi:** `/apply`, `/pull/apply`, `/review` merge non-destruktif → aman retry; tombol boleh re-enable setelah sukses.
 - **Anti-loop:** murni urusan BE (echo-suppression). FE tak perlu menangani.
@@ -363,16 +407,19 @@ atau `[Link ke existing] POST /import {masterProductId} 200`.
 
 ## 8. Fase implementasi FE
 
+> **Semua kontrak BE untuk fase di bawah SUDAH SIAP** — tak ada yang menunggu BE.
+
 | Fase FE | Isi | Endpoint |
 |---|---|---|
-| **FE-0 (P0)** | **(B) Import Listings** (Store) + P2 mode "produk baru" + dedup link/create | `/import/preview`, `/import` |
+| **FE-0 (P0)** | **(B) Import Listings** (Store): browse → preview → create/link + re-import update-draft | `/import/list`, `/import/preview`, `/import` |
 | **FE-1 (P0)** | (A) P1 tombol + P2 Preview/Diff + Terapkan ke Step-2 | `/pull`, `/pull/apply`, `/preview`, `/apply` |
 | **FE-2 (P0)** | P3 Inbox Suggestions + Accept/Reject + konfirmasi master | `/review`, `/suggestions/*` |
-| **FE-3 (P1)** | P4 kolom status reverse + P5 policy editor | (gap #2/#3 sudah ditutup) |
+| **FE-3 (P1)** | P4 kolom status reverse + P5 policy editor + P8 archive/delete | `PATCH …/reverse-policy`, `…/archive`, `DELETE …` |
 | **FE-4 (P2)** | P6 reverse-JOLT inspector + P7 webhook/config viewer | `/jolt-spec/{channelId}` |
 
 **FE-0 (Import) + FE-1 (Reconcile) + FE-2 (Suggestions)** menutup alur inti kedua arah: **impor produk baru dari
-channel** dan **menyegarkan produk yang sudah ada**. FE-3/FE-4 memoles & admin.
+channel** dan **menyegarkan produk yang sudah ada**. FE-3 menambah status + admin + lifecycle (archive/delete);
+FE-4 memoles inspector. **Backend: semua endpoint sudah ada** — FE bisa mulai fase mana pun tanpa blocker.
 
 ---
 

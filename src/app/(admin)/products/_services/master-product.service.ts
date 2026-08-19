@@ -12,6 +12,47 @@ const BASE      = "http://localhost:8888/labamap/api/v1/admin/master-products";
 const BASE_API  = "http://localhost:8888/labamap/api/v1";
 const JSON_HEADERS = { "Content-Type": "application/json" };
 
+// ─── Lifecycle (archive / delete) — non-live guardrail (P8) ────────────────────
+
+/** A store blocking archive/delete because its listing is still live. */
+export interface BlockingStore {
+  storeId: string;
+  status: string;
+}
+
+/**
+ * Thrown on 409 from archive/delete: the product still has live (PUBLISHED) listings.
+ * Carries the blocking `storeId:status` list so the UI can say "delist first at …".
+ */
+export class MasterProductLiveListingError extends Error {
+  readonly status = 409;
+  readonly blockingStores: BlockingStore[];
+  constructor(message: string, blockingStores: BlockingStore[]) {
+    super(message);
+    this.name = "MasterProductLiveListingError";
+    this.blockingStores = blockingStores;
+  }
+}
+
+/** Best-effort extraction of blocking stores from a variety of 409 body shapes. */
+function extractBlockingStores(body: Record<string, unknown> | undefined, raw: string): BlockingStore[] {
+  const arr = (body?.blockingStores ?? body?.blockedStores ?? body?.stores ?? body?.blockedBy) as unknown;
+  if (Array.isArray(arr) && arr.length > 0) {
+    return arr.map((e): BlockingStore => {
+      if (typeof e === "string") {
+        const [storeId, status] = e.split(":");
+        return { storeId: storeId ?? e, status: status ?? "PUBLISHED" };
+      }
+      const o = (e ?? {}) as Record<string, unknown>;
+      return { storeId: String(o.storeId ?? o.id ?? "?"), status: String(o.status ?? "PUBLISHED") };
+    });
+  }
+  // Fallback: parse `storeId:STATUS` tokens out of the message text.
+  const text = (body?.message as string) ?? (body?.error as string) ?? raw ?? "";
+  const matches = [...text.matchAll(/([A-Za-z0-9_-]+):([A-Z_]{3,})/g)];
+  return matches.map((m) => ({ storeId: m[1], status: m[2] }));
+}
+
 function mapProduct(r: Record<string, unknown>): MasterProduct {
   const channelSummary = Array.isArray(r.channelSummary) ? r.channelSummary : [];
   const attrs = (r.productAttributes ?? {}) as Record<string, unknown>;
@@ -277,6 +318,48 @@ export const MasterProductService = {
       updatedCount: Number(data.updatedCount ?? 0),
       failedIds: Array.isArray(data.failedIds) ? (data.failedIds as unknown[]).map(String) : [],
     };
+  },
+
+  // ─── Lifecycle (P8) ─────────────────────────────────────────────────────────
+
+  /**
+   * POST /admin/master-products/{id}/archive — soft-delete (reversible), keeps history + linkage.
+   * DEFAULT lifecycle action. 409 (live PUBLISHED listing) → MasterProductLiveListingError.
+   */
+  async archive(productId: string, organizationId: string): Promise<void> {
+    const res = await fetch(
+      `${BASE}/${encodeURIComponent(productId)}/archive?organizationId=${encodeURIComponent(organizationId)}`,
+      { method: "POST", headers: JSON_HEADERS },
+    );
+    await MasterProductService._handleLifecycle(res, "archive");
+  },
+
+  /**
+   * DELETE /admin/master-products/{id} — hard-delete + cascade linkage. For disposable/draft
+   * products only. 409 (live PUBLISHED listing) → MasterProductLiveListingError.
+   */
+  async deleteProduct(productId: string, organizationId: string): Promise<void> {
+    const res = await fetch(
+      `${BASE}/${encodeURIComponent(productId)}?organizationId=${encodeURIComponent(organizationId)}`,
+      { method: "DELETE", headers: JSON_HEADERS },
+    );
+    await MasterProductService._handleLifecycle(res, "delete");
+  },
+
+  /** Shared archive/delete response handling: 409 → typed live-listing error, else generic. */
+  async _handleLifecycle(res: Response, op: string): Promise<void> {
+    if (res.ok || res.status === 204) return;
+    const raw = await res.text().catch(() => "");
+    let body: Record<string, unknown> | undefined;
+    try { body = raw ? (JSON.parse(raw) as Record<string, unknown>) : undefined; } catch { /* non-JSON */ }
+    const msg = (body?.message as string) ?? (body?.error as string) ?? raw ?? res.statusText;
+    if (res.status === 409) {
+      throw new MasterProductLiveListingError(
+        msg || "Product still has live listings",
+        extractBlockingStores(body, raw),
+      );
+    }
+    throw new Error(`[MasterProductService] ${op}: ${res.status} ${msg}`);
   },
 
   async suggestTags(organizationId: string, prefix: string): Promise<string[]> {

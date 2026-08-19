@@ -16,6 +16,7 @@ import {
   ReversePreviewModal,
   ReverseStatusBadge,
 } from "@/modules/reverse-sync";
+import ProductLifecycleActions from "./ProductLifecycleActions";
 
 const BASE_API = "http://localhost:8888/labamap/api/v1";
 
@@ -710,6 +711,13 @@ export default function ProductDetailPage({ masterProductId }: { masterProductId
             >
               <EditIcon /> Edit Master
             </Link>
+            {/* P8 — archive (default) / delete, guarded against live listings */}
+            <ProductLifecycleActions
+              productId={product.id}
+              organizationId={orgId}
+              productName={product.name}
+              onDone={() => router.push("/products")}
+            />
           </div>
         </div>
       </div>
