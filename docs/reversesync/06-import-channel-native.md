@@ -53,6 +53,19 @@ reverse tak menebak (dedup deterministik, tak fuzzy); BFF-only; tak menyentuh fo
 
 ---
 
+## 2a. Re-import update-draft (perbaiki DRAFT yang salah)
+
+`POST /import` dengan `masterProductId` + `updateExistingDraft:true` → **merge** atribut master hasil klasifikasi
+BARU ke master yang sudah ada — **HANYA bila master itu DRAFT** (guardrail). Non-destruktif: key turunan-reverse
+menang, key tambahan merchant tetap; **status dikunci DRAFT** (status channel "active" tak boleh mempromosikan
+draft jadi live). Master non-DRAFT → **409** (pakai reconcile/draft-review, bukan overwrite). Ini menyelesaikan
+repair "import lama salah" **tanpa** perlu hapus master.
+
+```jsonc
+POST /import { "storeId":"…","channelProductId":"…","masterProductId":"<draft-id>","updateExistingDraft":true }
+→ 200 { "created":false, "masterProductId":"<draft-id>", "draftMaster":{…} }   // master DRAFT ter-update
+```
+
 ## 3. Kontrak API
 
 Base: `{host}/labamap/api/v1/channels/reverse/import`.

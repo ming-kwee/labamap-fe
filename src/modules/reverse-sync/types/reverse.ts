@@ -202,6 +202,12 @@ export interface ReverseImportRequest {
   channelPayload?: Record<string, unknown>;
   /** Fill → LINK to this existing master; null/omit → CREATE a new DRAFT master. */
   masterProductId?: string | null;
+  /**
+   * Re-import update-draft (repair a bad earlier import): with `masterProductId`, merge the
+   * freshly-classified master attributes into that EXISTING master — only if it is still DRAFT
+   * (non-destructive; stays DRAFT). A non-DRAFT master → 409 (use reconcile/draft-review instead).
+   */
+  updateExistingDraft?: boolean;
   /** Optional client-supplied id for the new master (else server generates). */
   newMasterProductId?: string | null;
   userId?: string;

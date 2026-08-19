@@ -38,8 +38,10 @@ export function ImportPreviewModal({
   onClose: () => void;
   onCommitted?: (r: ReverseImportResult) => void;
 }) {
-  const [committing, setCommitting] = useState<null | "create" | string>(null); // string = link target id
+  // Active commit key: "create" | "link:{id}" | "update:{id}". null = idle.
+  const [committing, setCommitting] = useState<string | null>(null);
   const [done, setDone] = useState<ReverseImportResult | null>(null);
+  const [doneKind, setDoneKind] = useState<"create" | "link" | "update">("create");
   const [error, setError] = useState<string | null>(null);
 
   if (!open) return null;
@@ -48,15 +50,36 @@ export function ImportPreviewModal({
   const { matches, preview } = result;
   const busy = committing !== null;
 
-  async function commit(masterProductId: string | null) {
-    setCommitting(masterProductId ?? "create");
+  /**
+   * Commit the import.
+   *  • masterProductId=null            → CREATE a new DRAFT master
+   *  • masterProductId + update=false  → LINK the channel item to that master
+   *  • masterProductId + update=true   → re-import UPDATE-DRAFT (merge into an existing DRAFT)
+   */
+  async function commit(masterProductId: string | null, updateExistingDraft = false) {
+    const kind: "create" | "link" | "update" =
+      masterProductId == null ? "create" : updateExistingDraft ? "update" : "link";
+    setCommitting(masterProductId == null ? "create" : `${kind}:${masterProductId}`);
     setError(null);
     try {
-      const r = await ReverseSyncService.importCommit({ ...baseRequest, masterProductId });
+      const r = await ReverseSyncService.importCommit({
+        ...baseRequest,
+        masterProductId,
+        // Only send the flag when set, so plain link/create requests stay unchanged.
+        updateExistingDraft: updateExistingDraft || undefined,
+      });
+      setDoneKind(kind);
       setDone(r);
       onCommitted?.(r);
     } catch (err) {
-      setError(err instanceof ReverseApiError ? err.message : "Failed to import");
+      // Update-draft only works on DRAFT masters — the backend guards non-DRAFT with 409.
+      if (err instanceof ReverseApiError && err.status === 409) {
+        setError(
+          "That product isn't a draft, so it can't be updated by re-import. Use “Pull from channel” (reconcile) on the product instead.",
+        );
+      } else {
+        setError(err instanceof ReverseApiError ? err.message : "Failed to import");
+      }
     } finally {
       setCommitting(null);
     }
@@ -88,7 +111,7 @@ export function ImportPreviewModal({
         {/* Body */}
         <div className="max-h-[65vh] space-y-4 overflow-y-auto px-5 py-4">
           {done ? (
-            <SuccessBanner result={done} />
+            <SuccessBanner result={done} kind={doneKind} />
           ) : (
             <>
               {error && (
@@ -104,25 +127,37 @@ export function ImportPreviewModal({
                     Possible duplicate{matches.length > 1 ? "s" : ""} found
                   </p>
                   <p className="mt-0.5 text-xs text-amber-600/90 dark:text-amber-400/80">
-                    This item may already be one of your master products. Link to it instead of creating a duplicate.
+                    This item may already be one of your master products. Link to it, or — if it’s a draft from an
+                    earlier import that came out wrong — re-import to fix that draft, instead of creating a duplicate.
                   </p>
                   <div className="mt-2 space-y-1.5">
                     {matches.map((m) => (
-                      <div key={m.productId} className="flex items-center justify-between gap-2 rounded-lg bg-white px-3 py-1.5 dark:bg-gray-900">
+                      <div key={m.productId} className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-white px-3 py-1.5 dark:bg-gray-900">
                         <span className="flex items-center gap-2 text-xs">
                           <span className="rounded bg-amber-100 px-1.5 py-0.5 font-semibold uppercase text-amber-700 dark:bg-amber-500/15 dark:text-amber-300">
                             {m.matchType}
                           </span>
                           <span className="font-mono text-gray-700 dark:text-gray-300">{m.productId}</span>
                         </span>
-                        <button
-                          type="button"
-                          onClick={() => commit(m.productId)}
-                          disabled={busy}
-                          className="rounded-lg border border-amber-300 px-2.5 py-1 text-xs font-semibold text-amber-700 hover:bg-amber-100 disabled:opacity-50 dark:border-amber-500/40 dark:text-amber-300 dark:hover:bg-amber-500/10"
-                        >
-                          {committing === m.productId ? "Linking…" : "Link to this"}
-                        </button>
+                        <span className="flex items-center gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => commit(m.productId, true)}
+                            disabled={busy}
+                            title="Re-import into this product — only works if it's still a draft"
+                            className="rounded-lg border border-amber-300 px-2.5 py-1 text-xs font-semibold text-amber-700 hover:bg-amber-100 disabled:opacity-50 dark:border-amber-500/40 dark:text-amber-300 dark:hover:bg-amber-500/10"
+                          >
+                            {committing === `update:${m.productId}` ? "Updating…" : "Fix draft"}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => commit(m.productId, false)}
+                            disabled={busy}
+                            className="rounded-lg border border-amber-300 px-2.5 py-1 text-xs font-semibold text-amber-700 hover:bg-amber-100 disabled:opacity-50 dark:border-amber-500/40 dark:text-amber-300 dark:hover:bg-amber-500/10"
+                          >
+                            {committing === `link:${m.productId}` ? "Linking…" : "Link to this"}
+                          </button>
+                        </span>
                       </div>
                     ))}
                   </div>
@@ -281,21 +316,22 @@ function ImportPlainRow({ path, value, note, muted }: { path: string; value: unk
   );
 }
 
-function SuccessBanner({ result }: { result: ReverseImportResult }) {
-  const linked = result.created === false;
+function SuccessBanner({ result, kind }: { result: ReverseImportResult; kind: "create" | "link" | "update" }) {
+  const title =
+    kind === "link" ? "Linked to existing master"
+    : kind === "update" ? "Draft updated from channel"
+    : "New master created (DRAFT)";
+  const subtitle =
+    kind === "link" ? "The channel item is now linked to your master product."
+    : kind === "update" ? "Fresh channel data was merged into the draft (still DRAFT). Review it in Step-2."
+    : "Finish it in Step-2, then publish.";
   return (
     <div className="rounded-xl border border-success-200 bg-success-50 px-4 py-4 text-center dark:border-success-500/25 dark:bg-success-500/10">
       <div className="mx-auto mb-2 flex h-11 w-11 items-center justify-center rounded-2xl bg-success-100 text-2xl dark:bg-success-500/20">
         ✓
       </div>
-      <p className="font-semibold text-success-700 dark:text-success-400">
-        {linked ? "Linked to existing master" : "New master created (DRAFT)"}
-      </p>
-      <p className="mt-1 text-sm text-success-700/80 dark:text-success-400/80">
-        {linked
-          ? "The channel item is now linked to your master product."
-          : "Finish it in Step-2, then publish."}
-      </p>
+      <p className="font-semibold text-success-700 dark:text-success-400">{title}</p>
+      <p className="mt-1 text-sm text-success-700/80 dark:text-success-400/80">{subtitle}</p>
       <Link
         href={`/products/${encodeURIComponent(result.masterProductId)}`}
         className="mt-3 inline-flex items-center gap-1.5 rounded-xl bg-brand-500 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-600"
