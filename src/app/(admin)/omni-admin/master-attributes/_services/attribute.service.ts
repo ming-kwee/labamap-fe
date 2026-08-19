@@ -57,6 +57,7 @@ import {
   MasterAttribute,
   MasterAttributeDoc,
   AttributeListParams,
+  ReverseWritePolicy,
   docToAttribute,
   attributeToDocPayload,
 } from "../_types/attribute";
@@ -244,6 +245,23 @@ export const AttributeService = {
     });
     const doc = await handleResponse<MasterAttributeDoc>(res);
     if (!doc) throw new Error(`[AttributeService] PATCH ${id}/active returned no content`);
+    return docToAttribute(doc);
+  },
+
+  /**
+   * PATCH /labamap/api/v1/admin/master-attributes/{id}/reverse-policy?policy=DRAFT_REVIEW
+   *
+   * Sets the reverse-sync direction-of-truth for this attribute (P5). Server validates
+   * against the ReverseWritePolicy enum (400 on an invalid value); returns the updated doc.
+   */
+  async setReversePolicy(id: string, policy: ReverseWritePolicy): Promise<MasterAttribute> {
+    const res = await fetch(`${BASE}/${id}/reverse-policy?policy=${encodeURIComponent(policy)}`, {
+      method: "PATCH",
+      headers: JSON_HEADERS,
+    });
+    const doc = await handleResponse<MasterAttributeDoc>(res);
+    // Some backends return 204 on PATCH — reflect the requested policy locally in that case.
+    if (!doc) return { ...({} as MasterAttribute), id, reverseWritePolicy: policy };
     return docToAttribute(doc);
   },
 

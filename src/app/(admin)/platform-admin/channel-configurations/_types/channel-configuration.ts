@@ -37,12 +37,19 @@ export interface ChannelConfiguration {
   channelName: string;
   isActive: boolean;
   version?: string;
+  /** Top-level channel API version (used by reverse pull as the version fallback). */
+  apiVersion?: string;
   fieldBoosts: FieldBoost[];
   postProcessingRules: PostProcessingRule[];
   integrationConfig?: IntegrationConfig;
   categoryRequirements?: Record<string, unknown>;
   /** productAdminUrlTemplate, categoryGidPrefix, categoryGidFieldPath, etc. */
   metadata?: Record<string, unknown>;
+  /**
+   * Reverse-sync recipe (channel → platform). Read-only for the FE viewer (P7):
+   * webhookEnabled, itemUrlTemplate, itemPath, variantInverse, attributeListInverse, enrichers…
+   */
+  reverseSyncConfig?: Record<string, unknown>;
   updatedAt?: string;
 }
 
@@ -94,11 +101,13 @@ export function mapRawConfig(raw: unknown): ChannelConfiguration {
     channelName:          String(r.channelName ?? r.channelId ?? ""),
     isActive:             Boolean(r.isActive   ?? r.active ?? true),
     version:              r.version  as string | undefined,
+    apiVersion:           r.apiVersion as string | undefined,
     fieldBoosts:          Array.isArray(r.fieldBoosts)         ? r.fieldBoosts.map(mapFieldBoost)         : [],
     postProcessingRules:  Array.isArray(r.postProcessingRules) ? r.postProcessingRules.map(mapRule)        : [],
     integrationConfig:    r.integrationConfig as IntegrationConfig | undefined,
     categoryRequirements: r.categoryRequirements as Record<string, unknown> | undefined,
     metadata:             r.metadata             as Record<string, unknown> | undefined,
+    reverseSyncConfig:    r.reverseSyncConfig    as Record<string, unknown> | undefined,
     updatedAt:            r.updatedAt as string | undefined,
   };
 }

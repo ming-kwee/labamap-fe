@@ -38,6 +38,26 @@ export type VariantScope = "product_only" | "variant_only" | "dual";
 /** Where the dropdown options come from. */
 export type OptionsSource = "STATIC" | "MERCHANT_API";
 
+/**
+ * Direction-of-truth for reverse sync (channel → platform), per master attribute.
+ *  • MASTER_AUTHORITATIVE (default) — master wins; reverse skips this field.
+ *  • CHANNEL_AUTHORITATIVE          — channel wins; reverse writes it per-store (stock/price).
+ *  • DRAFT_REVIEW                   — reverse creates a suggestion for human approval.
+ *  • IGNORE                         — never touched by reverse.
+ */
+export type ReverseWritePolicy =
+  | "MASTER_AUTHORITATIVE"
+  | "CHANNEL_AUTHORITATIVE"
+  | "DRAFT_REVIEW"
+  | "IGNORE";
+
+export const REVERSE_WRITE_POLICIES: ReverseWritePolicy[] = [
+  "MASTER_AUTHORITATIVE",
+  "CHANNEL_AUTHORITATIVE",
+  "DRAFT_REVIEW",
+  "IGNORE",
+];
+
 export interface AttributeOption {
   id: string;
   value: string;
@@ -88,6 +108,9 @@ export interface MasterAttribute {
   optionsSource?: OptionsSource;
   merchantApiOperation?: string;
   masterFieldName?: string;      // for channel→master value mapping
+
+  /** Reverse-sync direction-of-truth (channel → platform). Default MASTER_AUTHORITATIVE. */
+  reverseWritePolicy?: ReverseWritePolicy;
 
   // SELECT / MULTI_SELECT
   options?: AttributeOption[];
@@ -169,6 +192,7 @@ export interface MasterAttributeDoc {
   };
   merchantApiOperation?: string;
   masterFieldName?: string;
+  reverseWritePolicy?: ReverseWritePolicy;
   version?: string;
   channelMappings?: ChannelMapping[];
   createdAt?: string;
@@ -312,6 +336,7 @@ export function docToAttribute(doc: MasterAttributeDoc): MasterAttribute {
     optionsSource:                r.optionsSource ?? "STATIC",
     merchantApiOperation:         r.merchantApiOperation,
     masterFieldName:              r.masterFieldName,
+    reverseWritePolicy:           r.reverseWritePolicy ?? "MASTER_AUTHORITATIVE",
     options:                      options.length > 0 ? options : undefined,
     maxLength:                    vr.maxLength ?? r.maxLength,
     placeholder:                  r.placeholder,
@@ -369,6 +394,7 @@ export function attributeToDocPayload(
     optionsSource:               attr.optionsSource ?? "STATIC",
     merchantApiOperation:        attr.merchantApiOperation,
     masterFieldName:             attr.masterFieldName,
+    reverseWritePolicy:          attr.reverseWritePolicy ?? "MASTER_AUTHORITATIVE",
     options:                     (attr.options ?? []).map(o => ({ label: o.label, value: o.value })),
     applicableCategories:        attr.categoryIds,
     productTypeIds:              attr.productTypeIds ?? [],

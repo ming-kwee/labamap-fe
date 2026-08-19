@@ -78,6 +78,14 @@ export interface ChannelDistributionCard {
   /** Channel-specific SKU override */
   channelSku?: string | null;
   completionPercentage: number;
+
+  // ── Reverse-sync linkage + stamps (P1/P4) — from channel_product_data ──
+  /** External listing id on the channel; enables the "Pull from channel" action. */
+  channelProductId?: string | null;
+  /** Channel's own last-updated timestamp (from the last reverse pull/webhook). */
+  channelUpdatedAt?: string | null;
+  /** Last time reverse sync pulled this listing back into the platform. */
+  lastReverseSyncedAt?: string | null;
 }
 
 /** Phase 6: Payload for POST /admin/master-products/bulk-channel-category */

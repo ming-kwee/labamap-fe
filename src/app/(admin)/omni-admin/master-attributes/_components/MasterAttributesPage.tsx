@@ -10,6 +10,7 @@ import { AttributeService } from "../_services/attribute.service";
 import { ProductTypeService } from "../../product-types/_services/product-type.service";
 import type { ProductType } from "../../product-types/_types/product-type";
 import { AddEditAttributeModal } from "./AddEditAttributeModal";
+import { ReversePolicyEditor } from "./ReversePolicyEditor";
 import { useAuth } from "@/shared/contexts/AuthContext";
 
 // ─── Inline SVG icon helpers ──────────────────────────────────────────────────
@@ -801,6 +802,9 @@ function AttributeListItem({
                   </div>
                 )}
               </div>
+
+              {/* P5 — reverse-sync direction-of-truth for this attribute */}
+              <ReversePolicyEditor attribute={attribute} />
             </div>
           </div>
 

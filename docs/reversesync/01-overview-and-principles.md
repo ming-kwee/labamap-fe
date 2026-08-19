@@ -1,6 +1,9 @@
 # 01 — Reverse Sync: Overview & Prinsip
 
-> DESIGN ONLY — belum diimplementasi. Lihat [`README`](README.md).
+> **TERIMPLEMENTASI (R0–R5, BFF-only, aditif).** Dokumen ini adalah **rasional desain awal** dan tetap valid
+> sebagai prinsip. Status as-built + **peta Source-of-Truth final** ada di [`05`](05-config-source-of-truth.md);
+> log implementasi per-slice di [`04`](04-engine-separation-and-industry-comparison.md). Sebagian detail di bawah
+> disempurnakan saat implementasi — ditandai catatan inline.
 
 ## 1. Kenapa reverse sync tidak boleh "salin semua"
 
@@ -23,11 +26,11 @@ mana yang dikirim ke channel.
 
 Untuk tiap field pada payload channel yang masuk, klasifikasikan ke salah satu:
 
-| Ember | Kriteria (dari DATA, bukan literal) | Tujuan simpan |
-|---|---|---|
-| **(a) Master-mapped** | Path channel menaut ke master via `attributeMappings` (attrId) dan/atau `ecommerce_master_attributes.masterFieldName` | **Master product** (lihat §4 soal apakah overwrite atau draft) |
-| **(b) Channel-only dikenal** | Ada di `apiSchema`/`attributeMappings` tapi tak punya padanan master (mis. `isSupportField`, atribut kategori khusus channel) | **Step-2 `channelData`** per (masterProductId × storeId) |
-| **(c) Tak dikenal / operasional** | Tidak dikenal keempat sumber di §3 | **Dibuang** (opsional: `channelProductId` disimpan sebagai linkage; sisanya boleh di-log/raw-archive bila perlu audit) |
+| Ember                             | Kriteria (dari DATA, bukan literal)                                                                                           | Tujuan simpan                                                                                                          |
+|-----------------------------------|-------------------------------------------------------------------------------------------------------------------------------|------------------------------------------------------------------------------------------------------------------------|
+| **(a) Master-mapped**             | Path channel menaut ke master via `attributeMappings` (attrId) + korespondensi field `channel_field_mappings` (dibaca terbalik `targetField→sourceField`) | **Master product** (lihat §4 soal apakah overwrite atau draft)                                                         |
+| **(b) Channel-only dikenal**      | Ada di `apiSchema`/`attributeMappings` tapi tak punya padanan master (mis. `isSupportField`, atribut kategori khusus channel) | **Step-2 `channelData`** per (masterProductId × storeId)                                                               |
+| **(c) Tak dikenal / operasional** | Tidak dikenal keempat sumber di §3                                                                                            | **Dibuang** (opsional: `channelProductId` disimpan sebagai linkage; sisanya boleh di-log/raw-archive bila perlu audit) |
 
 Ini menegaskan hipotesis awal: **hanya yang punya mapping** yang membentuk master + Step-2. Yang
 membedakan (a) vs (b) adalah apakah field channel itu **menaut ke master** di data.
@@ -36,13 +39,19 @@ membedakan (a) vs (b) adalah apakah field channel itu **menaut ke master** di da
 
 Semua sudah ada di MongoDB — reverse tinggal membacanya dari arah channel→master:
 
-| Keputusan reverse | Koleksi/sumber |
-|---|---|
-| Apakah path ini field channel yang sah? | `ChannelConfiguration.apiSchema` / contract beku |
-| Path channel ↔ attrId/master field | `attributeMappings` (`ChannelAttributeMappingsMigration`), `ecommerce_master_attributes.masterFieldName` |
-| Nilai channel ↔ nilai master (mis. `COTTON_100`↔`cotton`) | `channel_field_value_mappings` (invers dari entry `mappings[]`) |
-| Peran field asing yang tak punya master attr | `field_semantic_knowledge` (fallback, seperti forward) |
-| Sumbu varian & rekonsiliasi SKU | `product_types.variantDimensions`, `ecommerce_master_attributes.group` (VARIANT) |
+| Keputusan reverse                                         | Koleksi/sumber (as-built)                                                                                |
+|-----------------------------------------------------------|----------------------------------------------------------------------------------------------------------|
+| Apakah path ini field channel yang sah?                   | `ChannelConfiguration.apiSchema` / contract beku                                                         |
+| Path channel ↔ attr + flag support                        | `attributeMappings` (`ChannelAttributeMappingsMigration`)                                                |
+| Field channel ↔ field master (nama)                       | **`channel_field_mappings`** dibaca terbalik (`targetField→sourceField`, SoT tunggal korespondensi field) |
+| Nilai channel ↔ nilai master (mis. `COTTON_100`↔`cotton`) | `channel_field_value_mappings` (invers dari entry `mappings[]`)                                          |
+| Peran field asing yang tak punya master attr              | `field_semantic_knowledge` (fallback, seperti forward)                                                   |
+| Sumbu varian & rekonsiliasi SKU                           | `product_types.variantDimensions`, `ecommerce_master_attributes.group` (VARIANT)                         |
+
+> **Catatan as-built (disempurnakan dari desain awal):** korespondensi **nama field** kini bersumber **hanya**
+> dari `channel_field_mappings` (dibaca terbalik, selektif: hanya strategi deterministik EXACT/EXACT_OVERRIDE +
+> injektif; many-to-one di-skip). `ecommerce_master_attributes.masterFieldName` **sengaja tidak** dipakai sebagai
+> sumber reverse — itu salinan kedua fakta yang sama (rawan drift). Detail: [`05`](05-config-source-of-truth.md) §2a.
 
 Tidak ada vocabulary baru yang perlu di-hardcode — konsisten dengan aturan **no hardcoded domain
 knowledge**. Reverse adalah **konsumen** koleksi yang sama dengan forward.
@@ -58,7 +67,9 @@ channel yang berwenang?"** Rekomendasi:
   terima ke master?"), bukan silent overwrite.
 - **Field ownership sebagai DATA:** tandai per master-attribute siapa yang authoritative
   (mis. stok/harga aktual → channel-authoritative; deskripsi/kategori → master-authoritative). Simpan
-  di `ecommerce_master_attributes` (flag baru), bukan literal di kode.
+  di `ecommerce_master_attributes`, bukan literal di kode. **As-built:** field
+  `reverseWritePolicy` (MASTER_AUTHORITATIVE default | CHANNEL_AUTHORITATIVE | DRAFT_REVIEW | IGNORE),
+  di-seed `ReverseWritePolicyMigration`, di-route `ReverseReviewService` (R3).
 
 Detail penyimpanan + policy: [`03`](03-data-model-identity-and-phasing.md).
 

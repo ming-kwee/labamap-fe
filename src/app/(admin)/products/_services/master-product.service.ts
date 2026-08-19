@@ -101,6 +101,10 @@ export const MasterProductService = {
         channelPrice:        channelPrice != null ? Number(channelPrice) : null,
         channelSku:          channelSku   != null ? String(channelSku)   : null,
         completionPercentage: Number(cd?.completionPercentage ?? 0),
+        // Reverse-sync linkage + stamps (surfaced by ChannelProductDataResponse, R0).
+        channelProductId:    cd?.channelProductId != null ? String(cd.channelProductId) : null,
+        channelUpdatedAt:    cd?.channelUpdatedAt != null ? String(cd.channelUpdatedAt) : null,
+        lastReverseSyncedAt: cd?.lastReverseSyncedAt != null ? String(cd.lastReverseSyncedAt) : null,
       };
     });
 

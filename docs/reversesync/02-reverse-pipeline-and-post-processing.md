@@ -1,7 +1,9 @@
 # 02 — Reverse Pipeline & Peran Post-Processing
 
-> DESIGN ONLY — belum diimplementasi. Lihat [`README`](README.md). **Ini inti jawaban:** apakah
-> post-processing terlibat agar data reverse menjadi benar — **ya, wajib, dan dibalik.**
+> **TERIMPLEMENTASI (R0–R5).** Dokumen ini adalah **rasional desain awal** pipeline balik & peran post-processing;
+> **ya, wajib, dan dibalik.** As-built: interpreter reverse terpisah (`ReverseDerivationEngine` jalan PALING AWAL)
+> + reverse-op descriptor (variant/attribute_list) + enricher lokal. Pipeline as-built langkah-demi-langkah +
+> peta SoT: [`05`](05-config-source-of-truth.md) §3; log per-slice: [`04`](04-engine-separation-and-industry-comparison.md).
 
 ## 1. Pipeline maju (yang sudah ada) sebagai acuan
 

@@ -10,6 +10,12 @@ import { ChannelStoreService } from "@/modules/ecommerce-product-v2/step2-channe
 import { getChannelMeta } from "@/modules/ecommerce-product-v2/step2-channel-fields/components/stores/ChannelTypeBadge";
 import type { ChannelStoreConnection, ChannelType } from "@/modules/ecommerce-product-v2/step2-channel-fields/types/channelStore";
 import TagInput from "@/shared/ui/tag-input/TagInput";
+import {
+  useReversePull,
+  ReverseSyncService,
+  ReversePreviewModal,
+  ReverseStatusBadge,
+} from "@/modules/reverse-sync";
 
 const BASE_API = "http://localhost:8888/labamap/api/v1";
 
@@ -82,6 +88,21 @@ const SendIcon = () => (
     <path d="M22 2 11 13"/><path d="M22 2 15 22 11 13 2 9 22 2z"/>
   </svg>
 );
+// Reverse pull — download-from-channel arrow.
+const DownloadIcon = ({ spinning }: { spinning?: boolean }) => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+    className={spinning ? "animate-spin" : ""}>
+    {spinning ? (
+      <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+    ) : (
+      <>
+        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+        <polyline points="7 10 12 15 17 10" />
+        <line x1="12" y1="15" x2="12" y2="3" />
+      </>
+    )}
+  </svg>
+);
 
 // ─── Store row (Step-3 backlog style) ────────────────────────────────────────
 
@@ -95,13 +116,17 @@ const ROW_ICON_BTN =
   "inline-flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 text-gray-500 transition-colors hover:bg-gray-50 hover:text-gray-700 dark:border-gray-700 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-gray-200";
 
 function StoreRow({
-  store, published, masterProductId, currency, onResync,
+  store, published, masterProductId, currency, onResync, onPull, pulling,
 }: {
   store: ChannelStoreConnection;
   published: ChannelDistributionCard | null;
   masterProductId: string;
   currency?: string | null;
   onResync: (storeId: string) => Promise<void>;
+  /** P1 — pull this listing back from the channel (reverse sync). */
+  onPull: (store: ChannelStoreConnection, channelProductId: string) => void;
+  /** true while this row's pull request is in flight. */
+  pulling: boolean;
 }) {
   const [syncing, setSyncing] = useState(false);
   const meta = getChannelMeta(store.channelType.toLowerCase() as ChannelType);
@@ -178,6 +203,12 @@ function StoreRow({
                   Just updated
                 </span>
               )}
+              {/* P4 — reverse-sync status (last pull / channel-side update available) */}
+              <ReverseStatusBadge
+                channelProductId={published?.channelProductId}
+                channelUpdatedAt={published?.channelUpdatedAt}
+                lastReverseSyncedAt={published?.lastReverseSyncedAt}
+              />
             </div>
             <div className="mt-0.5 flex min-w-0 items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
               {substatus}
@@ -194,8 +225,14 @@ function StoreRow({
           ) : (
             <Link href={publishUrl} className={ROW_BTN_GHOST}><SendIcon /> Publish</Link>
           )}
-          {/* Only Re-sync here — the primary CTA already covers edit/publish (Fix issue &
-              Set up both open channel fields), so a separate "Edit" icon was redundant. */}
+          {/* For a synced/published store the primary CTA is "Publish" (→ Step 3), so a dedicated
+              "Edit" icon is the only path back to Step 2 channel fields. (Not-set-up and failed
+              stores already route to Step 2 via "Set up & publish" / "Fix issue".) */}
+          {published && !isFailed && (
+            <Link href={channelFieldsUrl} title="Edit channel fields" className={ROW_ICON_BTN}>
+              <EditIcon />
+            </Link>
+          )}
           {published && (
             <button
               type="button"
@@ -205,6 +242,22 @@ function StoreRow({
               className={`${ROW_ICON_BTN} disabled:opacity-50`}
             >
               <RefreshIcon spinning={isSyncing} />
+            </button>
+          )}
+          {/* P1 — Pull from channel (reverse sync). Disabled until the listing is linked. */}
+          {published && (
+            <button
+              type="button"
+              onClick={() => published.channelProductId && onPull(store, published.channelProductId)}
+              disabled={pulling || !published.channelProductId}
+              title={
+                published.channelProductId
+                  ? "Pull from channel (reverse sync)"
+                  : "Product not linked to this channel yet — publish first"
+              }
+              className={`${ROW_ICON_BTN} disabled:opacity-40`}
+            >
+              <DownloadIcon spinning={pulling} />
             </button>
           )}
         </div>
@@ -446,6 +499,10 @@ export default function ProductDetailPage({ masterProductId }: { masterProductId
   const [syncingAll, setSyncingAll] = useState(false);
   const [toast, setToast]       = useState<{ msg: string; ok: boolean } | null>(null);
 
+  // ── Reverse sync (P1/P2) ────────────────────────────────────────────────────
+  const reverse = useReversePull();
+  const [pullCtx, setPullCtx] = useState<{ store: ChannelStoreConnection; channelProductId: string } | null>(null);
+
   const load = useCallback(async () => {
     if (!orgId) return;
     setLoading(true);
@@ -483,6 +540,36 @@ export default function ProductDetailPage({ masterProductId }: { masterProductId
     const t = setTimeout(() => setToast(null), 3500);
     return () => clearTimeout(t);
   }, [toast]);
+
+  // Surface a pull failure / unsupported-channel as a toast and close the pull context.
+  useEffect(() => {
+    if (reverse.notConfigured) {
+      setToast({ msg: "This channel doesn't support auto-pull yet — needs a manual preview.", ok: false });
+      setPullCtx(null);
+    } else if (reverse.error) {
+      setToast({ msg: reverse.error, ok: false });
+      setPullCtx(null);
+    }
+  }, [reverse.notConfigured, reverse.error]);
+
+  // P1 → P2: pull a single listing back from the channel, then open the preview modal.
+  const handlePull = useCallback(
+    async (store: ChannelStoreConnection, channelProductId: string) => {
+      setPullCtx({ store, channelProductId });
+      await reverse.pull({
+        organizationId: orgId,
+        storeId: store.storeId,
+        channelProductId,
+        masterProductId,
+      });
+    },
+    [reverse, orgId, masterProductId],
+  );
+
+  function closePreview() {
+    reverse.reset();
+    setPullCtx(null);
+  }
 
   async function handleResync(storeId: string) {
     if (!product) return;
@@ -564,6 +651,32 @@ export default function ProductDetailPage({ masterProductId }: { masterProductId
         }`}>
           {toast.msg}
         </div>
+      )}
+
+      {/* P2 — Reverse preview / diff modal (pull path).
+          Apply → /pull/apply writes Step-2 per-store (safe: never master global).
+          Review is intentionally omitted here — /review needs the raw channel payload,
+          which the pull path does not expose; draft-review suggestions instead arrive via
+          the automatic webhook path (Flow C) into the Suggestions inbox. */}
+      {reverse.preview && pullCtx && (
+        <ReversePreviewModal
+          open
+          preview={reverse.preview}
+          channelProductId={pullCtx.channelProductId}
+          onApply={() =>
+            ReverseSyncService.pullApply({
+              organizationId: orgId,
+              storeId: pullCtx.store.storeId,
+              channelProductId: pullCtx.channelProductId,
+              masterProductId,
+            })
+          }
+          onApplied={() => {
+            setToast({ msg: "Pulled from channel — applied to Step-2", ok: true });
+            setTimeout(load, 1500);
+          }}
+          onClose={closePreview}
+        />
       )}
 
       {/* Breadcrumb + header */}
@@ -652,6 +765,8 @@ export default function ProductDetailPage({ masterProductId }: { masterProductId
                   masterProductId={masterProductId}
                   currency={product.currency}
                   onResync={handleResync}
+                  onPull={handlePull}
+                  pulling={reverse.loading && pullCtx?.store.storeId === store.storeId}
                 />
               ))}
             </div>

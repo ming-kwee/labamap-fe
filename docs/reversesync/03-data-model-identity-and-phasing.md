@@ -1,23 +1,25 @@
 # 03 — Data Model, Identity, Ownership & Phasing
 
-> DESIGN ONLY — belum diimplementasi. Lihat [`README`](README.md).
+> **TERIMPLEMENTASI (R0–R5).** Dokumen ini adalah **rasional desain awal** model data/identity/ownership/phasing.
+> Field linkage & policy di §1/§3 **sudah ada** (R0/R3). Status as-built + peta SoT final:
+> [`05`](05-config-source-of-truth.md); log per-slice: [`04`](04-engine-separation-and-industry-comparison.md).
 
-## 1. Linkage identity (prasyarat #1 — belum ada hari ini)
+## 1. Linkage identity (prasyarat #1 — ✅ SUDAH ADA, R0)
 
 Reverse harus tahu "item channel ini = master product yang mana", untuk memilih **update** vs
-**create**. Hari ini `channel_product_data` **tidak** menyimpan id sisi-channel — jadi linkage belum
-bisa. Yang perlu ditambahkan:
+**create**. **As-built (R0):** field-field ini sudah ada di `ChannelProductData` (+ index sparse
+`(channelType, channelProductId)`):
 
-| Field baru di `ChannelProductData` | Guna |
-|---|---|
-| `channelProductId` (item_id/listing_id channel) | kunci pencocokan reverse; juga memperbaiki create-vs-update di forward |
-| `publishedApiVersion` | tahu payload dibuat dengan resep versi apa → pilih contract beku + reverse-rule yang benar |
-| `lastReverseSyncedAt` | audit & dedup event |
-| `channelUpdatedAt` (dari payload) | deteksi mana yang lebih baru (echo-suppression, §4) |
+| Field di `ChannelProductData` | Guna | Status |
+|---|---|---|
+| `channelProductId` (item_id/listing_id channel) | kunci pencocokan reverse; juga memperbaiki create-vs-update di forward | ✅ (sudah ada sebelumnya) |
+| `publishedApiVersion` | tahu payload dibuat dengan resep versi apa → pilih contract beku + reverse-rule yang benar | ✅ R0 (distempel di sukses publish) |
+| `lastReverseSyncedAt` | audit & dedup event | ✅ R0 |
+| `channelUpdatedAt` (dari payload) | deteksi mana yang lebih baru (echo-suppression, §4) | ✅ R0 |
 
-> Catatan: `channelProductId` + `publishedApiVersion` juga sudah disebut sebagai gap di diskusi Fase 3.
-> Reverse menjadikannya **wajib**, bukan sekadar nice-to-have. Distempel di `markPublished(...)` (kini
-> hanya menulis `status` + `publishedAt`).
+> As-built: `publishedApiVersion` distempel pada sukses publish (bersama `persistImageOrder`), bukan lagi hanya
+> `markPublished(status/publishedAt)`. `channelUpdatedAt`+`lastReverseSyncedAt` distempel tiap ingest reverse
+> (`updateReverseStamps`). Echo-suppression memakai keduanya — lihat [`05`](05-config-source-of-truth.md) §3 (B).
 
 ## 2. Target penyimpanan (mengikuti model dua-tier yang ada)
 
@@ -78,6 +80,14 @@ Inilah kenapa pekerjaan versioning (contract beku + pin) adalah **fondasi** reve
 drift versi — tanpa itu, payload v2 akan dibongkar dengan aturan v-terbaru dan menghasilkan master salah.
 
 ## 7. Fase implementasi yang disarankan
+
+> **Status: R0–R5 SEMUA TERIMPLEMENTASI** (BFF-only, aditif). Tabel di bawah = rencana bertahap awal; realisasi
+> per-slice ada di [`04`](04-engine-separation-and-industry-comparison.md) dan status terkunci di
+> [`05`](05-config-source-of-truth.md) §7. Beberapa penyempurnaan vs rencana: R4 = webhook auto-trigger **+**
+> R4-pull GET item (bukan hanya poll); R5 bukan sekadar "JOLT agent" tapi **membaca korespondensi terbalik**
+> (`channel_field_mappings`/`channel_field_value_mappings`) + **reverse-op descriptor** (variant/attribute_list) +
+> enricher lokal; reverse-JOLT jadi **proyeksi inspectable** (bukan eksekutor). `publishedApiVersion` distempel di
+> sukses publish (bukan `markPublished`).
 
 Bertahap, tiap fase behaviour-additive (tak mengubah forward):
 

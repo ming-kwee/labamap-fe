@@ -1,9 +1,13 @@
-# Reverse Sync (Channel → Platform) — Design Recommendation
+# Reverse Sync (Channel → Platform)
 
-> **Status: DESIGN ONLY. Belum ada implementasi.** Arah balik channel→platform **belum** ada di kode
-> hari ini — yang ada hanya jalur maju (master → JOLT → post-processing → publish) + webhook
-> uninstall/deauthorize + write-back **status** (`markPublished`). Dokumen ini adalah rekomendasi
-> arsitektur bila fitur ini nanti dibangun. Tidak ada perubahan perilaku yang tersirat.
+> **Status: TERIMPLEMENTASI (R0–R5), BFF-only, aditif.** Arah balik channel→platform sekarang ADA di kode:
+> preview (R1), apply Step-2 per-store (R2), draft-review + `reverseWritePolicy` (R3), pull GET item + webhook
+> auto-trigger dengan echo-suppression (R4), dan R5 (nama field, dimensi varian, value translation, reverse-op
+> descriptor per-SKU, rekonsiliasi variant, reverse-JOLT proyeksi). **Interpreter terpisah** yang membaca
+> metadata forward yang sama secara terbalik — jalur publish forward & Temporal sync worker **tak tersentuh**,
+> master global **tak pernah ditimpa diam-diam**. Status + peta SoT terkunci di [`05`](05-config-source-of-truth.md).
+> Belum: enricher Kelas B (media/warehouse), cakupan non-Shopify (tinggal seed config), SKU-match produk
+> belum ter-link.
 
 ## Apa ini
 
@@ -35,6 +39,9 @@ platform, membentuk/menyegarkan **master product** + **Step-2 channel data**. Ke
 | [`01-overview-and-principles.md`](01-overview-and-principles.md) | Kenapa selektif; model tiga-ember; arah kebenaran; non-goals |
 | [`02-reverse-pipeline-and-post-processing.md`](02-reverse-pipeline-and-post-processing.md) | **Pipeline balik + peran post-processing**; tabel invertibility per operasi; desain engine dua-arah |
 | [`03-data-model-identity-and-phasing.md`](03-data-model-identity-and-phasing.md) | Linkage/identity; target penyimpanan; policy ownership; tie-in versioning; fase implementasi |
+| [`04-engine-separation-and-industry-comparison.md`](04-engine-separation-and-industry-comparison.md) | Perbandingan industri (ChannelAdvisor/BigCommerce/Jubelio/Ginee); keputusan **interpreter terpisah, bukan mode di engine forward**; scorecard SoC; koreksi fakta atas `03`; **log implementasi R0–R5** (setiap slice + uji) |
+| [`05-config-source-of-truth.md`](05-config-source-of-truth.md) | **DOKUMEN KUNCI (as-built).** Dua sumbu Correspondence vs Transform; **peta SoT** (satu fakta, satu tempat, dua arah); redundansi yang sengaja dihapus; pipeline reverse langkah-demi-langkah; guardrail; peta kode; kenapa reverse-JOLT = proyeksi; **status terkunci R0–R5**; ringkasan uji; checklist tambah channel baru |
+| [`../FRONTEND-REVERSE-SYNC-IMPLEMENTATION-PLAN.md`](../FRONTEND-REVERSE-SYNC-IMPLEMENTATION-PLAN.md) | **Untuk tim FE.** Kontrak API (6 endpoint + DTO nyata); peta menu/halaman (baru vs ditingkatkan); alur pengguna; komponen reusable; gap BE yang perlu dikonfirmasi; fase FE-1…FE-4 |
 
 ## Prinsip yang diwarisi (CLAUDE.md)
 

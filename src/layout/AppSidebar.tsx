@@ -5,6 +5,8 @@ import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { useSidebar } from "../context/SidebarContext";
+import { useAuth } from "@/shared/contexts/AuthContext";
+import { ReverseSyncService } from "@/modules/reverse-sync";
 import {
   BoxCubeIcon,
   CalenderIcon,
@@ -57,6 +59,13 @@ const merchantNavItems: NavItem[] = [
     ],
   },
   {
+    icon: <BoxCubeIcon />,
+    name: "Reverse Sync",
+    subItems: [
+      { name: "Suggestions", path: "/reverse-sync/suggestions", pro: false },
+    ],
+  },
+  {
     icon: <UserCircleIcon />,
     name: "User Profile",
     path: "/profile",
@@ -94,6 +103,8 @@ const adminNavItems: NavItem[] = [
       { name: "Channel Contract Versions", path: "/platform-admin/channel-contract-versions", pro: false },
       // ── Onboarding setup (set once per new channel) ───────────────────────
       { name: "Channel Category Schemas", path: "/platform-admin/channel-category-schemas", pro: false },
+      // ── Reverse sync (channel → master) inspection ────────────────────────
+      { name: "Reverse Sync Inspector", path: "/platform-admin/reverse-sync-inspector", pro: false },
     ],
   },
   {
@@ -156,6 +167,23 @@ const AppSidebar: React.FC = () => {
     toggleMobileSidebar,
   } = useSidebar();
   const pathname = usePathname();
+  const { organization } = useAuth();
+
+  // Live PENDING reverse-suggestion count → badge on the "Suggestions" nav item.
+  // Polls gently (60s) and fails silent — the nav must never break on a count error.
+  const [reverseCount, setReverseCount] = useState(0);
+  useEffect(() => {
+    const orgId = organization?.organizationId;
+    if (!orgId) return;
+    let cancelled = false;
+    const fetchCount = () =>
+      ReverseSyncService.countSuggestions(orgId)
+        .then((n) => { if (!cancelled) setReverseCount(n); })
+        .catch(() => { /* silent — nav must not break */ });
+    fetchCount();
+    const t = setInterval(fetchCount, 60_000);
+    return () => { cancelled = true; clearInterval(t); };
+  }, [organization?.organizationId, pathname]);
 
   // Icon-rail tooltip: when collapsed, hovering an icon shows its label without flinging
   // the whole rail open. Rendered via a portal so it isn't clipped by the nav's overflow
@@ -272,6 +300,11 @@ const AppSidebar: React.FC = () => {
                     >
                       {subItem.name}
                       <span className="flex items-center gap-1 ml-auto">
+                        {subItem.path === "/reverse-sync/suggestions" && reverseCount > 0 && (
+                          <span className="menu-dropdown-badge bg-brand-500 text-white dark:bg-brand-500 dark:text-white">
+                            {reverseCount > 99 ? "99+" : reverseCount}
+                          </span>
+                        )}
                         {subItem.new && (
                           <span
                             className={`ml-auto ${

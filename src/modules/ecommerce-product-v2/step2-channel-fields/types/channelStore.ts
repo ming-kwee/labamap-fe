@@ -143,6 +143,14 @@ export interface ChannelProductData {
   lastAttemptAt?: string;
   /** Sync workflow id of the last attempt (POST-then-poll handle; admin Temporal deep-link). */
   syncWorkflowId?: string;
+
+  // ── Reverse-sync stamps (R0) — surfaced by ChannelProductDataResponse ──
+  /** Frozen channel API version the listing was last published with. */
+  publishedApiVersion?: string;
+  /** Channel's own `updated_at` observed on the last reverse pull/webhook. */
+  channelUpdatedAt?: string;
+  /** Last time reverse sync pulled this listing back into the platform. */
+  lastReverseSyncedAt?: string;
 }
 
 // ─── Listing lifecycle read models (P0-1) ─────────────────────────────────────
