@@ -123,7 +123,7 @@ export default function EditProductPage({ params }: Props) {
 
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
-    <div className="space-y-4">
+    <div className="max-w-5xl mx-auto p-6 space-y-4">
       {/* Breadcrumb */}
       <div className="flex items-center gap-1.5 text-sm text-gray-400 dark:text-gray-500">
         <Link href="/products" className="hover:text-brand-500 transition-colors">My Products</Link>

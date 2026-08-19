@@ -17,7 +17,8 @@ import {
 import ChannelFieldInput from "./ChannelFieldInput";
 import VariantOverridesTable from "./VariantOverridesTable";
 import MasterOverrideSection from "./MasterOverrideSection";
-import StoreImageOverrideEditor from "./StoreImageOverrideEditor";
+import StoreImageOverrideEditor, { asUrlList } from "./StoreImageOverrideEditor";
+import VariantImagesDrawer from "./VariantImagesDrawer";
 import MerchantChannelView from "./MerchantChannelView";
 import { ProductTypeService } from "@/app/(admin)/omni-admin/product-types/_services/product-type.service";
 import { normaliseChannelType, applyChannelCategoryDefault } from "../../utils/categoryPrefill";
@@ -383,6 +384,8 @@ function VariantAxisSummary({
 
 export default function ChannelStoreTab({ schema, values, onChange, isSaving, lastSaved, masterProduct, masterProductId, fieldErrors, orgId = "", viewMode = "developer" }: Props) {
   const [optionalExpanded, setOptionalExpanded] = useState(false);
+  // SKU whose per-variant image editor modal is open (null = closed).
+  const [editingImagesSku, setEditingImagesSku] = useState<string | null>(null);
 
   // ── Scenario D: Category-Dependent Dynamic Field Injection ────────────────
 
@@ -798,6 +801,7 @@ export default function ChannelStoreTab({ schema, values, onChange, isSaving, la
             overrides={values.variantOverrides}
             onChange={handleVariantChange}
             masterVariants={masterProduct?.variants}
+            onEditImages={setEditingImagesSku}
           />
         </div>
       );
@@ -1097,6 +1101,32 @@ export default function ChannelStoreTab({ schema, values, onChange, isSaving, la
     : Math.round((localStats.requiredFilled / localStats.requiredTotal) * 100);
   const hasNoRequired = localStats.requiredTotal === 0;
 
+  // Per-variant image editor modal — shared by both the merchant and developer views.
+  // Baseline = master variant images (read-only); value = the current per-store override.
+  const editingVariant = editingImagesSku
+    ? masterProduct?.variants?.find((v) => v.sku === editingImagesSku)
+    : undefined;
+  const editingOverrideImages = editingImagesSku
+    ? (values.variantOverrides[editingImagesSku]?.variantImages as unknown)
+    : undefined;
+  const variantImagesDrawer =
+    editingImagesSku != null ? (
+      <VariantImagesDrawer
+        channelType={schema.channelType}
+        channelName={schema.storeName}
+        orgId={orgId}
+        masterProductId={masterProductId ?? ""}
+        sku={editingImagesSku}
+        variantLabel={editingVariant?.variantLabel}
+        baseline={asUrlList(editingVariant?.variantImages)}
+        value={Array.isArray(editingOverrideImages) ? asUrlList(editingOverrideImages) : undefined}
+        onChange={(urls) =>
+          handleVariantChange(editingImagesSku, "variantImages", urls && urls.length > 0 ? urls : undefined)
+        }
+        onClose={() => setEditingImagesSku(null)}
+      />
+    ) : null;
+
   // ── Merchant (end-user) view ──────────────────────────────────────────────
   // Same computed data + handlers as the developer view below, re-laid-out as a guided, plain-language
   // flow (category → required → details → photos → variations → optional). Fields still render through
@@ -1122,6 +1152,8 @@ export default function ChannelStoreTab({ schema, values, onChange, isSaving, la
       : null;
 
     return (
+      <>
+      {variantImagesDrawer}
       <MerchantChannelView
         storeName={schema.storeName}
         channelType={schema.channelType}
@@ -1172,15 +1204,11 @@ export default function ChannelStoreTab({ schema, values, onChange, isSaving, la
             masterImages={masterImages}
             value={Array.isArray(values.channelData.images) ? (values.channelData.images as string[]) : undefined}
             onChange={handleImagesOverrideChange}
-            variants={masterProduct?.variants}
-            variantOverrides={values.variantOverrides}
-            onVariantImagesChange={(sku, urls) =>
-              handleVariantChange(sku, "variantImages", urls && urls.length > 0 ? urls : undefined)
-            }
             embedded
           />
         )}
       />
+      </>
     );
   }
 
@@ -1286,12 +1314,9 @@ export default function ChannelStoreTab({ schema, values, onChange, isSaving, la
         masterImages={masterImages}
         value={Array.isArray(values.channelData.images) ? (values.channelData.images as string[]) : undefined}
         onChange={handleImagesOverrideChange}
-        variants={masterProduct?.variants}
-        variantOverrides={values.variantOverrides}
-        onVariantImagesChange={(sku, urls) =>
-          handleVariantChange(sku, "variantImages", urls && urls.length > 0 ? urls : undefined)
-        }
       />
+
+      {variantImagesDrawer}
     </div>
   );
 }

@@ -343,32 +343,32 @@ const VariantConfigurator: React.FC<VariantConfiguratorProps> = ({
 
   React.useEffect(() => {
     if (!value) return;
-    try {
-      const parsed = typeof value === 'string' ? JSON.parse(value) : value;
-      if (parsed?.variants && Array.isArray(parsed.variants) && parsed.variants.length > 0) {
-        setVariants(parsed.variants);
-        if (parsed.options) {
-          // Stored options (from original create flow)
-          setSelectedOptions(parsed.options);
-        } else {
-          // Edit mode: options not in stored JSON — derive selected values from variant data.
-          // Each dimension key holds the set of values actually used across all variants.
-          const derived: Record<string, string[]> = {};
-          for (const variant of parsed.variants as VariantOption[]) {
-            for (const [key, val] of Object.entries(variant)) {
-              if (NON_DIMENSION_KEYS.has(key)) continue;
-              if (val == null || typeof val !== 'string' || !val.trim()) continue;
-              if (!derived[key]) derived[key] = [];
-              if (!derived[key].includes(val as string)) derived[key].push(val as string);
-            }
-          }
-          if (Object.keys(derived).length > 0) setSelectedOptions(derived);
+    // Reuse parseValue() so every variant is guaranteed an `id` (derived from its
+    // dimension values when the backend omits one). Without this normalization the
+    // edit-mode variants load with `id === undefined`, and updateVariant()'s
+    // `v.id === id` match becomes `undefined === undefined` → TRUE for every row,
+    // so editing one cell (price, image, …) would write to ALL rows.
+    const { variants: parsedVariants, options } = parseValue(value);
+    if (parsedVariants.length === 0) return;
+    setVariants(parsedVariants);
+    if (options) {
+      // Stored options (from original create flow)
+      setSelectedOptions(options);
+    } else {
+      // Edit mode: options not in stored JSON — derive selected values from variant data.
+      // Each dimension key holds the set of values actually used across all variants.
+      const derived: Record<string, string[]> = {};
+      for (const variant of parsedVariants) {
+        for (const [key, val] of Object.entries(variant)) {
+          if (NON_DIMENSION_KEYS.has(key)) continue;
+          if (val == null || typeof val !== 'string' || !val.trim()) continue;
+          if (!derived[key]) derived[key] = [];
+          if (!derived[key].includes(val as string)) derived[key].push(val as string);
         }
       }
-    } catch {
-      // ignore malformed JSON
+      if (Object.keys(derived).length > 0) setSelectedOptions(derived);
     }
-  // NON_DIMENSION_KEYS is a stable Set created in useMemo — safe to include
+  // parseValue + NON_DIMENSION_KEYS are stable references — safe to omit from deps
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [value]);
 

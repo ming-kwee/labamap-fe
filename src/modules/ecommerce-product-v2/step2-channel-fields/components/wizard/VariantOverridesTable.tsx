@@ -2,6 +2,7 @@
 import React from "react";
 import type { ChannelFormField, VariantOverrideRow, MasterProductSnapshot } from "../../types/channelStore";
 import ChannelFieldInput from "./ChannelFieldInput";
+import { Thumb, asUrlList } from "./StoreImageOverrideEditor";
 
 interface Props {
   variantFields: ChannelFormField[];
@@ -11,6 +12,12 @@ interface Props {
   disabled?: boolean;
   /** Master product variant values — used to show inherited values for isMasterField columns */
   masterVariants?: MasterProductSnapshot["variants"];
+  /**
+   * When provided, an inline "Images" column is shown per SKU (compact thumbnail summary of the
+   * effective images — override if set, else the master variant baseline). Clicking opens the
+   * full per-variant image editor for that SKU. Omit to hide the column entirely.
+   */
+  onEditImages?: (sku: string) => void;
 }
 
 export default function VariantOverridesTable({
@@ -20,6 +27,7 @@ export default function VariantOverridesTable({
   onChange,
   disabled,
   masterVariants,
+  onEditImages,
 }: Props) {
   if (variants.length === 0 || variantFields.length === 0) return null;
 
@@ -31,6 +39,11 @@ export default function VariantOverridesTable({
             <th className="text-left px-4 py-3 font-medium text-gray-700 dark:text-gray-300 min-w-[120px]">
               SKU
             </th>
+            {onEditImages && (
+              <th className="text-left px-4 py-3 font-medium text-gray-700 dark:text-gray-300 min-w-[150px]">
+                Images
+              </th>
+            )}
             {variantFields.map((field) => (
               <th
                 key={field.fieldName}
@@ -54,6 +67,13 @@ export default function VariantOverridesTable({
             const variantOverride = overrides[variant.sku] ?? {};
             const masterVariant = masterVariants?.find((v) => v.sku === variant.sku);
 
+            // Effective images for the inline summary: the per-store override when set,
+            // otherwise the master variant baseline (what will actually publish).
+            const imgOverrideRaw = variantOverride["variantImages"];
+            const imgOverrideActive = Array.isArray(imgOverrideRaw);
+            const imgBaseline = asUrlList((masterVariant as Record<string, unknown> | undefined)?.variantImages);
+            const imgEffective = imgOverrideActive ? asUrlList(imgOverrideRaw) : imgBaseline;
+
             return (
               <tr key={variant.sku} className="hover:bg-gray-50 dark:hover:bg-gray-800/30 transition-colors">
                 <td className="px-4 py-3">
@@ -64,6 +84,54 @@ export default function VariantOverridesTable({
                     )}
                   </div>
                 </td>
+                {onEditImages && (
+                  <td className="px-4 py-3">
+                    <button
+                      type="button"
+                      onClick={() => onEditImages(variant.sku)}
+                      disabled={disabled}
+                      title="Edit variant images"
+                      className="group/img flex items-center gap-2 rounded-lg border border-gray-200 dark:border-gray-700 px-2 py-1.5 hover:border-sky-300 dark:hover:border-sky-500/50 hover:bg-sky-50/50 dark:hover:bg-sky-500/5 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {imgEffective.length > 0 ? (
+                        <span className="flex items-center -space-x-1.5">
+                          {imgEffective.slice(0, 3).map((url, i) => (
+                            <Thumb
+                              key={`${url}-${i}`}
+                              url={url}
+                              className="h-8 w-8 rounded-md border border-white dark:border-gray-800 ring-1 ring-gray-200 dark:ring-gray-700"
+                            />
+                          ))}
+                          {imgEffective.length > 3 && (
+                            <span className="h-8 w-8 rounded-md border border-white dark:border-gray-800 ring-1 ring-gray-200 dark:ring-gray-700 bg-gray-100 dark:bg-gray-800 text-[10px] font-semibold text-gray-500 dark:text-gray-400 flex items-center justify-center">
+                              +{imgEffective.length - 3}
+                            </span>
+                          )}
+                        </span>
+                      ) : (
+                        <span className="h-8 w-8 rounded-md border border-dashed border-gray-300 dark:border-gray-600 flex items-center justify-center text-gray-400 text-lg leading-none">
+                          +
+                        </span>
+                      )}
+                      <span className="flex flex-col items-start gap-0.5 leading-none">
+                        {imgOverrideActive ? (
+                          <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-sky-100 dark:bg-sky-500/15 text-sky-700 dark:text-sky-300">
+                            custom
+                          </span>
+                        ) : imgBaseline.length > 0 ? (
+                          <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400">
+                            master · {imgBaseline.length}
+                          </span>
+                        ) : (
+                          <span className="text-[10px] text-gray-400 dark:text-gray-500">No images</span>
+                        )}
+                        <span className="text-[10px] text-gray-400 dark:text-gray-500 group-hover/img:text-sky-600 dark:group-hover/img:text-sky-400 transition-colors">
+                          ✎ Edit
+                        </span>
+                      </span>
+                    </button>
+                  </td>
+                )}
                 {variantFields.map((field) => {
                   const isMasterField = field.isMasterField === true;
                   const currentOverride = variantOverride[field.fieldName];

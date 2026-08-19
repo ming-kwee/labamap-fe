@@ -1,6 +1,6 @@
 "use client";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { ChannelType, ChannelImageSpec, ImageIssue, MasterProductSnapshot } from "../../types/channelStore";
+import type { ChannelType, ChannelImageSpec, ImageIssue } from "../../types/channelStore";
 import { ChannelImageSpecService } from "../../services/channelImageSpec.service";
 import { MediaUploadService } from "../../../services/media-upload.service";
 import { specAspect, specMaxWidth, blobToFile } from "../../../utils/image-crop";
@@ -26,11 +26,24 @@ const PLACEHOLDER =
   'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="120" height="120"%3E%3Crect width="120" height="120" fill="%23e5e7eb"/%3E%3Ctext x="50%25" y="50%25" text-anchor="middle" dy=".3em" fill="%239ca3af" font-size="11"%3Eunavailable%3C/text%3E%3C/svg%3E';
 
 /** Coerce an unknown master value into a clean ordered URL list. */
-function asUrlList(v: unknown): string[] {
+export function asUrlList(v: unknown): string[] {
   return Array.isArray(v) ? v.filter((u): u is string => typeof u === "string" && u.trim().length > 0) : [];
 }
 
-function Thumb({ url, className = "" }: { url: string; className?: string }) {
+/** Human-readable channel image requirements, derived from the spec DATA (never literals). */
+export function specReqParts(spec: ChannelImageSpec | null): string[] {
+  if (!spec) return [];
+  const parts: string[] = [];
+  if (spec.maxCount != null) parts.push(`up to ${spec.maxCount} images`);
+  if (spec.requireSquare) parts.push("square (1:1)");
+  else if (spec.allowedAspectRatios?.length) parts.push(`aspect ${spec.allowedAspectRatios.join(" / ")}`);
+  if (spec.minWidth || spec.minHeight) parts.push(`min ${spec.minWidth ?? "?"}×${spec.minHeight ?? "?"}px`);
+  if (spec.maxBytes) parts.push(`≤ ${(spec.maxBytes / (1024 * 1024)).toFixed(0)}MB`);
+  if (spec.allowedFormats?.length) parts.push(spec.allowedFormats.join("/").toUpperCase());
+  return parts;
+}
+
+export function Thumb({ url, className = "" }: { url: string; className?: string }) {
   return (
     // eslint-disable-next-line @next/next/no-img-element
     <img
@@ -75,7 +88,7 @@ function IconBtn({
 
 type CropTask = { src: string; revoke: boolean; replaceIndex?: number };
 
-function ImageListEditor({
+export function ImageListEditor({
   orgId,
   productId,
   baseline,
@@ -370,7 +383,9 @@ function ImageListEditor({
   );
 }
 
-// ─── Container: product-level list + spec/validation + per-SKU variant lists ─────────────────────
+// ─── Container: product-level image list + channel spec/validation ───────────────────────────────
+// Per-SKU variant images live inline in the variant table (VariantOverridesTable) and open in
+// VariantImagesDrawer — both reuse the exported ImageListEditor, so the override contract is identical.
 
 interface Props {
   channelType: ChannelType;
@@ -382,12 +397,6 @@ interface Props {
   value: string[] | undefined;
   /** Write the override (non-empty) or clear it (undefined = fall back to master). */
   onChange: (urls: string[] | undefined) => void;
-  /** Master variants (for per-SKU variant image baseline + labels). */
-  variants?: MasterProductSnapshot["variants"];
-  /** Current per-SKU overrides — variantOverrides[sku].variantImages holds the override list. */
-  variantOverrides?: Record<string, Record<string, unknown>>;
-  /** Write a SKU's variant-image override (non-empty) or clear it (undefined = fall back to master). */
-  onVariantImagesChange?: (sku: string, urls: string[] | undefined) => void;
   /**
    * Embedded mode (merchant view): the parent card already provides the collapse toggle + chrome, so
    * render the content directly — no outer card, no header, always expanded (one click, not two).
@@ -402,13 +411,9 @@ export default function StoreImageOverrideEditor({
   masterImages,
   value,
   onChange,
-  variants,
-  variantOverrides,
-  onVariantImagesChange,
   embedded = false,
 }: Props) {
   const [expanded, setExpanded] = useState(false);
-  const [variantsExpanded, setVariantsExpanded] = useState(false);
   const [spec, setSpec] = useState<ChannelImageSpec | null>(null);
   const [issues, setIssues] = useState<ImageIssue[]>([]);
   const [validating, setValidating] = useState(false);
@@ -421,16 +426,6 @@ export default function StoreImageOverrideEditor({
   const cropAspect = specAspect(spec);
   const cropMaxWidth = specMaxWidth(spec);
   const overCount = spec?.maxCount != null && effectiveList.length > spec.maxCount;
-
-  const variantList = useMemo(() => variants ?? [], [variants]);
-  const variantOverrideCount = useMemo(
-    () =>
-      variantList.reduce(
-        (n, v) => (Array.isArray(variantOverrides?.[v.sku]?.variantImages) ? n + 1 : n),
-        0,
-      ),
-    [variantList, variantOverrides],
-  );
 
   // Fetch the channel image spec (best-effort, per channel).
   useEffect(() => {
@@ -464,13 +459,7 @@ export default function StoreImageOverrideEditor({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [channelType, effectiveList.join("|")]);
 
-  const reqParts: string[] = [];
-  if (spec?.maxCount != null) reqParts.push(`up to ${spec.maxCount} images`);
-  if (spec?.requireSquare) reqParts.push("square (1:1)");
-  else if (spec?.allowedAspectRatios?.length) reqParts.push(`aspect ${spec.allowedAspectRatios.join(" / ")}`);
-  if (spec?.minWidth || spec?.minHeight) reqParts.push(`min ${spec?.minWidth ?? "?"}×${spec?.minHeight ?? "?"}px`);
-  if (spec?.maxBytes) reqParts.push(`≤ ${(spec.maxBytes / (1024 * 1024)).toFixed(0)}MB`);
-  if (spec?.allowedFormats?.length) reqParts.push(spec.allowedFormats.join("/").toUpperCase());
+  const reqParts = specReqParts(spec);
 
   const content = (
     <div className="space-y-4">
@@ -520,65 +509,6 @@ export default function StoreImageOverrideEditor({
             </div>
           )}
 
-          {/* Per-SKU variant images */}
-          {variantList.length > 0 && onVariantImagesChange && (
-            <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white/50 dark:bg-gray-800/30">
-              <button
-                type="button"
-                onClick={() => setVariantsExpanded((v) => !v)}
-                className="w-full text-left px-3 py-2 flex items-center justify-between gap-2 rounded-lg hover:brightness-[0.98] dark:hover:brightness-110 transition"
-              >
-                <div className="flex items-center gap-2 min-w-0">
-                  <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Variant images (per store)</span>
-                  <span className="text-xs bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 px-1.5 py-0.5 rounded-md text-gray-500 dark:text-gray-400 font-medium">
-                    {variantList.length} SKU{variantList.length > 1 ? "s" : ""}
-                  </span>
-                  {variantOverrideCount > 0 && (
-                    <span className="text-xs px-1.5 py-0.5 rounded-md font-medium bg-sky-100 dark:bg-sky-500/15 text-sky-700 dark:text-sky-300">
-                      {variantOverrideCount} customised
-                    </span>
-                  )}
-                </div>
-                <svg
-                  className={`h-4 w-4 text-gray-400 transition-transform ${variantsExpanded ? "rotate-180" : ""}`}
-                  viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
-                >
-                  <polyline points="6 9 12 15 18 9" />
-                </svg>
-              </button>
-
-              {variantsExpanded && (
-                <div className="px-3 pb-3 space-y-3">
-                  {variantList.map((v) => {
-                    const baseline = asUrlList(v.variantImages);
-                    const ov = variantOverrides?.[v.sku]?.variantImages;
-                    const val = Array.isArray(ov) ? asUrlList(ov) : undefined;
-                    return (
-                      <div key={v.sku} className="rounded-lg border border-gray-200 dark:border-gray-700 p-2.5">
-                        <p className="text-xs font-semibold text-gray-800 dark:text-gray-200 mb-1.5">
-                          {v.sku}
-                          {v.variantLabel && v.variantLabel !== v.sku && (
-                            <span className="ml-1.5 font-normal text-gray-500 dark:text-gray-400">{v.variantLabel}</span>
-                          )}
-                        </p>
-                        <ImageListEditor
-                          orgId={orgId}
-                          productId={masterProductId}
-                          baseline={baseline}
-                          value={val}
-                          onChange={(urls) => onVariantImagesChange(v.sku, urls)}
-                          aspect={cropAspect}
-                          maxWidth={cropMaxWidth}
-                          baselineLabel="Master variant images"
-                          compact
-                        />
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          )}
         </div>
   );
 
@@ -607,11 +537,6 @@ export default function StoreImageOverrideEditor({
           >
             {overrideActive ? `${productList.length} custom` : `Master · ${masterImages.length}`}
           </span>
-          {variantOverrideCount > 0 && (
-            <span className="text-xs px-1.5 py-0.5 rounded-md font-medium bg-sky-100 dark:bg-sky-500/15 text-sky-700 dark:text-sky-300 flex-shrink-0">
-              {variantOverrideCount} variant{variantOverrideCount > 1 ? "s" : ""}
-            </span>
-          )}
           {issues.length > 0 && (
             <span className="text-xs px-1.5 py-0.5 rounded-md font-medium bg-amber-100 dark:bg-amber-500/15 text-amber-700 dark:text-amber-400 flex-shrink-0">
               {issues.length} warning{issues.length > 1 ? "s" : ""}
