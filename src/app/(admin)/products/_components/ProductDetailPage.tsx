@@ -503,9 +503,15 @@ export default function ProductDetailPage({ masterProductId }: { masterProductId
   const reverse = useReversePull();
   const [pullCtx, setPullCtx] = useState<{ store: ChannelStoreConnection; channelProductId: string } | null>(null);
 
-  const load = useCallback(async () => {
+  /**
+   * Load product + stores. Pass `silent` for a background refresh (e.g. after a
+   * reverse pull-apply) so the full-page loading spinner is NOT shown — flipping
+   * `loading` would unmount the whole page, including an open modal, and cause a
+   * jarring blink. A silent refresh just swaps the data in place.
+   */
+  const load = useCallback(async (silent = false) => {
     if (!orgId) return;
-    setLoading(true);
+    if (!silent) setLoading(true);
     setError(null);
     try {
       const [data, storeList] = await Promise.all([
@@ -528,7 +534,7 @@ export default function ProductDetailPage({ masterProductId }: { masterProductId
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load product");
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, [masterProductId, orgId]);
 
@@ -625,7 +631,7 @@ export default function ProductDetailPage({ masterProductId }: { masterProductId
         <p className="font-medium text-gray-900 dark:text-white mb-1">Failed to load product</p>
         <p className="text-sm text-gray-500 dark:text-gray-400 mb-6">{error}</p>
         <div className="flex items-center justify-center gap-3">
-          <button onClick={load} className="px-4 py-2 rounded-xl bg-brand-500 text-white text-sm font-medium hover:bg-brand-600 transition-colors">
+          <button onClick={() => load()} className="px-4 py-2 rounded-xl bg-brand-500 text-white text-sm font-medium hover:bg-brand-600 transition-colors">
             Retry
           </button>
           <Link href="/products" className="px-4 py-2 rounded-xl border border-gray-200 dark:border-gray-700 text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
@@ -642,9 +648,11 @@ export default function ProductDetailPage({ masterProductId }: { masterProductId
   return (
     <div className="space-y-6 relative">
 
-      {/* Toast */}
+      {/* Toast — z-[80] keeps it above the reverse preview modal (z-[60]) and its
+          blurred backdrop, so the post-pull success message stays crisp and visible
+          while the modal is still open. */}
       {toast && (
-        <div className={`fixed bottom-6 right-6 z-50 px-4 py-3 rounded-xl shadow-lg text-sm font-medium transition-all ${
+        <div className={`fixed bottom-6 right-6 z-[80] px-4 py-3 rounded-xl shadow-lg text-sm font-medium transition-all ${
           toast.ok
             ? "bg-success-500 text-white"
             : "bg-error-500 text-white"
@@ -673,7 +681,8 @@ export default function ProductDetailPage({ masterProductId }: { masterProductId
           }
           onApplied={() => {
             setToast({ msg: "Pulled from channel — applied to Step-2", ok: true });
-            setTimeout(load, 1500);
+            // Silent refresh so the open modal isn't unmounted by the full-page spinner.
+            setTimeout(() => load(true), 1500);
           }}
           onClose={closePreview}
         />
