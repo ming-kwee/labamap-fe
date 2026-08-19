@@ -62,6 +62,7 @@ const merchantNavItems: NavItem[] = [
     icon: <BoxCubeIcon />,
     name: "Reverse Sync",
     subItems: [
+      { name: "Import Listings", path: "/reverse-sync/import", pro: false },
       { name: "Suggestions", path: "/reverse-sync/suggestions", pro: false },
     ],
   },

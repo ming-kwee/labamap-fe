@@ -17,6 +17,7 @@ export { ReverseSyncService, ReverseApiError, isNotConfigured } from "./services
 export { useReversePull } from "./hooks/useReversePull";
 export { useReverseSuggestions } from "./hooks/useReverseSuggestions";
 export type { UseReverseSuggestionsResult } from "./hooks/useReverseSuggestions";
+export { useReverseImport } from "./hooks/useReverseImport";
 
 // Components
 export { ReverseDiffField } from "./components/ReverseDiffField";
@@ -24,6 +25,7 @@ export { ReverseBucketSection } from "./components/ReverseBucketSection";
 export { ReverseSummaryBar } from "./components/ReverseSummaryBar";
 export { DeDerivationNotes } from "./components/DeDerivationNotes";
 export { ReversePreviewModal } from "./components/ReversePreviewModal";
+export { ImportPreviewModal } from "./components/ImportPreviewModal";
 export { SuggestionCard } from "./components/SuggestionCard";
 export { ReverseStatusBadge, hasChannelUpdate } from "./components/ReverseStatusBadge";
 export { formatReverseValue, isEmptyValue } from "./components/format";

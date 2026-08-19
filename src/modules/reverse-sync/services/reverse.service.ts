@@ -19,6 +19,9 @@ import type {
   ReversePullRequest,
   ReversePreviewRequest,
   ReverseApplyRequest,
+  ChannelListPage,
+  ReverseImportRequest,
+  ReverseImportResult,
 } from "../types/reverse";
 
 const BASE = "http://localhost:8888/labamap/api/v1/channels/reverse";
@@ -99,6 +102,35 @@ export const ReverseSyncService = {
   /** POST /review — classify + route by reverseWritePolicy (creates suggestions / per-store). */
   review(req: ReverseApplyRequest): Promise<ReverseReviewResult> {
     return post<ReverseReviewResult>("/review", req);
+  },
+
+  // ─── Import (use case B) — channel-native item → NEW master ─────────────────
+
+  /** GET /import/list — browse a page of the channel catalogue (Shopify seeded). */
+  async listChannelListings(params: {
+    organizationId: string;
+    storeId: string;
+    limit?: number;
+    offset?: number;
+  }): Promise<ChannelListPage> {
+    const qs = new URLSearchParams({
+      organizationId: params.organizationId,
+      storeId: params.storeId,
+      limit: String(params.limit ?? 50),
+      offset: String(params.offset ?? 0),
+    });
+    const res = await fetch(`${BASE}/import/list?${qs}`, { headers: JSON_HEADERS });
+    return handleJson<ChannelListPage>(res);
+  },
+
+  /** POST /import/preview — dry-run: draftMaster + dedup matches, writes nothing. */
+  importPreview(req: ReverseImportRequest): Promise<ReverseImportResult> {
+    return post<ReverseImportResult>("/import/preview", req);
+  },
+
+  /** POST /import — commit: CREATE new DRAFT master (201) or LINK to existing (200). */
+  importCommit(req: ReverseImportRequest): Promise<ReverseImportResult> {
+    return post<ReverseImportResult>("/import", req);
   },
 
   // ─── Suggestions (draft-review inbox) ────────────────────────────────────────

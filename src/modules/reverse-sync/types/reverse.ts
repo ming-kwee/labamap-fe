@@ -153,3 +153,73 @@ export interface ReverseApplyRequest {
   channelProductId?: string;
   channelPayload: Record<string, unknown>;
 }
+
+// ─── Import (use case B) — channel-native → NEW master ────────────────────────
+// Reverse "reconcile" (above) refreshes a product already linked to a store. "Import"
+// pulls a product that exists ONLY on the channel and creates a NEW DRAFT master.
+// See docs/reversesync/06-import-channel-native.md.
+
+/** One row in the channel catalogue browse (`GET /import/list`). */
+export interface ChannelListItem {
+  channelProductId: string;
+  title: string;
+  status?: string;
+}
+
+/** A single page of the channel catalogue (`GET /import/list`). */
+export interface ChannelListPage {
+  channelType: string;
+  storeId: string;
+  limit: number;
+  offset: number;
+  items: ChannelListItem[];
+}
+
+/** A draft master shaped for create (`ReverseImportResult.draftMaster`). */
+export interface ReverseDraftMaster {
+  /** master-attrId → value (name, description, weight, …). */
+  masterAttributes: Record<string, unknown>;
+  /** one row per SKU (axis values + sku/price/inventory/…). */
+  variantGroups: Array<Record<string, unknown>>;
+  /** option axes: `{ name, values[] }`. */
+  optionGroups: Array<{ name: string; values: string[] }>;
+}
+
+/** A dedup match — an existing master the imported item might already be. */
+export interface ReverseImportMatch {
+  productId: string;
+  matchType: string; // "SKU" | "NAME" | …
+}
+
+/** `ReverseImportRequest` — body for `/import/preview` and `/import`. */
+export interface ReverseImportRequest {
+  organizationId: string;
+  storeId: string;
+  channelType: string;
+  /** For fetch (Shopify); optional when `channelPayload` supplied. */
+  channelProductId?: string;
+  /** Raw channel item body — used directly for any channel (e.g. Shopee manual GET). */
+  channelPayload?: Record<string, unknown>;
+  /** Fill → LINK to this existing master; null/omit → CREATE a new DRAFT master. */
+  masterProductId?: string | null;
+  /** Optional client-supplied id for the new master (else server generates). */
+  newMasterProductId?: string | null;
+  userId?: string;
+  apiVersion?: string | null;
+}
+
+/** `ReverseImportResult` — result of `/import/preview` (created=null) or `/import`. */
+export interface ReverseImportResult {
+  channelType: string;
+  storeId: string;
+  channelProductId?: string;
+  /** true = created new master · false = linked to existing · null = preview (dry-run). */
+  created: boolean | null;
+  masterProductId: string;
+  draftMaster: ReverseDraftMaster;
+  matches: ReverseImportMatch[];
+  candidateSku?: string | null;
+  candidateName?: string | null;
+  channelDataWritten: string[];
+  preview: ReversePreview;
+}

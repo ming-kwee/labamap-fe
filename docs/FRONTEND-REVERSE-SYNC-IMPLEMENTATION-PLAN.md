@@ -9,14 +9,22 @@
 
 ## 0. TL;DR untuk FE
 
-Reverse sync = **menarik data produk DARI channel (Shopee/Shopify) KEMBALI ke platform**. FE perlu:
+Reverse sync = **menarik data produk DARI channel (Shopee/Shopify) KEMBALI ke platform**. Ada **DUA use case**
+berbeda entry point — JANGAN campur:
 
-1. **Tombol "Tarik dari Channel"** di konteks (produk × store) → panggil `/pull` → tampilkan **preview 3-ember**.
-2. **Halaman Preview/Diff** — apa yang akan berubah (master-mapped + diff, channel-only, dibuang) sebelum menulis.
-3. **Inbox "Saran dari Channel"** (draft-review) — approve/reject perubahan yang menyentuh master global.
-4. **Peningkatan** di: product-store matrix (kolom status reverse), admin (policy per-atribut, webhook, reverse-JOLT inspector).
+- **A. Reconcile** — produk **sudah** di My Products & sudah di-publish → tarik perubahan channel kembali.
+  Entry: **produk × store**. Endpoint `/pull`, `/preview`, `/apply`, `/review`.
+- **B. Import** — produk **hanya ada di channel**, belum di My Products → buat **master baru**. Entry:
+  **Store → Import Listings**. Endpoint `/import/preview`, `/import`. (Detail: [`docs/reversesync/06`](reversesync/06-import-channel-native.md).)
 
-Base URL semua endpoint: `{{host}}/labamap/api/v1/channels/reverse`.
+FE perlu:
+1. **(B) Halaman "Import Listings"** di Store → buat produk baru dari item channel.
+2. **(A) Tombol "Tarik dari Channel"** di produk × store → tarik perubahan.
+3. **Halaman Preview/Diff** (dipakai A & B) — master-mapped + diff, channel-only, dibuang, sebelum menulis.
+4. **Inbox "Saran dari Channel"** (draft-review) — approve/reject perubahan yang menyentuh master global.
+5. **Peningkatan**: product-store matrix (kolom status reverse), admin (policy per-atribut, webhook, reverse-JOLT).
+
+Base URL semua endpoint: `{{host}}/labamap/api/v1/channels/reverse` (import di bawah `.../reverse/import`).
 
 ---
 
@@ -86,6 +94,30 @@ Dipakai bila FE sudah punya payload channel (mis. hasil GET manual Shopee) atau 
 ```jsonc
 // Request: ReverseApplyRequest (sama seperti /apply)
 // Response 200 → ReverseReviewResult { suggested[], perStoreApplied[], skipped[] }
+```
+
+### 2.5b Import (use case B) — produk channel-native → master BARU
+Detail: [`docs/reversesync/06`](reversesync/06-import-channel-native.md).
+```jsonc
+// GET /import/list?organizationId=&storeId=&limit=&offset=  — BROWSE katalog channel (pilih item)
+→ { "channelType":"shopify","storeId":"store123","limit":50,"offset":0,
+    "items":[ {"channelProductId":"111","title":"Kaos A","status":"active"}, … ] }
+// (Shopify di-seed; Shopee belum — kirim channelPayload ke /import)
+```
+```jsonc
+// POST /import/preview  &  POST /import  (body ReverseImportRequest)
+{ "organizationId":"org1", "storeId":"store123", "channelType":"shopee",
+  "channelProductId":"803238708",          // untuk fetch (Shopify); opsional bila channelPayload ada
+  "channelPayload": { /* item channel mentah */ },  // any channel (mis. Shopee) — dipakai langsung
+  "masterProductId": null,                 // isi → LINK ke master ada; null → CREATE baru (DRAFT)
+  "newMasterProductId": null, "userId":"u1" }
+// Response → ReverseImportResult
+{ "created": true, "masterProductId":"uuid-baru",
+  "draftMaster": { "masterAttributes":{…}, "variantGroups":[…], "optionGroups":[…] },
+  "matches": [ {"productId":"mp-1","matchType":"SKU"} ],   // dedup → tawarkan "link instead"
+  "candidateSku":"red-m", "candidateName":"test 123",
+  "channelDataWritten":["200134"], "preview": {…} }
+// /import → 201 (create) / 200 (link). Preview → created=null.
 ```
 
 ### 2.6 Suggestions (draft-review inbox)
@@ -160,8 +192,9 @@ GET /api/v1/categories/{channelType}/{storeId}/attributes/{categoryId}/schema?or
 
 | # | Item | Tipe | Endpoint dipakai | Prioritas |
 |---|---|---|---|---|
-| P1 | **Tombol "Tarik dari Channel"** (di product-store view) | tingkatkan | `/pull` | P0 |
-| P2 | **Reverse Preview / Diff** (modal atau page) | baru | `/pull`, `/preview`, `/pull/apply`, `/apply`, `/review` | P0 |
+| **P0** | **(B) "Import Listings"** di Store — buat master baru dari item channel | **baru** | `/import/preview`, `/import` | **P0** |
+| P1 | **(A) Tombol "Tarik dari Channel"** (di product-store view) | tingkatkan | `/pull` | P0 |
+| P2 | **Reverse Preview / Diff** (modal atau page) | baru | `/pull`, `/preview`, `/pull/apply`, `/apply`, `/review`, `/import*` | P0 |
 | P3 | **Inbox "Saran dari Channel"** (draft-review) | baru | `/suggestions/*` | P0 |
 | P4 | **Kolom status reverse** di product-store matrix | tingkatkan | (data dari product-store) | P1 |
 | P5 | **Admin — Reverse Write Policy** per atribut master | tingkatkan (master-attribute admin) | (admin master-attr) | P1 |
@@ -174,6 +207,17 @@ GET /api/v1/categories/{channelType}/{storeId}/attributes/{categoryId}/schema?or
 ---
 
 ## 4. Rincian tiap halaman
+
+### P0-B — "Import Listings" (Store → buat master baru)
+- **Lokasi:** halaman **Store/Channel** (bukan My Products) — "Import Listings dari {store}".
+- **Input:** **browse katalog** via `GET /import/list?storeId=&limit=&offset=` → tabel `items[{channelProductId,
+  title, status}]` (Shopify). User pilih baris → preview. Untuk channel tanpa list (Shopee): **tempel
+  `channelPayload`** (hasil GET item mentah).
+- **Preview:** `POST /import/preview` → tampilkan **`draftMaster`** (masterAttributes + variantGroups + optionGroups)
+  di panel P2 (mode "produk baru"), plus **`matches`** (dedup).
+  - Jika `matches` tak kosong → tawarkan **"Link ke produk yang ada"** (kirim `masterProductId`) vs **"Buat baru"**.
+- **Commit:** `POST /import` (opsional `masterProductId` untuk link) → `201` (master DRAFT baru dibuat) / `200` (link).
+  Tampilkan link ke produk master baru (status **DRAFT** → arahkan ke Step-2 untuk lengkapi & publish).
 
 ### P1 — Tombol "Tarik dari Channel" (product × store)
 - **Lokasi:** di baris/kartu tiap store pada halaman produk (tempat status publish ditampilkan sekarang), atau di store-detail.
@@ -238,11 +282,21 @@ Di area JOLT admin (ada `FRONTEND-JOLT-*` docs), tambah tab/panel **"Reverse (ch
 ### P7 — Admin: Webhook & Config reverse per channel
 Di channel-config admin, tampilkan (read-only cukup untuk v1) ringkasan `reverseSyncConfig`:
 - `webhookEnabled` + URL webhook untuk didaftarkan (`/api/v1/webhooks/{channelType}/products-update`).
-- Apakah `itemUrlTemplate` ada (pull didukung?), `itemPath`, ada/tidaknya `variantInverse`/`attributeListInverse`/`enrichers`.
+- Apakah `itemUrlTemplate`/`itemListUrlTemplate` ada (pull/browse didukung?), `itemPath`, ada/tidaknya
+  `variantInverse`/`attributeListInverse`/`enrichers`.
+- **Prasyarat webhook "jalan" (tampilkan sebagai checklist ops, bukan kode):** (1) URL didaftarkan di dev portal
+  channel, (2) `clientSecret` env di-set (verifikasi signature), (3) store terhubung. Tanpa ketiganya webhook
+  tak menerima apa pun.
+- **Tegaskan scope:** webhook = **reconcile** produk ter-link saja; **tidak** auto-import produk baru (lihat Flow C).
 
 ---
 
 ## 5. Alur pengguna (flows)
+
+**Flow B — Import produk channel-native (Store):**
+`Store → Import Listings → (channelProductId / tempel payload) → POST /import/preview → P2 mode "produk baru" +
+matches → [Buat baru] POST /import 201 → buka master DRAFT baru → Step-2` ·
+atau `[Link ke existing] POST /import {masterProductId} 200`.
 
 **Flow A — Tarik satu produk (Shopify, pull didukung):**
 `P1 tombol → POST /pull → P2 preview → [Terapkan ke Step-2] POST /pull/apply → toast hasil + P4 stamp update`
@@ -250,7 +304,15 @@ Di channel-config admin, tampilkan (read-only cukup untuk v1) ringkasan `reverse
 **Flow B — Field sensitif (nama/deskripsi) via review:**
 `P2 → [Kirim ke Review] POST /review → item DRAFT_REVIEW masuk P3 → user Terima/Tolak → (Terima) master global berubah`
 
-**Flow C — Otomatis (webhook, tanpa FE):** channel produk berubah → webhook → reverse ingest → suggestion muncul di P3 (FE cukup poll/refresh Inbox). FE **tidak** memicu ini; hanya menampilkan hasilnya.
+**Flow C — Otomatis (webhook, tanpa FE):** channel produk **yang SUDAH ter-link** berubah → webhook → reverse ingest
+→ suggestion muncul di P3 (FE cukup poll/refresh Inbox). FE **tidak** memicu ini; hanya menampilkan hasilnya.
+
+> ⚠️ **Webhook = RECONCILE-only (use case A), BUKAN import (B).** Webhook hanya menyegarkan produk yang **sudah
+> ter-link** (sudah pernah di-publish). Produk **channel-native baru** (dibuat langsung di channel, belum di My
+> Products) yang datang lewat webhook `products-create` **di-skip** (tak ada linkage) → **tidak** otomatis jadi
+> master. **Import produk baru tetap aksi FE** (Flow B / P0-B). Jangan mendesain UI yang berasumsi "produk baru
+> dari channel muncul otomatis" — mereka masuk hanya lewat Import. (Enhancement "webhook `products-create` →
+> auto-import" mungkin ditambahkan BE nanti, tapi biasanya di-gate karena bisa berisik; belum ada.)
 
 **Flow D — Channel tanpa pull (Shopee GET perlu signing):**
 `P1 → /pull 400 "not configured" → P2 mode manual (user tempel/BE sediakan payload get_item) → POST /preview → /apply`
@@ -285,7 +347,9 @@ Di channel-config admin, tampilkan (read-only cukup untuk v1) ringkasan `reverse
    `GET /api/v1/categories/{channelType}/{storeId}/attributes/{categoryId}/schema` mengembalikan field dengan
    `fieldName` (= native attribute_id) + `label`. FE bangun lookup `{ "200134": "Material" }`. Lihat §2.6b.
 
-**Semua gap BE (#1–#4) TERTUTUP** — FE punya kontrak penuh untuk FE-1 s/d FE-4.
+**Gap #1–#5 TERTUTUP.**
+5. ✅ **Browse/LIST listing channel** — `GET /import/list?storeId=&limit=&offset=` (Shopify di-seed;
+   Shopee belum → kirim `channelPayload`). Sisa: paginasi cursor Shopify (v1 limit/offset) + LIST Shopee (signing).
 
 **Non-fungsional:**
 - **Idempotensi:** `/apply`, `/pull/apply`, `/review` merge non-destruktif → aman retry; tombol boleh re-enable setelah sukses.
@@ -301,12 +365,14 @@ Di channel-config admin, tampilkan (read-only cukup untuk v1) ringkasan `reverse
 
 | Fase FE | Isi | Endpoint |
 |---|---|---|
-| **FE-1 (P0)** | P1 tombol + P2 Preview/Diff + Terapkan ke Step-2 | `/pull`, `/pull/apply`, `/preview`, `/apply` |
+| **FE-0 (P0)** | **(B) Import Listings** (Store) + P2 mode "produk baru" + dedup link/create | `/import/preview`, `/import` |
+| **FE-1 (P0)** | (A) P1 tombol + P2 Preview/Diff + Terapkan ke Step-2 | `/pull`, `/pull/apply`, `/preview`, `/apply` |
 | **FE-2 (P0)** | P3 Inbox Suggestions + Accept/Reject + konfirmasi master | `/review`, `/suggestions/*` |
-| **FE-3 (P1)** | P4 kolom status reverse + P5 policy editor | (butuh gap #2/#3) |
+| **FE-3 (P1)** | P4 kolom status reverse + P5 policy editor | (gap #2/#3 sudah ditutup) |
 | **FE-4 (P2)** | P6 reverse-JOLT inspector + P7 webhook/config viewer | `/jolt-spec/{channelId}` |
 
-Mulai **FE-1 + FE-2** — itu menutup alur inti (tarik → preview → terapkan/review → approve). FE-3/FE-4 memoles & admin.
+**FE-0 (Import) + FE-1 (Reconcile) + FE-2 (Suggestions)** menutup alur inti kedua arah: **impor produk baru dari
+channel** dan **menyegarkan produk yang sudah ada**. FE-3/FE-4 memoles & admin.
 
 ---
 

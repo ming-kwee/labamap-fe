@@ -1,5 +1,6 @@
 "use client";
 import React, { useEffect, useState, useCallback, Suspense } from "react";
+import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import type {
   ChannelStoreConnection,
@@ -248,6 +249,15 @@ function StoreCard({ store, orgId, onEdit, onReconnect, onDeactivate, onReactiva
               Delete
             </button>
           </div>
+        )}
+
+        {/* Reverse sync — import this store's channel-native listings as new masters. */}
+        {status === "ACTIVE" && !confirming && (
+          <Link
+            href={`/reverse-sync/import?storeId=${encodeURIComponent(store.storeId)}`}
+            className="block w-full text-center px-3 py-1.5 text-xs rounded-lg border border-brand-300 text-brand-600 hover:bg-brand-50 dark:border-brand-500/40 dark:text-brand-400 dark:hover:bg-brand-500/10 transition-colors">
+            Import Listings
+          </Link>
         )}
       </div>
     </div>
