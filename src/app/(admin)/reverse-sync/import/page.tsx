@@ -1,7 +1,7 @@
 import { Suspense } from "react";
 import ImportListingsPage from "@/modules/reverse-sync/components/ImportListingsPage";
 
-export const metadata = { title: "Import Listings" };
+export const metadata = { title: "Import from channel" };
 
 export default function Page() {
   return (

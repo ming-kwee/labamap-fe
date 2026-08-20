@@ -121,7 +121,7 @@ export default function ImportListingsPage() {
       {/* Header + store selector */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Import Listings</h1>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Import from channel</h1>
           <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
             Pull products that exist only on a channel into a new master (DRAFT). For updating products already
             in My Products, use “Pull from channel” on the product page instead.

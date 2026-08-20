@@ -8,7 +8,6 @@ import { useSidebar } from "../context/SidebarContext";
 import { useAuth } from "@/shared/contexts/AuthContext";
 import { ReverseSyncService } from "@/modules/reverse-sync";
 import {
-  BoxCubeIcon,
   CalenderIcon,
   ChevronDownIcon,
   GridIcon,
@@ -30,6 +29,14 @@ type NavItem = {
   path?: string;
   subItems?: { name: string; path: string; pro?: boolean; new?: boolean }[];
 };
+
+// Bell — "Channel Updates" (incoming changes from channels needing attention).
+const BellIcon = () => (
+  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9" />
+    <path d="M13.73 21a2 2 0 0 1-3.46 0" />
+  </svg>
+);
 
 // ─── Merchant nav ─────────────────────────────────────────────────────────────
 
@@ -59,12 +66,12 @@ const merchantNavItems: NavItem[] = [
     ],
   },
   {
-    icon: <BoxCubeIcon />,
-    name: "Reverse Sync",
-    subItems: [
-      { name: "Import Listings", path: "/reverse-sync/import", pro: false },
-      { name: "Suggestions", path: "/reverse-sync/suggestions", pro: false },
-    ],
+    // Merchant-friendly framing of the reverse "suggestions" inbox — an exception queue of
+    // changes coming FROM the channels. (Import lives in the My Products header + per store;
+    // "reverse sync" as a term stays in the Admin inspector only.)
+    icon: <BellIcon />,
+    name: "Channel Updates",
+    path: "/reverse-sync/suggestions",
   },
   {
     icon: <UserCircleIcon />,
@@ -260,16 +267,28 @@ const AppSidebar: React.FC = () => {
                 }`}
               >
                 <span
-                  className={`${
+                  className={`relative ${
                     isActive(nav.path)
                       ? "menu-item-icon-active"
                       : "menu-item-icon-inactive"
                   }`}
                 >
                   {nav.icon}
+                  {/* Collapsed rail: unread dot for Channel Updates */}
+                  {!isExpanded && !isHovered && !isMobileOpen &&
+                    nav.path === "/reverse-sync/suggestions" && reverseCount > 0 && (
+                      <span className="absolute -right-1 -top-1 h-2 w-2 rounded-full bg-brand-500" />
+                  )}
                 </span>
                 {(isExpanded || isHovered || isMobileOpen) && (
                   <span className={`menu-item-text`}>{nav.name}</span>
+                )}
+                {/* Expanded: live PENDING count badge for Channel Updates */}
+                {(isExpanded || isHovered || isMobileOpen) &&
+                  nav.path === "/reverse-sync/suggestions" && reverseCount > 0 && (
+                    <span className="menu-dropdown-badge ml-auto bg-brand-500 text-white dark:bg-brand-500 dark:text-white">
+                      {reverseCount > 99 ? "99+" : reverseCount}
+                    </span>
                 )}
               </Link>
             )
@@ -301,11 +320,6 @@ const AppSidebar: React.FC = () => {
                     >
                       {subItem.name}
                       <span className="flex items-center gap-1 ml-auto">
-                        {subItem.path === "/reverse-sync/suggestions" && reverseCount > 0 && (
-                          <span className="menu-dropdown-badge bg-brand-500 text-white dark:bg-brand-500 dark:text-white">
-                            {reverseCount > 99 ? "99+" : reverseCount}
-                          </span>
-                        )}
                         {subItem.new && (
                           <span
                             className={`ml-auto ${

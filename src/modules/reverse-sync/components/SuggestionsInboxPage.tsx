@@ -36,7 +36,7 @@ export default function SuggestionsInboxPage() {
       {/* Header */}
       <div className="flex items-start justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Suggestions from Channel</h1>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Channel Updates</h1>
           <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
             Draft-review changes pulled from your channels. Accepting a suggestion updates the master
             product for <span className="font-medium">all channels</span>.

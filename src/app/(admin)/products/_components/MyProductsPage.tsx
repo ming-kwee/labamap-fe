@@ -134,6 +134,12 @@ const PlusIcon = () => (
     <path d="M5 12h14"/><path d="M12 5v14"/>
   </svg>
 );
+// Import from channel — download-into arrow.
+const ImportIcon = () => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+  </svg>
+);
 const AlertIcon = () => (
   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
@@ -414,12 +420,21 @@ export default function MyProductsPage() {
               </p>
             </div>
           </div>
-          <Link
-            href="/products/v2/create"
-            className="inline-flex items-center gap-2 px-4 py-2.5 text-sm font-semibold bg-brand-500 hover:bg-brand-600 text-white rounded-xl transition-colors shadow-sm shadow-brand-500/20"
-          >
-            <PlusIcon /> Create Product
-          </Link>
+          <div className="flex items-center gap-2 flex-shrink-0">
+            {/* Import products that already live on a connected channel (reverse import). */}
+            <Link
+              href="/reverse-sync/import"
+              className="inline-flex items-center gap-2 px-4 py-2.5 text-sm font-semibold text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800 rounded-xl transition-colors"
+            >
+              <ImportIcon /> Import from channel
+            </Link>
+            <Link
+              href="/products/v2/create"
+              className="inline-flex items-center gap-2 px-4 py-2.5 text-sm font-semibold bg-brand-500 hover:bg-brand-600 text-white rounded-xl transition-colors shadow-sm shadow-brand-500/20"
+            >
+              <PlusIcon /> Create Product
+            </Link>
+          </div>
         </div>
       </div>
 
