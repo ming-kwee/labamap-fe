@@ -304,6 +304,8 @@ export default function MyProductsPage() {
 
   // ── Selection state ─────────────────────────────────────────────────────────
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkBusy, setBulkBusy]       = useState<null | "sync" | "archive">(null);
+  const [confirmArchive, setConfirmArchive] = useState(false);
 
   // ── Toast ───────────────────────────────────────────────────────────────────
   const [toast, setToast] = useState<{ msg: string; type: "ok" | "err" } | null>(null);
@@ -395,6 +397,54 @@ export default function MyProductsPage() {
     setSelectedIds(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
   };
   const selectedCount = selectedIds.size;
+
+  // ── Bulk actions ────────────────────────────────────────────────────────────
+
+  /** Re-sync each selected product to the channels it is already published on (skip DRAFT). */
+  const handleBulkSync = useCallback(async () => {
+    const selected = products.filter(p => selectedIds.has(p.id));
+    const targets = selected.flatMap(p =>
+      p.channelSummary
+        .filter(c => c.syncStatus !== "DRAFT")
+        .map(c => ({ masterProductId: p.id, storeId: c.storeId })),
+    );
+    if (targets.length === 0) {
+      showToast("None of the selected products have a published channel to sync", "ok");
+      return;
+    }
+    setBulkBusy("sync");
+    try {
+      const results = await Promise.allSettled(
+        targets.map(t => MasterProductService.publish(t.masterProductId, t.storeId, orgId)),
+      );
+      const ok = results.filter(r => r.status === "fulfilled").length;
+      const fail = results.length - ok;
+      showToast(
+        `Sync triggered for ${ok} listing${ok !== 1 ? "s" : ""}${fail ? ` · ${fail} failed` : ""}`,
+        fail ? "err" : "ok",
+      );
+      setTimeout(load, 2000);
+    } finally {
+      setBulkBusy(null);
+    }
+  }, [products, selectedIds, orgId, showToast, load]);
+
+  /** Archive each selected product; live listings are skipped (409) and reported. */
+  const handleBulkArchive = useCallback(async () => {
+    setBulkBusy("archive");
+    try {
+      const res = await MasterProductService.bulkArchive([...selectedIds], orgId);
+      const parts = [`${res.archived.length} archived`];
+      if (res.blocked.length) parts.push(`${res.blocked.length} skipped (still live — delist first)`);
+      if (res.failed.length)  parts.push(`${res.failed.length} failed`);
+      showToast(parts.join(" · "), res.blocked.length || res.failed.length ? "err" : "ok");
+      setConfirmArchive(false);
+      setSelectedIds(new Set());
+      load();
+    } finally {
+      setBulkBusy(null);
+    }
+  }, [selectedIds, orgId, showToast, load]);
 
   const channelTypes = [...new Set(orgStores.map(s => s.channelType))];
 
@@ -659,21 +709,24 @@ export default function MyProductsPage() {
                   <span className="text-xs font-medium text-gray-600 dark:text-gray-400">{selectedCount} selected</span>
                   <button
                     onClick={() => setShowBulkTagModal(true)}
-                    className="text-xs px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+                    disabled={bulkBusy !== null}
+                    className="text-xs px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors disabled:opacity-50"
                   >
                     Edit tags
                   </button>
                   <button
-                    onClick={() => showToast("Bulk sync coming soon", "ok")}
-                    className="text-xs px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+                    onClick={handleBulkSync}
+                    disabled={bulkBusy !== null}
+                    className="text-xs px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors disabled:opacity-50"
                   >
-                    Sync selected
+                    {bulkBusy === "sync" ? "Syncing…" : "Sync selected"}
                   </button>
                   <button
-                    onClick={() => showToast("Export coming soon", "ok")}
-                    className="text-xs px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+                    onClick={() => setConfirmArchive(true)}
+                    disabled={bulkBusy !== null}
+                    className="text-xs px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-error-50 hover:text-error-600 hover:border-error-200 dark:hover:bg-error-500/10 dark:hover:text-error-400 transition-colors disabled:opacity-50"
                   >
-                    Export
+                    Archive
                   </button>
                 </>
               ) : (
@@ -743,9 +796,42 @@ export default function MyProductsPage() {
         />
       )}
 
+      {/* Bulk Archive confirm */}
+      {confirmArchive && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-xl dark:bg-gray-900">
+            <h3 className="text-base font-bold text-gray-900 dark:text-white">
+              Archive {selectedCount} product{selectedCount !== 1 ? "s" : ""}?
+            </h3>
+            <p className="mt-2 text-sm text-gray-600 dark:text-gray-300">
+              They’ll be hidden from My Products (restorable later — history and channel links are kept). Any that
+              still have a <span className="font-medium">live listing</span> are skipped — delist those first.
+            </p>
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setConfirmArchive(false)}
+                disabled={bulkBusy === "archive"}
+                className="rounded-xl border border-gray-200 px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50 disabled:opacity-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleBulkArchive}
+                disabled={bulkBusy === "archive"}
+                className="rounded-xl bg-brand-500 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-600 disabled:opacity-50"
+              >
+                {bulkBusy === "archive" ? "Archiving…" : "Archive"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Toast */}
       {toast && (
-        <div className={`fixed bottom-6 right-6 z-50 px-4 py-3 rounded-xl shadow-lg text-sm font-medium ${
+        <div className={`fixed bottom-6 right-6 z-[80] px-4 py-3 rounded-xl shadow-lg text-sm font-medium ${
           toast.type === "ok" ? "bg-green-500 text-white" : "bg-red-500 text-white"
         }`}>
           {toast.msg}

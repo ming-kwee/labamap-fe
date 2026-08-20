@@ -43,6 +43,8 @@ export function ImportPreviewModal({
   const [done, setDone] = useState<ReverseImportResult | null>(null);
   const [doneKind, setDoneKind] = useState<"create" | "link" | "update">("create");
   const [error, setError] = useState<string | null>(null);
+  // Set when a CREATE is rejected with 409 DUPLICATE_MASTER_SKU → offer one-click link.
+  const [dupConflict, setDupConflict] = useState<{ sku: string | null; conflictingMasterId: string | null } | null>(null);
 
   if (!open) return null;
 
@@ -61,6 +63,7 @@ export function ImportPreviewModal({
       masterProductId == null ? "create" : updateExistingDraft ? "update" : "link";
     setCommitting(masterProductId == null ? "create" : `${kind}:${masterProductId}`);
     setError(null);
+    setDupConflict(null);
     try {
       const r = await ReverseSyncService.importCommit({
         ...baseRequest,
@@ -72,8 +75,12 @@ export function ImportPreviewModal({
       setDone(r);
       onCommitted?.(r);
     } catch (err) {
-      // Update-draft only works on DRAFT masters — the backend guards non-DRAFT with 409.
-      if (err instanceof ReverseApiError && err.status === 409) {
+      if (err instanceof ReverseApiError && err.code === "DUPLICATE_MASTER_SKU") {
+        // CREATE rejected — a master with this SKU already exists. Surface a one-click
+        // "link to that product" (conflictingMasterId is best-effort; may be null).
+        setDupConflict({ sku: err.sku ?? null, conflictingMasterId: err.conflictingMasterId ?? null });
+      } else if (err instanceof ReverseApiError && err.status === 409) {
+        // Update-draft only works on DRAFT masters — the backend guards non-DRAFT with 409.
         setError(
           "That product isn't a draft, so it can't be updated by re-import. Use “Pull from channel” (reconcile) on the product instead.",
         );
@@ -117,6 +124,41 @@ export function ImportPreviewModal({
               {error && (
                 <div className="rounded-xl border border-error-200 bg-error-50 px-4 py-3 text-sm text-error-700 dark:border-error-500/25 dark:bg-error-500/10 dark:text-error-400">
                   {error}
+                </div>
+              )}
+
+              {/* Duplicate-SKU conflict — CREATE rejected, offer one-click link */}
+              {dupConflict && (
+                <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 dark:border-amber-500/25 dark:bg-amber-500/[0.08]">
+                  <p className="text-sm font-semibold text-amber-700 dark:text-amber-400">
+                    SKU{" "}
+                    {dupConflict.sku ? (
+                      <span className="font-mono">“{dupConflict.sku}”</span>
+                    ) : (
+                      "for this item"
+                    )}{" "}
+                    is already in use
+                  </p>
+                  <p className="mt-0.5 text-xs text-amber-600/90 dark:text-amber-400/80">
+                    {dupConflict.conflictingMasterId
+                      ? "A master product with this SKU already exists, so a new one can’t be created. Link this channel listing to that product instead."
+                      : "A master product with this SKU already exists, so a new one can’t be created. Pick the matching product from the list below to link it instead."}
+                  </p>
+                  {dupConflict.conflictingMasterId && (
+                    <div className="mt-2 flex flex-wrap items-center gap-2">
+                      <span className="font-mono text-xs text-amber-700 dark:text-amber-300">
+                        {dupConflict.conflictingMasterId}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => commit(dupConflict.conflictingMasterId!, false)}
+                        disabled={busy}
+                        className="rounded-lg bg-amber-500 px-2.5 py-1 text-xs font-semibold text-white hover:bg-amber-600 disabled:opacity-50"
+                      >
+                        {committing === `link:${dupConflict.conflictingMasterId}` ? "Linking…" : "Link to that product"}
+                      </button>
+                    </div>
+                  )}
                 </div>
               )}
 

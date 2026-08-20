@@ -186,7 +186,8 @@ Karena R0 hampir tuntas, urutannya:
   field → translate nilai field → pure classify (diff & yang masuk master pakai nilai MASTER, bukan kode channel).
   Nol koleksi baru, nol literal channel. Uji: skalar + list-membership + no-match null (4 tes).
 - **R5 — reverse-op descriptor (per-SKU variant inverse) — ✅ IMPLEMENTASI.** Menyelesaikan masalah "nama field
-  channel-side ada di Java imperatif, bukan config": `ChannelConfiguration.VariantInverseDescriptor`
+  channel-side ada di Java imperatif, bukan config": op `{"op":"VARIANT_INVERSE",…}` di `reverseSyncConfig.operations[]`
+  (di-parse `ReverseOps` → `reversesync.model.VariantInverseDescriptor`)
   mendeklarasikan cara membalik array per-SKU channel → variant master, DATA. `ReverseVariantInverseService`
   (interpreter terpisah, package reversesync) membalik **dua gaya** dengan satu engine: `VALUE_FIELDS`
   (Shopify `option1/2/3` menyimpan nilai sumbu; nama dari `product.options` by posisi) & `INDEX_ARRAY` (Shopee
@@ -219,8 +220,9 @@ Karena R0 hampir tuntas, urutannya:
   `GET /api/v1/channels/reverse/jolt-spec/{channelId}`, simetris dgn forward `channel_jolt_specs`. Ditandai
   eksplisit "derived, bukan SoT, bukan executor". Uji: injektif→shift, fuzzy dikecualikan, many-to-one dilaporkan,
   index dinormalisasi, null-safe (5 tes).
-- **R5 — enricher Kelas B (paruh LOKAL: agregasi stok) — ✅ IMPLEMENTASI.** `ChannelConfiguration.EnricherDescriptor`
-  (`type=AGGREGATE`, `arrayPath`, `valueField`, `strategy=SUM|MAX|MIN|FIRST`) + `ReverseDerivationEngine.enrich`
+- **R5 — enricher Kelas B (paruh LOKAL: agregasi stok) — ✅ IMPLEMENTASI.** Op `{"op":"AGGREGATE",…}` di
+  `reverseSyncConfig.operations[]` (di-parse `ReverseOps` → `reversesync.model.EnricherDescriptor`:
+  `type=AGGREGATE`, `arrayPath`, `valueField`, `strategy=SUM|MAX|MIN|FIRST`) + `ReverseDerivationEngine.enrich`
   meng-collapse array stok per-lokasi (Shopee `seller_stock:[{stock}]`, TikTok `inventory:[{quantity}]`) jadi
   **satu skalar di path yang sama** — lalu SoT `channel_field_mappings` yang memetakan path itu → field master
   inventory (agregasi di sini, pemetaan field tetap di SoT → nol redundansi). Reuse `getByPath` (DRY). Di-wire ke
@@ -236,14 +238,15 @@ Karena R0 hampir tuntas, urutannya:
   di-seed (butuh signing + sample webhook). Uji: 4 varian dari payload nyata + getByPath index (2 tes; total 64).
   Catatan: `get_item_base_info` **sudah** memuat `image_url_list` → `RESOLVE_MEDIA` (image_id→URL) **tak perlu**
   untuk baca Shopee.
-- **R5 — item-level Shopee (rebasing `itemPath`) — ✅ IMPLEMENTASI.** Diverifikasi vs `get_item_base_info` nyata.
+- **R5 — item-level Shopee (rebasing `REBASE_ITEM`) — ✅ IMPLEMENTASI.** Diverifikasi vs `get_item_base_info` nyata.
   Item ter-nest di `response.item_list[0]` → de-derivation menandainya "pending" (array objek) → tak ada field
-  yang flow. `ReverseSyncConfig.itemPath` + `ReverseDerivationEngine.extractItem` me-**rebase** sub-objek itu ke
+  yang flow. Op `{"op":"REBASE_ITEM","itemPath":…}` (di `reverseSyncConfig.operations[]`, dibaca `ReverseOps`) +
+  `ReverseDerivationEngine.extractItem` me-**rebase** sub-objek itu ke
   root sebelum de-derive, jadi `item_name`/`description`/`weight`/`condition`/`category_id`/`brand.original_brand_name`/
   `dimension.*`/`image.image_url_list` ter-flatten root-aligned & cocok dgn attributeMappings/apiSchema Shopee.
-  Di-wire ke apply **&** webhook (rebase → de-derive → enrich → classify). Seed Shopee `itemPath`. `attribute_list`
-  (attribute-id native) tetap **pending note** (butuh layer mapping attribute-id → follow-up). itemPath null =
-  Shopify tak berubah. Uji: payload nyata → 7 field root-aligned + image URLs + attribute_list pending + extractItem
+  Di-wire ke apply **&** webhook (rebase → de-derive → enrich → classify). Seed Shopee `REBASE_ITEM`. `attribute_list`
+  (attribute-id native) tetap **pending note** (butuh layer mapping attribute-id → follow-up). Tanpa `REBASE_ITEM` =
+  Shopify tak berubah (item sudah di root). Uji: payload nyata → 7 field root-aligned + image URLs + attribute_list pending + extractItem
   edge (2 tes; total 66).
 - **R5 — inverse `attribute_list` Shopee — ✅ IMPLEMENTASI.** Temuan SoT: **tak ada** `attribute_id→master field`
   dan **tak perlu** — atribut kategori di-key by native `attribute_id` di KEDUA sisi (forward stage
@@ -261,6 +264,45 @@ Karena R0 hampir tuntas, urutannya:
   berikutnya = `$set`). Reuse `ReverseApplyService.channelDataFrom` + `ReverseAttributeListInverse.invert` (DRY).
   No-op bila tak ada yang ditulis. Webhook kini setara apply (bucket-a + bucket-b + varian). 70 tes hijau
   (wiring murni — potongan pure sudah teruji).
-- **Belum:** enricher Kelas B **EKSTERNAL** (`RESOLVE_MEDIA`) — tak perlu untuk channel yang GET-nya kembalikan
+- **R5 — "reverse post-processing" jadi SATU pipeline terpadu `operations[]` — ✅ REFACTOR.** Empat op-transform
+  yang dulu tersebar sbg field ber-tipe (`itemPath`/`variantInverse`/`attributeListInverse`/`enrichers[]`)
+  diseragamkan jadi satu `reverseSyncConfig.operations[]` — tiap entri map dgn diskriminator `"op"`
+  (`REBASE_ITEM`/`VARIANT_INVERSE`/`ATTRIBUTE_LIST`/`AGGREGATE`), analog forward `postProcessingRules.operations[]`.
+  Dibaca `ReverseOps` (pure) → descriptor tipenya (`reversesync.model`). **`operations[]` satu-satunya sumber**:
+  tak ada field ber-tipe lama, tak ada fallback. Urutan eksekusi tetap per-stage (rebase→de-derive→enrich→classify→
+  attribute_list→variant), posisi array deklaratif. Descriptor dipindah dari `ChannelConfiguration` → `reversesync.model`
+  (channel-entity tak lagi tahu tipe parse reverse). Seed Shopify/Shopee di `ChannelConfigurationDataLoader` migrasi
+  ke `operations[]`. Nol perubahan perilaku. **92 tes hijau** (`ReverseOpsTest` 4: parse 4 op + op-type absen → null/empty + null-safe).
+- **R5 — gambar (import) via op `IMAGE_INVERSE` — ✅ FIX.** Bug: gambar hasil import nempel ke `channelData` (bukan
+  master) & gambar variant hilang. Sebab: forward menangani gambar di luar JOLT (`_sourceImages` + post-processing),
+  jadi tak ada `channel_field_mapping` untuk dibalik → klasifikasi menaruhnya di bucket-b. Op baru `IMAGE_INVERSE`
+  (`reversesync.model.ImageInverseDescriptor` + `ReverseImageInverseService`, pure, baca item MENTAH via `getByPath`
+  + reuse `extractImageUrl`) me-route `product.images[{id,src}]` → master `mainImage`(pertama)+`galleryImages`(sisanya),
+  dan resolve `variants[].image_id` (id→src) → per-SKU `variantImages`; key gambar dibuang dari `channelData`
+  (anti-duplikat). **URL channel apa adanya — belum di-host ulang** (re-host = follow-up publish-keluar; lihat
+  [`05`](05-config-source-of-truth.md) §7b). Seed Shopify.
+  Perilaku **beda per use-case**: **import** → gambar ke MASTER (greenfield); **reconcile** (apply/webhook/preview) →
+  gambar **master-authoritative, TIDAK ditulis** (`ReverseImageInverseService.flagImageDrift`: buang blob dari
+  `channelData` + lampirkan `ReversePreview.imageDrift` read-only), anti "sticky override" — cocok norma industri
+  (konten = otoritas master; menarik gambar channel→master = opt-in `reverseWritePolicy`, belum dibangun). **101 tes
+  hijau** (`ReverseImageInverseServiceTest` 8).
+- **Import dedup — identity resolution lintas store/channel (Phase 1) — ✅.** Sebelumnya dedup hanya SKU→nama level
+  produk. Kini `ReverseImportDedup` mencocokkan deterministik & strongest-first: **variant barcode (=UPC/EAN/GTIN)**
+  → **variant SKU** → **product SKU** → **name** (WEAK), tiap master 1× di level terkuat, tiap `Match` bawa
+  `confidence` + `matchedKeys`. Barcode = kunci **cross-channel** terkuat (produk sama di Shopify & Amazon: SKU beda,
+  barcode sama) — norma Sellbrite/Linnworks/ChannelAdvisor (SKU/GTIN = kunci join; sinyal lemah cuma saran). Prasyarat:
+  `barcode` ditambah ke `fieldMap` VARIANT_INVERSE Shopify agar mengalir ke master variant. Model data
+  (master↔listing per channel×store) sudah mendukung merge lintas channel. **104 tes hijau** (`ReverseImportDedupTest`
+  7).
+- **Import dedup — auto-link opsional + guard duplikat (Phase 2) — ✅.** `autoLinkStrongMatch` (**default OFF**):
+  saat create tanpa `masterProductId` + TEPAT 1 match STRONG → auto-link (`ReverseImportDedup.autoLinkTarget`, pure),
+  hasil `autoLinked=true`; WEAK/ambigu (≥2 STRONG) tak pernah auto-link. Guard DB: **partial unique index**
+  `{organizationId, sku}` (hanya sku non-kosong) di `MasterProductIndexMigration` (best-effort, non-fatal bila data
+  lama duplikat); create master ber-SKU sama → `DuplicateKeyException` dipetakan ke **409 body terstruktur**
+  `ReverseImportError {code:"DUPLICATE_MASTER_SKU", message, sku, conflictingMasterId}` (conflictingMasterId =
+  `ReverseImportDedup.productSkuMatchId`, pure) → FE bisa langsung tawarkan "link ke master itu". Semua error `/import`
+  kini ber-body `ReverseImportError` (500 pesan generik, tak bocor internal). **108 tes hijau**
+  (`ReverseImportDedupTest` 11).
+- **Belum:** re-host gambar ke storage platform (S3/GCS+CDN) saat publish-keluar; enricher Kelas B **EKSTERNAL** (`RESOLVE_MEDIA`) — tak perlu untuk channel yang GET-nya kembalikan
   URL (spt Shopee); Webhook/pull Shopee (signing + sample envelope); GET/webhook non-Shopify lain; SKU-match
   produk belum ter-link.

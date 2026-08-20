@@ -229,3 +229,29 @@ export interface ReverseImportResult {
   channelDataWritten: string[];
   preview: ReversePreview;
 }
+
+// ─── Import error envelope ────────────────────────────────────────────────────
+// Every `/import` (and `/import/preview`) error carries a STRUCTURED body — not the
+// plain `{ error }` shape used by `/pull*`. See docs/reversesync/06-import-channel-native.md §2.
+
+/** Discriminant for {@link ReverseImportError}. */
+export type ReverseImportErrorCode =
+  | "DUPLICATE_MASTER_SKU" // 409 — create rejected: a master with this SKU already exists (unique {org, sku})
+  | "CONFLICT" //            409 — e.g. re-import update-draft targeting a non-DRAFT master
+  | "BAD_REQUEST" //         400 — invalid request / channel not configured for fetch
+  | "INTERNAL"; //           500 — generic message
+
+/**
+ * `ReverseImportError` — structured error body for `POST /import` / `POST /import/preview`.
+ *
+ * For `DUPLICATE_MASTER_SKU` the backend fills `sku` (the clashing SKU) and — best-effort —
+ * `conflictingMasterId` (the existing master, a PRODUCT_SKU match) so the FE can offer a
+ * one-click "link to that product instead" without the merchant hunting for the master.
+ * `conflictingMasterId` may be null (e.g. legacy data) → fall back to the `matches` list.
+ */
+export interface ReverseImportError {
+  code: ReverseImportErrorCode;
+  message: string;
+  sku?: string | null;
+  conflictingMasterId?: string | null;
+}

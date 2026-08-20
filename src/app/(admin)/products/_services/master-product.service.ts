@@ -20,6 +20,13 @@ export interface BlockingStore {
   status: string;
 }
 
+/** Outcome of a bulk archive: succeeded, blocked (live listings), or otherwise failed. */
+export interface BulkArchiveResult {
+  archived: string[];
+  blocked: { productId: string; blockingStores: BlockingStore[] }[];
+  failed: { productId: string; message: string }[];
+}
+
 /**
  * Thrown on 409 from archive/delete: the product still has live (PUBLISHED) listings.
  * Carries the blocking `storeId:status` list so the UI can say "delist first at …".
@@ -344,6 +351,44 @@ export const MasterProductService = {
       { method: "DELETE", headers: JSON_HEADERS },
     );
     await MasterProductService._handleLifecycle(res, "delete");
+  },
+
+  /**
+   * Bulk archive: archive each selected product, splitting the outcome into archived /
+   * blocked (live listings → 409) / failed. Runs in parallel; never throws — the caller
+   * shows a summary. To delist first, open the blocked products individually.
+   */
+  async bulkArchive(productIds: string[], organizationId: string): Promise<BulkArchiveResult> {
+    const result: BulkArchiveResult = { archived: [], blocked: [], failed: [] };
+    await Promise.all(
+      productIds.map(async (id) => {
+        try {
+          await MasterProductService.archive(id, organizationId);
+          result.archived.push(id);
+        } catch (err) {
+          if (err instanceof MasterProductLiveListingError) {
+            result.blocked.push({ productId: id, blockingStores: err.blockingStores });
+          } else {
+            result.failed.push({ productId: id, message: err instanceof Error ? err.message : "failed" });
+          }
+        }
+      }),
+    );
+    return result;
+  },
+
+  /** POST /channels/publish — (re-)sync one (product × store) to its channel listing. */
+  async publish(masterProductId: string, storeId: string, organizationId: string): Promise<void> {
+    const res = await fetch(`${BASE_API}/channels/publish`, {
+      method: "POST",
+      headers: JSON_HEADERS,
+      body: JSON.stringify({ masterProductId, storeId, organizationId }),
+    });
+    if (!res.ok) {
+      let msg = res.statusText;
+      try { const b = await res.json(); msg = b.message ?? b.error ?? msg; } catch { /* ignore */ }
+      throw new Error(`[MasterProductService] publish ${masterProductId}/${storeId}: ${res.status} ${msg}`);
+    }
   },
 
   /** Shared archive/delete response handling: 409 → typed live-listing error, else generic. */

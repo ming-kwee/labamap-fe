@@ -40,16 +40,28 @@
        • master-mapped bucket  → masterAttributes  {masterAttrId → channelValue}
        • inverted variants      → variantGroups [{…axis, …fields}] + optionGroups [{name,values}]
        • channel-only + attribute_list → channelData (untuk linkage row, BUKAN master)
-  4. DEDUP (ReverseImportDedup): cocokkan SKU→nama (exact, case-insensitive) vs master org
-       → matches[]  (kosong = aman create)
+  4. DEDUP (ReverseImportDedup): identity resolution lintas store/channel, deterministik & strongest-first:
+       variant barcode (=UPC/EAN/GTIN) → variant SKU → product SKU → name (WEAK). Tiap master 1× di level terkuat.
+       → matches[] (dgn matchType + confidence)  (kosong = aman create). Barcode = kunci cross-channel terkuat
+         (produk sama di Shopify & Amazon: SKU beda, barcode sama).
   5a. /import/preview → kembalikan { preview, draftMaster, matches, candidateSku/Name } — TANPA tulis
   5b. /import        → COMMIT:
         • masterProductId diberikan → LINK ke master itu (buat linkage row saja)
+        • else + autoLinkStrongMatch=true + TEPAT 1 match STRONG → AUTO-LINK ke master itu (autoLinked=true)
         • else → CREATE master baru (status DRAFT) via MasterProductDataService.save + buat linkage row
 ```
 
-**Guardrail dipertahankan:** master baru berstatus **DRAFT** (bukan langsung live); dedup mencegah duplikat;
-reverse tak menebak (dedup deterministik, tak fuzzy); BFF-only; tak menyentuh forward.
+**Guardrail dipertahankan:** master baru berstatus **DRAFT** (bukan langsung live); reverse tak menebak (dedup
+deterministik, tak fuzzy); BFF-only; tak menyentuh forward. **Anti-duplikat (Phase 2):**
+- **Auto-link opsional** (`autoLinkStrongMatch`, **default OFF**): auto-link HANYA saat tepat 1 match STRONG (barcode/
+  variant-SKU/product-SKU); WEAK (nama) & ambigu (≥2 master STRONG) tak pernah auto-link → jatuh ke create/konfirmasi.
+- **Unique index `{organizationId, sku}`** (partial, hanya sku non-kosong) di `master_product_data` — create master
+  ber-SKU sama ditolak → **409 CONFLICT dgn body terstruktur** `ReverseImportError`
+  `{code:"DUPLICATE_MASTER_SKU", message, sku, conflictingMasterId}` (`conflictingMasterId` = master PRODUCT_SKU match
+  → FE bisa langsung tawarkan "link ke master itu"). Best-effort: bila data lama sudah punya SKU duplikat, index gagal
+  dibuat (log warn, non-fatal) — bereskan dulu lalu restart.
+- **Error body** `/import`: semua error kini punya body `ReverseImportError {code, message, sku?, conflictingMasterId?}`
+  — `DUPLICATE_MASTER_SKU`/`CONFLICT` (409), `BAD_REQUEST` (400), `INTERNAL` (500, pesan generik).
 
 ---
 
@@ -87,7 +99,7 @@ Base: `{host}/labamap/api/v1/channels/reverse/import`.
     "masterAttributes": { "name":"test 123", "description":"…", "weight":"0.5" },
     "variantGroups": [ {"Color":"red","Size":"M","sku":"red-m","price":100000,"inventory":8}, … ],
     "optionGroups":  [ {"name":"Color","values":["red","blue"]}, {"name":"Size","values":["M","S"]} ] },
-  "matches": [ {"productId":"mp-1","matchType":"SKU"} ],   // dedup — tawarkan "link instead"
+  "matches": [ {"productId":"mp-1","matchType":"VARIANT_BARCODE","confidence":"STRONG","matchedKeys":["0190001"]} ],   // dedup — tawarkan "link instead"
   "candidateSku":"red-m", "candidateName":"test 123",
   "channelDataWritten":["200134","200162"],
   "preview": { /* ReversePreview 3-ember */ } }
@@ -102,7 +114,7 @@ Base: `{host}/labamap/api/v1/channels/reverse/import`.
 | Kelas | Peran |
 |---|---|
 | `ReverseImportMapper` (pure) | preview + inverted variants → masterAttributes / variantGroups / optionGroups |
-| `ReverseImportDedup` (pure) | match SKU→nama (exact, no fuzzy) → LINK vs CREATE |
+| `ReverseImportDedup` (pure) | identity resolution lintas store/channel: variant barcode/SKU → product SKU → name (weak), strongest-first, confidence → LINK vs CREATE |
 | `ReverseImportService` | orkestrasi: payload → classify(no-master) → map → dedup → create/link + linkage |
 | `ReverseImportController` | `POST /import/preview`, `POST /import` |
 | `ReverseImportRequest` / `ReverseImportResult(+DraftMaster)` | DTO |
@@ -116,7 +128,9 @@ Reuse (nol duplikasi): `ReverseChannelFetchService` (fetch), `ReverseDerivationE
 
 ## 5. Uji
 - `ReverseImportMapperTest` (3): masterAttributes dari bucket, variant/optionGroups dari inverted, empty→null.
-- `ReverseImportDedupTest` (4): SKU exact case-insensitive, name, SKU-before-name, no-match.
+- `ReverseImportDedupTest` (11): cross-channel barcode (SKU/nama beda), variant-SKU, product-SKU, name(weak),
+  strongest-first lintas master + tiap master 1×, no-match/empty; auto-link (1 STRONG→target, default off, weak/
+  ambigu/none→empty); productSkuMatchId (conflictingMasterId utk 409 duplikat).
 (Orkestrasi service = wiring potongan pure yang sudah teruji.) Total reversesync **77 hijau**.
 
 ---

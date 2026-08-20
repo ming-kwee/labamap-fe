@@ -2,8 +2,12 @@
 
 > **TERIMPLEMENTASI (R0–R5).** Dokumen ini adalah **rasional desain awal** pipeline balik & peran post-processing;
 > **ya, wajib, dan dibalik.** As-built: interpreter reverse terpisah (`ReverseDerivationEngine` jalan PALING AWAL)
-> + reverse-op descriptor (variant/attribute_list) + enricher lokal. Pipeline as-built langkah-demi-langkah +
-> peta SoT: [`05`](05-config-source-of-truth.md) §3; log per-slice: [`04`](04-engine-separation-and-industry-comparison.md).
+> + reverse-op descriptor (variant/attribute_list/image) + enricher lokal. **Konfigurasinya kini SATU list terpadu
+> `reverseSyncConfig.operations[]`** (op `REBASE_ITEM`/`VARIANT_INVERSE`/`ATTRIBUTE_LIST`/`AGGREGATE`/`IMAGE_INVERSE`,
+> dibaca `ReverseOps` → descriptor tipenya; satu-satunya sumber, tak ada legacy/fallback). Gambar: op `IMAGE_INVERSE`
+> me-route gambar channel → master `mainImage`/`galleryImages`/`variantImages` ([`05`](05-config-source-of-truth.md) §7b).
+> Pipeline as-built langkah-demi-langkah + peta SoT: [`05`](05-config-source-of-truth.md) §3; log per-slice:
+> [`04`](04-engine-separation-and-industry-comparison.md).
 
 ## 1. Pipeline maju (yang sudah ada) sebagai acuan
 

@@ -112,14 +112,22 @@ Detail: [`docs/reversesync/06`](reversesync/06-import-channel-native.md).
   "channelProductId":"803238708",          // untuk fetch (Shopify); opsional bila channelPayload ada
   "channelPayload": { /* item channel mentah */ },  // any channel (mis. Shopee) — dipakai langsung
   "masterProductId": null,                 // isi → LINK ke master ada; null → CREATE baru (DRAFT)
+  "autoLinkStrongMatch": false,            // OPSIONAL (default false): 1 match STRONG → auto-link (bukan create dup)
   "newMasterProductId": null, "userId":"u1" }
 // Response → ReverseImportResult
 { "created": true, "masterProductId":"uuid-baru",
-  "draftMaster": { "masterAttributes":{…}, "variantGroups":[…], "optionGroups":[…] },
-  "matches": [ {"productId":"mp-1","matchType":"SKU"} ],   // dedup → tawarkan "link instead"
+  "autoLinked": true,                       // ADA hanya bila auto-link terjadi (NON_NULL) → "otomatis di-link"
+  "draftMaster": { "masterAttributes":{…}, "variantGroups":[ {"sku":"red-m","barcode":"0190001",…} ], "optionGroups":[…] },
+  // dedup lintas store/channel — strongest-first, tiap match bawa confidence + matchedKeys:
+  "matches": [ {"productId":"mp-1","matchType":"VARIANT_BARCODE","confidence":"STRONG","matchedKeys":["0190001"]} ],
   "candidateSku":"red-m", "candidateName":"test 123",
   "channelDataWritten":["200134"], "preview": {…} }
+// matchType ∈ { VARIANT_BARCODE, VARIANT_SKU, PRODUCT_SKU (STRONG) | NAME (WEAK) }. barcode = kunci cross-channel.
 // /import → 201 (create) / 200 (link). Preview → created=null.
+// ERROR body (semua error /import) → ReverseImportError { code, message, sku?, conflictingMasterId? }:
+//   DUPLIKAT: create master ber-SKU sama (unique {org,sku}) → 409 { "code":"DUPLICATE_MASTER_SKU",
+//     "message":"…", "sku":"red-m", "conflictingMasterId":"mp-2" } → tawarkan "link ke mp-2".
+//   Lainnya: CONFLICT (409, mis. non-DRAFT), BAD_REQUEST (400), INTERNAL (500, pesan generik).
 // RE-IMPORT UPDATE-DRAFT (perbaiki draft yg salah): { masterProductId, updateExistingDraft:true }
 //   → merge master attrs ke DRAFT itu (non-destruktif; status tetap DRAFT). Master non-DRAFT → 409.
 ```
@@ -229,10 +237,19 @@ DELETE /api/v1/admin/master-products/{productId}?organizationId=           ← h
   title, status}]` (Shopify). User pilih baris → preview. Untuk channel tanpa list (Shopee): **tempel
   `channelPayload`** (hasil GET item mentah).
 - **Preview:** `POST /import/preview` → tampilkan **`draftMaster`** (masterAttributes + variantGroups + optionGroups)
-  di panel P2 (mode "produk baru"), plus **`matches`** (dedup).
+  di panel P2 (mode "produk baru"), plus **`matches`** (dedup lintas store/channel).
+  - Tiap match punya **`matchType`** (`VARIANT_BARCODE`/`VARIANT_SKU`/`PRODUCT_SKU` = STRONG, `NAME` = WEAK),
+    **`confidence`**, **`matchedKeys`** (nilai yang cocok). Render: kelompokkan STRONG vs WEAK, tampilkan basis
+    kecocokan (mis. "cocok barcode 0190001" / "cocok SKU red-m"). Barcode = kunci **cross-channel** terkuat.
   - Jika `matches` tak kosong → tawarkan **"Link ke produk yang ada"** (kirim `masterProductId`) vs **"Buat baru"**.
-- **Commit:** `POST /import` (opsional `masterProductId` untuk link) → `201` (master DRAFT baru dibuat) / `200` (link).
-  Tampilkan link ke produk master baru (status **DRAFT** → arahkan ke Step-2 untuk lengkapi & publish).
+  - **Opsional auto-link:** checkbox "auto-link kecocokan kuat" → kirim `autoLinkStrongMatch:true` di commit; server
+    auto-link HANYA bila TEPAT 1 match STRONG (WEAK/ambigu → tetap create/konfirmasi). Default OFF.
+- **Commit:** `POST /import` (opsional `masterProductId` untuk link) → `201` (master DRAFT baru) / `200` (link).
+  - Response `autoLinked:true` (bila auto-link) → tampilkan "otomatis di-link ke produk yang ada".
+  - **`409` `{code:"DUPLICATE_MASTER_SKU", sku, conflictingMasterId}`** = create ditolak karena **SKU sudah ada**
+    (unique `{org,sku}`). Tampilkan "SKU `{sku}` sudah dipakai" + tombol **"Link ke produk itu"** → `POST /import`
+    ulang dgn `masterProductId = conflictingMasterId`. (`conflictingMasterId` best-effort; bila null, arahkan ke daftar `matches`.)
+  - Sukses create → link ke master baru (status **DRAFT** → arahkan ke Step-2 untuk lengkapi & publish).
 
 ### P1 — Tombol "Tarik dari Channel" (product × store)
 - **Lokasi:** di baris/kartu tiap store pada halaman produk (tempat status publish ditampilkan sekarang), atau di store-detail.

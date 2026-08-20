@@ -67,7 +67,14 @@ yang bisa *drift*.
 | Sumbu varian produk | **`product_types.variantDimensions`** | BUILD_TIER_VARIATION/MODEL | (dimensi juga self-describing di payload) |
 | Arah kebenaran per-atribut | **`ecommerce_master_attributes.reverseWritePolicy`** | — | routing R3 (SUGGEST/PER_STORE/SKIP) |
 | Versi API channel | **`ChannelConfiguration.apiVersion`** (top-level) | templating `{apiVersion}` | fallback versi pull |
-| Cara baca webhook + resep pull + inverse varian | **`ChannelConfiguration.reverseSyncConfig`** | — | webhook/pull/variant-inverse |
+| Cara baca webhook + resep pull + inverse varian | **`ChannelConfiguration.reverseSyncConfig`** (+ **beku per-versi** di `channel_api_contracts`) | — | webhook/pull/variant-inverse, **version-aware** |
+
+> **Version-aware (2026-08): `reverseSyncConfig` menggambarkan BENTUK payload channel, yang per-`apiVersion`** —
+> jadi ia dibekukan ke `channel_api_contracts` (`fromConfig`) dan reverse me-resolve-nya lewat `ReverseConfigResolver`
+> → `ChannelContractResolver.overlayContract(cfg, effectiveVersion)`, simetris dengan forward. `effectiveVersion` =
+> listing `publishedApiVersion` (webhook) / versi fetch (pull/import) / store pin. Ini mencegah **version-drift**:
+> listing v2 di-parse dengan resep v2, bukan resep config v3 terkini. **Bukan** dipecah per product-type / channel-
+> category — bentuk API bukan urusan kategori/tipe (semantik kategori sudah di `channel_category_api_schemas`).
 
 ### 2a. Redundansi yang SENGAJA DIHAPUS (jangan diperkenalkan lagi)
 
@@ -160,6 +167,9 @@ option terindeks). Kalau tidak di-un-build dulu, klasifikasi & field-resolve aka
 | Kelas | Peran | Fase |
 |---|---|---|
 | `ReverseDerivationEngine` | de-derivation (flatten, unwrap image, dimensi varian, `extractItem`, `enrich`/AGGREGATE) | R1/R5 |
+| `ReverseOps` | baca `reverseSyncConfig.operations[]` (pipeline reverse terpadu, SATU-SATUNYA sumber — tak ada legacy) → descriptor tipenya | R5 |
+| `…model.{VariantInverse,Enricher,AttributeListInverse,ImageInverse}Descriptor` | POJO target-parse `ReverseOps` untuk op `VARIANT_INVERSE`/`AGGREGATE`/`ATTRIBUTE_LIST`/`IMAGE_INVERSE` (pindah dari `ChannelConfiguration`) | R5 |
+| `ReverseImageInverseService` | `invert`: gambar produk → master `mainImage`/`galleryImages` + `image_id` variant → `variantImages` (import); `flagImageDrift`: reconcile drift + buang blob dari channelData (URL channel apa adanya) | R5 |
 | `ReverseClassificationService` | 3-ember classify + `resolveReverseFields` (SoT⁻¹) + `translateValues` | R1/R5 s1 |
 | `ReverseValueMappingService` | `channelValue → masterValue` | R5 |
 | `ReverseVariantInverseService` | per-SKU inverse via `VariantInverseDescriptor` | R5 |
@@ -178,8 +188,8 @@ option terindeks). Kalau tidak di-un-build dulu, klasifikasi & field-resolve aka
 |---|---|
 | `ChannelProductData` (+repo) | `publishedApiVersion`, `channelUpdatedAt`, `lastReverseSyncedAt`; `updateReverseStamps`, `updatePublishedApiVersion` |
 | `EcommerceMasterAttributeDocument` | `reverseWritePolicy` |
-| `ChannelConfiguration` | `reverseSyncConfig` (`ReverseSyncConfig` + `VariantInverseDescriptor` + `AttributeListInverseDescriptor` + `EnricherDescriptor`) |
-| `ChannelConfigurationDataLoader` | seed `reverseSyncConfig` **Shopify** (webhook, itemUrlTemplate, variantInverse VALUE_FIELDS) + **Shopee** (itemPath, attributeListInverse, variantInverse INDEX_ARRAY) |
+| `ChannelConfiguration` | `reverseSyncConfig.operations[]` (`List<Map>` opak, pipeline reverse terpadu — satu-satunya sumber). Kelas descriptor **tidak** di sini lagi (pindah ke `reversesync.model`, lihat §5a) |
+| `ChannelConfigurationDataLoader` | seed `reverseSyncConfig.operations[]` **Shopify** (webhook, itemUrlTemplate, VARIANT_INVERSE VALUE_FIELDS +`barcode`, IMAGE_INVERSE) + **Shopee** (REBASE_ITEM, ATTRIBUTE_LIST, VARIANT_INVERSE INDEX_ARRAY) |
 | `ReverseWritePolicyMigration` (@Order 165) | seed `reverseWritePolicy` per atribut inti |
 | `ChannelPublishService` | R0: stamp `publishedApiVersion` di sukses publish (bersama persistImageOrder) |
 
@@ -223,12 +233,15 @@ Tiga mekanisme yang dipertimbangkan & verdict-nya (untuk referensi): (1) balik f
 | **R5 · nama field** | `channel_field_mappings⁻¹` (non-1:1) | ✅ |
 | **R5 · dimensi** | inverse dimensi varian self-describing | ✅ |
 | **R5 · value** | `channel_field_value_mappings⁻¹` | ✅ |
+| **R5 · pipeline terpadu** | `reverseSyncConfig.operations[]` (REBASE_ITEM/VARIANT_INVERSE/ATTRIBUTE_LIST/AGGREGATE/IMAGE_INVERSE, 1 op-list, satu-satunya sumber via `ReverseOps` — tak ada legacy/fallback) | ✅ |
 | **R5 · descriptor** | reverse-op descriptor per-SKU (VALUE_FIELDS/INDEX_ARRAY) | ✅ |
 | **R5 · reconcile** | variant → `variantOverrides[sku]` (apply **&** webhook, satu save konsolidasi) | ✅ |
 | **R5 · reverse-JOLT** | proyeksi inspectable (simetri) | ✅ |
 | **R5 · enricher Kelas B (lokal)** | agregasi stok per-lokasi (`AGGREGATE`) | ✅ |
-| **R5 · item-level (rebasing)** | `itemPath` — item ter-nest → root (Shopee `response.item_list[0]`) | ✅ |
-| **R5 · attribute_list** | `attributeListInverse` → channelData keyed by native attribute id | ✅ |
+| **R5 · item-level (rebasing)** | `REBASE_ITEM` (`itemPath`) — item ter-nest → root (Shopee `response.item_list[0]`) | ✅ |
+| **R5 · attribute_list** | `ATTRIBUTE_LIST` → channelData keyed by native attribute id | ✅ |
+| **R5 · gambar (import)** | `IMAGE_INVERSE` — gambar produk → master `mainImage`/`galleryImages`; `image_id` variant → `variantImages` (URL channel, belum di-host ulang) | ✅ |
+| **R5 · gambar (reconcile)** | master-authoritative — `flagImageDrift`: buang blob dari `channelData` + lampirkan `imageDrift` (read-only); TIDAK tulis master/override (anti sticky-freeze) | ✅ |
 | **R5 · Shopee end-to-end** | item + varian + attribute_list, diverifikasi vs payload nyata | ✅ |
 
 ### 7a. BELUM dibangun (dan kenapa)
@@ -237,7 +250,7 @@ Tiga mekanisme yang dipertimbangkan & verdict-nya (untuk referensi): (1) balik f
   per-channel; `EnricherDescriptor.type=RESOLVE_MEDIA` sudah disediakan sebagai kontrak, tapi eksekusi ditunda
   (tak ada channel untuk uji e2e). **Paruh LOKAL sudah ada**: `AGGREGATE` (per-location stock → skalar) — lihat
   §3 (E) & baris R5 di [`04`](04-engine-separation-and-industry-comparison.md).
-- **Non-Shopify pull/webhook** — **Shopee `variantInverse` sudah di-seed** (diverifikasi vs `get_model_list`
+- **Non-Shopify pull/webhook** — **Shopee op `VARIANT_INVERSE` sudah di-seed** (diverifikasi vs `get_model_list`
   nyata: `response.model` INDEX_ARRAY, `dimensionOptionValueField="option"`, fieldMap path bersarang). Yang belum
   untuk Shopee: **webhook** (butuh sample envelope) + **pull GET** (butuh HMAC signing). Channel lain = tambah
   config (nol kode). Catatan: descriptor kini mendukung `option_list` objek + fieldMap path bersarang/terindeks
@@ -247,11 +260,40 @@ Tiga mekanisme yang dipertimbangkan & verdict-nya (untuk referensi): (1) balik f
 - **Inverse `model` tier_index sebagai NOTE→nilai** di de-derivation — kini dibalik via descriptor di jalur
   variant (bukan de-derivation umum); struktur non-dimensi lain tetap "pending".
 
+### 7b. Gambar (image handling) — kenapa op sendiri + soal re-host storage
+
+Forward menangani gambar **di luar JOLT**: master `mainImage`+`galleryImages` di-merge (`normalizeImages`) →
+`_sourceImages` → post-processing rule membangun field gambar channel. **JOLT tak memetakan gambar**, jadi **tak ada
+`channel_field_mapping` untuk gambar** → reverse tak punya korespondensi untuk dibalik. Tanpa penanganan khusus,
+klasifikasi menaruh gambar di **bucket-b (channelData)**, bukan master (itulah bug awal).
+
+Solusinya op sendiri **`IMAGE_INVERSE`** (simetris dgn staging forward), dibaca dari item **mentah** (de-derivation
+sudah meng-unwrap `[{src}]`→`[url]` & membuang `id` yang diperlukan variant). Perilakunya **beda per use-case**:
+
+- **Import (use case B, greenfield):** gambar → **master** — `product.images[{id,src}]` → `mainImage`(pertama)+
+  `galleryImages`(sisanya); `variants[].image_id` di-resolve (id→url) → per-SKU `variantImages`; key gambar dibuang
+  dari `channelData` (anti-duplikat). Master baru, jadi tak ada konflik.
+- **Reconcile (use case A, produk ter-link):** gambar **master-authoritative → TIDAK ditulis** ke master maupun
+  per-store override. Alasan: override membekukan gambar store ("sticky" — `master < masterOverrides < channelData`,
+  jadi update gambar master nanti tak propagate). Sebagai gantinya `ReverseImageInverseService.flagImageDrift`
+  (1) membuang blob `product.images` dari bucket-b `channelData` (gambar itu field master, bukan channel-only), dan
+  (2) melampirkan **`ReversePreview.imageDrift`** (gambar channel vs gambar master, `changed`) — read-only. Dipakai di
+  `ReverseApplyService`, `ReverseWebhookService`, dan `/reverse/preview`. Cocok norma industri (Ginee/ChannelAdvisor:
+  konten = otoritas master; yang mengalir channel→platform saat reconcile itu harga & stok, bukan gambar).
+  Menarik gambar channel → master global tetap mungkin, tapi sebagai **opt-in per-field `reverseWritePolicy`**
+  (`DRAFT_REVIEW`/`CHANNEL_AUTHORITATIVE`), bukan default — belum dibangun.
+
+**Re-host ke storage platform — DITUNDA (keputusan).** Saat ini URL = **URL channel apa adanya**. Platform nyata
+(Ginee, ChannelAdvisor, Sellbrite, Linnworks) umumnya **menarik gambar ke storage/CDN sendiri** (URL sumber bisa
+hotlink-block/kedaluwarsa; marketplace target kadang menolak domain CDN asing; perlu normalisasi ukuran/format), TAPI
+sering **ditunda ke saat publish-keluar** (asinkron). Untuk platform ini disepakati: **import simpan URL channel dulu**
+(cukup untuk reconcile/lihat); re-host ke S3/GCS+CDN adalah **follow-up di langkah publish-keluar**, bukan saat import.
+
 ---
 
 ## 8. Uji (kunci perilaku)
 
-70 tes `reversesync` hijau, semua memanggil helper **pure static** / method publik:
+108 tes `reversesync` hijau, semua memanggil helper **pure static** / method publik:
 
 | Test | Fokus |
 |---|---|
@@ -267,6 +309,8 @@ Tiga mekanisme yang dipertimbangkan & verdict-nya (untuk referensi): (1) balik f
 | `ReverseWebhookEchoTest` (6) + `…ConfigDrivenTest` (3) | echo/dedup + parse multi-format + `getByPath` index |
 | `ReverseChannelFetchServiceTest` (5) | URL template + token resolve data-driven |
 | `ReverseApplyMappingTest` (5) | masterOverrides/channelData mapping |
+| `ReverseOpsTest` (5) | `operations[]` → 5 op tipe (REBASE_ITEM/ATTRIBUTE_LIST/VARIANT_INVERSE/AGGREGATE/IMAGE_INVERSE) + op-type absen → null/empty + null-safe |
+| `ReverseImageInverseServiceTest` (8) | import: gambar produk (main+gallery) + `image_id`→url per-SKU + single/no-image + null-safe; reconcile: `flagImageDrift` buang blob + drift + master kosong (apply) + no-op |
 
 ---
 
@@ -279,15 +323,25 @@ Tiga mekanisme yang dipertimbangkan & verdict-nya (untuk referensi): (1) balik f
 3. **`reverseSyncConfig`** di `ChannelConfiguration` (semua opsional; isi sesuai shape channel):
    - **Webhook:** `webhookEnabled` + `productEventTopics` + `productIdPath` + `updatedAtPath` + `updatedAtFormat`.
    - **Pull:** `itemUrlTemplate` (kosongkan bila butuh signing → pull "not configured").
-   - **Item nested:** `itemPath` — dot-path (+`[index]`) ke objek item bila ter-wrap (Shopee `response.item_list[0]`);
-     null bila item sudah di root (Shopify).
-   - **Variant:** `variantInverse` (`perSkuArrayPath`, `dimensionsPath`, `axisRefStyle` INDEX_ARRAY|VALUE_FIELDS,
-     `axisIndexField`/`axisValueFields`, `dimensionOptionValueField` bila option list = objek, `fieldMap` dgn key
-     path bersarang/terindeks).
-   - **Attribute list:** `attributeListInverse` (`arrayPath`, `idField`, `valueListField`, `valueField`) →
-     channelData keyed by native attribute id.
-   - **Enricher lokal:** `enrichers[]` (`type=AGGREGATE`, `arrayPath`, `valueField`, `strategy`) untuk stok
-     per-lokasi → skalar.
+   - **Transform (reverse post-processing):** `operations[]` — SATU list op, analog forward
+     `postProcessingRules.operations[]`. Tiap entri = map dgn diskriminator `"op"` + field op-nya (dibaca via
+     `ReverseOps`, di-parse ke descriptor tipenya). **Catatan urutan:** beda dgn forward (yang eksekusi sesuai
+     urutan array), reverse menerapkan op per-**stage** tetap (rebase → de-derive → enrich → classify →
+     attribute_list → variant → image), jadi posisi di array bersifat deklaratif. Lima `op` yang ada:
+     - `{"op":"REBASE_ITEM","itemPath":"response.item_list[0]"}` — item ter-nest → root (null/skip bila sudah di root, Shopify).
+     - `{"op":"VARIANT_INVERSE", perSkuArrayPath, dimensionsPath, axisRefStyle:INDEX_ARRAY|VALUE_FIELDS,
+       axisIndexField/axisValueFields, dimensionOptionValueField (bila option list = objek), fieldMap (key path
+       bersarang/terindeks)}` — un-build array per-SKU → master variants.
+     - `{"op":"ATTRIBUTE_LIST", arrayPath, idField, valueListField, valueField}` → channelData keyed by native attribute id.
+     - `{"op":"AGGREGATE", arrayPath, valueField, strategy}` — enricher lokal, stok per-lokasi → skalar (boleh >1).
+     - `{"op":"IMAGE_INVERSE", imagesPath, imageUrlField, imageIdField, mainImageField, galleryImagesField,
+       variantsPath, variantImageRefField, variantSkuField, variantImagesField}` — gambar produk → master
+       `mainImage`(pertama)+`galleryImages`(sisanya); `variants[].image_id` di-resolve (id→url) → per-SKU `variantImages`.
+       Baca dari item MENTAH (retain image id). Lihat §7b.
+
+     `operations[]` adalah **satu-satunya sumber** transform reverse — **tidak ada** field ber-tipe lama
+     (`itemPath`/`variantInverse`/`attributeListInverse`/`enrichers[]`) dan **tidak ada** fallback. Op-type yang
+     tidak ada di `operations[]` → stage-nya di-skip (mis. tanpa `REBASE_ITEM` item dianggap sudah di root).
 4. **`ecommerce_master_attributes.reverseWritePolicy`** — set policy per field yang ingin diaktifkan (DRAFT_REVIEW
    / CHANNEL_AUTHORITATIVE); sisanya default MASTER_AUTHORITATIVE (aman).
 5. **`integrationConfig.authentication`** — sudah ada dari forward; reverse pakai `headerName` + `credentialMapping`

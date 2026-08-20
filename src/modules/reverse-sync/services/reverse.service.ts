@@ -22,18 +22,39 @@ import type {
   ChannelListPage,
   ReverseImportRequest,
   ReverseImportResult,
+  ReverseImportErrorCode,
 } from "../types/reverse";
 
 const BASE = "http://localhost:8888/labamap/api/v1/channels/reverse";
 const JSON_HEADERS = { "Content-Type": "application/json" };
 
-/** Typed error carrying the HTTP status + backend `error` message. */
+/**
+ * Typed error carrying the HTTP status + backend message.
+ *
+ * `/import*` errors additionally carry a structured `ReverseImportError` envelope —
+ * `code` plus (for `DUPLICATE_MASTER_SKU`) `sku` and best-effort `conflictingMasterId`,
+ * so callers can offer a one-click "link to the conflicting master instead".
+ */
 export class ReverseApiError extends Error {
   readonly status: number;
-  constructor(message: string, status: number) {
+  /** `ReverseImportError.code` when the body was the `/import` error envelope. */
+  readonly code?: ReverseImportErrorCode;
+  /** Clashing SKU (present on `DUPLICATE_MASTER_SKU`). */
+  readonly sku?: string | null;
+  /** Existing master to link to instead (best-effort on `DUPLICATE_MASTER_SKU`; may be null). */
+  readonly conflictingMasterId?: string | null;
+
+  constructor(
+    message: string,
+    status: number,
+    extra?: { code?: ReverseImportErrorCode; sku?: string | null; conflictingMasterId?: string | null },
+  ) {
     super(message);
     this.name = "ReverseApiError";
     this.status = status;
+    this.code = extra?.code;
+    this.sku = extra?.sku;
+    this.conflictingMasterId = extra?.conflictingMasterId;
   }
 }
 
@@ -49,15 +70,24 @@ export function isNotConfigured(err: unknown): boolean {
 async function buildError(res: Response): Promise<ReverseApiError> {
   const rawText = await res.text().catch(() => "");
   let message = rawText || res.statusText;
+  let extra: { code?: ReverseImportErrorCode; sku?: string | null; conflictingMasterId?: string | null } | undefined;
   try {
     const body = rawText ? (JSON.parse(rawText) as Record<string, unknown>) : undefined;
     if (body && typeof body === "object") {
+      // `/pull*` → { error }; `/import*` → ReverseImportError { code, message, sku?, conflictingMasterId? }.
       message = (body.error as string) ?? (body.message as string) ?? message;
+      if (typeof body.code === "string") {
+        extra = {
+          code: body.code as ReverseImportErrorCode,
+          sku: (body.sku as string) ?? null,
+          conflictingMasterId: (body.conflictingMasterId as string) ?? null,
+        };
+      }
     }
   } catch {
     // Non-JSON body — keep rawText.
   }
-  return new ReverseApiError(message, res.status);
+  return new ReverseApiError(message, res.status, extra);
 }
 
 async function handleJson<T>(res: Response): Promise<T> {
