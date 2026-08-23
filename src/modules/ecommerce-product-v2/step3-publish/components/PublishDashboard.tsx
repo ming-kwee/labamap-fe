@@ -1,5 +1,5 @@
 "use client";
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useState, useCallback, useRef } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/shared/ui/card/Card";
@@ -417,6 +417,14 @@ export default function PublishDashboard({ masterProductId }: Props) {
   // endpoint isn't deployed, in which case the update action stays always-available.
   const [diffs, setDiffs] = useState<Record<string, PublishDiffResponse>>({});
 
+  // Latest product + store snapshot for refreshDiff, so it can send the SAME masterProductData a real
+  // publish sends (buildPublishMasterData) WITHOUT taking product/storeData as deps (which would re-fire
+  // the diff-fetch effect on every poll). Kept current each render; refreshDiff reads .current.
+  const diffInputRef = useRef<{ product: MasterProduct | null; storeData: ChannelProductData[] }>({
+    product: null,
+    storeData: [],
+  });
+
   // Publish-trace inspector (developer diagnostic — opens a modal dry-run of the pipeline)
   const [traceRequest, setTraceRequest] = useState<PublishTraceRequest | null>(null);
   const [traceStoreName, setTraceStoreName] = useState<string | null>(null);
@@ -514,9 +522,20 @@ export default function PublishDashboard({ masterProductId }: Props) {
   //
   // Ask the read-only `publish-diff` endpoint whether a live listing has unpublished changes.
   // Best-effort: a 404 (endpoint not deployed) is swallowed so the update action stays available.
+  // Keep the diff input snapshot current (read by refreshDiff via ref — see diffInputRef).
+  diffInputRef.current = { product, storeData };
+
   const refreshDiff = useCallback(async (storeId: string) => {
     try {
-      const d = await PublishService.publishDiff({ masterProductId, storeId });
+      // Send the SAME desired-state a real publish sends (master + Step-2 overrides + channelData). Without
+      // this the backend HYDRATES from the stored master, producing a DIFFERENT payload than the publish
+      // (e.g. the Step-2 `status` field present at publish but absent in the hydrate, and product_type
+      // resolved differently) → intendedHash never equals the publish-stamped baseline → a permanent false
+      // "ada perubahan" badge even right after a successful publish. Same builder as handlePublishSingle.
+      const { product: p, storeData: sd } = diffInputRef.current;
+      const store = sd.find((s) => s.storeId === storeId);
+      const masterProductData = buildPublishMasterData(p, store);
+      const d = await PublishService.publishDiff({ masterProductId, storeId, masterProductData });
       setDiffs((prev) => ({ ...prev, [storeId]: d }));
     } catch { /* endpoint may be absent / listing not live — ignore, fall back to no-diff */ }
   }, [masterProductId]);
