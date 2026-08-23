@@ -163,6 +163,7 @@ export default function MerchantPublishView({
             key={d.storeId}
             data={d}
             lc={lifecycleOf(d)}
+            diff={diffs[d.storeId]}
             result={publishResults[d.storeId]}
             onPublish={() => onPublishStore(d.storeId)}
             onDelist={() => onDelistStore(d.storeId)}
@@ -217,6 +218,7 @@ const ICON_BTN_DANGER =
 function ChannelRow({
   data,
   lc,
+  diff,
   result,
   onPublish,
   onDelist,
@@ -226,6 +228,7 @@ function ChannelRow({
 }: {
   data: ChannelProductData;
   lc: Lifecycle;
+  diff?: PublishDiffResponse;
   result?: StorePublishResult;
   onPublish: () => void;
   onDelist: () => void;
@@ -246,6 +249,8 @@ function ChannelRow({
   const publishedTime = result?.publishedAt || data.publishedAt;
   const showFix = state === "failed" || (state === "blocked" && !updateGate);
   const canHistory = lc.isLive || state === "delisted" || (data.publishAttempts ?? 0) > 0;
+  // What the pending UPDATE would change (variants/images/product) — shown on a live_changed row.
+  const changeChips = state === "live_changed" ? describeDiffChanges(diff) : [];
 
   // One-line status detail under the channel name — keeps every row the same height so a
   // published listing stays just as visible as one that still needs work.
@@ -362,9 +367,28 @@ function ChannelRow({
         </div>
       </div>
 
-      {/* Detail strip — only when there's something to fix (keeps clean rows uniform) */}
-      {(showFix || updateGate) && (
+      {/* Detail strip — only when there's something to fix or a pending change to show. */}
+      {(showFix || updateGate || (state === "live_changed" && changeChips.length > 0)) && (
         <div className="mt-2.5 sm:pl-[3.25rem]">
+          {/* Pending-change breakdown for a live listing (not while the update is gated — that strip
+              already explains the delist-and-republish path). Demystifies "ada perubahan". */}
+          {state === "live_changed" && !updateGate && changeChips.length > 0 && (
+            <div className="rounded-lg border border-brand-200 bg-brand-50/60 px-3 py-2 dark:border-brand-500/30 dark:bg-brand-500/10">
+              <p className="flex items-center gap-1.5 text-xs font-medium text-brand-700 dark:text-brand-400">
+                <RefreshCw className="h-3.5 w-3.5 flex-shrink-0" /> Perubahan belum tayang
+              </p>
+              <div className="mt-1.5 flex flex-wrap gap-1.5">
+                {changeChips.map((c, i) => (
+                  <span
+                    key={`${c}-${i}`}
+                    className="rounded-full bg-white px-2 py-0.5 text-xs text-brand-700 ring-1 ring-inset ring-brand-200 dark:bg-brand-500/15 dark:text-brand-300 dark:ring-brand-500/30"
+                  >
+                    {c}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
           {showFix && <FixList result={result} blocked={state === "blocked"} />}
           {updateGate && (
             <div className="rounded-lg border border-warning-200 bg-warning-50 px-3 py-2 dark:border-warning-500/30 dark:bg-warning-500/10">
@@ -496,6 +520,35 @@ function RowLink({ href, tone = "neutral", children }: { href: string; tone?: "n
       {children}
     </Link>
   );
+}
+
+/**
+ * Human-readable list of what a live listing's pending UPDATE would change, from the publish-diff
+ * buckets. Turns the opaque "ada perubahan" badge into concrete items so a real edit is instantly
+ * distinguishable from a spurious dirty flag. Images have no "update" (URL is identity → add/delete only).
+ * When the diff reports dirty but itemizes nothing (product-level scalar change — the backend diff does not
+ * bucket per-field product changes), we say so plainly instead of leaving the merchant guessing.
+ */
+function describeDiffChanges(diff?: PublishDiffResponse): string[] {
+  if (!diff) return [];
+  const out: string[] = [];
+  const v = diff.variants, pi = diff.productImages, vi = diff.variantImages;
+  const n = (a?: string[]) => a?.length ?? 0;
+
+  if (n(v?.add)) out.push(`${n(v?.add)} varian baru`);
+  if (n(v?.update)) out.push(`${n(v?.update)} varian diperbarui`);
+  if (n(v?.delete)) out.push(`${n(v?.delete)} varian dihapus`);
+
+  const imgAdd = n(pi?.add) + n(vi?.add);
+  const imgDel = n(pi?.delete) + n(vi?.delete);
+  if (imgAdd) out.push(`${imgAdd} gambar baru`);
+  if (imgDel) out.push(`${imgDel} gambar dihapus`);
+
+  if (diff.product?.changed) out.push("Info produk (nama/harga/kategori/dll.)");
+
+  // dirty but nothing itemized → a product-level field changed that the diff doesn't break down.
+  if (out.length === 0 && diff.dirty) out.push("Perubahan pada info produk");
+  return out;
 }
 
 function FixList({ result, blocked }: { result?: StorePublishResult; blocked: boolean }) {
