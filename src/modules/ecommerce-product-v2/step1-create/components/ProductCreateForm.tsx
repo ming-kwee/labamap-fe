@@ -151,7 +151,7 @@ export default function ProductCreateForm({
 
   const { getVisibleFields } = useFieldVisibility();
 
-  const { fieldErrors, handleFieldBlur: validateOnBlur } = useFieldValidation();
+  const { fieldErrors, handleFieldBlur: validateOnBlur, clearFieldError } = useFieldValidation();
 
   const {
     isSubmitting,
@@ -276,8 +276,15 @@ export default function ProductCreateForm({
   const handleFieldChange = useCallback(
     (fieldName: string, value: any) => {
       handleFieldChangeInternal(fieldName, value);
+      // Clear a standing validation error the moment the field gets a value. Without this, a required-error
+      // set by an earlier blur lingers even after the user provides a value — most visibly on the productType
+      // picker, whose select() commits the value AND blurs in the same tick (so the blur validated the stale
+      // empty value → "category is required" flashed until the next blur, only in edit mode).
+      if (value !== null && value !== undefined && value !== '') {
+        clearFieldError(fieldName);
+      }
     },
-    [handleFieldChangeInternal]
+    [handleFieldChangeInternal, clearFieldError]
   );
 
   const handleFieldBlur = useCallback(
@@ -585,6 +592,7 @@ export default function ProductCreateForm({
         dimensionOptions={dimensionOptions}
         productTypeName={resolvedProductTypeName}
         isLoadingVariantOptions={isLoadingVariantOptions}
+        isEditMode={mode === 'edit'}
       />
 
       {/* JSON preview */}

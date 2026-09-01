@@ -62,6 +62,12 @@ interface VariantConfiguratorProps {
   isLoadingVariantOptions?: boolean;
   /** ISO currency code for per-variant money cells. Defaults to IDR (platform default). */
   currency?: string;
+  /**
+   * True when editing an EXISTING product. The "reset axes + SKUs on category change" behaviour is a
+   * create-new convenience (a fresh category shouldn't inherit the previous one's variant rows). In edit
+   * mode it must be OFF so switching product type (incl. A→B→A) never wipes the product's loaded variants.
+   */
+  isEditMode?: boolean;
 }
 
 const VariantConfigurator: React.FC<VariantConfiguratorProps> = ({
@@ -76,6 +82,7 @@ const VariantConfigurator: React.FC<VariantConfiguratorProps> = ({
   productTypeName,
   isLoadingVariantOptions = false,
   currency = 'IDR',
+  isEditMode = false,
 }) => {
   function isFieldVisible(field: any, currentFormData: any): boolean {
     if (!field.conditionalVisibility) return true;
@@ -310,6 +317,36 @@ const VariantConfigurator: React.FC<VariantConfiguratorProps> = ({
   // Effective dimensions: prefer schema/ProductType; fall back to variant-derived.
   const effectiveDimensions = activeDimensions.length > 0 ? activeDimensions : derivedDimensions;
 
+  // Axes the existing SKUs actually use (non-metadata string keys across the variant rows).
+  const variantAxisKeys = useMemo(() => {
+    const keys = new Set<string>();
+    for (const v of variants) {
+      for (const key of Object.keys(v)) {
+        if (NON_DIMENSION_KEYS.has(key)) continue;
+        const val = v[key];
+        if (val == null || typeof val !== 'string' || !val.trim()) continue;
+        keys.add(key);
+      }
+    }
+    return Array.from(keys);
+  }, [variants]);
+
+  // Axes present in the SKUs but NOT declared by the SELECTED product type — orphaned by a re-classification
+  // (e.g. an Apparel product with Size/Color re-typed to Audio-Device that declares neither). Industry norm
+  // (Shopify/Ginee/ChannelAdvisor): the category is classification metadata, the SKUs belong to the product —
+  // so we PRESERVE the variant data and WARN, never auto-wipe and never hard-lock the type. Only meaningful
+  // once a product type is resolved (and its dimensions loaded).
+  const orphanAxes = useMemo(() => {
+    if (!productTypeName || isLoadingVariantOptions || variantAxisKeys.length === 0) return [];
+    const normalize = (s: string) => s.toLowerCase().replace(/[_-]/g, '');
+    const declared = new Set<string>();
+    for (const d of productTypeDimensions) {
+      if (d.attributeCode) declared.add(normalize(d.attributeCode));
+      if (d.attributeName) declared.add(normalize(d.attributeName));
+    }
+    return variantAxisKeys.filter(k => !declared.has(normalize(k)));
+  }, [productTypeName, isLoadingVariantOptions, variantAxisKeys, productTypeDimensions]);
+
   // Effective variant table columns — inject dimension columns when schema didn't include them.
   // In edit mode, schema is essential (no type-specific fields), so variantConfig has no
   // dimension columns (Color, Size, Material). effectiveDimensions derives them from variant
@@ -332,14 +369,28 @@ const VariantConfigurator: React.FC<VariantConfiguratorProps> = ({
 
   React.useEffect(() => {
     const currentCategory = formData?.category;
-    if (currentCategory !== lastCategory && activeDimensions.length > 0) {
+    if (currentCategory === lastCategory) return;
+    // The "category" field value IS the productTypeId (see CategorySelectField).
+    // EDIT mode: NEVER auto-wipe. The product's loaded variants must survive any product-type change,
+    //   including switching A → B → A. Just record the new type.
+    // INITIAL assignment (lastCategory empty): adopt WITHOUT wiping — an imported product's type starts unset,
+    //   so the merchant picking one must not lose the loaded variants; a create-new first pick has nothing
+    //   to wipe anyway.
+    if (isEditMode || lastCategory == null || lastCategory === '') {
+      setLastCategory(currentCategory);
+      return;
+    }
+    // CREATE-new genuine switch → reset axes + generated SKUs so a fresh category doesn't inherit the previous
+    // category's (incompatible) variant rows. Defer until the new dimensions have loaded (original behaviour),
+    // so the reset lands on the right axis set and lastCategory is recorded only once the wipe happens.
+    if (activeDimensions.length > 0) {
       const resetSelections: Record<string, string[]> = {};
       activeDimensions.forEach(dim => { resetSelections[dim.name] = []; });
       setSelectedOptions(resetSelections);
       setVariants([]);
       setLastCategory(currentCategory);
     }
-  }, [formData?.category, activeDimensions, lastCategory]);
+  }, [formData?.category, activeDimensions, lastCategory, isEditMode]);
 
   React.useEffect(() => {
     if (!value) return;
@@ -526,6 +577,33 @@ const VariantConfigurator: React.FC<VariantConfiguratorProps> = ({
             ))}
           </ul>
           <p className="text-[10px] text-amber-500/80 dark:text-amber-400/70 mt-1">Pesan ini hanya tampil saat development.</p>
+        </div>
+      )}
+
+      {/* Orphan-axis warning (production): the product's SKUs use variant axes the selected product type does
+          not recognise (e.g. re-typing an Apparel product with Size/Color to Audio-Device). The data is kept
+          intact — this only warns so the merchant can adjust the axis, change the type, or clear SKUs. */}
+      {orphanAxes.length > 0 && (
+        <div
+          data-testid="orphan-axis-warning"
+          role="status"
+          className="rounded-lg border border-amber-300 dark:border-amber-600/60 bg-amber-50 dark:bg-amber-900/15 px-3 py-2.5"
+        >
+          <p className="text-xs font-semibold text-amber-800 dark:text-amber-300">
+            ⚠ Axis varian tak dikenal oleh product type{productTypeName ? ` "${productTypeName}"` : ''}
+          </p>
+          <p className="text-xs text-amber-700 dark:text-amber-400 mt-1">
+            SKU yang sudah ada memakai{' '}
+            {orphanAxes.map((a, i) => (
+              <React.Fragment key={a}>
+                {i > 0 && ', '}
+                <strong className="font-mono">{a}</strong>
+              </React.Fragment>
+            ))}
+            , tapi product type ini tak mendeklarasikannya sebagai dimensi varian. <strong>Data SKU tetap disimpan.</strong>{' '}
+            Sesuaikan axis, pilih product type yang cocok, atau hapus SKU bila memang ingin restrukturisasi. Axis yang
+            tak dikenal mungkin tak bisa diekspresikan di sebagian channel saat publish.
+          </p>
         </div>
       )}
 

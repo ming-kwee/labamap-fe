@@ -20,6 +20,8 @@ interface VariantsSectionProps {
   productTypeName?: string | null;
   /** True while useProductTypeVariants is fetching dimensions + options. */
   isLoadingVariantOptions?: boolean;
+  /** True when editing an existing product — the configurator must NOT auto-wipe variants on a type change. */
+  isEditMode?: boolean;
 }
 
 export default function VariantsSection({
@@ -33,6 +35,7 @@ export default function VariantsSection({
   dimensionOptions,
   productTypeName,
   isLoadingVariantOptions,
+  isEditMode,
 }: VariantsSectionProps) {
   const hasVariantsEnabled = !!formData['hasVariants'];
 
@@ -115,6 +118,7 @@ export default function VariantsSection({
             dimensionOptions={dimensionOptions}
             productTypeName={productTypeName}
             isLoadingVariantOptions={isLoadingVariantOptions}
+            isEditMode={isEditMode}
           />
         )}
       </CardContent>

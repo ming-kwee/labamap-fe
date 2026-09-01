@@ -86,8 +86,11 @@ export default function CategorySelectField({
     onChange(pt.id);
     setQuery('');
     setOpen(false);
-    onBlur();
-  }, [onChange, onBlur]);
+    // Do NOT call onBlur() here: onChange + onBlur in the same tick made the blur validate the STALE value
+    // (setFormData hasn't committed yet) → "category is required" flashed on every pick until the next blur.
+    // onChange clears the error (parent) and commits the value; a real blur (outside click / Escape) still
+    // validates the committed value.
+  }, [onChange]);
 
   const clear = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
