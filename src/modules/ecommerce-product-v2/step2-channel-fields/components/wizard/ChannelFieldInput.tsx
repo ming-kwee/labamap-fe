@@ -1,10 +1,13 @@
 "use client";
 import React, { useState, useEffect } from "react";
+import { useParams } from "next/navigation";
 import type { ChannelFormField, MasterMappedSuggestion } from "../../types/channelStore";
 import CategoryTreePicker from "./CategoryTreePicker";
 import MoneyInput from "../../../components/inputs/MoneyInput";
 import QuantityInput from "../../../components/inputs/QuantityInput";
 import { classifyNumericField } from "../../../components/inputs/field-format";
+import { MediaUploadService } from "../../../services/media-upload.service";
+import { useAuth } from "@/shared/contexts/AuthContext";
 
 const BASE = "http://localhost:8888/labamap/api/v1";
 
@@ -158,6 +161,101 @@ function MappingSuggestionBanner({ suggestion, onAccept, onDismiss }: MappingSug
   );
 }
 
+// ── IMAGE field: single-image upload (e.g. TikTok size chart) ─────────────────
+
+/**
+ * Renders a single image-upload control for an IMAGE-typed channel field. The stored value is a plain
+ * image URL string (GCS publicUrl); the backend (ChannelPublishService.stageSizeChart) wraps it into the
+ * channel body shape. Own component so useAuth/useParams are called at a valid top level. orgId comes from
+ * the auth context, productId from the /products/[masterProductId]/… route — no prop threading needed.
+ */
+function ChannelImageInput({ field, value, onChange, disabled }: Omit<Props, "validationRules">) {
+  const { organization } = useAuth();
+  const params = useParams();
+  const orgId = organization?.organizationId ?? "";
+  const productId = String((params as Record<string, string | string[]>)?.masterProductId ?? "");
+  const url = typeof value === "string" ? value : "";
+
+  const [uploading, setUploading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const inputRef = React.useRef<HTMLInputElement>(null);
+
+  async function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setError(null);
+    setUploading(true);
+    try {
+      const res = await MediaUploadService.uploadImage(file, orgId, productId, "gallery");
+      onChange(field.fieldName, res.publicUrl);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Upload failed");
+    } finally {
+      setUploading(false);
+      if (inputRef.current) inputRef.current.value = ""; // allow re-selecting the same file
+    }
+  }
+
+  return (
+    <div className="space-y-2">
+      <input
+        ref={inputRef}
+        type="file"
+        accept="image/*"
+        onChange={handleFile}
+        disabled={disabled || uploading}
+        className="hidden"
+        id={`img-${field.fieldName}`}
+      />
+      {url ? (
+        <div className="flex items-center gap-3">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={url}
+            alt={field.label}
+            className="h-20 w-20 rounded-lg border border-gray-200 dark:border-gray-700 object-cover"
+          />
+          <div className="flex flex-col gap-1">
+            <button
+              type="button"
+              disabled={disabled || uploading}
+              onClick={() => inputRef.current?.click()}
+              className="px-2.5 py-1 rounded-lg text-xs font-medium border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:border-brand-400 disabled:opacity-50"
+            >
+              {uploading ? "Uploading…" : "Replace"}
+            </button>
+            <button
+              type="button"
+              disabled={disabled || uploading}
+              onClick={() => onChange(field.fieldName, "")}
+              className="px-2.5 py-1 rounded-lg text-xs font-medium text-red-500 hover:text-red-600 disabled:opacity-50"
+            >
+              Remove
+            </button>
+          </div>
+        </div>
+      ) : (
+        <button
+          type="button"
+          disabled={disabled || uploading}
+          onClick={() => inputRef.current?.click()}
+          className="flex h-20 w-full items-center justify-center gap-2 rounded-xl border border-dashed border-gray-300 dark:border-gray-600 text-sm text-gray-500 dark:text-gray-400 hover:border-brand-400 hover:text-brand-500 disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          {uploading ? (
+            <>
+              <span className="h-4 w-4 rounded-full border-2 border-brand-500 border-t-transparent animate-spin" />
+              Uploading…
+            </>
+          ) : (
+            <>+ Upload {field.label}</>
+          )}
+        </button>
+      )}
+      {error && <p className="text-xs text-red-500">{error}</p>}
+    </div>
+  );
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 
 export default function ChannelFieldInput({ field, value, onChange, disabled, validationRules: validationRulesOverride }: Props) {
@@ -218,6 +316,9 @@ export default function ChannelFieldInput({ field, value, onChange, disabled, va
   );
 
   function renderInput() { switch (field.fieldType) {
+    case "IMAGE":
+      return <ChannelImageInput field={field} value={value} onChange={onChange} disabled={disabled} />;
+
     case "TEXTAREA":
       return (
         <textarea

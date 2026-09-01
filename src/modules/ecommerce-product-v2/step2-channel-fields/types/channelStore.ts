@@ -399,6 +399,8 @@ export type ChannelFieldType =
   | "URL"
   | "EMAIL"
   | "COLOR"
+  /** Single-image upload (GCS publicUrl stored as the value) — e.g. TikTok size chart */
+  | "IMAGE"
   /** Scenario C: multi-level hierarchical category tree picker */
   | "CATEGORY_TREE";
 
