@@ -344,3 +344,29 @@ mode BUCKETS) mengisi model_id untuk variant dikenal dan **membiarkan kosong** u
 memanggil endpoint channel dari metadata. Semua channel-spesifik ada di **metadata** (`update_CP_Variants*` +
 `idtracking#variants` + `diff-id-field`), runtime nol pengetahuan channel. Yang tersisa untuk go-live Shopee =
 mengarang metadata `update_price/update_stock/delete_model` dengan **payload terverifikasi** + E2E.
+
+---
+
+## Kapabilitas UPDATE per-channel (2026-08-23) — WIX + TikTok
+
+Setelah `channel-update-enabled=true`, tombol Step-3 jadi **"Perbarui"** (UPDATE in-place) alih-alih
+"Delist & publish ulang". Cakupan update varian/media BERBEDA per model channel:
+
+| Channel | Model | Varian pada UPDATE | Media pada UPDATE |
+|---|---|---|---|
+| **Shopify** | RECONCILE_IN_ITEM | ✅ satu PUT rekonsiliasi by id | ✅ M2 add-only / M3 delete / M5 reorder / V4 assoc |
+| **Shopee** | PER_MODEL_BUCKETS | ✅ update/add/delete/stock (ter-seed) | pre-upload media |
+| **TikTok** | (efektif in-item) | ✅ **inline** — `PUT /products/{id}` membawa `skus[]` penuh | ✅ **inline** — body membawa `main_images[]` (uri) |
+| **WIX** | multi-call | ✅ **`update_CP_Variants`** = `PATCH /products/{id}/variants` (idempotent re-assert) | ✅ **v1 replace-on-change** (read_CP capture → re-add → bulk delete old), gated `${product.media_sync}` — pending E2E; lihat [`10-wix-media-id-tracking.md`](10-wix-media-id-tracking.md) §8 |
+
+**TikTok** tidak butuh workaction varian/media terpisah: `update_CP` (`output:{}`) meneruskan body produk
+transform penuh yang sudah berisi `skus[]` + `main_images[]` (apiSchema TikTok). Jadi "Perbarui" TikTok
+menyinkronkan varian + media inline (gambar baru tetap lewat pre-upload seperti create).
+
+**WIX** — `update_CP_Variants` (reuse `wixCreateVariantsWorkflow`, `PATCH /variants` idempotent):
+"Perbarui" menyinkronkan harga/stok/berat per-varian. **Media WIX pada UPDATE kini di-seed sebagai
+replace-on-change (v1, 2026-08-23)**: `POST /media` menambah tanpa dedup, jadi surgical mustahil — modelnya
+`read_CP` menangkap mediaId saat ini → re-add semua desired → `delete_CP_Media` bulk-hapus id lama (urutan
+add-sebelum-delete di workflow membuat hasil akhir = desired). Semua di-gate `${product.media_sync}` (BFF set
+hanya saat set gambar berubah) → edit non-gambar nol panggilan media. Butuh sync generic guard + bulk-delete.
+Detail + E2E: [`10-wix-media-id-tracking.md`](10-wix-media-id-tracking.md).

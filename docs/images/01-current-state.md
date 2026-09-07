@@ -8,7 +8,9 @@
   `POST /api/v1/media/upload/batch`, `DELETE /api/v1/media/delete`, `/health`, `/test`.
 - `media/service/MediaUploadService.java`:
   - GCP Cloud Storage; lazy `Storage` client via `GOOGLE_APPLICATION_CREDENTIALS`
-    (`gcp.storage.bucket-name:product-images-production`, `gcp.storage.project-id`).
+    (`gcp.storage.bucket-name:product-images-production`, `gcp.storage.project-id`). Init is
+    **bounded-retry** (`GcsMediaStorageProvider`): re-attempts while null up to `gcp.storage.max-init-attempts`
+    (default 5) → self-heals if creds arrive late, then stops (no per-call spam).
   - `uploadProductImage(fileBytes, contentType, …)` — **server-proxied** (bytes streamed through the BFF),
     creates a blob, returns `publicUrl = https://storage.googleapis.com/{bucket}/{blob}`.
   - `validateImage(...)` — max **10MB** (`media.upload.max-file-size`), content-type must be `image/*`,

@@ -67,6 +67,13 @@ Di Shopify REST, **gambar varian bukan entitas terpisah** — ia adalah **produc
   menghitung ulang dari known terbaru (idempoten).
 - **Data-driven**: metadata workaction + support field; `apiSchema`/JOLT tak disentuh.
 
+> **Produk IMPORT (ReverseSync, docs/reversesync/07 Phase 4).** Agar produk hasil import bisa sync gambar varian,
+> import merekam `variantChannelIds` (sku→channel variant id) + baseline asosiasi `sku::imageKey(src)` dari payload
+> channel (`ReverseImportService.variantChannelIdsFrom` / `variantImageBaselineFrom`); re-host me-re-key stem cdn→platform.
+> Tanpa `variantChannelIds`, V4 balik `[]` dan upload varian tak bisa mengisi `variant.id` → tak ada gambar varian.
+> **⚠️ Interaksi dengan M5 reorder:** gambar varian yang BARU di-upload belum ber-channel-id saat reorder disusun →
+> PUT reorder full-list akan **menghapusnya**. Karena itu M5 kini **skip pada add-run** (lihat `07-shopify-media-reorder.md`).
+
 ## 5. Rencana bertahap (V1–V5)
 
 ### Phase V0 — Pre-flight & keputusan (tanpa kode)

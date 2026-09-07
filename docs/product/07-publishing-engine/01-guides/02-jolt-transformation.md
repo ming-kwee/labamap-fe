@@ -68,12 +68,11 @@ This ensures the JOLT shift spec for images (which expects an array) always rece
 
 ### Operation Scopes
 
-| Scope | Where it runs | Operations |
-|-------|---------------|------------|
-| DOCUMENT | Top-level transformed map | `SET_FIELD`, `CONDITIONAL_SET`, `CROSS_LINK`, `CONCAT_INTO` |
-| LIST | List at `rule.sourcePath` | `FOR_EACH`, `EXTRACT_DIMENSIONS`, `MAP_TO_INDEXED`, `FILTER`, `BUILD_CHOICES_MAP`, `ENRICH_VARIANT_MEDIA` |
+| Scope    | Where it runs                       | Operations                                                                                                                                                |
+|----------|-------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------|
+| DOCUMENT | Top-level transformed map           | `SET_FIELD`, `CONDITIONAL_SET`, `CROSS_LINK`, `CONCAT_INTO`                                                                                               |
+| LIST     | List at `rule.sourcePath`           | `FOR_EACH`, `EXTRACT_DIMENSIONS`, `MAP_TO_INDEXED`, `FILTER`, `BUILD_CHOICES_MAP`, `ENRICH_VARIANT_MEDIA`                                                 |
 | PER_ITEM | Each item inside `FOR_EACH.steps[]` | `SET_DEFAULT`, `UNWRAP_FIELD`, `STRING_TO_OBJECT`, `AUTO_INCREMENT`, `RENAME_FIELD`, `REMOVE_FIELD`, `COPY_FIELD`, `COERCE_TYPE`, `WRAP_ARRAY_TO_OBJECTS` |
-| LEGACY | Auto-converted by `convertLegacyRule()` | `ENRICH_IMAGES`, `ENRICH_MEDIA`, `GENERATE_OPTIONS`, `MAP_DIMENSIONS`, `ENRICH_VARIANTS`, `LINK_MEDIA_TO_CHOICES` |
 
 ### Quick-Start Example (Shopify Variants)
 
@@ -97,7 +96,8 @@ This ensures the JOLT shift spec for images (which expects an array) always rece
 }
 ```
 
-Legacy rules with a single `type` field are auto-converted at runtime via `convertLegacyRule()` — no data migration required.
+The legacy single-`type` rule format was removed (`operations[]` is the only form now) — see guide
+`39-post-processing-legacy-op-decommission-plan.md`.
 
 For all 19 implemented operations with full parameter tables see [`../02-api-reference/04-post-processing-operations.md`](../02-api-reference/04-post-processing-operations.md).  
 For rule JSON structure, channel examples, naming conventions, and pitfalls see [`05-post-processing-config.md`](05-post-processing-config.md).
@@ -133,12 +133,12 @@ TransformationResult applyTransformation(
 
 ### Transformation Types
 
-| Type | Input | Output | Config key |
-|------|-------|--------|------------|
-| `URL_ARRAY_TO_SRC_OBJECTS` | `["url1", "url2"]` | `[{"src": "url1"}, {"src": "url2"}]` | `propertyName` (default `"src"`) |
-| `SIMPLE_ARRAY` | any value or list | JSON-serialized array | — |
-| `STRING_TO_ARRAY` | any single value | `["value"]` | — |
-| `OBJECT_WRAPPER` | any value | `{"propertyName": value}` | `propertyName` (default `"value"`) |
+| Type                       | Input              | Output                               | Config key                         |
+|----------------------------|--------------------|--------------------------------------|------------------------------------|
+| `URL_ARRAY_TO_SRC_OBJECTS` | `["url1", "url2"]` | `[{"src": "url1"}, {"src": "url2"}]` | `propertyName` (default `"src"`)   |
+| `SIMPLE_ARRAY`             | any value or list  | JSON-serialized array                | —                                  |
+| `STRING_TO_ARRAY`          | any single value   | `["value"]`                          | —                                  |
+| `OBJECT_WRAPPER`           | any value          | `{"propertyName": value}`            | `propertyName` (default `"value"`) |
 
 `TransformationResult` carries: `fieldName` (possibly overridden by `targetFieldNameOverride`), `fieldValue` (always a String), `wasTransformed` (boolean).
 

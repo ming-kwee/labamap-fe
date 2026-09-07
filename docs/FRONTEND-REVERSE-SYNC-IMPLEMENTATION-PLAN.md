@@ -123,7 +123,23 @@ Detail: [`docs/reversesync/06`](reversesync/06-import-channel-native.md).
   "candidateSku":"red-m", "candidateName":"test 123",
   "channelDataWritten":["200134"], "preview": {…} }
 // matchType ∈ { VARIANT_BARCODE, VARIANT_SKU, PRODUCT_SKU (STRONG) | NAME (WEAK) }. barcode = kunci cross-channel.
+// categoryResolution: kategori channel → Product Type master (biar Step 2 tersedia). NON_NULL bila item punya kategori:
+//   { channelCategoryId, channelCategoryName?, resolvedProductTypeId?, resolvedProductTypeName?, autoResolved }
+//   autoResolved=true  → productTypeId sudah di-set di master (B) → Step 2 langsung jalan.
+//   autoResolved=false → SARAN (C): kategori ada tapi belum ter-map → arahkan user set Product Type di Step 1.
 // /import → 201 (create) / 200 (link). Preview → created=null.
+// STATUS listing hasil import (Step 3 live/ready): listing SUDAH ada di channel → import menandai linkage-nya:
+//   channel status active  → status=PUBLISHED  → Step 3 tampil "live" + publish=UPDATE (bukan CREATE duplikat).
+//   channel status draft/archived → status=READY → tampil "ready"/belum-live, TAPI publish tetap UPDATE (tak duplikat).
+//   Import PUBLISHED juga di-stamp baseline hash → publish TANPA edit = NOOP ("Up to date"), tak sentuh channel.
+//   Setelah EDIT (Shopify): update_CP aktif → publish = UPDATE (push nyata) ke listing yg ada, bukan duplikat.
+//   (Channel lain yg update-nya belum diaktifkan → 409 BLOCKED; bukan duplikat.)
+//   Jadi jangan tampilkan import-live sbg "belum pernah publish"; ia sudah live/ada di channel.
+// GAMBAR (docs/reversesync/07): import menyimpan URL channel lalu RE-HOST async ke storage platform. Respons /import
+//   membawa mediaStatus="PENDING" bila ada job re-host. POLL: GET /import/media-status/{masterProductId} →
+//   { status: PENDING|COMPLETED|FAILED|DEAD|NONE, attempts, lastError }. Tampilkan "gambar sedang diproses" sampai
+//   COMPLETED; sebelum COMPLETED, publish sengaja TIDAK mengirim gambar (guard) → produk tampil tanpa gambar dulu
+//   (bukan error). Setelah COMPLETED, re-push membawa gambar. FAILED/DEAD → tampilkan lastError (mis. sumber 404).
 // ERROR body (semua error /import) → ReverseImportError { code, message, sku?, conflictingMasterId? }:
 //   DUPLIKAT: create master ber-SKU sama (unique {org,sku}) → 409 { "code":"DUPLICATE_MASTER_SKU",
 //     "message":"…", "sku":"red-m", "conflictingMasterId":"mp-2" } → tawarkan "link ke mp-2".
@@ -250,6 +266,12 @@ DELETE /api/v1/admin/master-products/{productId}?organizationId=           ← h
     (unique `{org,sku}`). Tampilkan "SKU `{sku}` sudah dipakai" + tombol **"Link ke produk itu"** → `POST /import`
     ulang dgn `masterProductId = conflictingMasterId`. (`conflictingMasterId` best-effort; bila null, arahkan ke daftar `matches`.)
   - Sukses create → link ke master baru (status **DRAFT** → arahkan ke Step-2 untuk lengkapi & publish).
+- **Product Type (biar Step 2 tak 422 "belum punya Product Type"):** Step 2 dibentuk dari **Product Type master**.
+  Baca `categoryResolution` dari response import:
+  - `autoResolved:true` → `productTypeId` sudah terisi otomatis dari kategori channel → **langsung ke Step 2**.
+  - `autoResolved:false` (kategori ada, belum ter-map) atau `categoryResolution` null → master **belum punya Product
+    Type** → arahkan user ke **Step 1** untuk menetapkan Product Type dulu (tampilkan `channelCategoryName/Id` sbg
+    konteks: "kategori channel: {…} — pilih Product Type yang sesuai"). Setelah di-set, Step 2 tersedia.
 
 ### P1 — Tombol "Tarik dari Channel" (product × store)
 - **Lokasi:** di baris/kartu tiap store pada halaman produk (tempat status publish ditampilkan sekarang), atau di store-detail.

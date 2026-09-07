@@ -1,13 +1,15 @@
 # API Reference — Channel Category Mapping
 
-> **⚠️ DEPRECATION NOTICE (2026-06-16)**  
-> Platform Categories tab dihapus dari frontend (Phase 5+6 complete).  
-> Semua endpoint di dokumen ini **kecuali `/taxonomy/{channelType}/children`** tidak lagi
-> dipanggil oleh frontend dan dapat dihapus dari backend.  
-> Lihat rencana penghapusan lengkap: **`13-channel-category-mapping-backend-cleanup.md`**
+> **🗑️ REMOVED (2026-08-21)** — the standalone `channel_category_mappings` feature has been **deleted** from the
+> backend, executing the cleanup planned in `13-channel-category-mapping-backend-cleanup.md`. Deleted:
+> `ChannelCategoryMappingAdminController` (`/api/v1/admin/channel-category-mappings`), `ChannelCategoryMappingService`,
+> `ChannelCategoryMappingRepository`, `ChannelCategoryMappingDocument`, `ProductTypeMappingRequest`. The FE never
+> called these (it uses `PUT /admin/product-types/{id}/channel-defaults/{channelType}` → `product_types.channelCategoryDefaults`).
+> The `channel_category_mappings` Mongo collection **never existed** (the feature was inert from the start) — nothing to
+> drop. This doc is kept for historical reference only — the endpoints below **no longer exist**.
 
-Base path: `/labamap/api/v1/admin/channel-category-mappings`
-Controller: `ChannelCategoryMappingAdminController`
+Base path: `/labamap/api/v1/admin/channel-category-mappings` *(REMOVED)*
+Controller: `ChannelCategoryMappingAdminController` *(deleted)*
 
 ---
 

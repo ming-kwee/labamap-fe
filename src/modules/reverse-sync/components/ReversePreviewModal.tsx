@@ -81,7 +81,7 @@ export function ReversePreviewModal({
   const busy = submitting !== null;
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-start justify-center overflow-y-auto bg-black/40 p-4 backdrop-blur-sm sm:p-6">
+    <div className="fixed inset-0 z-[100000] flex items-start justify-center overflow-y-auto bg-black/40 p-4 backdrop-blur-sm sm:p-6">
       <div className="my-8 w-full max-w-3xl rounded-2xl bg-white shadow-xl dark:bg-gray-900">
         {/* Header */}
         <div className="flex items-start justify-between gap-3 border-b border-gray-100 px-5 py-4 dark:border-gray-800">

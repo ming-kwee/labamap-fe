@@ -34,10 +34,16 @@ matang: **delta-sync + operasi reorder khusus**, bukan replace-seluruh-array.
 - **CREATE tidak perlu reorder.** `create_CP_Media` POST **sekuensial** mengikuti urutan `product.images`
   (= urutan `_sourceImages`, main dulu), jadi Shopify menetapkan position 1..N sesuai urutan POST → sudah
   benar. Reorder = NOOP pada CREATE.
-- **UPDATE perlu reorder** karena add-only meng-append gambar baru & kept menahan posisi lama.
-- **Guard "reorder-only-if-changed":** hanya kirim PUT reorder bila urutan channel akan menyimpang dari
-  desired (ada add/delete, atau urutan murni berubah). Kalau tidak → NOOP, tanpa panggilan. Ini juga yang
-  membuat CREATE otomatis NOOP.
+- **UPDATE perlu reorder** hanya untuk delete / reorder-murni (semua id sudah diketahui).
+- **⚠️ JANGAN reorder pada run yang ADA PENAMBAHAN gambar (add-run).** Reorder = `PUT /products/{id}.json`
+  dengan `product.images` yang **MENGGANTI SELURUH** daftar gambar. Gambar yang baru ditambah (produk ATAU
+  varian) **belum punya channel id** saat BFF menyusun reorder (id-nya dibuat belakangan di run sync yang sama),
+  jadi PUT reorder akan **menghilangkannya** → Shopify menghapusnya (regresi nyata: variant image terhapus tepat
+  setelah di-upload+asosiasi). Karena itu `reorderNeeded` **mengembalikan false saat `hasAdd`**: gambar baru
+  di-append apa adanya; publish BERIKUTNYA (id sudah di baseline) baru me-reorder dengan set lengkap yang aman.
+- **Guard "reorder-only-if-safe-and-changed":** kirim PUT reorder hanya bila (a) TIDAK ada add-run (semua stem
+  desired punya id di baseline) DAN (b) urutan menyimpang (ada delete, atau urutan murni berubah). Selain itu →
+  NOOP. Ini juga membuat CREATE otomatis NOOP.
 - **Reorder-by-id itu murah** (operasi metadata, tanpa re-upload/CDN churn), jadi "+1 round-trip" hampir
   tak berbiaya dibanding upload (~3 dtk/gambar).
 
@@ -73,10 +79,15 @@ BFF meng-inject (via `ChannelAttributeConverterService`, seperti `product.delete
 
 ### 4.2 Guard di BFF — kapan reorder dikirim
 
-Reorder diperlukan pada UPDATE bila channel melacak gambar, ada baseline, DAN salah satu:
-- `toAdd` tidak kosong (gambar baru pasti di-append → urutan berubah), **atau**
+Reorder diperlukan pada UPDATE bila channel melacak gambar, ada baseline, **TIDAK ada add-run**
+(`hasAdd` = ada stem desired yang belum punya id di baseline → **skip**, karena PUT full-list akan
+menghapus gambar baru yang id-nya belum diketahui), DAN salah satu:
 - `toDelete` tidak kosong (posisi bergeser), **atau**
 - urutan desired ≠ urutan tersimpan (reorder murni tanpa add/delete).
+
+> **Penting (perubahan):** dulu `toAdd` non-empty MEMICU reorder. Itu keliru — gambar yang baru ditambah
+> belum ber-id saat reorder disusun → PUT full-list menghilangkannya (variant image terhapus). Kini add-run
+> **tidak** me-reorder; urutan gambar baru dirapikan di publish berikutnya (id sudah diketahui).
 
 Untuk mendeteksi "reorder murni", listing-state menyimpan **`imageOrder`** (daftar stem terurut) pada
 persist. `computeImageOrder(request, known)` menghasilkan `product.image_order`; helper `reorderNeeded(...)`
@@ -135,9 +146,9 @@ existingImageChannelIds (kept) ─┤► BFF: image_order[] + known_image_ids{} 
 
 ## 7. Pengujian / E2E
 
-- **Unit (BFF):** `computeImageOrder` → stem terurut = urutan `_sourceImages`; `reorderNeeded` true saat
-  toAdd/toDelete non-empty atau urutan berubah, false saat identik (NOOP); `known_image_ids` = baseline −
-  deleted.
+- **Unit (BFF):** `computeImageOrder` → stem terurut = urutan `_sourceImages`; `reorderNeeded` **false saat
+  add-run (`hasAdd`)** (cegah PUT full-list menghapus gambar baru), true saat delete/urutan-berubah dgn semua id
+  diketahui, false saat identik (NOOP); `known_image_ids` = baseline − deleted. (`ImageReorderDecisionTest`)
 - **Unit (sync):** resolusi `image_order` × (known ∪ captured) → `[{id,position}]` dengan position 1..N;
   SKIP saat `image_order` kosong; entri tanpa id di-lewati.
 - **E2E (lanjut runbook 06):**

@@ -191,6 +191,26 @@ export interface ReverseImportMatch {
   matchType: string; // "SKU" | "NAME" | …
 }
 
+/**
+ * `categoryResolution` — how the imported item's channel category maps to a master
+ * Product Type. NON_NULL whenever the channel item carries a category.
+ *
+ * Step 2 (Channel Fields) is built from the master's Product Type, so this decides
+ * where the merchant goes after import:
+ *   • `autoResolved: true`  → `resolvedProductTypeId` was set on the master → Step 2 is ready.
+ *   • `autoResolved: false` → the category exists but isn't mapped to a Product Type yet →
+ *     the merchant must pick one in Step 1 first (show `channelCategoryName`/`Id` as context).
+ * A null `categoryResolution` means the item had no channel category at all → also Step 1.
+ * See docs/reversesync/06-import-channel-native.md §3.
+ */
+export interface ReverseCategoryResolution {
+  channelCategoryId: string;
+  channelCategoryName?: string | null;
+  resolvedProductTypeId?: string | null;
+  resolvedProductTypeName?: string | null;
+  autoResolved: boolean;
+}
+
 /** `ReverseImportRequest` — body for `/import/preview` and `/import`. */
 export interface ReverseImportRequest {
   organizationId: string;
@@ -224,6 +244,8 @@ export interface ReverseImportResult {
   masterProductId: string;
   draftMaster: ReverseDraftMaster;
   matches: ReverseImportMatch[];
+  /** channel category → master Product Type mapping; null when the item has no category. */
+  categoryResolution?: ReverseCategoryResolution | null;
   candidateSku?: string | null;
   candidateName?: string | null;
   channelDataWritten: string[];

@@ -102,8 +102,12 @@ Pipeline hanya perlu **stage URL sumber**; workaction yang meng-upload + men-sub
    `set-product-defaults` `SET_FIELD` + mapping `version → auth_version`.
 4. ⏳ **`warehouse_id` dari GetWarehouses** (seed `channel_capability_operations` TikTok, `keySource=SHOP_ID`,
    `stagingKey=_resolvedWarehouse`) — pola sama seperti Shopee.
-5. ⏳ **`sku_img` nested** ke dalam `sales_attributes` (selaras workaction `create_CP_Variants_Media_Pre`).
-   Rule `transform-sku-images` **dinonaktifkan** untuk sementara agar tak memancarkan `sku_img` top-level salah.
+5. ✅ **`sku_img` nested** ke dalam `sales_attributes` (bff-v16 + sync temp-v2) — build 6-bagian: op
+   `BUILD_VARIANT_IMAGE_UPLOAD` → rule `tiktok-build-sku-image-upload` → variant fields
+   `skus@sku_img_upload`/`skus@sku_img` → workaction `create_/update_CP_Variants_Media_Pre` → generic
+   `body-reshape-to.relocate` spec → primitif generik `Create_CP.applyRelocate` (tanpa literal field/channel).
+   Lihat **guide 38**. (Rule lama `transform-sku-images` diganti.) **Perlu live-verify** dgn produk yg tiap
+   SKU-nya bergambar.
 6. ⏳ **Currency/region-driven** (`IDR` untuk pasar ID) — sekarang masih default `USD`.
 
 Tiap langkah data-driven (post-processing + capability + metadata), **tanpa** menaruh support-field ke

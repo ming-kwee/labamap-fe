@@ -5,6 +5,11 @@ This guide covers the **channel side**: how Step-1 dimensions are resolved again
 permitted axes to produce the authoritative `variantAxes` + `axisValidation` consumed in Step 2 and
 at publish.
 
+**See also (classification angle, per-channel walkthrough):**
+`docs/product/08-channel-category-tree/01-guides/04-live-category-attribute-classification.md` — how a
+live category attribute is bucketed product-level vs variant-level in Step 2, with the per-channel data
+table (Shopee/Shopify/TikTok/Wix) and the empty-whitelist case.
+
 **Canonical FE contract:** `docs/product/02-ecommerce-wizard/01-guides/18-variant-option-suggestions-frontend.md`
 + `.../02-api-reference/06-step2-category-attributes.md`
 **Backend:** `VariantAxisResolver` · `ChannelStepSchemaService.buildStoreResult` · `MerchantDataController` (`GET /category-attributes`)

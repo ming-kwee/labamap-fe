@@ -372,3 +372,173 @@ PostProcessingRule.builder()
 | `publishing/service/ChannelPublishService.java` | + staging `_channelCategoryId` | generic |
 | `ecommerce/channelproduct/service/ChannelProductDataService.java` | + normalisasi `channelData[CATEGORY_TREE]` → `channelCategoryId` | generic |
 | `config/ChannelProductCategoryBackfillMigration.java` | **baru** — backfill `channelCategoryId` (`@Order(150)`) | generic |
+
+---
+
+## Addendum (2026-08-22) — Shopify taxonomy category tidak nempel: GID ke-strip jadi kode telanjang
+
+**Gejala.** Produk hasil import/publish ke Shopify sukses (ada `channelProductId`, varian & gambar
+nempel), tetapi field **Category** di admin Shopify tetap kosong ("Choose a product category"),
+padahal `channel_product_data` menyimpan `shopify_taxonomy_category_id` /`channelCategoryId` =
+`gid://shopify/TaxonomyCategory/aa-1-15` dan Step-2 sudah menampilkannya (centang hijau).
+
+**Diagnosis (via publish-trace).** Body payload **sudah berisi** `product.category`, tetapi valuenya
+`"aa-1-15"` — **prefix `gid://shopify/TaxonomyCategory/` ke-strip**. Identifier kategori Shopify Product
+Taxonomy adalah **GID penuh**; `aa-1-15` telanjang bukan id taxonomy valid untuk API Shopify manapun →
+kategori tak ter-resolve → kosong.
+
+**Akar.** `ChannelPublishService.normalizeCategoryGid` (dipanggil di jalur output publish) meng-strip
+prefix berdasar metadata Shopify `categoryGidPrefix` + `categoryGidFieldPath`
+(`ChannelConfigurationDataLoader.createShopifyConfiguration`). Asumsi "Shopify REST expects plain code"
+itu **salah** untuk taxonomy baru.
+
+**Fix (langkah 1, data-only).** Hapus kedua key metadata itu dari seed Shopify → `normalizeCategoryGid`
+jadi no-op (ia satu-satunya konsumen kedua key tsb, dan hanya di jalur publish; import pakai
+`importConfig.categoryFetch` terpisah → tak terpengaruh). Update loader menimpa `metadata` penuh
+(`setMetadata`, `ChannelConfigurationDataLoader:142`) → key basi hilang dari dokumen DB saat restart, tanpa
+utak-atik DB manual. GID penuh kini mengalir apa adanya ke payload.
+
+**Catatan lapisan-2 (belum dikerjakan — verifikasi dulu).** Publish Shopify lewat **REST**
+(`POST/PUT products.json`). Bila Shopify memperlakukan `product.category` sebagai **read-only** di REST
+(lihat catatan `ChannelMetadataMigration.updateProductWorkflow`: *"fields Shopify treats as read-only are
+ignored"*), maka GID penuh via REST pun tetap diabaikan → butuh langkah **GraphQL
+`productUpdate(input:{ id, category })`** (pola dua-langkah seperti upload media). Alur uji: terapkan
+langkah 1 → publish ulang → cek admin. Muncul = REST menerima; masih kosong = tambah step GraphQL.
+
+---
+
+## Langkah 2 — GraphQL `productUpdate(category:)` (REST tak bisa set taxonomy)
+
+**Konfirmasi lapangan.** Setelah langkah 1, publish-trace menunjukkan body sudah membawa
+`product.category = gid://shopify/TaxonomyCategory/aa-1-15` (GID penuh), **tetapi kategori tetap tidak
+nempel** — membuktikan `product.category` **read-only di REST** `products.json`. Taxonomy category baru
+hanya bisa di-set via **GraphQL Admin API** `productUpdate(input:{ id, category })`.
+
+Karena semua panggilan channel dieksekusi oleh **sync-service** (Temporal, repo
+`"/Users/admin/MyKalix/notifikasi temporal"`), langkah ini = **workaction baru + implementasi sync**.
+
+### Sisi BFF (SUDAH dikerjakan)
+
+`ChannelMetadataMigration.buildShopifyMetadata()` menambah workaction **generik + array-capable**
+(`graphqlPostWriteWorkflow()`), di-seed di DUA key (mirror create_CP_Media / update_CP_Media):
+
+- `workaction#create_CP_Graphql`
+- `workaction#update_CP_Graphql`
+
+Value = JSON **array** operasi GraphQL (saat ini 1: `set_category`). Bentuk per-op:
+
+```json
+[{
+  "name": "set_category",
+  "endpoint": {
+    "url": "https://labamap.myshopify.com/admin/api/{apiVersion}/graphql.json",
+    "method": "POST", "action": "ON_GRAPHQL", "contentType": "application/json",
+    "headers": { "X-Shopify-Access-Token": "<token>" }
+  },
+  "graphql": {
+    "query": "mutation SetProductCategory($id: ID!, $category: ID!) { productUpdate(input: { id: $id, category: $category }) { product { id category { id fullName } } userErrors { field message } } }",
+    "variables": { "id": "gid://shopify/Product/${product.id}", "category": "${product.category}" },
+    "guard": "${product.category}",
+    "errorPaths": ["errors", "data.productUpdate.userErrors"]
+  }
+}]
+```
+
+Semua data yang dibutuhkan sudah tersedia sebagai **channelAttribute**: `product.id` (ditulis-balik oleh
+`create_CP` response-update-to) dan `product.category` (GID penuh, hasil langkah 1). Seed OVERWRITE untuk
+system-default + MERGE untuk config org → kedua key otomatis masuk saat restart.
+
+### SYNC-SERVICE-SPEC (yang harus diimplementasikan)
+
+Model eksekusi sync = pipeline **14 langkah tetap** di `ChannelProductWorkflowImpl.syncProduct()`; key baru
+**tidak** jalan otomatis. Tambahkan:
+
+1. **Konstanta** — `io/products/shared/Constants.java` (`SyncMetadata`), ikuti pola
+   `INSTRUCTION_SETUP__WORKACTION$…` (composite key `grouping.subGrouping:key`):
+   ```java
+   public static final String INSTRUCTION_SETUP__WORKACTION$CREATE_CP_GRAPHQL =
+       "instruction.setup:workaction#create_CP_Graphql";
+   public static final String INSTRUCTION_SETUP__WORKACTION$UPDATE_CP_GRAPHQL =
+       "instruction.setup:workaction#update_CP_Graphql";
+   ```
+
+2. **Langkah baru** di `ChannelProductWorkflowImpl.syncProduct()` — sisipkan **setelah** langkah "Update
+   Crud State" (product.id sudah tertangkap), sebelum langkah media. Pilih key per-operasi seperti langkah
+   lain (CREATE→`CREATE_CP_GRAPHQL`, UPDATE→`UPDATE_CP_GRAPHQL`); SKIP bila key absen (`hasMetadataKey`).
+   Ini **array-instruction loop** (value = array) — iterasi tiap op.
+
+3. **Activity `executeGraphql`** (loop-type; daftarkan di dispatcher `invokeActivity` bila perlu). Per op:
+   - Resolve `endpoint.url` (`{apiVersion}` + `${attr}`) & headers (`<token>`→kredensial) — **reuse**
+     `HttpFunctions` yang sama dengan `Create_CP`.
+   - **Guard**: resolve `graphql.guard` dari attributeMap; bila blank/null → **skip op** (produk tanpa kategori).
+   - **Variables**: untuk tiap entry `graphql.variables`, resolve `${attr}` dari attributeMap (mekanisme
+     substitusi sama dengan URL). Contoh: `${product.id}`→`10139992883490`,
+     `${product.category}`→`gid://shopify/TaxonomyCategory/aa-1-15`.
+   - **Body** yang dikirim: `{"query": <graphql.query>, "variables": <resolvedVariables>}` (Content-Type
+     application/json). Ini masuk ke jalur HTTP generik yang sudah ada — tak perlu reshape khusus.
+   - **Deteksi error** (GraphQL balas HTTP 200 walau gagal): setelah sukses transport, untuk tiap path di
+     `graphql.errorPaths`, cek nilai di response JSON; bila **non-empty** (mis. `data.productUpdate.userErrors`
+     berisi item, atau top-level `errors` ada) → tandai **ERROR** + log isinya. Jangan hanya andalkan HTTP status.
+   - `response-update-to` opsional (tak diperlukan untuk set_category).
+
+4. **Idempotensi / determinisme Temporal**: activity ini murni satu HTTP call + parsing — aman. Karena
+   productUpdate idempotent, aman dijalankan di CREATE maupun UPDATE.
+
+**Verifikasi mutation vs versi API.** Contoh di atas untuk Admin API **2024-01** (`productUpdate(input:
+ProductInput!)`, `ProductInput.category: ID`, `Product.category: TaxonomyCategory`). Bila store dipin ke
+versi lain, sesuaikan bentuk mutation.
+
+**Uji end-to-end.** Restart BFF (seed workaction) → implement sync sesuai spec → publish ulang → cek admin
+Shopify: field Category harus terisi "Apparel & Accessories › Clothing › Skirts". Bila `userErrors` muncul,
+kemungkinan GID kategori tidak valid untuk versi taxonomy store, atau butuh scope `write_products`.
+
+### Sisi sync-service (SUDAH diimplementasikan)
+
+Repo `"/Users/admin/MyKalix/notifikasi temporal"` (Temporal, Maven), branch `temp-v2`. Kompilasi hijau.
+
+| File | Perubahan |
+|---|---|
+| `io/products/shared/Constants.java` | + `INSTRUCTION_SETUP__WORKACTION$CREATE_CP_GRAPHQL` / `…UPDATE_CP_GRAPHQL` |
+| `io/products/channelProduct/service/Graphql_CP.java` | **baru** — eksekusi satu op GraphQL: guard + substitusi `${attr}` pada variables, bangun body `{query,variables}`, reuse `HttpFunctions` (URL `{apiVersion}`/`${attr}`, header `<token>`) |
+| `io/products/channelProduct/activities/ChannelProductActivities.java` | + `executeGraphqlPostWrite(cmd)` |
+| `io/products/channelProduct/activities/ChannelProductActivitiesImpl.java` | + impl: loop semua op di array; validasi HTTP 2xx + deteksi `errorPaths` (GraphQL 200-with-errors); agregasi OK/ERROR |
+| `io/products/channelProduct/workflow/ChannelProductWorkflowImpl.java` | + langkah opsional `graphql_post_write_channel_product` setelah reorder, sebelum persist akhir; non-fatal (tidak compensate); jalan untuk CREATE & UPDATE via `opKey` |
+
+Perilaku: langkah SKIP bila key `*_CP_Graphql` absen; op `set_category` self-skip bila `${product.category}` kosong; error GraphQL (mis. `data.productUpdate.userErrors` non-empty) → step ERROR (masuk `step_results`) tapi publish tetap sukses (produk sudah ada). Deteksi error pakai `errorPaths` dari metadata BFF — tidak hardcode.
+
+**Uji E2E:** restart BFF (seed workaction) + jalankan sync-service build baru → publish ulang → cek admin Shopify Category terisi. Bila `userErrors` muncul di `step_results`, sesuaikan bentuk mutation ke versi API store / scope token `write_products`.
+
+---
+
+## Langkah 3 — Clear-category + optimasi "hanya saat kategori berubah"
+
+Setelah set/ganti kategori bekerja (log konfirmasi `userErrors: []`), dua penyempurnaan:
+
+**(b) Menghapus kategori kini ter-propagate.** Sebelumnya guard `${product.category}` mem-skip op saat
+kategori kosong → clear tak pernah terkirim. Sekarang mutation pakai `$category: **ID**` (nullable) + op
+punya `nullableVariables: ["category"]`: bila `${product.category}` kosong/tak-resolve, sync mengirim
+`category: null` (bukan skip) → `productUpdate(input:{category:null})` mengosongkan kategori di channel.
+
+**Optimasi "berubah saja".** Guard dipindah dari `${product.category}` ke trigger baru
+`${product.category_sync}` yang **hanya** di-inject BFF saat kategori memang berubah:
+- CREATE: kategori ada.
+- UPDATE: `desired != pushedChannelCategoryId` (mencakup set, ganti, DAN clear).
+- UPDATE tanpa perubahan kategori → trigger tak di-inject → guard kosong → op **skip** (hemat 1 GraphQL call).
+
+**State baru:** `ChannelProductData.pushedChannelCategoryId` — kategori yang **terakhir dikirim** ke channel
+(≠ `channelCategoryId` yang = pilihan merchant). Di-stamp setelah publish sukses (hanya saat op dijalankan).
+Gate: `ChannelPublishService.categoryChanged(request, state)` (static, pure, unit-tested di
+`CategorySyncGateTest`).
+
+**File (BFF):** `ChannelProductData` (+`pushedChannelCategoryId`), `ChannelProductDataRepository`/`Service`
+(+`updatePushedChannelCategoryId`), `PublishProductRequest` (+`categorySyncNeeded`), `ChannelPublishService`
+(gate di CREATE/UPDATE + `persistPushedCategory` di rantai sukses + `resolveDesiredCategory`/`categoryChanged`),
+`ChannelAttributeConverterService` (stage support-attr `product.category_sync`), `ChannelMetadataMigration`
+(seed op: `$category: ID`, `nullableVariables`, guard `${product.category_sync}`).
+**File (sync):** `Graphql_CP` (dukungan `nullableVariables` → kirim JSON null saat kosong).
+
+**Batas jujur (edge):** stamping `pushedChannelCategoryId` bersifat **optimistik** — di-stamp = desired setelah
+publish diterima, padahal op GraphQL berjalan async di sync. Bila op itu **gagal** di channel (mis. `userErrors`),
+BFF tetap menstamp desired → publish berikutnya menganggap "tidak berubah" → op tak retry sampai kategori
+berubah lagi. Kegagalan tampil di `step_results` (non-fatal). Jarang (GID valid + scope `write_products`);
+kalau butuh anti-gap sejati, perlu round-trip hasil op dari sync ke BFF (seperti imageChannelIds).

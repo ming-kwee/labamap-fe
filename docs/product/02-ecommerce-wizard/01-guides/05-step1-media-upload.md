@@ -122,7 +122,7 @@ gs://{bucket}/
 
 **Auto-thumbnails:** Generated server-side on every upload (max 300×300 px, aspect ratio preserved). Both `url`/`publicUrl` and `thumbnailUrl` are returned in every upload response. Thumbnail generation failure does not fail the upload.
 
-**Graceful degradation:** The application starts successfully even without `GOOGLE_APPLICATION_CREDENTIALS`. Upload requests return `503 Service Unavailable`; the health endpoint reports `status: "NOT_CONFIGURED"`.
+**Graceful degradation + self-heal:** The application starts successfully even without `GOOGLE_APPLICATION_CREDENTIALS`. Upload requests return `503 Service Unavailable`; the health endpoint reports `status: "NOT_CONFIGURED"`. The GCS client init is **bounded-retry** (not one-shot): it re-attempts on each use while the client is still null — up to `gcp.storage.max-init-attempts` (default 5, env `GCP_STORAGE_MAX_INIT_ATTEMPTS`) — so credentials that become available late (delayed key mount, workload-identity token, or a first-use blip) **self-heal without an app restart**; after the cap it stops retrying (until restart) to avoid per-call latency/log spam.
 
 **Supported formats:** JPEG, PNG, WebP, GIF — max 10 MB per file.
 

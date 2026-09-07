@@ -303,6 +303,63 @@ Karena R0 hampir tuntas, urutannya:
   `ReverseImportDedup.productSkuMatchId`, pure) → FE bisa langsung tawarkan "link ke master itu". Semua error `/import`
   kini ber-body `ReverseImportError` (500 pesan generik, tak bocor internal). **108 tes hijau**
   (`ReverseImportDedupTest` 11).
-- **Belum:** re-host gambar ke storage platform (S3/GCS+CDN) saat publish-keluar; enricher Kelas B **EKSTERNAL** (`RESOLVE_MEDIA`) — tak perlu untuk channel yang GET-nya kembalikan
+- **Import Product Type dari kategori channel (B+C) — ✅.** Bug: setelah import, Step 2 selalu 422 "belum punya
+  Product Type" — karena Step 2 dibentuk dari `master.productTypeId` (`ChannelStepSchemaService`), tapi import tak
+  pernah mengesetnya (kategori channel ≠ Product Type platform, taksonomi beda). **B:** `reverseSyncConfig.categoryPath`
+  (Shopify `product.category`) → lookup `channel_category_mappings {storeId, externalId}` → set `productTypeId` master
+  otomatis bila mapping product-type-based ada. **C:** `ReverseImportResult.categoryResolution` selalu di-surface —
+  `autoResolved=true` (B berhasil) atau saran (kategori ada, belum ter-map → FE arahkan set Product Type di Step 1).
+  Injeksi hanya di jalur CREATE (`putIfAbsent`), link/update-draft tak terpengaruh. Ekstraksi id kategori =
+  `ReverseImportService.channelCategoryExternalId` (pure). **111 tes hijau** (`ReverseImportCategoryTest` 3).
+- **Import kategori: fetch GraphQL + toleransi bentuk id (Opsi 1) — ✅.** Sebab utama "tidak ketemu": Shopify REST
+  `products/{id}.json` TAK memuat taxonomy category (GraphQL-only) → `product.category` null → resolusi tak jalan.
+  Fix data-driven: `reverseSyncConfig.categoryFetch` (recipe GraphQL — url/query/gid/responseIdPath/targetPath);
+  `fetchItem(enrichCategory=true)` (import saja) POST GraphQL → inject id kategori ke item. Plus toleransi bentuk id:
+  lookup `channel_category_mappings` mencoba kandidat {GID penuh, kode telanjang} karena forward membuang prefix GID.
+  Helper pure: `putByPath` (inject), `categoryIdCandidates`. **114 tes hijau.**
+- **Import kategori: lookup ke sumber yang BENAR (`channelCategoryDefaults`) — ✅ FIX.** Ternyata mapping user
+  tersimpan di **`product_types.channelCategoryDefaults[]`** (`{channelType, categoryId, categoryName}`), bukan koleksi
+  `channel_category_mappings` yang di-query semula → selalu "tidak ketemu". `resolveCategory` kini query
+  `product_types.channelCategoryDefaults` ({channelType, categoryId} via `$elemMatch`, `ProductTypeRepository.findByChannelCategoryDefault`)
+  → `productTypeId` = id product_type itu. Kandidat GID+kode tetap dipakai. Helper pure `defaultCategoryName`. **115 tes hijau.**
+- **Buang fallback `channel_category_mappings` — ✅.** Analisis: `channelCategoryDefaults` sudah channel-agnostic
+  (categoryId opaque, contoh shopee/lazada — non-taxonomy tercakup) dan ADALAH yang dibaca Step 2
+  (`ChannelStepSchemaService`), sedangkan `channel_category_mappings` tak punya konsumen alur (hanya admin CRUD-nya,
+  "original design" yang di-supersede). Fallback = risiko asimetri (reverse resolve beda productType dari Step 2 pre-fill).
+  `resolveCategory` kini **satu sumber** = `channelCategoryDefaults`; dependency `ChannelCategoryMappingRepository` dilepas
+  dari `ReverseImportService`. Simetri forward/reverse terjaga.
+- **Hapus fitur legacy `channel_category_mappings` di backend — ✅.** Setelah fallback dilepas, koleksi + fitur ini
+  tak punya konsumen sama sekali (FE pakai `PUT /admin/product-types/{id}/channel-defaults/{channelType}` →
+  `channelCategoryDefaults`; forward/Step 2 baca `channelCategoryDefaults`; reverse sudah lepas). Dihapus:
+  `ChannelCategoryMappingAdminController` (`/api/v1/admin/channel-category-mappings`), `…Service`, `…Repository`,
+  `…Document`, `ProductTypeMappingRequest`. Koleksi `channel_category_mappings` **tak pernah ada di Mongo** (fitur
+  inert sejak awal) → tak ada data yang perlu di-drop. API-ref `docs/product/…/04-channel-category-mapping.md` ditandai REMOVED.
+- **Import listing = live/exists, bukan draft baru (anti-duplikat publish) — ✅ FIX.** Bug: produk hasil import
+  tampil "0 live" & Step 3 memperlakukannya sebagai **CREATE** (→ duplikat di channel). Sebab: `linkRow` mengisi
+  `channelProductId` tapi status tetap DRAFT (default), dan `PublishOperationDecider` dulu men-CREATE apa pun yang
+  bukan PUBLISHED. **Fix (dua bagian):** (1) `PublishOperationDecider` kini memutuskan CREATE-vs-UPDATE dari
+  **EKSISTENSI** (`channelProductId` ada & status≠DELISTED), bukan liveness — jadi listing yang ADA di channel →
+  UPDATE/NOOP, tak pernah duplikat; liveness (PUBLISHED) hanya izinkan NOOP. (2) import membaca status channel
+  (`reverseSyncConfig.itemStatusPath`+`liveStatusValues`, data-driven): active→linkage PUBLISHED (live), draft/archived→
+  READY (ADA di channel, belum live); keduanya simpan channelProductId. Efek: Step 3 tampil "1 live" utk active, dan
+  publish = UPDATE (bukan CREATE). Karena `update_CP` belum ada di sync (`channelUpdateEnabled=false`), publish setelah
+  edit = UPDATE_BLOCKED (aman, bukan duplikat). Tak menurunkan row PUBLISHED yang sudah ada. **295 tes publishing+reversesync hijau.**
+- **Baseline content-hash saat import (unchanged → NOOP) — ✅.** `linkRow` (untuk import PUBLISHED) men-stamp
+  `lastPublishedContentHash` = `ChannelPublishService.computeDesiredContentHash` (reuse `publishDiff` → transform SAMA
+  persis dgn publish nyata, `intendedContentHash` diekspos di `PublishDiffResponse`). Jadi publish import-live TANPA
+  edit = **NOOP** (bukan UPDATE_BLOCKED); setelah edit → UPDATE_BLOCKED (sampai update_CP ada). Best-effort (gagal → tak
+  di-stamp, degradasi aman). Reuse `publishDiff` → nol drift transform.
+- **`update_CP` — enable per-channel (Shopify push nyata) — ✅.** Temuan: `update_CP` SUDAH terimplementasi penuh
+  (metadata `workaction#update_CP` = `PUT /products/{id}.json` + media/variant/delete workactions; sync eksternal
+  mengeksekusi; injeksi id existing via `ChannelAttributeConverterService` G3, jalur yg sama dgn delist yg sudah live).
+  Yang menghalangi hanya GATE: satu flag GLOBAL `app.publish.channel-update-enabled` (all-or-nothing). Fix: gate kini
+  **per-channel** (`ChannelConfiguration.integrationConfig.updateEnabled`, helper pure `PublishOperationDecider.updateCapable`);
+  Shopify di-seed `updateEnabled=true` (env off-switch `APP_PUBLISH_SHOPIFY_UPDATE_ENABLED`), flag global jadi override
+  (default dikembalikan ke **false** — sebelumnya YAML men-default `true`, meng-enable SEMUA channel termasuk yg belum
+  verified spt Shopee). Efek: import→edit→publish Shopify = **UPDATE (push nyata)**, bukan UPDATE_BLOCKED; channel lain
+  tetap fail-closed sampai per-channel-nya di-set. **298 tes publishing+reversesync hijau.**
+- **Belum:** verifikasi E2E update_CP Shopify terhadap store live (metadata+jalur ada; nyalakan per-channel = pernyataan
+  siap); Shopee Mode B update (butuh metadata varian + verifikasi); re-host gambar ke
+  storage platform (S3/GCS+CDN) saat publish-keluar; enricher Kelas B **EKSTERNAL** (`RESOLVE_MEDIA`) — tak perlu untuk channel yang GET-nya kembalikan
   URL (spt Shopee); Webhook/pull Shopee (signing + sample envelope); GET/webhook non-Shopify lain; SKU-match
   produk belum ter-link.

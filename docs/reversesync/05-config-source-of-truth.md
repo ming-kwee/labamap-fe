@@ -68,6 +68,9 @@ yang bisa *drift*.
 | Arah kebenaran per-atribut | **`ecommerce_master_attributes.reverseWritePolicy`** | — | routing R3 (SUGGEST/PER_STORE/SKIP) |
 | Versi API channel | **`ChannelConfiguration.apiVersion`** (top-level) | templating `{apiVersion}` | fallback versi pull |
 | Cara baca webhook + resep pull + inverse varian | **`ChannelConfiguration.reverseSyncConfig`** (+ **beku per-versi** di `channel_api_contracts`) | — | webhook/pull/variant-inverse, **version-aware** |
+| Kategori channel → Product Type master (import) | **`reverseSyncConfig.categoryPath`** (+ **`categoryFetch`** GraphQL bila REST tak memuat kategori); lookup **`product_types.channelCategoryDefaults`** {channelType, categoryId} — SATU sumber, sama dgn Step 2 | Step 2 pre-fill kategori | import: fetch kategori (GraphQL) → set `productTypeId` master (B) / saran (C); lookup coba kandidat GID+kode |
+| Status listing channel → status linkage (import) | **`reverseSyncConfig.itemStatusPath`** + **`liveStatusValues`** | — | import: active→`PUBLISHED` (live), else→`READY` (ADA di channel, belum live); channelProductId tetap → publish=UPDATE bukan duplikat |
+| Listing ADA di channel? (CREATE vs UPDATE) | **`channel_product_data.channelProductId`** (+ status≠DELISTED) | — | `PublishOperationDecider`: ada→UPDATE/NOOP, tak ada→CREATE (eksistensi, bukan liveness) |
 
 > **Version-aware (2026-08): `reverseSyncConfig` menggambarkan BENTUK payload channel, yang per-`apiVersion`** —
 > jadi ia dibekukan ke `channel_api_contracts` (`fromConfig`) dan reverse me-resolve-nya lewat `ReverseConfigResolver`
@@ -178,6 +181,7 @@ option terindeks). Kalau tidak di-un-build dulu, klasifikasi & field-resolve aka
 | `ReverseWritePolicy` (enum) + `ReverseReviewService` | routing arah-kebenaran + accept/reject | R3 |
 | `ReverseApplyService` | tulis Step-2 per-store (masterOverrides/channelData/variantOverrides) | R2 |
 | `ReverseChannelFetchService` | GET item (URL+auth data-driven) | R4-pull |
+| `ReverseHttp` | resilience bersama utk panggilan channel read-only (LIST/GET/GraphQL): `resilient()` = timeout 15s per-attempt + retry (backoff+jitter, hanya transient/429/5xx — bukan 4xx, propagate error asli). Worst case ≈ 3×15s+backoff | R4 |
 | `ReverseWebhookService` | auto-trigger + echo-suppression (generic) | R4-webhook |
 | `ReverseJoltSpecService` + `…model.ReverseJoltSpec` | proyeksi reverse-JOLT (simetri) | R5 |
 | Controllers | `/preview` (R1), `/apply` (R2), `/review`+`/suggestions` (R3), `/pull`(+`/apply`) (R4), `/jolt-spec/{channelId}` | — |
@@ -293,7 +297,7 @@ sering **ditunda ke saat publish-keluar** (asinkron). Untuk platform ini disepak
 
 ## 8. Uji (kunci perilaku)
 
-108 tes `reversesync` hijau, semua memanggil helper **pure static** / method publik:
+122 tes `reversesync` hijau, semua memanggil helper **pure static** / method publik:
 
 | Test | Fokus |
 |---|---|
@@ -307,8 +311,10 @@ sering **ditunda ke saat publish-keluar** (asinkron). Untuk platform ini disepak
 | `ReverseVariantReconcilerTest` (5) | merge SKU non-destruktif, entri baru, SKU-less axis dedup |
 | `ReverseWritePolicyTest` (4) + `…MigrationTest` (4) | route map + intent seed |
 | `ReverseWebhookEchoTest` (6) + `…ConfigDrivenTest` (3) | echo/dedup + parse multi-format + `getByPath` index |
-| `ReverseChannelFetchServiceTest` (5) | URL template + token resolve data-driven |
+| `ReverseChannelFetchServiceTest` (7) | URL template + token resolve data-driven + `putByPath` inject kategori |
+| `ReverseHttpTest` (2) | filter retry: transient/429/5xx retry, 4xx tidak |
 | `ReverseApplyMappingTest` (5) | masterOverrides/channelData mapping |
+| `ReverseImportCategoryTest` (6) | ekstrak id kategori di `categoryPath` + `categoryIdCandidates` + `defaultCategoryName` (→ resolve `productTypeId`) + `importedListingStatus` (active→PUBLISHED, else READY) |
 | `ReverseOpsTest` (5) | `operations[]` → 5 op tipe (REBASE_ITEM/ATTRIBUTE_LIST/VARIANT_INVERSE/AGGREGATE/IMAGE_INVERSE) + op-type absen → null/empty + null-safe |
 | `ReverseImageInverseServiceTest` (8) | import: gambar produk (main+gallery) + `image_id`→url per-SKU + single/no-image + null-safe; reconcile: `flagImageDrift` buang blob + drift + master kosong (apply) + no-op |
 
@@ -322,7 +328,14 @@ sering **ditunda ke saat publish-keluar** (asinkron). Untuk platform ini disepak
    otomatis membalik.
 3. **`reverseSyncConfig`** di `ChannelConfiguration` (semua opsional; isi sesuai shape channel):
    - **Webhook:** `webhookEnabled` + `productEventTopics` + `productIdPath` + `updatedAtPath` + `updatedAtFormat`.
-   - **Pull:** `itemUrlTemplate` (kosongkan bila butuh signing → pull "not configured").
+   - **Pull:** `readEndpoints[]` (satu-satunya sumber baca-item; `itemUrlTemplate` sudah dihapus). Tiap entri
+     `{urlTemplate, authMode:BEARER|SIGNED, queryParams}`; 1 entri = GET tunggal (Shopify BEARER), N entri =
+     item terbelah yang di-deep-merge (Shopee SIGNED: get_item_base_info + get_model_list). SIGNED pakai
+     `signatureScheme`+`signingExtraKeys`. Kosong ⟹ pull "not configured". Lihat [`08`](08-shopee-reverse-sync-plan.md) §4a.
+   - **Browse-list (import):** `listEndpoint` (satu `ReadEndpoint`, `itemListUrlTemplate` sudah dihapus) — operasi
+     TERPISAH dari `readEndpoints` (browse-banyak vs baca-satu) tapi berbagi transport (`executeReadEndpoint`).
+     `queryParams` support `{limit}`/`{offset}`. Parsing: `itemsPath`+`listItemIdPath`(+`Title`/`Status`). Shopify
+     BEARER `products.json`; Shopee SIGNED `get_item_list`. Lihat [`08`](08-shopee-reverse-sync-plan.md) §4b.
    - **Transform (reverse post-processing):** `operations[]` — SATU list op, analog forward
      `postProcessingRules.operations[]`. Tiap entri = map dgn diskriminator `"op"` + field op-nya (dibaca via
      `ReverseOps`, di-parse ke descriptor tipenya). **Catatan urutan:** beda dgn forward (yang eksekusi sesuai

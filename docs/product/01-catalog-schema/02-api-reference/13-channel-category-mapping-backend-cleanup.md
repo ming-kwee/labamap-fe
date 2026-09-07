@@ -1,5 +1,11 @@
 # Backend Cleanup — Channel Category Mapping Post-Phase-6
 
+> **✅ EXECUTED (2026-08-21).** Fitur `channel_category_mappings` dihapus dari backend: `ChannelCategoryMappingAdminController`
+> (`/api/v1/admin/channel-category-mappings`), `ChannelCategoryMappingService`, `ChannelCategoryMappingRepository`,
+> `ChannelCategoryMappingDocument`, `ProductTypeMappingRequest`. Sumber tunggal category→productType kini
+> `product_types.channelCategoryDefaults` (dibaca Step 2 & reverse import). Koleksi `channel_category_mappings`
+> **tak pernah ada di Mongo** (fitur inert sejak awal) → tak ada data yang perlu dihapus. Rencana di bawah = arsip.
+
 **Untuk:** Backend Engineering Team  
 **Tanggal:** 2026-06-16  
 **Trigger:** Frontend Phase 5+6 complete — Platform Categories tab dihapus, `ChannelFieldsWizard.tsx`
