@@ -94,10 +94,10 @@ export default function EditRuleModal({ channelName, existing, onSave, onClose }
                 {jsonError && <span className="text-xs text-red-500">{jsonError}</span>}
               </div>
               <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">
-                Each operation needs a <code className="font-mono">type</code> field — e.g.
-                <code className="font-mono mx-1">ENRICH_IMAGES</code>,
+                Each operation needs an <code className="font-mono">op</code> field — e.g.
+                <code className="font-mono mx-1">FOR_EACH</code>,
                 <code className="font-mono mx-1">CONCAT_INTO</code>,
-                <code className="font-mono mx-1">GENERATE_OPTIONS</code>.
+                <code className="font-mono mx-1">EXTRACT_DIMENSIONS</code>.
               </p>
               <textarea value={opsRaw} onChange={(e) => setOpsRaw(e.target.value)}
                 rows={12} spellCheck={false}

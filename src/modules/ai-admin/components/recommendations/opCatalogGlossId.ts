@@ -65,17 +65,6 @@ export const OP_GLOSS_ID: Record<string, string> = {
     "Membangun array stock_infos TikTok Shop dengan warehouse_id dan quantity. CATATAN: dikonfigurasi di channel data tetapi belum diimplementasikan di engine — akan memunculkan peringatan unknown-op sampai diimplementasikan.",
   TO_STRING:
     "Mengonversi nilai field ke representasi string-nya. CATATAN: dikonfigurasi di channel data tetapi belum diimplementasikan di engine — pakai COERCE_TYPE dengan toType=string sebagai gantinya.",
-  // Legacy types share one message (auto-converted at runtime).
-  ENRICH_IMAGES:
-    "Tipe legacy, dikonversi otomatis saat runtime oleh convertLegacyRule(). Gunakan pipeline operations[] generik sebagai gantinya.",
-  ENRICH_MEDIA:
-    "Tipe legacy, dikonversi otomatis saat runtime oleh convertLegacyRule(). Gunakan pipeline operations[] generik sebagai gantinya.",
-  GENERATE_OPTIONS:
-    "Tipe legacy, dikonversi otomatis saat runtime oleh convertLegacyRule(). Gunakan pipeline operations[] generik sebagai gantinya.",
-  MAP_DIMENSIONS:
-    "Tipe legacy, dikonversi otomatis saat runtime oleh convertLegacyRule(). Gunakan pipeline operations[] generik sebagai gantinya.",
-  ENRICH_VARIANTS:
-    "Tipe legacy, dikonversi otomatis saat runtime oleh convertLegacyRule(). Gunakan pipeline operations[] generik sebagai gantinya.",
-  LINK_MEDIA_TO_CHOICES:
-    "Tipe legacy, dikonversi otomatis saat runtime oleh convertLegacyRule(). Gunakan pipeline operations[] generik sebagai gantinya.",
+  // (The 6 legacy `type` ops — ENRICH_IMAGES/ENRICH_MEDIA/ENRICH_VARIANTS/GENERATE_OPTIONS/MAP_DIMENSIONS/
+  //  LINK_MEDIA_TO_CHOICES — were decommissioned on the backend; the catalog no longer returns them.)
 };

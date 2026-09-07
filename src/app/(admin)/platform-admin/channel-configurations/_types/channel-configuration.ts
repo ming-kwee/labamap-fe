@@ -12,10 +12,8 @@ export interface FieldBoost {
 }
 
 export interface PostProcessingOperation {
-  type: string; // "ENRICH_IMAGES" | "CONCAT_INTO" | "GENERATE_OPTIONS"
-  sourceField?: string;
-  targetField?: string;
-  [key: string]: unknown;
+  op: string; // operation discriminator — e.g. "FOR_EACH", "COPY_PATH", "EXTRACT_DIMENSIONS", "SET_DEFAULT"
+  [key: string]: unknown; // op-specific params (steps, field, value, sourcePath, targetPath, …)
 }
 
 export interface PostProcessingRule {
