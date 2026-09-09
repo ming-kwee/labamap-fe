@@ -27,7 +27,7 @@ proxied), per-channel size/format **rules as data**, Step-2 editing (crop/resize
    `channelData` mechanism; a Step-2 editor produces **derivatives** sized to the channel spec, master
    stays canonical. [`04`](04-step2-editing-and-derivatives.md).
 5. **One dedicated image class?** **Yes** — a cohesive **`ImageService`** consolidates logic scattered
-   across `MasterProductDataService.normalizeImages`, `ChannelPublishService.collectSourceImageUrls`/
+   across `MasterProductDataService.normalizeImages`, `PublishPayloadStagingService.collectSourceImageUrls`/
    `ensureProductImages`, `FieldTransformationService.URL_ARRAY_TO_SRC_OBJECTS`, and `MediaUploadService`.
    [`02`](02-recommended-architecture.md) §2.
 6. **Abstract for CDN vs non-CDN?** **Yes** — a **`MediaStorageProvider`** interface (gcs|s3|local) + a

@@ -50,8 +50,8 @@ code changes** for these functions.
 
 ### How it works
 ```java
-// ChannelPublishService.buildChannelUrl()
-private String buildChannelUrl(ChannelConfiguration channelConfig, String productId) {
+// PublishResponseFactory.buildChannelUrl()  (Fase 1 dekomposisi guide 41 — sebelumnya di ChannelPublishService)
+public String buildChannelUrl(ChannelConfiguration channelConfig, String productId) {
     Map<String, Object> meta = channelConfig.getMetadata();
     if (meta != null && meta.get("productAdminUrlTemplate") instanceof String template) {
         return String.format(template, productId);  // %s → productId
@@ -90,7 +90,7 @@ Shopify REST API 2024-01 expects `product.category` as a plain code (`aa-1-13-7`
 
 ### How it works
 ```java
-// ChannelPublishService.normalizeCategoryGid()
+// PublishPayloadStagingService.normalizeCategoryGid()
 private void normalizeCategoryGid(ChannelConfiguration channelConfig,
                                    Map<String, Object> transformedData) {
     String prefix    = meta.get("categoryGidPrefix");    // e.g. "gid://shopify/..."
@@ -136,7 +136,7 @@ The signing **secret** always comes from `OAuthAppConfig.channels[channelType].c
 
 ### How it works
 ```java
-// ChannelPublishService.enrichHmacSignedPublishOptions()
+// PublishCredentialInjector.enrichHmacSignedPublishOptions()
 private void enrichHmacSignedPublishOptions(PublishProductRequest request,
                                              ChannelConfiguration channelConfig) {
     String apiPath      = ic.getPublishApiPath();           // "/api/v2/product/add_item"
@@ -208,6 +208,6 @@ signing conventions.
 |---|---|
 | `ChannelConfiguration.IntegrationConfig` | +`publishApiPath`, +`publishHmacSigningCredentialKey` |
 | `ChannelConfigurationDataLoader` | +`productAdminUrlTemplate` (all channels), +`categoryGidPrefix`/`categoryGidFieldPath` (Shopify), +`publishApiPath`/`publishHmacSigningCredentialKey` (Shopee) |
-| `ChannelPublishService` | `buildChannelUrl` → metadata; `normalizeShopifyCategoryGid` → `normalizeCategoryGid`; `enrichShopeePublishOptions` → `enrichHmacSignedPublishOptions`; `shopeeHmacSha256Hex` → `hmacSha256Hex` |
+| `ChannelPublishService` | `buildChannelUrl` → metadata (metode kini di `PublishResponseFactory`, Fase 1 dekomposisi guide 41); `normalizeShopifyCategoryGid` → `normalizeCategoryGid`; `enrichShopeePublishOptions` → `enrichHmacSignedPublishOptions`; `shopeeHmacSha256Hex` → `hmacSha256Hex` |
 | `ChannelCategoryApiConfig.CategoryTreeApiConfig` | +`hmacSigningCredentialKey`, +`hmacTimestampParam`, +`hmacSignParam` |
 | `GenericCategoryService` | `applyShopeeHmacSigning` → `applyHmacSha256Signing` (reads from config) |

@@ -11,7 +11,7 @@ The Step-2 category attributes flow end-to-end until the final assembly:
 1. saved into `channel_product_data.channelData` keyed by native attribute_id (`ChannelProductDataService`).
 2. merged into `masterProductData` at publish (`ChannelPublishService:858`).
 3. staged JOLT-independently as `_categoryAttributes = [{id, value}]` by
-   `ChannelPublishService.stageCategoryAttributes` — **this runs in the real publish path**
+   `PublishPayloadStagingService.stageCategoryAttributes` — **this runs in the real publish path**
    (`:1867`, log `Staged … capability key(s): [_categoryAttributes]`), not only in the trace.
 4. **consumed by a channel post-processing rule** — and here TikTok had **none**. Shopee has
    `shopee-build-attribute-list` (`_categoryAttributes` → `attribute_list`); TikTok had no rule to

@@ -1,8 +1,9 @@
 # Rencana Decommission Post-Processing Legacy (`rule.type` + op legacy)
 
-**Status:** BERJALAN — **Fase 0–3 SELESAI** (mesin legacy `convertLegacyRule` sudah dihapus). Tujuan dokumen ini adalah memandu
-pemensiunan **sistem post-processing lama berbasis `rule.type`** secara **bertahap dan aman**, tanpa
-memecah kontrak apa pun di tengah jalan.
+**Status:** ✅ **SELESAI — Fase 0–5 LENGKAP.** Sistem post-processing legacy `rule.type` sudah dipensiunkan
+sepenuhnya: field `type`/`addFields`/`dimensionFields` dihapus dari entity (Fase 5), `convertLegacyRule` +
+katalog hantu + leftover `getType()` sudah hilang, dan audit DB (1 env) PASS. `operations[]` kini satu-satunya
+bentuk rule. Dokumen ini memandu pemensiunan itu secara bertahap & aman (lihat juga guide 40 untuk Fase 4/5).
 
 **Sudah dilakukan (aman, terpisah):**
 - ✅ `PostTransformationEnricher.java` (engine lama, `@Service` tanpa pemanggil) **dihapus**

@@ -71,7 +71,8 @@ credential-free).
 | `channel/service/GenericPostProcessingEngine.java` | overload `process(data, config, traceOut)` per-rule (aman) |
 | `publishing/service/ChannelAttributeConverterService.java` | `buildChannelAttributesForInspection` (ekspos builder, credential-free) |
 | `publishing/model/response/PublishTraceResponse.java` | **baru** — DTO trace |
-| `publishing/service/ChannelPublishService.java` | `tracePublish` + `buildTrace` (reuse service produksi) |
+| `publishing/service/ChannelPublishService.java` | `tracePublish` — entry point publik TIPIS: mengorkestrasi core publish yang dibagi (`loadAndMergeChannelData` + `findJoltSpecWithFallback` + `collectPreflight`) lalu delegasi ke `PublishTraceService.buildTrace`. |
+| `publishing/service/PublishTraceService.java` | **Fase 2 LENGKAP (guide 41)** — collaborator trace: `snapshot`/`deepCopySpec`, `assembleTraceResponse`, dan **`buildTrace` PENUH** (menjalankan ulang pipeline produksi: JOLT resolve+remediation, transform, staging reserved-_-key, post-processing per-rule, wrap/guard, `buildChannelAttributes`). Dep = collaborator + service pipeline injectable (searah, tanpa cycle); tak ada metode private `ChannelPublishService`. |
 | `publishing/controller/ChannelPublishController.java` | endpoint `POST /publish/trace` |
 
 ## Lihat juga

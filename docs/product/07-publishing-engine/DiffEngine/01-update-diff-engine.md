@@ -5,6 +5,15 @@
 > yang dijahit satu-per-satu per resource atau per channel.
 > **Bahasa:** dokumen ini menjelaskan pelan-pelan, dari "kenapa" ke "bagaimana".
 
+> **📍 Lokasi kode (Fase 3 dekomposisi guide 41).** Seluruh logika image-diff M1–M5 + M4/V2–V5 yang
+> dirujuk di dokumen DiffEngine ini — `filterProductImagesForUpdate`, `filterVariantImagesForUpdate`,
+> `applyVariantImageAddOnly`, `computeDeleteImageIds`, `computeOrphanedImageIds`,
+> `computeVariantImageAssociations`, `mergeImageChannelIds`, `computeImageOrder`, `applyImageReorder`,
+> `reorderNeeded`, `keptImageIds`, `removeSrclessImages`, `productImagesChanged`, `channelTracksImages` —
+> kini berada di **`publishing/service/PublishImageDiffPlanner.java`** (bukan lagi `ChannelPublishService`).
+> `ChannelPublishService` (orchestrator) mendelegasikan ke sana. Nama-metode di DiffEngine/05–10 merujuk
+> ke kelas itu.
+
 ---
 
 ## 0. TL;DR

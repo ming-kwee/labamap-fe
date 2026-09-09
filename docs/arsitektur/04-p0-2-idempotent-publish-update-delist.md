@@ -62,6 +62,10 @@ publishToChannel(request, channelConfig, wrappedData, …)
     CREATE        → doChannelSyncPublish(...)          // = body publish lama (POST + poll)
 ```
 
+> Sejak Fase 1 dekomposisi (guide 41), `buildNoOpResponse` / `buildBlockedUpdateResponse` pindah ke
+> collaborator murni `PublishResponseFactory`; `publishToChannel` (di `ChannelPublishService`)
+> mendelegasikan ke sana. Alur keputusan tak berubah.
+
 `doChannelSyncPublish` = badan publish lama (build sync request → POST `/sync_channel_product_impl` →
 poll). Tak berubah selain kini menerima `publishId` + menandai `operation` di response.
 
@@ -81,7 +85,7 @@ FAILED. (Ini TODO P0-2 yang dicatat di P0-1, kini beres.)
 | File | Perubahan |
 |---|---|
 | `publishing/service/PublishOperationDecider.java` (**baru**) | Keputusan murni CREATE/NOOP/UPDATE/UPDATE_BLOCKED. |
-| `ChannelPublishService` | Gerbang `publishToChannel` + ekstraksi `doChannelSyncPublish` + `buildNoOpResponse`/`buildBlockedUpdateResponse` + guard NOOP/BLOCKED di `updateChannelProductStatus` & `recordFailedOutcome` + helper `isBlockedSyncStatus`/`opOf` + flag `channelUpdateEnabled`. |
+| `ChannelPublishService` | Gerbang `publishToChannel` + ekstraksi `doChannelSyncPublish` + delegasi `buildNoOpResponse`/`buildBlockedUpdateResponse` (metode kini di `PublishResponseFactory`, Fase 1 dekomposisi guide 41) + guard NOOP/BLOCKED di `updateChannelProductStatus` & `recordFailedOutcome` + helper `isBlockedSyncStatus`/`opOf` + flag `channelUpdateEnabled`. |
 | `ChannelProductDataService` | `getListingState(masterProductId, storeId)`. |
 | `PublishProductRequest` | +`operation`, `existingChannelProductId` (derived). |
 | `PublishProductResponse` | +`operation` (CREATE/NOOP/UPDATE/DELIST). |

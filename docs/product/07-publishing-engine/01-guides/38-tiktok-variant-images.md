@@ -35,7 +35,7 @@ The six parts below all assume each transformed SKU carries `variantImages`. Two
   `variantImages` survives as `skus[*].variantImages`. ✓
 - **AI-generated per-category spec** (the runtime-preferred spec): maps only apiSchema paths, and `variantImages`
   is a support field **absent from apiSchema** → it is **dropped**. The fallback that re-attaches it is
-  `ChannelPublishService.stageVariantImages`.
+  `PublishPayloadStagingService.stageVariantImages`.
 
 `stageVariantImages` previously wrote to a hard-coded `"variants"` key — correct for Shopee/Shopify but a **silent
 no-op for TikTok**, whose post-JOLT SKU list is under `skus`. So with an AI spec active (very likely once a

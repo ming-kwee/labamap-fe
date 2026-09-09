@@ -124,7 +124,7 @@ mempersist-nya**. Ekstensi ini menutup gap itu.
 | `PublishProductResponse` | +`syncWorkflowId`, `syncEntityId`, `syncSteps` (carrier internal). |
 | `WorkflowStatusResponse` | +`steps` (opsional; `@JsonAlias {step_results, step_history}`) — **absen hari ini → null**, tertangkap saat sync mengirimnya. |
 | `ChannelProductDataRepository` / `…Service` | `recordPublishSuccess` kini set `syncWorkflowId`/`syncEntityId` (atomic `$set`). |
-| `ChannelPublishService` | success-builder set `syncWorkflowId(workflowId)`/`syncEntityId(ws.getId())`/`syncSteps(ws.getSteps())`; `buildProcessingResponse` set `syncWorkflowId`; `recordHistory` mempersist ketiganya. |
+| `ChannelPublishService` | success-builder set `syncWorkflowId(workflowId)`/`syncEntityId(ws.getId())`/`syncSteps(ws.getSteps())`; `buildProcessingResponse` set `syncWorkflowId` (metode kini di `PublishResponseFactory`, Fase 1 dekomposisi guide 41); `recordHistory` mempersist ketiganya (metode kini di `PublishOutcomeWriter`, Fase 5 dekomposisi guide 41 — orchestrator mendelegasikan). |
 | `ListingStateResponse` | ekspos `syncWorkflowId`/`syncEntityId`. |
 
 **Keputusan desain:**

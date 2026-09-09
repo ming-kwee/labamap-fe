@@ -12,7 +12,8 @@ import ImageCropModal from "./ImageCropModal";
  * Master images stay canonical and are shown read-only as the inheritance baseline. When the seller
  * customises, an ordered URL list is written to the existing per-store override mechanism the backend
  * merges before publish:
- *   • product-level images → channelData.images
+ *   • product-level images → masterOverrides.images  (NOT channelData.images — the BFF drops
+ *       master-owned image keys found in channelData; see docs/images/06 §8)
  *   • per-SKU variant images → variantOverrides[sku].variantImages  (same transform: URL_ARRAY_TO_SRC_OBJECTS)
  * Empty override = nothing sent = publish falls back to master. Crop/resize produces a new derivative
  * file (upload) — the master is never mutated.
@@ -393,7 +394,7 @@ interface Props {
   masterProductId: string;
   /** Canonical master gallery (read-only reference / fallback). */
   masterImages: string[];
-  /** channelData.images override (ordered) or undefined when inheriting master. */
+  /** masterOverrides.images override (ordered) or undefined when inheriting master. */
   value: string[] | undefined;
   /** Write the override (non-empty) or clear it (undefined = fall back to master). */
   onChange: (urls: string[] | undefined) => void;

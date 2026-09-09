@@ -203,7 +203,7 @@ extension to `captureMediaIds` (support a list-root path) may be needed — addi
 - `workaction#delete_CP_Media` = `POST /media/delete`, `output.idsField:"mediaIds"` from
   `product.delete_image_ids`, guard `${product.media_sync}`.
 
-**BFF gating:** `ChannelPublishService.productImagesChanged(request, state)` (UPDATE branch) sets
+**BFF gating:** `PublishImageDiffPlanner.productImagesChanged(request, state)` (dipanggil dari `ChannelPublishService` UPDATE branch; metode dipindah ke `PublishImageDiffPlanner` di Fase 3 dekomposisi guide 41) sets
 `request.mediaSyncNeeded` when the desired product-image URL set differs from the baseline
 (`imageContentHashes` product-scope keys); no baseline ⇒ true (establish). `ChannelAttributeConverterService`
 stages `product.media_sync="1"` when set. Unit tests: `MediaSyncGateTest`.

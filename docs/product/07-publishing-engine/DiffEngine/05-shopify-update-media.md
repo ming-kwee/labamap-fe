@@ -53,7 +53,7 @@ tetap idempoten, lewat pipeline diff generik yang sudah ada — **bukan** kode p
 | `persistChannelIds(...)` | `publishing/service/ChannelPublishService.java:665` | Menuliskan `variantChannelIds` + `imageChannelIds` balik dari respons sync. |
 | `updateImageChannelIds` / `updateImageContentHashes` | `ecommerce/.../ChannelProductDataRepository.java:96,109` | Persist per-map. |
 | `WorkflowStatusResponse.imageChannelIds` | `publishing/model/response/WorkflowStatusResponse.java:79` | `@JsonAlias({"image_ids","image_channel_ids",...})` — siap membaca id gambar dari sync. |
-| Staging gambar | `ChannelPublishService.collectSourceImageUrls` → `_sourceImages` → rule `shopify-build-images` (`ChannelConfigurationDataLoader:396`, `targetPath product.images`) | `product.images` (support attr) → `create_CP_Media` (`from: product.images`). |
+| Staging gambar | `PublishPayloadStagingService.collectSourceImageUrls` → `_sourceImages` → rule `shopify-build-images` (`ChannelConfigurationDataLoader:396`, `targetPath product.images`) | `product.images` (support attr) → `create_CP_Media` (`from: product.images`). |
 
 **Sync — plumbing update (sudah):**
 

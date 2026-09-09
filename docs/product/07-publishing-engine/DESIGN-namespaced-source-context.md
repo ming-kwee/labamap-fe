@@ -274,7 +274,7 @@ menunjuk map master yang sama, jadi mutasi tak sengaja akan mengubah master.
 ## 11. Contoh lengkap end-to-end: `dimension`
 
 **Sekarang (hardcoded):**
-1. `ensurePackageDimensions` (Java) — backfill `dimensions` dari master.
+1. `ensureShippingAttributes` (Java) — backfill `dimensions` dari master.
 2. `buildPackageDimensionCm` (Java) — baca `dimensions.{length,width,height,unit}`, konversi in→cm,
    hasilkan `{package_length,width,height}`. ← **hardcode nama field + ×2.54**
 3. stage ke `_packageDimension` (di 2 tempat: processPublish + buildTrace). ← **sumber drift**

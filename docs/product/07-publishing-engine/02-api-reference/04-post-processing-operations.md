@@ -371,17 +371,23 @@ Converts a flat string array to single-key objects. Example: `["S", "M"]` → `[
 
 ---
 
-## LEGACY Scope
+## Legacy `type` rules — REMOVED
 
-Old `type`-based rules are auto-converted at runtime by `convertLegacyRule()`. No data migration is required, but new rules should use the `operations[]` format.
+> The old single-`type` rule format (and its `convertLegacyRule()` runtime converter) was **decommissioned**
+> — see `docs/product/07-publishing-engine/01-guides/39-post-processing-legacy-op-decommission-plan.md`.
+> `operations[]` is now the **only** supported form. A rule with no `operations[]` is a no-op (a stray `type`
+> on an old document is ignored on load). The 6 legacy types are no longer valid ops.
 
-| Legacy type | Generic equivalent |
+The table below is a **migration reference only** — if you still have an old `type`-based rule anywhere,
+replace it with the `operations[]` shown:
+
+| Old `type` (removed) | Replace with `operations[]` |
 |-------------|-------------------|
 | `ENRICH_IMAGES` | `FOR_EACH` → `STRING_TO_OBJECT(src)` + `SET_DEFAULT(alt,"")` + `AUTO_INCREMENT(position)` |
 | `ENRICH_MEDIA` | `FOR_EACH` → `UNWRAP_FIELD(url)` + `SET_DEFAULT(altText,"")` + `SET_DEFAULT(mediaType,"image")` |
 | `GENERATE_OPTIONS` | `EXTRACT_DIMENSIONS` + `MAP_TO_INDEXED` |
 | `MAP_DIMENSIONS` | `MAP_TO_INDEXED` |
-| `ENRICH_VARIANTS` | `FOR_EACH` → `SET_DEFAULT` per addField + `CONDITIONAL_SET(manageVariants, true)` |
+| `ENRICH_VARIANTS` | `FOR_EACH` → `SET_DEFAULT` per field + `CONDITIONAL_SET(manageVariants, true)` |
 | `LINK_MEDIA_TO_CHOICES` | `CROSS_LINK` |
 
 ---

@@ -553,7 +553,7 @@ export default function ChannelStoreTab({ schema, values, onChange, isSaving, la
     onChange({ ...values, masterOverrides: next });
   }
 
-  // ── Images I4: per-store image override (channelData.images) ─────────────────
+  // ── Images I4: per-store image override (masterOverrides.images) ─────────────
   // Canonical master gallery for the read-only reference. Prefer the snapshot's merged `images`;
   // fall back to [mainImage, ...galleryImages] until the backend snapshot ships `images`.
   const masterImages = useMemo(() => {
@@ -564,13 +564,25 @@ export default function ChannelStoreTab({ schema, values, onChange, isSaving, la
     return (list ?? []).filter((u): u is string => typeof u === "string" && u.trim().length > 0);
   }, [masterProduct]);
 
-  // Non-destructive: write channelData.images only when there's a real override; empty → drop the key
-  // so publish falls back to the master gallery (contract docs/images/06 §3).
+  // Current per-store product image override (see read-value below in both render spots).
+  const imageOverrideValue = useMemo(
+    () => (Array.isArray(values.masterOverrides.images) ? (values.masterOverrides.images as string[]) : undefined),
+    [values.masterOverrides.images],
+  );
+
+  // Non-destructive: write masterOverrides.images only when there's a real override; empty → drop the
+  // key so publish falls back to the master gallery (contract docs/images/06 §3 + §8).
+  //
+  // NOTE: this MUST go through `masterOverrides`, not `channelData`. The BFF's `loadAndMergeChannelData`
+  // drops every master-owned image key ("images"/"mainImage"/"galleryImages") found in `channelData`
+  // (anti reverse-import-leak guard), so a `channelData.images` override is silently discarded and
+  // publish falls back to the master gallery. `masterOverrides` keys are applied unfiltered in step 1
+  // → become `_source.images` → processed normally. See docs/images/06 §8.
   function handleImagesOverrideChange(urls: string[] | undefined) {
-    const nextChannelData = { ...values.channelData };
-    if (urls && urls.length > 0) nextChannelData.images = urls;
-    else delete nextChannelData.images;
-    onChange({ ...values, channelData: nextChannelData });
+    const nextOverrides = { ...values.masterOverrides };
+    if (urls && urls.length > 0) nextOverrides.images = urls;
+    else delete nextOverrides.images;
+    onChange({ ...values, masterOverrides: nextOverrides });
   }
 
   // ── Category field deduplication ─────────────────────────────────────────
@@ -1202,7 +1214,7 @@ export default function ChannelStoreTab({ schema, values, onChange, isSaving, la
             orgId={orgId}
             masterProductId={masterProductId ?? ""}
             masterImages={masterImages}
-            value={Array.isArray(values.channelData.images) ? (values.channelData.images as string[]) : undefined}
+            value={imageOverrideValue}
             onChange={handleImagesOverrideChange}
             embedded
           />
@@ -1312,7 +1324,7 @@ export default function ChannelStoreTab({ schema, values, onChange, isSaving, la
         orgId={orgId}
         masterProductId={masterProductId ?? ""}
         masterImages={masterImages}
-        value={Array.isArray(values.channelData.images) ? (values.channelData.images as string[]) : undefined}
+        value={imageOverrideValue}
         onChange={handleImagesOverrideChange}
       />
 

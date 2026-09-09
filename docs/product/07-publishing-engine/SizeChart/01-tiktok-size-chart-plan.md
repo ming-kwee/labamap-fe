@@ -24,7 +24,7 @@ kategori apparel `835720`) agar publish/UPDATE produk apparel lolos, dengan cara
 | Kapabilitas list template TikTok | ❌ **tidak ada** (`GetSizeChartList` yang ada = **Shopee**, `shopeeBase()`) | `ChannelCapabilityOperationDataLoader` |
 | Merchant ops TikTok | `GetWarehouses` dll — **tak ada** padanan size-chart | `MerchantApiOperationDataLoader` |
 | Pola upload gambar TikTok | ✅ `create_CP_Media_Pre` → `POST /product/{v}/images/upload` (tanpa `use_case`, default MAIN_IMAGE). **Nilainya LIST** yang di-loop sync | `ChannelMetadataMigration.tiktokshopCreateMediaPreWorkflow` (return `List.of(workflow)`) |
-| Pola staging body JOLT-independent | ✅ `_categoryAttributes` (+ `BUILD_ATTRIBUTE_LIST`), `_sourceImages` | `ChannelPublishService.stageCategoryAttributes` / `collectSourceImageUrls` |
+| Pola staging body JOLT-independent | ✅ `_categoryAttributes` (+ `BUILD_ATTRIBUTE_LIST`), `_sourceImages` | `PublishPayloadStagingService.stageCategoryAttributes` / `collectSourceImageUrls` |
 | Op pemindah objek → body | ✅ `COPY_PATH` (`getNestedValue`→`setNestedValue`, mendukung subtree objek) | `GenericPostProcessingEngine.executeCopyPath` |
 
 **Bentuk body TikTok 202309:** `size_chart: { image: {uri}, template: {id} }` — **uploaded image** ATAU
@@ -67,7 +67,7 @@ picker Step-2 + kapabilitas + staging, **tanpa** menyentuh body-build.
 Step-2 (FE): merchant unggah gambar size-chart → GCS URL → channelData.sizeChart
         │
         ▼
-ChannelPublishService.stageSizeChart():  _sizeChart = { image: { uri: <gcsUrl> } }   (reserved "_"-key)
+PublishPayloadStagingService.stageSizeChart():  _sizeChart = { image: { uri: <gcsUrl> } }   (reserved "_"-key)
         │  (staged di kedua call-site: real publish + analyze)
         ▼
 post-processing rule "tiktok-build-size-chart":  COPY_PATH  _sizeChart → size_chart   (body field)

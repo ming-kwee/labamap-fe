@@ -17,7 +17,7 @@ master  (+ staging keys: _sourceImages, _productTypeVariantDimensions, dst.)
   └─▶ buildChannelAttributes  (skip key ber-prefix "_")
   └─▶ POST-PROCESSING        (GenericPostProcessingEngine) — bangun struktur turunan khas channel:
          BUILD_TIER_VARIATION, BUILD_MODEL, WRAP_ARRAY_TO_OBJECTS, MAP_TO_INDEXED,
-         BUILD_SALES_ATTRIBUTES, ENRICH_IMAGES/MEDIA, CONCAT_INTO, SET_DEFAULT, ...
+         BUILD_SALES_ATTRIBUTES, ENRICH_VARIANT_MEDIA, CONCAT_INTO, SET_DEFAULT, ...
   └─▶ channel payload  ─────▶  publish
 ```
 
@@ -90,7 +90,7 @@ Reverse memerlukan panggilan tambahan; bukan sekadar transform lokal.
 
 | Operasi maju | Yang dibutuhkan saat reverse |
 |---|---|
-| `ENRICH_IMAGES` / `ENRICH_MEDIA` / `ENRICH_VARIANT_MEDIA` / `LINK_MEDIA_TO_CHOICES` | resolve `image_id` → URL via media API channel; petakan balik media↔choice |
+| `ENRICH_VARIANT_MEDIA` / `WRAP_ARRAY_TO_OBJECTS` (image enrichment) | resolve `image_id` → URL via media API channel; petakan balik media↔choice |
 | `BUILD_STOCK_INFOS` | agregasi balik stok per-warehouse → stok master (butuh peta warehouse) |
 
 > Kelas B adalah alasan reverse **tidak murni fungsi lokal** — untuk Shopee, membalik gambar berarti

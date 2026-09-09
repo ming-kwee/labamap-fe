@@ -387,7 +387,7 @@ padahal `channel_product_data` menyimpan `shopify_taxonomy_category_id` /`channe
 Taxonomy adalah **GID penuh**; `aa-1-15` telanjang bukan id taxonomy valid untuk API Shopify manapun →
 kategori tak ter-resolve → kosong.
 
-**Akar.** `ChannelPublishService.normalizeCategoryGid` (dipanggil di jalur output publish) meng-strip
+**Akar.** `PublishPayloadStagingService.normalizeCategoryGid` (dipanggil di jalur output publish) meng-strip
 prefix berdasar metadata Shopify `categoryGidPrefix` + `categoryGidFieldPath`
 (`ChannelConfigurationDataLoader.createShopifyConfiguration`). Asumsi "Shopify REST expects plain code"
 itu **salah** untuk taxonomy baru.

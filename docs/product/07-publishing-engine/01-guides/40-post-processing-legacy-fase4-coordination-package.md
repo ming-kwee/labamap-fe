@@ -2,7 +2,28 @@
 
 **Untuk:** pemilik AI agent (JOLT-generation) + pemilik Frontend + ops/DBA.
 **Dari:** decommission `rule.type` (lanjutan guide 39; Fase 0–3 sudah selesai).
-**Sifat:** dokumen koordinasi + audit. **Belum ada perubahan kode di Fase 4.**
+**Sifat:** dokumen koordinasi + audit.
+
+**Status eksekusi (2026-09-07, `bff-v18`):** ✅ **4b + 4a SELESAI** (setelah konfirmasi FE — lihat §Hasil
+konfirmasi FE). ✅ **4c PASS** pada environment yang diaudit (via Compass shell): `channel_configurations`
+total **8**, rule ber-`type` legacy **0**; `channel_jolt_specs` total **9**, spec ber-op post-processing **0**
+→ bersih & bukan false-negative (total > 0). **Hanya ADA 1 environment** (development, Atlas cluster
+`labamap2cluster…zgdyn.mongodb.net`; RAG terpisah di Postgres) — jadi audit ini menutup **seluruh sistem**.
+**4c PASS PENUH.**
+
+✅ **Fase 5 SELESAI** — field `type` + satelit matinya (`addFields`, `dimensionFields`) dihapus dari entity
+`ChannelConfiguration.PostProcessingRule`; branch WARN `getType()` di `executePipeline` dihapus; name-fallback
+`getType()` dibersihkan; test decommission ditulis ulang (rule tanpa operations = no-op). `sourceField`/
+`targetField`/`configuration` tetap (masih dipakai `getEffective*Path`/rule). Aman: JSON yang di-load 0 legacy
+field, `FAIL_ON_UNKNOWN_PROPERTIES=false`, Spring Data Mongo abaikan field dokumen tak dikenal. 28 test hijau.
+**Decommission `rule.type` LENGKAP (guide 39/40 Fase 0–5).** Sisa follow-up FE = opsional (non-blocking).
+- ✅ **4b** — 2 leftover `rule.getType()` di jalur AI dihapus: `AgentToolHandlerService` (cabang legacy di
+  `postProcessingOpCatalog`) + `AiRecommendationService.firstOp` (kini `return null`; pemanggil sudah
+  skip-null). Nol-risiko; 19 test AI-path (`AdaptivePatternMatchingCommandImplTest`+enrichment) hijau.
+- ✅ **4a** — `OperationCatalogService`: 6 op HANTU legacy dihapus + `OperationScope.LEGACY` dibuang; 7 op
+  NYATA yang tadinya tak terdaftar ditambahkan (`CONCAT_INTO, REMOVE_PATH, BUILD_OPTIONS_FROM_FLAT_KEYS,
+  BUILD_TIER_VARIATION, BUILD_MODEL, BUILD_METAFIELD_LIST, BUILD_VARIANT_IMAGE_UPLOAD`). Test
+  `OperationCatalogExampleTest.fase4a_legacyOpsRemoved_realBuildersAdded` mengunci hasilnya.
 
 ---
 
@@ -128,6 +149,46 @@ konfirmasi di §Skrip.)
 ---
 
 ## Skrip audit (DB, read-only)
+
+> **Skrip siap-pakai:** `scripts/fase4c-post-processing-legacy-db-audit.js` (mencetak verdict PASS/FAIL).
+> Jalankan: `mongosh "$MONGODB_URI" --file scripts/fase4c-post-processing-legacy-db-audit.js` — **atau**
+> tempel dua aggregation di bawah ke **MongoDB Compass** (tab Aggregations, db `labamap_omnichannel`).
+> **4c = langkah operator/DBA** (butuh akses & kredensial staging/prod yang tak ada di repo/sandbox).
+
+**PALING SEDERHANA & tak ambigu — Compass embedded shell (`>_MONGOSH` di bawah), hasil = ANGKA:**
+```javascript
+use labamap_omnichannel
+db.channel_configurations.countDocuments()                                   // total config — HARUS > 0 (mis. 6-8)
+db.channel_configurations.countDocuments(                                    // config yang punya rule legacy — HARUS 0
+  { postProcessingRules: { $elemMatch: { type: { $exists: true, $ne: null } } } })
+db.channel_jolt_specs.countDocuments()                                       // total spec AI (sanity, boleh berapa saja)
+db.channel_jolt_specs.countDocuments(                                        // spec AI anomali — HARUS 0
+  { "joltSpec.op": { $in: ["ENRICH_IMAGES","ENRICH_MEDIA","ENRICH_VARIANTS",
+                           "GENERATE_OPTIONS","MAP_DIMENSIONS","LINK_MEDIA_TO_CHOICES","FOR_EACH"] } })
+```
+> **PASS ⟺** angka-1 (`countDocuments()`) **> 0** DAN angka-2 **= 0** DAN angka-4 **= 0**. Kalau angka-1 = 0 →
+> Anda tersambung ke DB/collection yang salah (bukan data kosong). `countDocuments` mencetak angka langsung di
+> shell, jadi tak ada kebingungan "kosong vs gagal".
+>
+> ⚠ **Kenapa aggregation tadi tampak kosong:** tab **Aggregations** Compass minta HANYA array pipeline
+> `[ … ]` (tanpa `db.x.aggregate(...)`), dan bar **Filter** di tab Documents minta HANYA objek filter `{ … }`.
+> Menempel `db.x.aggregate([...])` utuh ke keduanya = gagal senyap. Pakai panel **`>_MONGOSH`** untuk perintah
+> `db.x.…(…)` lengkap.
+
+**Compass-friendly, SELF-VERIFYING** (alternatif — Check-1 dalam satu aggregation di tab Aggregations; tempel
+HANYA array `[…]` di bawah tanpa `db.channel_configurations.aggregate(`):
+```javascript
+db.channel_configurations.aggregate([
+  { $facet: {
+    totalConfigs:        [ { $count: "n" } ],
+    configsWithRules:    [ { $match: { "postProcessingRules.0": { $exists: true } } }, { $count: "n" } ],
+    totalRules:          [ { $unwind: "$postProcessingRules" }, { $count: "n" } ],
+    rulesWithLegacyType: [ { $unwind: "$postProcessingRules" },
+                           { $match: { "postProcessingRules.type": { $ne: null } } }, { $count: "n" } ]
+  } }
+]);
+// PASS Check-1  ⟺  totalRules.n > 0  DAN  rulesWithLegacyType kosong/0
+```
 
 ```javascript
 // mongosh — pada tiap environment (staging, prod)

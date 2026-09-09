@@ -208,7 +208,7 @@ Module root (backend): `com.labamap.labamapomnichannelbe4fe.publishing`
 | `01-publish-request-response.md` | `POST /channels/publish` single + batch endpoints, `PublishProductRequest` / `PublishProductResponse` shapes, all TypeScript types |
 | `02-sync-api.md` | `SyncChannelProductRequest` shape, sync API contract, response mapping |
 | `03-publish-analysis.md` | `PublishAnalysisService` 7-stage pre-flight response, all stage shapes, `readinessScore` algorithm, TypeScript types |
-| `04-post-processing-operations.md` | All 19 implemented operations (DOCUMENT / LIST / PER_ITEM / LEGACY scopes) with full parameter tables and examples; condition value enums |
+| `04-post-processing-operations.md` | Implemented operations (DOCUMENT / LIST / PER_ITEM scopes) with parameter tables and examples; condition value enums. (The legacy `type` rule format was decommissioned — migration reference only.) |
 
 ---
 

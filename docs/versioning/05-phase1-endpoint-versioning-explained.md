@@ -79,7 +79,7 @@ sync-service adalah URL **berversi konkret**.
 
 Shopee menandatangani request (HMAC) memakai **path** sebagai bagian pesan tanda tangan
 (`integrationConfig.publishApiPath`, mis. `/api/{apiVersion}/product/add_item`). Di
-`ChannelPublishService.enrichHmacSignedPublishOptions`, path ini di-resolve **sebelum** dipakai, sehingga
+`PublishCredentialInjector.enrichHmacSignedPublishOptions`, path ini di-resolve **sebelum** dipakai, sehingga
 **path yang di-sign dan URL yang dipanggil sama-sama berversi konkret** (keduanya wajib cocok, kalau tidak
 Shopee menolak).
 

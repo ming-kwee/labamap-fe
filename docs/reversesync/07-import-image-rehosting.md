@@ -250,7 +250,7 @@ dari edit — kandidat no.2). Uji regresi: `ReverseApplyMappingTest.channelDataK
     sweeper yang ada. Menambah GC kedua = duplikasi (dihindari).
 - **Phase 3 (edit gambar produk import ter-sync — Option B, no churn) — ✅ SELESAI (branch `bff-v14`).**
   **Bug:** produk import = UPDATE sejak awal (`channelProductId` ada) TAPI tak punya baseline gambar (`imageChannelIds`).
-  Aturan add-only (`ChannelPublishService:3009`) melihat "UPDATE + tanpa baseline" → **stage 0 gambar** (Shopify
+  Aturan add-only (`PublishImageDiffPlanner.filterProductImagesForUpdate` / `sourceImagesForOp`; dipindah dari `ChannelPublishService` di Fase 3 dekomposisi guide 41) melihat "UPDATE + tanpa baseline" → **stage 0 gambar** (Shopify
   `/images.json` menggandakan bila re-POST) → tambah/edit/hapus gambar tak pernah sampai Shopify + baseline tak pernah
   terbentuk → **deadlock** (log sync: `create_CP_Media executed 0 calls`, `product.images=[]`). **Fix (re-key baseline):**
   (1) import merekam `imageChannelIds={imageKey(cdnSrc)→shopifyId}` (`ReverseImportService.productImageBaseline`, saat

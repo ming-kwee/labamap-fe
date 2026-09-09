@@ -257,7 +257,7 @@ re-sync, image re-host) sudah meneruskan non-null → tak terpengaruh.
 gambar dari master. Gejalanya baru muncul saat **publish** produk impor yang di-edit: `_sourceImages` kosong →
 media_pre upload 0 gambar → atribut `image` jadi `{}` → sync gagal (lihat §4g). Fix: di `update()`, key gambar yang
 **absent** ⟹ preserve nilai tersimpan; key **ada** (walau `[]`) ⟹ replace (hapus disengaja tetap dihormati). Simetris
-dg aturan variants/options di atas dan `ChannelPublishService.ensureProductImages`; channel-agnostik (Shopify pun ikut
+dg aturan variants/options di atas dan `PublishPayloadStagingService.ensureProductImages`; channel-agnostik (Shopify pun ikut
 terlindungi). Uji `MasterProductUpdatePreserveImagesTest`. Dua pemanggil lain kirim key gambar → tak terpengaruh.
 
 **Bug #2 — FE state-wipe (reset visual, penyebab "sama saja").** Repo FE

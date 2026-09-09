@@ -115,13 +115,17 @@ Add, update, or remove a post-processing rule.
 {
   "action": "upsert",
   "rule": {
-    "name": "enrich_images",
+    "name": "enrich-images",
     "enabled": true,
+    "sourcePath": "product.images",
+    "targetPath": "product.images",
     "operations": [
       {
-        "type": "ENRICH_IMAGES",
-        "sourceField": "galleryImages",
-        "targetField": "product.images"
+        "op": "FOR_EACH",
+        "steps": [
+          { "op": "STRING_TO_OBJECT", "keyField": "src" },
+          { "op": "SET_DEFAULT", "field": "alt", "value": "" }
+        ]
       }
     ]
   }

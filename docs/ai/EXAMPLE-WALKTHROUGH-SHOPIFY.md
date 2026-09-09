@@ -211,7 +211,7 @@ mekanisme yang **tidak sama**:
 | | (A) Publish normal — **REUSE** | (B) Regenerasi — **AUTO_APPLIED** |
 |---|---|---|
 | Kapan | Setiap publish produk biasa | Saat agent dijalankan ulang (lihat 2.3) |
-| Komponen | `ChannelPublishService.findJoltSpecWithFallback()` | `JoltGenerationAgentService` |
+| Komponen | `PublishJoltResolver.findJoltSpecWithFallback()` | `JoltGenerationAgentService` |
 | Agent/LLM/RAG dipakai? | **TIDAK** | **YA** |
 | Biaya | $0, ~0 ms | 1 panggilan LLM + embedding |
 | Hasil | Pakai JOLT yang sudah ada | Tulis JOLT baru/diperbarui ke `channel_jolt_specs` |
@@ -342,7 +342,7 @@ Developer cukup mengkurasi sekali; sistem mereplikasi & menyempurnakannya sendir
 | 1.6 routing | `JoltGenerationAgentService.routeResult()` (0.92 / 0.70 threshold) |
 | 1.7 review | `AiRecommendation` + `AiRecommendationController` |
 | 1.8 approve→embed | `AiRecommendationService.approve()` → `RagEmbeddingService.embedJoltSpec()` |
-| 2.1 **reuse** (publish normal) | `ChannelPublishService.findJoltSpecWithFallback()` → baca `channel_jolt_specs` (tanpa agent/APM) |
+| 2.1 **reuse** (publish normal) | `PublishJoltResolver.findJoltSpecWithFallback()` → baca `channel_jolt_specs` (tanpa agent/APM) |
 | 2.3 **auto-apply** (regenerasi) | `JoltGenerationAgentService.autoApply()` → tulis `channel_jolt_specs` |
 | 3.1 belajar | `LearningFeedbackService` + `ChannelFieldMapping.getEffectiveConfidence()` |
 | 3.2 dashboard | `AiAdminController GET /learning/stats` |

@@ -272,7 +272,9 @@ if (Boolean.TRUE.equals(response.getSuccess())) {
 
 `recordHistory(...)` membangun `PublishHistoryEntry` dari `request`/`store`/`response` (termasuk
 `durationMs` dari `response.getPerformanceMetrics().getTotalTimeMs()`, `userId` dari `request.getUserId()`)
-lalu `publishHistoryService.record(e)`.
+lalu `publishHistoryService.record(e)`. (Metode `recordHistory` + leaf-helper `persist*` kini berada di
+`PublishOutcomeWriter`, Fase 5 dekomposisi guide 41; orkestrator `updateChannelProductStatus`/`recordFailedOutcome`
+di `ChannelPublishService` mendelegasikan ke sana. Pseudocode alur di atas tetap berlaku secara konseptual.)
 
 > **Untuk P0-2 nanti:** parameter `"CREATE"` menjadi `"UPDATE"` bila listing-state sudah punya
 > `channelProductId` sebelum publish. Di P0-1 selalu `"CREATE"`.

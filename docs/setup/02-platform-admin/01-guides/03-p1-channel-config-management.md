@@ -95,7 +95,7 @@ This is a small, isolated change with no risk to the auto-generation path.
 
 `ChannelConfiguration` is the control plane for every channel. It holds:
 - `fieldBoosts` — confidence adjustments for field matching
-- `postProcessingRules` — rules that enrich the JOLT output (ENRICH_IMAGES, CONCAT_INTO, GENERATE_OPTIONS)
+- `postProcessingRules` — rules that enrich the JOLT output via `operations[]` (e.g. FOR_EACH, CONCAT_INTO, EXTRACT_DIMENSIONS, WRAP_ARRAY_TO_OBJECTS)
 - `categoryRequirements` — per-category required/recommended fields for Shopify/WIX/eBay
 - `apiWrapperConfig` — how the JOLT output is wrapped before sending to the channel
 - `apiSchema` — base target schema for APM
@@ -146,9 +146,15 @@ PUT /admin/channel-configurations/{channelId}/post-processing-rules
 {
   "action": "upsert",
   "rule": {
-    "name": "enrich_images",
-    "type": "ENRICH_IMAGES",
-    "operations": [...]
+    "name": "enrich-images",
+    "sourcePath": "product.images",
+    "targetPath": "product.images",
+    "operations": [
+      { "op": "FOR_EACH", "steps": [
+        { "op": "STRING_TO_OBJECT", "keyField": "src" },
+        { "op": "SET_DEFAULT", "field": "alt", "value": "" }
+      ] }
+    ]
   }
 }
 ```

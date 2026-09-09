@@ -35,17 +35,31 @@ It is a **coordinated** change (apiSchema is spec-of-record; support/reshape liv
 1. **apiSchema** — `ChannelConfigurationDataLoader.createTiktokshopApiSchema` mirrors the 202309 body.
    This is the authoritative target for APM / JOLT generation.
 2. **Default JOLT seed** — `DefaultJoltSpecDataLoader.buildTiktokshopJoltSpec` maps master → 202309
-   target names (`title`, `package_weight.value`, `category_id`, `brand_id`) and passes
+   target names (`title`, `category_id`, `brand_id`) and passes
    the flat variant fields through at `skus[*].{color,size,price,stock,seller_sku,variantImages}`.
    Product images are **JOLT-independent** — the seed maps neither `mainImage` nor `images`; `main_images`
    is built in post-processing (see below). (Seed is a last-resort fallback; generated specs that target
    apiSchema win — keep them aligned.)
+   > **`package_weight.value` is NO LONGER trusted to JOLT.** The seed still maps `weight → package_weight.value`,
+   > but a generated per-category spec mis-targets the nested `package_weight` object (and the critical-field
+   > injection's simple-field guard checks source-key presence, not target coverage, so it does not correct it) —
+   > leaving `package_weight = {unit:KILOGRAM}` only → TikTok `36009004 "Value of PackageWeight is a required field"`.
+   > It is now lifted JOLT-independently from `_source.weight` by the `tiktokshop-set-package-weight` rule (below),
+   > exactly like `category_id`. See [[shopee-image-two-step-flow]] / `DESIGN-namespaced-source-context`.
+   >
+   > **`_source.weight` itself is backfilled.** The FE publish payload omits `weight` (like it omits dims),
+   > and both live only in the stored master's `productAttributes`. `PublishPayloadStagingService.ensureShippingAttributes`
+   > (pre-transform, reactive) backfills `weight` + `length/width/height/dimensionUnit` from the stored master
+   > when absent — so `_source.weight` is populated and the rule fires WITHOUT needing a Step-2 override. Without
+   > this backfill the rule no-ops (source null) and `package_weight.value` stays empty.
 3. **Post-processing rules** — `createTiktokshopPostProcessingRules` reshapes the flat fields into
    202309 structures:
    | Rule | Produces |
    |---|---|
    | `set-product-defaults` | `save_mode=LISTING`, `package_weight.unit=KILOGRAM` (SET_FIELD) |
-   | `enrich-images` | `main_images:[{uri}]` from the canonical `_sourceImages` staging key (mainImage + gallery, de-duped; staged by `ChannelPublishService.collectSourceImageUrls`), wrapped via STRING_TO_OBJECT keyField `uri`. Runs after JOLT and overwrites `main_images`, so it behaves identically for the seed spec and every generated spec. |
+   | `tiktokshop-set-category-id` | `category_id` from `_source.channelCategoryId` (COPY_PATH) — JOLT-independent |
+   | `tiktokshop-set-package-weight` | `package_weight.value` from `_source.weight` (TO_STRING: lift + stringify, whole-number safe; preserves sibling `unit`) — JOLT-independent, fixes required-field `36009004` |
+   | `enrich-images` | `main_images:[{uri}]` from the canonical `_sourceImages` staging key (mainImage + gallery, de-duped; staged by `PublishPayloadStagingService.collectSourceImageUrls`), wrapped via STRING_TO_OBJECT keyField `uri`. Runs after JOLT and overwrites `main_images`, so it behaves identically for the seed spec and every generated spec. |
    | `build-sales-attributes` | `sales_attributes` with attribute key `id` (`attributeKey`) |
    | `build-inventory` | `inventory:[{warehouse_id, quantity}]` (BUILD_STOCK_INFOS `targetField`/`stockKey`) |
    | `build-price` | `price:{amount(string), currency}` (TO_STRING + SET_DEFAULT + NEST_FIELD×2) |

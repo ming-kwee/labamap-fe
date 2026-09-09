@@ -70,7 +70,7 @@ untuk publish yang di-resolve reconciler.
 | `publishing/repository/PublishJobRepository.java` (**baru**) | `findTop50ByStatusAndNextPollAtLessThanEqual…` (due) + listing per status (DLQ). Paket sudah terdaftar di MongoConfig. |
 | `publishing/service/PublishJobService.java` (**baru**) | createProcessing / findDue / markCompleted·Failed·Dead / deferNextPoll / listByStatus. |
 | `publishing/service/PublishJobReconciler.java` (**baru**) | `@Scheduled` + `decide(...)` murni + applyOutcome (reuse recordPublishSuccess/Failure + publish_history). `@ConditionalOnProperty(app.publish.reconciler-enabled, matchIfMissing=true)`. |
-| `ChannelPublishService` | PROCESSING guard kini `createProcessing(job)`; `buildProcessingResponse` + response `contentHash`. |
+| `ChannelPublishService` | PROCESSING guard kini `createProcessing(job)`; `buildProcessingResponse` (metode kini di `PublishResponseFactory`, Fase 1 dekomposisi guide 41) + response `contentHash`. |
 | `PublishProductResponse` | +`contentHash` (dibawa di response PROCESSING agar job menyimpannya). |
 | `ChannelPublishController` | `GET /channels/publish/jobs?status=DEAD&organizationId=…` (inspeksi DLQ). |
 

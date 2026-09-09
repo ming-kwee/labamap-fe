@@ -38,6 +38,106 @@ Pembagian tugas (prinsip di `CLAUDE.md`):
 **Poin kunci:** `apiSchema` adalah **cermin setia create-body** — ia memuat **semua** field body, termasuk
 yang dibangun post-processing. Ia dipakai bersama oleh JOLT-agent (sebagai target) **dan** `buildTargetSchema`.
 
+### 1.1 Kenapa JOLT tak boleh menulis ke target post-processing — dua bencana (contoh: `tier_variation`)
+
+Pembagian di atas bukan sekadar kerapian. Kalau JOLT **ikut** menulis ke target yang dimiliki
+post-processing (mis. `tier_variation`), terjadi **dua bencana** saat publish nyata. Mari lihat pelan-pelan
+dengan satu contoh Shopee: axis varian **Size × Color**.
+
+**Kondisi awal (master):**
+```
+variants: [
+  { sku: "SKU-XS-BLACK", size: "Xs", color: "Black", price: 112000, inventory: 1 },
+  { sku: "SKU-S-BLACK",  size: "S",  color: "Black", price: 113000, inventory: 2 }
+]
+```
+
+**Cara BENAR — JOLT flat, post-processing membangun komposit.** JOLT hanya meneruskan field flat per-varian;
+`BUILD_TIER_VARIATION` (post-processing) membaca `variants[].size`/`variants[].color` lalu merakit `tier_variation`:
+```
+JOLT:  variants = { *: { sku:variants[&1].sku, size:variants[&1].size, color:variants[&1].color, ... } }
+       → output tetap punya variants[].size = "Xs"/"S" dan variants[].color = "Black"
+
+BUILD_TIER_VARIATION baca dims [size,color] dari variants[] →
+       tier_variation = [ {name:"Size",  option_list:[{option:"Xs"},{option:"S"}]},
+                          {name:"Color", option_list:[{option:"Black"}]} ]   ✅
+```
+
+Sekarang bayangkan agent/spec **salah**: ia mencoba **langsung** membangun `tier_variation` di JOLT, mis.
+memetakan `variants[*].size → tier_variation[0].option_list[…].option`.
+
+#### Bencana 1 — Struktur rusak (double-write / collision)
+
+`tier_variation` ditulis **DUA KALI**: sekali oleh JOLT (parsial, dari spec) dan sekali oleh
+`BUILD_TIER_VARIATION` (post-processing). Keduanya menulis ke path yang sama → hasilnya **saling menimpa /
+tergabung tak konsisten** → `tier_variation` malformed. Kasus ekstrimnya = **collision index tetap vs loop**
+(persis bug gambar di §2.2 di bawah: `images[0]` dari `mainImage` menabrak `images[&1]` dari `galleryImages`)
+— `JoltTargetCollisionValidator` menandainya **ERROR** dan menolak publish, karena JOLT memang **tak bisa**
+mengekspresikan struktur itu tanpa tabrakan.
+```
+JOLT tulis:            tier_variation = [{name:"Size", option_list:[{option:"Xs"}]}]   (parsial/keliru)
+BUILD_TIER_VARIATION:  tier_variation = [{name:"Size",...},{name:"Color",...}]         (menimpa/gabung)
+→ hasil akhir tak deterministik / rusak                                                ❌
+```
+
+#### Bencana 2 — Builder kehilangan bahan (flat "ditelan")
+
+Ini lebih halus. Dengan memetakan `variants[*].size → tier_variation[…]`, JOLT **mengalihkan** nilai `size`
+ke dalam komposit — sehingga varian ter-transform **tak lagi punya field flat `size`**:
+```
+// output JOLT setelah size "ditelan" ke tier_variation:
+variants: [ { sku:"SKU-XS-BLACK", color:"Black", price:112000 },   // ← size HILANG
+            { sku:"SKU-S-BLACK",  color:"Black", price:113000 } ]
+```
+Lalu `BUILD_TIER_VARIATION` jalan: ia membaca dims `[size, color]` dan mencari `variants[].size` untuk tiap
+varian → **tak ketemu** → membangun tier `Size` dengan option kosong/salah. Builder **kehilangan bahannya**:
+```
+BUILD_TIER_VARIATION baca variants[].size → null → tier "Size" option_list = []   ❌
+```
+Efek beruntun: `BUILD_MODEL` (yang memetakan varian → `tier_index` berdasar posisi option di tier) juga
+salah karena tiernya kosong → payload varian ke Shopee jadi rusak.
+
+**Inti kedua bencana:** target komposit (`tier_variation`/`model`/`images`/`dimension`/…) **milik
+post-processing**; ia butuh **input** (flat `variants[].size`, atau kunci `_`-staged) tetap utuh. JOLT yang
+menulis langsung ke target itu **merampas input** builder (Bencana 2) **dan/atau** menabrak output builder
+(Bencana 1). Itulah kenapa ownership-contract **membuang** (remediate) mapping JOLT ke owned-target — bukan
+karena rewel, tapi karena bencana ini terjadi kalau tidak.
+
+#### Kapan Bencana 2 berlaku — dan kapan `_source` mengimunisasi
+
+Bencana 2 **tidak** merata. Banyak builder membaca bahannya dari **`_source`** / kunci `_`-staged, **bukan**
+dari output JOLT. Kunci `_`-prefixed **kebal** terhadap JOLT (JOLT tak bisa menelannya — `buildChannelAttributes`
+melewati kunci `_`). Untuk builder itu, JOLT yang salah menulis ke target-nya **tak berpengaruh** ke bahan:
+
+| Builder | Baca NILAI dari | JOLT menelan field → efek |
+|---|---|---|
+| `category_id` | `_source.channelCategoryId` | ❌ tak berpengaruh (**kebal**) |
+| `package_weight.value` | `_source.weight` | ❌ tak berpengaruh (**kebal**) — ini persis fix TikTok kita |
+| `images.image_url_list` | `_sourceImages` | ❌ tak berpengaruh (**kebal**) |
+| `dimension` | `_packageDimension` | ❌ tak berpengaruh (**kebal**) |
+| **`tier_variation` / `model`** | **`variants[]` hasil JOLT** (bukan `_source`) | ✅ **rentan** — nilai bisa ditelan |
+
+Bedanya di `BUILD_TIER_VARIATION`/`BUILD_MODEL`: **nama axis** (`size`, `color`) diambil dari
+`_source._productTypeVariantDimensions` (kebal), tetapi **nilai per-varian** (`Xs`/`Black`) dibaca dari
+`variants[]` hasil JOLT — `getNestedValue(data, "variants")`, bukan `_source.variants`
+(`GenericPostProcessingEngine:1663` untuk tier, `:1745` untuk model). Karena itu, contoh `tier_variation` di
+atas justru **salah satu dari sedikit kasus Bencana 2 yang nyata** — bukan konsekuensi umum.
+
+> **Kenapa nilai varian dibaca dari `variants[]` hasil JOLT, bukan `_source.variants`? Bukan soal override.**
+> `_source` di-stage **setelah** merge Step-2 (`ChannelPublishService:1342`, komentar *"master + merged
+> Step-2"*), urutan `master < masterOverrides < channelData < variantOverrides[sku]` (baris 476) — override
+> per-SKU di-apply **ke dalam** `masterProductData.variants[]` (baris 647–678). Jadi `_source.variants[].size`
+> **juga** sudah membawa override merchant; membaca dari `_source` **tidak** akan mem-bypass override. Alasan
+> sebenarnya adalah **koherensi indeks**: `BUILD_MODEL` menandai tiap varian dengan `tier_index` berdasar
+> **posisi** di array `variants[]`/`model[]` yang **benar-benar dikirim** ke channel. Ia harus meng-anotasi
+> array yang **persis sama** yang ia indeks — membaca array lain (`_source.variants`, yang bentuk/urutan/
+> jumlahnya bisa beda dari hasil JOLT) berisiko `tier_index` meleset. Jadi nilainya **wajib** dari `variants[]`
+> hasil JOLT — itulah kenapa builder ini satu-satunya yang rentan Bencana 2, sementara builder `_source`-fed kebal.
+
+> **Kaitan gate:** di jalur publish nyata, `PostProcessingContractService.remediate` menyapu mapping bogus ini
+> **sebelum** transform (auto-heal); sisa yang tak bisa disembuhkan → `findReservedWrites` → **refuse to
+> publish**. Di agent, strip yang sama diterapkan saat `validate_jolt_spec` (§3) agar agent konvergen.
+
 ---
 
 ## 2. Gejala: agent stuck, log berhenti di `validate_jolt_spec`

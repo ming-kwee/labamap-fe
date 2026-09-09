@@ -46,7 +46,7 @@ The converted path is what appears as `chnlAttrName`/`chnlVrntName`/`chnlOptnNam
 
 When the master product belongs to a `ProductType`, variant axis order matters. Channels like Shopify map `option1` to the first variant dimension and `option2` to the second.
 
-`ChannelPublishService.injectProductTypeVariantDimensions()` resolves this before JOLT runs:
+`PublishPayloadStagingService.injectProductTypeVariantDimensions()` resolves this before JOLT runs:
 
 ```
 masterProductData.categoryId

@@ -91,7 +91,14 @@ public class SemanticGateResult {
 
 ## 4. Di Mana Mengisinya (`buildTrace`)
 
-`ChannelPublishService.buildTrace` sudah mereplikasi pipeline dengan **service produksi yang sama**. Sisipkan
+> **Update (Fase 2 dekomposisi guide 41 — LENGKAP):** gate ini SUDAH diimplementasikan, dan `buildTrace`
+> kini berada PENUH di `PublishTraceService` (bukan lagi `ChannelPublishService`; entry `tracePublish` yang
+> tipis tetap di orchestrator & mendelegasikan). `buildTrace` menghitung INPUT gate (blocker preflight —
+> `collectPreflight` masih di orchestrator, token + violation semantic), lalu **perakitan** `PublishTraceGate`
+> (PreflightGateResult / SemanticGateResult / `wouldBlockPublish`) di `PublishTraceService.assembleTraceResponse`.
+> Alur & titik-capture di bawah tetap berlaku.
+
+`PublishTraceService.buildTrace` sudah mereplikasi pipeline dengan **service produksi yang sama**. Sisipkan
 kedua gate pada titik yang **sama** dengan publish nyata supaya faithful:
 
 ```
@@ -193,7 +200,8 @@ FE akan menampilkan:
 |---|---|
 | `publishing/model/response/PublishTraceResponse.java` | tambah `gate` |
 | `publishing/model/response/PublishTraceGate.java` (+ nested result DTO) | **baru** |
-| `publishing/service/ChannelPublishService.java` | `buildTrace`: jalankan preflight + semantic (collect, non-blocking); produksi pakai hasil yang sama untuk blokir |
+| `publishing/service/PublishTraceService.java` | `buildTrace` (kini di sini, Fase 2 LENGKAP): jalankan preflight + semantic (collect, non-blocking); produksi pakai hasil yang sama untuk blokir |
+| `publishing/service/PublishTraceService.java` | `assembleTraceResponse`: merakit `PublishTraceGate` (preflight/semantic result + `wouldBlockPublish`) — collaborator murni, Fase 2 dekomposisi guide 41 |
 | `adaptivepattern/service/JoltSemanticValidator.java` | varian `collect(spec)` yang mengembalikan hasil tanpa melempar |
 | (preflight gate service) | varian `collect(mergedData, ctx)` non-blocking |
 

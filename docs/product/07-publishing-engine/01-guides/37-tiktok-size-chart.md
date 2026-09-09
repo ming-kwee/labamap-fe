@@ -19,7 +19,7 @@ picker + capability + staging, no body-build change.
 Step-2 (FE): merchant uploads one image → GCS publicUrl → channelData.sizeChart (a plain URL string)
      │  ChannelFieldInput IMAGE case (fieldType "image"); orgId=useAuth(), productId=/products/[masterProductId]
      ▼
-ChannelPublishService.stageSizeChart():  _sizeChart = { image: { uri: <gcsUrl> } }   (backend owns the body shape)
+PublishPayloadStagingService.stageSizeChart():  _sizeChart = { image: { uri: <gcsUrl> } }   (backend owns the body shape)
      ▼
 post-processing rule tiktok-build-size-chart:  COPY_PATH  _sizeChart → body `size_chart`   (priority 36)
      ▼

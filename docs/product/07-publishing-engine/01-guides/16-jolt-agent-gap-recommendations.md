@@ -51,7 +51,7 @@ Implementasi: `AgentToolHandlerService.postProcessingOpCatalog()` → daftar ent
 Karena diturunkan dari data, katalog ini **= apa pun yang pipeline nyata pakai** dan **swa-perbarui**
 saat rule berubah. Contoh op yang muncul: `BUILD_TIER_VARIATION`, `BUILD_MODEL`, `BUILD_SALES_ATTRIBUTES`,
 `BUILD_STOCK_INFOS`, `BUILD_ATTRIBUTE_LIST`, `WRAP_ARRAY_TO_OBJECTS`, `FOR_EACH`, `SET_DEFAULT`,
-`ENRICH_IMAGES`, `MAP_DIMENSIONS`, dll (lihat juga
+`EXTRACT_DIMENSIONS`, `MAP_TO_INDEXED`, dll (lihat juga
 [02-api-reference/04-post-processing-operations.md](../02-api-reference/04-post-processing-operations.md)).
 
 ### 2.2 Disajikan sebagai *knowledge*, bukan tool baru
