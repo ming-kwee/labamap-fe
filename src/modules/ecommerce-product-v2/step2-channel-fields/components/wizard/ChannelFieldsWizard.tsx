@@ -151,6 +151,9 @@ export default function ChannelFieldsWizard({ masterProductId }: Props) {
   // Navigation warning + field-level errors for the active tab
   const [continueWarning, setContinueWarning] = useState<string | null>(null);
   const [activeTabFieldErrors, setActiveTabFieldErrors] = useState<Set<string>>(new Set());
+  // Opsi 2: per-store category-attribute fields whose value the backend dropped on the last save (not a live
+  // option). Cleared from local state + surfaced so the merchant re-picks; self-clears on the next clean save.
+  const [droppedByStore, setDroppedByStore] = useState<Record<string, string[]>>({});
 
   // Load schema
   // Fetch (once) the saved store data used to restore Step-2 extras across hydrations.
@@ -372,6 +375,27 @@ export default function ChannelFieldsWizard({ masterProductId }: Props) {
         [storeId]: { pct: result.completionPercentage, status: result.status },
       }));
       setLastSaved((prev) => ({ ...prev, [storeId]: new Date() }));
+      // Opsi 2: reflect backend-dropped category-attribute values (not a live option) — clear them locally so the
+      // field shows empty, and record them so the tab flags the fields for re-pick (self-clears on next clean save).
+      const dropped = result.droppedCategoryAttributes ?? [];
+      if (dropped.length > 0) {
+        setStoreValues((prev) => {
+          const cur = prev[storeId];
+          if (!cur) return prev;
+          const nextChannelData = { ...cur.channelData };
+          for (const name of dropped) delete nextChannelData[name];
+          return { ...prev, [storeId]: { ...cur, channelData: nextChannelData } };
+        });
+      }
+      setDroppedByStore((prev) => {
+        if (dropped.length === 0) {
+          if (!prev[storeId]) return prev;
+          const next = { ...prev };
+          delete next[storeId];
+          return next;
+        }
+        return { ...prev, [storeId]: dropped };
+      });
     } catch {
       // silent — user can retry by saving via navigation
     } finally {
@@ -673,6 +697,11 @@ export default function ChannelFieldsWizard({ masterProductId }: Props) {
   const activeStoreId = activeChannel.storeId;
   const activeValues = storeValues[activeStoreId] ?? { masterOverrides: {}, channelData: {}, variantOverrides: {} };
   const isLastTab = activeStoreIndex === channels.length - 1;
+  // Opsi 2: category-attribute fields the backend dropped on the active store's last save — highlight + banner.
+  const activeDropped = droppedByStore[activeStoreId] ?? [];
+  const activeFieldErrors = activeDropped.length
+    ? new Set<string>([...activeTabFieldErrors, ...activeDropped])
+    : activeTabFieldErrors;
   // BLOCKING variant-axis issues on the active store — gate "Continue to Preview" locally so the
   // merchant fixes them before the backend pre-flight rejects the publish (round-trip).
   const activeBlockingAxis = (activeChannel.categoryAttributeSection?.axisValidation ?? [])
@@ -776,7 +805,7 @@ export default function ChannelFieldsWizard({ masterProductId }: Props) {
                 lastSaved={lastSaved[activeStoreId]}
                 masterProduct={masterProductSnapshot ?? undefined}
                 masterProductId={masterProductId}
-                fieldErrors={activeTabFieldErrors}
+                fieldErrors={activeFieldErrors}
                 orgId={orgId}
                 viewMode={viewMode}
               />
@@ -803,6 +832,14 @@ export default function ChannelFieldsWizard({ masterProductId }: Props) {
                   {line}
                 </p>
               ))}
+            </div>
+          )}
+          {activeDropped.length > 0 && (
+            <div className="rounded-xl bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/30 px-4 py-3 space-y-1">
+              <p className="text-sm font-medium text-amber-700 dark:text-amber-400">
+                Beberapa nilai kategori tidak valid (bukan pilihan yang tersedia) dan telah dihapus — silakan pilih ulang:
+              </p>
+              <p className="text-sm text-amber-600 dark:text-amber-300">{activeDropped.join(", ")}</p>
             </div>
           )}
           <div className="flex items-center justify-between gap-4">

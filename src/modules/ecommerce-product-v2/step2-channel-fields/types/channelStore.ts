@@ -128,6 +128,12 @@ export interface ChannelProductData {
   variantOverrides: Record<string, Record<string, unknown>>;
   completionPercentage: number;
   readyToPublish: boolean;
+  /**
+   * Opsi 2: category-attribute field names whose value the backend DROPPED on this save because it was not a
+   * live option (e.g. a stale/typed "cotton" for a SELECT of TaxonomyValue GIDs). Present only when non-empty —
+   * the merchant should re-pick these fields.
+   */
+  droppedCategoryAttributes?: string[];
   publishedAt?: string;
   publishError?: string;
   savedAt: string;
