@@ -3,6 +3,7 @@ import React, { useState, useEffect } from "react";
 import { useParams } from "next/navigation";
 import type { ChannelFormField, MasterMappedSuggestion } from "../../types/channelStore";
 import CategoryTreePicker from "./CategoryTreePicker";
+import MultiSelectCombobox from "./MultiSelectCombobox";
 import MoneyInput from "../../../components/inputs/MoneyInput";
 import QuantityInput from "../../../components/inputs/QuantityInput";
 import { classifyNumericField } from "../../../components/inputs/field-format";
@@ -348,31 +349,14 @@ export default function ChannelFieldInput({ field, value, onChange, disabled, va
 
     case "MULTISELECT": {
       const selected = Array.isArray(value) ? (value as string[]) : [];
-      function toggleOption(optValue: string) {
-        if (selected.includes(optValue)) {
-          onChange(field.fieldName, selected.filter((v) => v !== optValue));
-        } else {
-          onChange(field.fieldName, [...selected, optValue]);
-        }
-      }
       return (
-        <div className="flex flex-wrap gap-2">
-          {options.map((opt) => (
-            <button
-              key={opt.value}
-              type="button"
-              disabled={disabled}
-              onClick={() => toggleOption(opt.value)}
-              className={`px-3 py-1 rounded-lg text-sm border transition-colors ${
-                selected.includes(opt.value)
-                  ? "border-brand-500 bg-brand-50 dark:bg-brand-500/10 text-brand-700 dark:text-brand-400"
-                  : "border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-brand-400"
-              } disabled:opacity-50 disabled:cursor-not-allowed`}
-            >
-              {opt.label}
-            </button>
-          ))}
-        </div>
+        <MultiSelectCombobox
+          options={options}
+          value={selected}
+          onChange={(next) => onChange(field.fieldName, next)}
+          disabled={disabled}
+          placeholder={field.placeholder ?? "Select…"}
+        />
       );
     }
 

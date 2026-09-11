@@ -412,7 +412,10 @@ export default function ChannelStoreTab({ schema, values, onChange, isSaving, la
   );
   const [catAttrsLoading, setCatAttrsLoading] = useState(false);
   const [catAttrsError, setCatAttrsError] = useState<string | null>(null);
-  const [catOptionalExpanded, setCatOptionalExpanded] = useState(false);
+  // Progressive disclosure: optional category attrs the seller has revealed by clicking their
+  // "+ chip". A field is shown as a full row when it's filled OR present in this set; the rest
+  // stay compact "+ chips" so a sparse category form isn't a wall of empty inputs.
+  const [activatedOptional, setActivatedOptional] = useState<Set<string>>(new Set());
 
   // Skip fetch when category already has proper required fields from schema.
   const lastFetchedCategoryId = useRef<string | null>(
@@ -958,8 +961,21 @@ export default function ChannelStoreTab({ schema, values, onChange, isSaving, la
     }
 
     // Mid-session category change — inject the new category's fields directly.
-    const hasOptional = optionalFields.length > 0;
     const totalFields = requiredFields.length + optionalFields.length;
+
+    // Progressive disclosure split: an optional field is "active" (full row) once it's filled
+    // or the seller revealed it via its "+ chip"; the rest render as compact chips.
+    const isFilled = (name: string) => {
+      const v = values.channelData[name];
+      return v !== undefined && v !== null && v !== "" && !(Array.isArray(v) && v.length === 0);
+    };
+    const visibleOptional = optionalFields.filter((f) => visibility.isVisible(f.fieldName));
+    const activeOptional = visibleOptional.filter(
+      (f) => isFilled(f.fieldName) || activatedOptional.has(f.fieldName)
+    );
+    const inactiveOptional = visibleOptional.filter(
+      (f) => !isFilled(f.fieldName) && !activatedOptional.has(f.fieldName)
+    );
 
     return (
       <div className="space-y-2">
@@ -990,39 +1006,40 @@ export default function ChannelStoreTab({ schema, values, onChange, isSaving, la
           />
         )}
 
-        {/* Optional category fields — collapsible */}
-        {hasOptional && (
-          <div className="space-y-2">
-            <button
-              type="button"
-              onClick={() => setCatOptionalExpanded((v) => !v)}
-              className="w-full text-left px-4 py-3 border-l-4 border-l-gray-300 dark:border-l-gray-600 border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/40 rounded-xl hover:brightness-[0.97] dark:hover:brightness-110 transition-colors"
-            >
-              <div className="flex items-center justify-between gap-2">
-                <div className="flex items-center gap-2.5">
-                  <span className="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider">Optional</span>
-                  <span className="text-sm font-semibold text-gray-800 dark:text-gray-200">{categoryName}</span>
-                  <span className="text-xs bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 px-1.5 py-0.5 rounded-md text-gray-500 dark:text-gray-400 font-medium">
-                    {optionalFields.length}
-                  </span>
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <span className="text-xs text-gray-400 dark:text-gray-500 hidden sm:block">
-                    {catOptionalExpanded ? "Collapse" : "Expand"}
-                  </span>
-                  <ChevronIcon expanded={catOptionalExpanded} className="text-gray-400" />
-                </div>
-              </div>
-            </button>
-            {catOptionalExpanded && (
-              <FieldsGrid
-                fields={optionalFields}
-                channelData={values.channelData}
-                onChange={handleFieldChange}
-                fieldErrors={fieldErrors}
-                visibility={visibility}
-              />
-            )}
+        {/* Optional category fields that are filled or revealed → full rows */}
+        {activeOptional.length > 0 && (
+          <FieldsGrid
+            fields={activeOptional}
+            channelData={values.channelData}
+            onChange={handleFieldChange}
+            fieldErrors={fieldErrors}
+            visibility={visibility}
+          />
+        )}
+
+        {/* Remaining optional attributes → compact "+ chips" (Shopify-style progressive disclosure) */}
+        {inactiveOptional.length > 0 && (
+          <div className="flex flex-wrap items-center gap-2 pt-0.5">
+            <span className="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider mr-0.5">
+              Add
+            </span>
+            {inactiveOptional.map((f) => (
+              <button
+                key={f.fieldName}
+                type="button"
+                onClick={() =>
+                  setActivatedOptional((prev) => {
+                    const next = new Set(prev);
+                    next.add(f.fieldName);
+                    return next;
+                  })
+                }
+                className="inline-flex items-center gap-1 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/40 px-2.5 py-1 text-xs font-medium text-gray-600 dark:text-gray-300 hover:border-brand-400 hover:text-brand-600 dark:hover:text-brand-400 transition-colors"
+              >
+                <span className="text-brand-500 text-sm leading-none">+</span>
+                {f.label}
+              </button>
+            ))}
           </div>
         )}
 
