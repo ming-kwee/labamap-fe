@@ -172,6 +172,7 @@ const AppSidebar: React.FC = () => {
     isMobileOpen,
     isHovered,
     setIsHovered,
+    toggleSidebar,
     toggleMobileSidebar,
   } = useSidebar();
   const pathname = usePathname();
@@ -264,6 +265,10 @@ const AppSidebar: React.FC = () => {
                 onMouseLeave={() => setTooltip(null)}
                 className={`menu-item group ${
                   isActive(nav.path) ? "menu-item-active" : "menu-item-inactive"
+                } ${
+                  !isExpanded && !isHovered
+                    ? "lg:justify-center"
+                    : "lg:justify-start"
                 }`}
               >
                 <span
@@ -389,17 +394,39 @@ const AppSidebar: React.FC = () => {
    * Called by every navigation Link inside the sidebar.
    *
    * Mobile  → close the drawer so the user returns to the page.
-   * Desktop → do nothing. The collapse/expand mode (icon-rail vs pinned) is the
-   *   user's explicit, persisted preference and must NOT be silently changed by a
-   *   navigation click. If the rail is only temporarily hover-expanded, the
-   *   existing handleMouseLeave debounce collapses it back to the rail once the
-   *   mouse actually leaves — smoothly, without snapping mid-click.
+   * Desktop → nothing here. Hide-on-navigate is handled by the pathname effect below,
+   *   which collapses the rail AFTER the new route commits, so the width/margin
+   *   animation doesn't compete with the incoming page's render (that competition is
+   *   what made the collapse feel janky).
    */
   const handleNavLinkClick = useCallback(() => {
     if (isMobileOpen) {
       toggleMobileSidebar();
     }
   }, [isMobileOpen, toggleMobileSidebar]);
+
+  // Latest isExpanded in a ref so the hide-on-navigate effect can read it without
+  // depending on it — depending on isExpanded would re-collapse the rail the instant
+  // the user toggles it open.
+  const isExpandedRef = useRef(isExpanded);
+  useEffect(() => { isExpandedRef.current = isExpanded; }, [isExpanded]);
+
+  // Hide-on-navigate (desktop): collapse back to the rail once the NEW route has
+  // committed (pathname changed) rather than inside the click handler. Deferring it
+  // past navigation keeps the layout-heavy width/margin animation off the same frames
+  // as the incoming page's render → smooth. Skips the initial mount so first load
+  // respects the persisted state instead of flashing collapsed.
+  const skipFirstCollapse = useRef(true);
+  useEffect(() => {
+    if (skipFirstCollapse.current) { skipFirstCollapse.current = false; return; }
+    if (isMobileOpen) return;
+    if (hoverEnterTimerRef.current) clearTimeout(hoverEnterTimerRef.current);
+    if (hoverLeaveTimerRef.current) clearTimeout(hoverLeaveTimerRef.current);
+    setTooltip(null);
+    setIsHovered(false);
+    if (isExpandedRef.current) toggleSidebar();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pathname]);
 
   // const isActive = (path: string) => path === pathname;
    const isActive = useCallback((path: string) => path === pathname, [pathname]);
@@ -471,7 +498,7 @@ const AppSidebar: React.FC = () => {
   return (
     <>
     <aside
-      className={`fixed mt-16 flex flex-col lg:mt-0 top-0 px-5 left-0 bg-white dark:bg-gray-900 dark:border-gray-800 text-gray-900 h-screen transition-all duration-300 ease-in-out z-50 border-r border-gray-200
+      className={`fixed mt-16 flex flex-col lg:mt-0 top-0 px-5 left-0 bg-white dark:bg-gray-900 dark:border-gray-800 text-gray-900 h-screen transition-[width,transform] duration-300 ease-in-out z-50 border-r border-gray-200
         ${
           isExpanded || isMobileOpen
             ? "w-[290px]"
