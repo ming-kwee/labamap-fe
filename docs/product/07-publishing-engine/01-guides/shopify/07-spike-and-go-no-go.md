@@ -1,4 +1,13 @@
-# Spike: Shopify category (taxonomy) attribute values via GraphQL — format validation
+# 07 — Spike: Shopify category (taxonomy) attribute values via GraphQL + Go/No-Go (riwayat)
+
+> **STATUS (diperbarui bff-v20): keputusan DEFER di bawah sudah DIBALIK — fitur DIIMPLEMENTASIKAN.**
+> Dokumen ini dipertahankan sebagai **riwayat spike + bukti kontrak** (masih akurat) dan **runbook Area A**
+> (scopes + re-consent — masih berlaku). Desain & implementasi terkini:
+> **[01 write-through generic](01-category-attributes-write-through-generic.md)** + Tahap
+> [A](03-tahap-a-available-catalog.md)/[B](04-tahap-b-resolve-by-type.md)/[C](05-tahap-c-probe-enable.md).
+> Yang berubah sejak spike: **provisioning kini OTOMATIS** (write-through) — merchant **tak perlu** enable
+> manual; handle un-provisioned dari `standardMetafieldDefinitionTemplates`; def dibuat on-demand via
+> `standardMetaobjectDefinitionEnable`. Bagian "GO / NO-GO → DEFER" di bawah **usang** (dibiarkan sebagai jejak).
 
 Purpose: before wiring a `set_category_metafields` GraphQL post-write op (guide 19 / the Step-2
 category-attribute publish path), pin down the **exact** Shopify contract, which is under-documented and
@@ -250,7 +259,11 @@ a single op. Work breakdown + rough estimate (engineer-days):
   radius, merchant re-consent for new scopes, and dependence on a still-evolving/under-documented Shopify
   surface (maintenance tax).
 
-### Recommendation: **DEFER (soft no-go) for now**
+### Recommendation: ~~**DEFER (soft no-go) for now**~~ — ⚠️ SUPERSEDED (bff-v20: IMPLEMENTED)
+
+> Rekomendasi DEFER di bawah **tidak lagi berlaku**. Fitur dibangun bertahap (bff-v17 Areas C–F +
+> bff-v20 write-through Tahap A/B/C) dan **provisioning otomatis** menutup biaya terbesar (Area B manual +
+> re-consent friction). Teks asli dipertahankan sebagai jejak keputusan.
 
 Cost/complexity is disproportionate to the marginal value today. The high-value, low-cost Step-2 wins are
 **already shipped** (dedup, data-driven MULTISELECT, pure-promote required, and — crucially — the save key

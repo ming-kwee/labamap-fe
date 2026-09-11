@@ -5,19 +5,13 @@
 > verified from the backend). This doc specifies exactly what to build and the contract it consumes.
 > Design rationale: [`04-step2-editing-and-derivatives.md`](04-step2-editing-and-derivatives.md).
 
-> ## ✅ REGRESI DIPERBAIKI (Opsi A, FE `v14` 2026-09-09) — override gambar Step-2 kini lewat `masterOverrides.images`
+> ## ⚠️ REGRESI AKTIF (didiagnosis 2026-09-09) — override gambar Step-2 dibuang diam-diam
 >
-> **Dahulu (regresi):** kontrak §2 menyuruh FE menulis override ke `channelData.images` yang di-merge
-> sebelum JOLT. BFF kemudian menambah guard anti-kebocoran reverse-import yang **men-drop SEMUA** kunci
-> gambar master-owned di `channelData` — termasuk override sah dari editor ini — sehingga seluruh
-> pengaturan gambar Step-2 (reorder, set-main, crop) diam-diam **tidak sampai ke channel** dan publish
-> jatuh ke galeri master.
->
-> **Perbaikan (Opsi A):** `ChannelStoreTab` kini menulis & membaca override gambar **produk** lewat
-> `masterOverrides.images` (jalur yang BFF sendiri hormati tanpa filter di step 1). FE-only, tidak
-> menyentuh BFF. Detail, bukti kode, gejala, dan catatan implementasi di
-> **[§8](#8--regresi-kontrak-channeldataimages-vs-masteroverridesimages)**.
-> Isu sekunder ordering pada add-run (§8.3) tetap ditangani terpisah di BFF.
+> Kontrak di §2 (`channelData.images` di-merge sebelum JOLT) **tidak lagi berlaku**. Sesudah doc/FE
+> ini ditulis, BFF menambah guard anti-kebocoran reverse-import yang **men-drop SEMUA** kunci gambar
+> di `channelData` — termasuk override sah dari editor ini. Akibatnya seluruh pengaturan gambar
+> Step-2 (reorder, set-main, crop) **tidak sampai ke channel**; publish jatuh ke galeri master.
+> Detail, bukti kode, gejala, dan opsi fix di **[§8](#8--regresi-kontrak-channeldataimages-vs-masteroverridesimages)**.
 
 ## 1. Prinsip (dari 04)
 
@@ -35,11 +29,10 @@
 | Validasi spec channel (warning) | `POST /api/v1/admin/channel-image-specs/{channelType}/validate` body `{ categorySlug?, images:[{url,width?,height?,bytes?,format?}] }` → `ImageIssue[]` (dimensi terisi otomatis dari `ImageAsset` per URL — I2b) |
 
 - Upload mengembalikan **width/height** (I0) dan merekam **`ImageAsset`** (I2b) → validasi dimensi jalan.
-- **Override key (produk):** `masterOverrides.images = [url1, url2, …]` (urut). Backend meng-apply
-  **semua** kunci `masterOverrides` ke `_source` di step 1 `loadAndMergeChannelData` (tanpa filter) →
-  `masterOverrides.images` jadi `_source.images` dan diproses normal (master < masterOverrides).
-  ~~`channelData.images`~~ **JANGAN dipakai** — BFF membuangnya lewat guard master-owned image keys
-  (lihat [§8](#8--regresi-kontrak-channeldataimages-vs-masteroverridesimages)). Variant:
+- **Override key:** `channelData.images = [url1, url2, …]` (urut). ~~Backend me-merge ini ke source sebelum
+  JOLT (`ChannelPublishService.loadAndMergeChannelData`: master < masterOverrides < channelData).~~
+  **⚠️ USANG — lihat [§8](#8--regresi-kontrak-channeldataimages-vs-masteroverridesimages):** BFF kini
+  **membuang** `channelData.images`; override sah harus lewat `masterOverrides.images`. Variant:
   `variantOverrides[sku].variantImages` → tetap lewat `URL_ARRAY_TO_SRC_OBJECTS` (tidak terpengaruh).
 
 ## 3. Komponen yang harus dibangun (Step-2)
@@ -49,16 +42,16 @@ Panel **"Images (per store)"** di `ChannelFieldsWizard` (atau field type `IMAGE_
 | Kapabilitas | Cara |
 |---|---|
 | Tampilkan master images (referensi read-only) | dari master product |
-| Bangun daftar per-store: **pilih & urutkan** | array URL terurut di state → `masterOverrides.images` |
+| Bangun daftar per-store: **pilih & urutkan** | array URL terurut di state → `channelData.images` |
 | **Hapus / tambah / ganti** | tambah via `uploadViaPresign` (atau `uploadImage`); hapus dari list |
 | **Crop / resize** ke spec channel | cropper client-side → hasil `Blob`/`File` → `uploadViaPresign` → URL derivative masuk list |
 | **Validasi langsung** | panggil `/admin/channel-image-specs/{channelType}/validate` dengan URL list → tampilkan `ImageIssue` inline (warning) |
-| **Simpan** | `saveChannelData(org, { …, masterOverrides: { …existing, images: orderedUrls } })` |
+| **Simpan** | `saveChannelData(org, { …, channelData: { …existing, images: orderedUrls } })` |
 
 - **Reorder:** boleh tombol naik/turun (tanpa lib) atau DnD. **Crop:** tambah lib `react-easy-crop`
   (repo baru punya `react-dropzone` untuk drop/upload; belum ada cropper).
 - **Non-destruktif:** jangan tulis balik ke master; kalau user tak override → jangan kirim `images` di
-  `masterOverrides` (biar fallback ke master).
+  `channelData` (biar fallback ke master).
 
 ## 4. Spec-aware (dari 03 / I2)
 
@@ -72,7 +65,7 @@ Panel **"Images (per store)"** di `ChannelFieldsWizard` (atau field type `IMAGE_
 - [x] Panel per-store menampilkan master images + daftar override yang bisa diurutkan/dipilih/dihapus.
 - [x] Tambah/ganti gambar via upload (proxied atau presign) → URL derivative masuk daftar.
 - [x] Crop/resize menghasilkan derivative (upload), bukan menimpa master.
-- [x] Simpan menulis `masterOverrides.images` (urut); kosong = tak mengirim `images` (fallback master).
+- [x] Simpan menulis `channelData.images` (urut); kosong = tak mengirim `images` (fallback master).
 - [x] Validasi channel-spec ditampilkan inline sebagai warning (tak memblokir).
 - [x] Variant image per-store via **per-SKU** `variantOverrides[sku].variantImages` (bukan flat
       `channelData.variantImages` — master variant image bersifat per-SKU, jadi override-nya per-SKU).
@@ -85,8 +78,7 @@ Panel **"Images (per store)"** di `ChannelFieldsWizard` (atau field type `IMAGE_
 > "Customise" mem-fork override; reorder (panah)/set-main/crop/remove; upload via `uploadViaPresign` →
 > fallback `uploadImage`; validasi debounce ke `/admin/channel-image-specs/{ch}/validate` (degrade diam
 > bila endpoint absen). Non-destruktif: list kosong → key di-drop → publish jatuh ke master.
-> - Product override → `masterOverrides.images` (lewat handler ChannelStoreTab; sejak FE `v14` —
->   dulu `channelData.images`, lihat §8).
+> - Product override → `channelData.images` (lewat handler ChannelStoreTab).
 > - Variant override → `variantOverrides[sku].variantImages` (lewat `handleVariantChange` yang sudah ada
 >   → simpan/hydrate/merge otomatis; backend menerapkan `URL_ARRAY_TO_SRC_OBJECTS` seperti biasa).
 >
@@ -113,37 +105,27 @@ Panel **"Images (per store)"** di `ChannelFieldsWizard` (atau field type `IMAGE_
 
 ## 8 — Regresi kontrak: `channelData.images` vs `masterOverrides.images`
 
-**Didiagnosis 2026-09-09; diperbaiki hari yang sama (Opsi A, FE `v14`).** Gejala pelapor: *"edit foto
-ke-2 untuk Shopify, setelah publish foto itu malah tampil pertama / susunan Step-2 tidak diikuti."* Akar
-masalahnya **bukan** ordering di FE — tetapi **mismatch field** antara FE dan BFF.
+**Didiagnosis 2026-09-09.** Gejala pelapor: *"edit foto ke-2 untuk Shopify, setelah publish foto itu
+malah tampil pertama / susunan Step-2 tidak diikuti."* Akar masalahnya **bukan** ordering di FE — tetapi
+**mismatch field** antara FE dan BFF.
 
 ### 8.1 Bukti kode
 
-**FE (dulu) menulis override ke `channelData.images` — jalur yang dibuang BFF:**
+**FE menulis override ke `channelData.images`:**
 
 - `StoreImageOverrideEditor.tsx` — edit foto = re-crop in-place, **urutan dipertahankan** (benar):
   ```js
   // openReCrop(i) → replaceIndex: i ; handleCropped:
   if (task?.replaceIndex != null) commit(list.map((u, i) => (i === task.replaceIndex ? url : u)));
   ```
-- ~~`ChannelStoreTab.tsx` — handler menaruhnya di `channelData.images`:~~
+- `ChannelStoreTab.tsx:569-573` — handler menaruhnya di `channelData.images`:
   ```js
-  // DULU (regresi):
   function handleImagesOverrideChange(urls) {
-    if (urls && urls.length > 0) nextChannelData.images = urls;   // ← channelData.images (dibuang BFF)
+    if (urls && urls.length > 0) nextChannelData.images = urls;   // ← channelData.images
     else delete nextChannelData.images;
   }
   ```
-  **SEKARANG (Opsi A, fixed):** handler menulis & membaca dari `masterOverrides.images`:
-  ```js
-  function handleImagesOverrideChange(urls) {
-    const nextOverrides = { ...values.masterOverrides };
-    if (urls && urls.length > 0) nextOverrides.images = urls;    // ← masterOverrides.images
-    else delete nextOverrides.images;
-    onChange({ ...values, masterOverrides: nextOverrides });
-  }
-  ```
-  (value dibaca dari `values.masterOverrides.images` via memo `imageOverrideValue` di kedua render spot.)
+  (value dibaca dari `values.channelData.images` di `ChannelStoreTab.tsx:1205,1315`).
 
 **BFF membuang `channelData.images`:**
 
@@ -178,23 +160,12 @@ reorder PUT tak jalan di publish yang sama; posisi baru terkoreksi di **publish 
 (komentar `:460-464`). Jadi walau kontrak §8.1 diperbaiki, foto crop baru bisa perlu publish kedua untuk
 menempati posisi yang benar. Ditangani terpisah.
 
-### 8.4 Opsi fix — **Opsi A DITERAPKAN** (FE `v14`, 2026-09-09)
+### 8.4 Opsi fix (belum diterapkan — keputusan tertunda)
 
-| Opsi | Perubahan | Risiko / catatan | Status |
-|---|---|---|---|
-| **A — FE → `masterOverrides.images`** (sesuai kontrak BFF) | `ChannelStoreTab.handleImagesOverrideChange` + read-value tulis/baca dari `masterOverrides.images` | Pengecekan selesai: `ChannelStoreService.saveChannelData` meneruskan `masterOverrides` **apa adanya tanpa filter** (`channelStore.service.ts:404`), jadi `images` lolos. Tak menyentuh BFF. | ✅ **Diterapkan** |
-| **B — BFF longgarkan guard** | `loadAndMergeChannelData` hormati `channelData.images` bila **list non-kosong valid**; hanya drop blob kosong (tanda kebocoran) | Jika reverse-import mengirim blob non-kosong basi, kebocoran bisa balik. FE tak berubah. | Tidak dipilih |
+| Opsi | Perubahan | Risiko / catatan |
+|---|---|---|
+| **A — FE → `masterOverrides.images`** (sesuai kontrak BFF) | `ChannelStoreTab.handleImagesOverrideChange` + read-value tulis/baca dari `masterOverrides.images` | Cek dulu: apakah `saveChannelData` memvalidasi/menyaring kunci `masterOverrides` (kalau ya, `images` harus diizinkan). Tak menyentuh BFF. |
+| **B — BFF longgarkan guard** | `loadAndMergeChannelData` hormati `channelData.images` bila **list non-kosong valid**; hanya drop blob kosong (tanda kebocoran) | Jika reverse-import mengirim blob non-kosong basi, kebocoran bisa balik. FE tak berubah. |
 
-**Yang dikerjakan (Opsi A):**
-- `ChannelStoreTab.tsx` — `handleImagesOverrideChange` menulis ke `masterOverrides.images` (bukan
-  `channelData.images`); tambah memo `imageOverrideValue` yang membaca dari `masterOverrides.images`;
-  kedua render `StoreImageOverrideEditor` (embedded + standalone) pakai memo itu.
-- Komentar kontrak di `ChannelStoreTab.tsx` & `StoreImageOverrideEditor.tsx` diselaraskan (menjelaskan
-  kenapa harus `masterOverrides`, referensi §8).
-- Verifikasi: `saveChannelData` tak menyaring `masterOverrides`; hidrasi ulang via `values.masterOverrides`
-  (jalur yang sama dipakai `MasterOverrideSection`, jadi reload menampilkan override dengan benar);
-  `images` bukan field schema → tak memengaruhi perhitungan completion; `tsc` bersih.
-- **Variant images tidak berubah** — tetap `variantOverrides[sku].variantImages` (tak pernah kena guard).
-
-**Sisa:** QA visual end-to-end terhadap publish nyata (konfirmasi urutan/★/crop Step-2 sampai ke channel),
-dan isu sekunder §8.3 (reorder pada add-run) yang ditangani terpisah di BFF.
+Rekomendasi: **A** (mengikuti kontrak yang BFF sendiri nyatakan). Perlu satu pengecekan: validasi kunci
+`masterOverrides` di `ChannelProductDataService.saveChannelData`.

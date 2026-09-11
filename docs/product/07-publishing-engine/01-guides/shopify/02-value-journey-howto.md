@@ -1,10 +1,14 @@
-# (Future) How a Shopify category attribute travels into the payload, and how the metadata drives GraphQL
+# 02 — How a Shopify category attribute travels into the payload (perjalanan satu nilai)
 
-**Status: DESIGN / DEFERRED.** This is a step-by-step explainer for a future implementer. The go/no-go and
-cost live in guide 20; the Step-2 form behaviour lives in guide 19. Nothing here is wired yet — reading it
-top to bottom should make the whole mechanism obvious.
+> **STATUS (diperbarui bff-v20): DIIMPLEMENTASIKAN** (bukan lagi "DESIGN/DEFERRED"). Penjelasan tahap-demi-tahap
+> satu nilai di bawah **masih akurat** untuk memahami mekanismenya. Yang sudah berubah jadi NYATA: rule
+> `shopify-build-category-metafields` + op `set_category_metafields` **ada**; dan provisioning kini **otomatis**
+> (write-through, tak perlu handle di-seed manual). Peta terkini: [01](01-category-attributes-write-through-generic.md)
+> + Tahap [A](03-tahap-a-available-catalog.md)/[B](04-tahap-b-resolve-by-type.md)/[C](05-tahap-c-probe-enable.md).
+> Go/no-go historis di [07](07-spike-and-go-no-go.md); perilaku form Step-2 di [19](../19-step2-category-attribute-fields.md).
 
-Read this if you are asked to "make the Fabric / Care instructions / etc. values actually reach Shopify".
+Step-by-step explainer. Read this if you are asked to "make the Fabric / Care instructions / etc. values
+actually reach Shopify" — reading it top to bottom makes the whole mechanism obvious.
 
 ---
 
@@ -65,7 +69,7 @@ merchant picks   →   channelData["Fabric"] = ["gid://…/TaxonomyValue/16980"]
                      │  Shopee analogue today: shopee-build-attribute-list                          │
                      │    _categoryAttributes → body field attribute_list                           │
                      │      (ChannelConfigurationDataLoader.java:2040)                               │
-                     │  Shopify (to build): shopify-build-category-metafields                        │
+                     │  Shopify (IMPLEMENTED): shopify-build-category-metafields                     │
                      │    _categoryAttributes → SUPPORT field product.category_metafields            │
                      └──────────────────────────────────────────────────────────────────────────────┘
                         │
@@ -144,7 +148,7 @@ key does nothing on its own — a per-channel **rule** must read it and write a 
 | Channel | rule reading `_categoryAttributes` | writes to | lands in |
 |---|---|---|---|
 | Shopee | `shopee-build-attribute-list` (`ChannelConfigurationDataLoader.java:2040`) | body field `attribute_list` | REST body |
-| Shopify | *(none yet — this guide's proposal `shopify-build-category-metafields`)* | support field `product.category_metafields` | GraphQL op |
+| Shopify | `shopify-build-category-metafields` (op `BUILD_METAFIELD_LIST`, IMPLEMENTED) | support field `product.category_metafields` | GraphQL op `set_category_metafields` |
 | eBay / others | *(none)* | — | `_categoryAttributes` is staged then **dropped** by `buildChannelAttributes` (harmless no-op) |
 
 So: **the producer is generic; the three per-channel behaviours are three pieces of data** (fetch config,
@@ -215,9 +219,13 @@ reference a channelAttribute we produced in Step 2 of section 2.
 
 ---
 
-## 4. The category-metafields design (what to build later)
+## 4. The category-metafields design (IMPLEMENTED — reference)
 
-### 4.1 What Shopify requires (proven in the guide-20 spike)
+> Bagian ini awalnya "what to build later"; kini **sudah dibangun** (bff-v17 + write-through bff-v20). Dibaca
+> sebagai **spesifikasi referensi** dari yang berjalan. Provisioning yang dulu "precondition" kini otomatis —
+> lihat Tahap [C](05-tahap-c-probe-enable.md).
+
+### 4.1 What Shopify requires (proven in the spike, [07](07-spike-and-go-no-go.md))
 
 - Set the category first (already done by `set_category`).
 - Each attribute value is a product metafield:
@@ -383,5 +391,6 @@ set_category_metafields op  →  productUpdate(input:{ id:<product GID>, metafie
 - Shopee analogue rule (`_categoryAttributes` → `attribute_list`): `ChannelConfigurationDataLoader.java:2040`.
 - GraphQL post-write ops (`set_category`, where a new op goes): `ChannelMetadataMigration.java:1506`.
 - Conditional-op support field example (`category_sync`): `ChannelAttributeConverterService.java:159`.
-- Spike findings + go/no-go (namespace/key/type/value/provisioning): guide 20.
-- Step-2 form behaviour + why the save key already equals the live attribute id: guide 19.
+- Spike findings + go/no-go (namespace/key/type/value/provisioning): [07](07-spike-and-go-no-go.md).
+- Write-through provisioning otomatis (handle catalog + enable on-demand): Tahap [A](03-tahap-a-available-catalog.md)/[B](04-tahap-b-resolve-by-type.md)/[C](05-tahap-c-probe-enable.md).
+- Step-2 form behaviour + why the save key already equals the live attribute id: [19](../19-step2-category-attribute-fields.md).
