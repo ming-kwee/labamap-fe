@@ -76,6 +76,17 @@ function extractInitialValues(schema: ChannelSchemaPerStore): StoreFormValues {
       }
     }
   }
+  // Category attributes render from categoryAttributeSection (suppressed from the main sections above), so their
+  // saved values (e.g. reverse-imported TaxonomyValue GIDs) must be seeded from there too — else they show blank
+  // even though channelData holds them. The BFF sets currentValue on these fields from the saved channelData.
+  const catSection = schema.categoryAttributeSection;
+  if (catSection) {
+    for (const field of [...(catSection.requiredFields ?? []), ...(catSection.optionalFields ?? [])]) {
+      if (field.currentValue !== undefined && field.currentValue !== null && channelData[field.fieldName] === undefined) {
+        channelData[field.fieldName] = field.currentValue;
+      }
+    }
+  }
   return { masterOverrides, channelData, variantOverrides };
 }
 
