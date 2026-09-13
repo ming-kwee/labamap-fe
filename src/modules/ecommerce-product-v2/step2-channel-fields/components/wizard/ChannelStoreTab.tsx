@@ -756,32 +756,12 @@ export default function ChannelStoreTab({ schema, values, onChange, isSaving, la
     if (section.sectionName === "variant_overrides") {
       if (!section.variants?.length) return null;
 
-      // Build one variant-option column per resolved axis (from Step 1, not from a seller
-      // selection). fieldType TEXT (not SELECT) — channels accept any string for option values;
-      // taxonomy labels are offered as datalist suggestions, not hard constraints.
-      // Skip any axis whose fieldName already exists in the schema variantFields to avoid
-      // duplicate columns if the backend already includes option1/option2/option3 explicitly.
-      const schemaVariantFieldNames = new Set(
-        (section.variantFields ?? []).map((f) => f.fieldName)
-      );
-      const dynamicOptionFields: ChannelFormField[] = [];
-      resolvedAxes.forEach((axis, idx) => {
-        const fieldName = `option${idx + 1}`;
-        if (schemaVariantFieldNames.has(fieldName)) return;
-        const datalist = axis.valueVocabulary?.length
-          ? axis.valueVocabulary.map((o) => ({ value: o.label, label: o.label }))
-          : axis.values.map((v) => ({ value: v, label: v }));
-        dynamicOptionFields.push({
-          fieldName,
-          fieldType: "TEXT",
-          label: axis.name,
-          required: false,
-          placeholder: `Enter ${axis.name}…`,
-          options: datalist,
-        });
-      });
-
-      const allVariantFields = [...(section.variantFields ?? []), ...dynamicOptionFields];
+      // Variant option values (Size/Color) ARE the SKU identity — shown read-only as the variantLabel
+      // ("Xs / Black") in each row, set in Step 1, not re-picked per channel. So they are no longer rendered as
+      // editable columns here (that duplicated the identity + was confusing). The editable product-level Color/Size
+      // lives in the category-attributes section (Optional details), prefilled from the axis. Keep only the per-SKU
+      // override columns (price / stock / barcode / weight / image / …).
+      const allVariantFields = [...(section.variantFields ?? [])];
       if (!allVariantFields.length) return null;
 
       const ptDims = masterProduct?.productTypeVariantDimensions;
@@ -799,13 +779,6 @@ export default function ChannelStoreTab({ schema, values, onChange, isSaving, la
                 {ptDims.some(d => d.required) && (
                   <span className="ml-1 text-brand-500 dark:text-brand-400">(required per SKU)</span>
                 )}
-              </span>
-            </div>
-          )}
-          {dynamicOptionFields.length > 0 && (
-            <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-teal-50 dark:bg-teal-500/10 border border-teal-200 dark:border-teal-500/30">
-              <span className="text-xs text-teal-700 dark:text-teal-300">
-                Variant option columns (from Step 1): <strong>{dynamicOptionFields.map(f => f.label).join(", ")}</strong> — pre-filled per SKU, edit any cell to override
               </span>
             </div>
           )}
