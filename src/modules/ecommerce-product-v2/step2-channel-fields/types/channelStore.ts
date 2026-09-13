@@ -502,6 +502,12 @@ export interface ChannelFormField {
     max?: number;
   };
   currentValue?: unknown;
+  /** P4: true when currentValue was prefilled from the product's variant axis (badge "from variants"). */
+  derivedFromAxis?: boolean;
+  /** P5: this field's option values that correspond to the product's variant-axis values (the "in sync with
+   *  variants" reference). Present on an axis-linked category attribute (e.g. product-level Color). Used to flag
+   *  divergence: a selected value NOT here = added non-axis; a value here NOT selected = a variant left untagged. */
+  axisValues?: string[];
   /** true = this field is driven from EcommerceMasterAttributeDocument.isChannelOverridable */
   isMasterField?: boolean;
   /** master product's current value for this field, resolved by backend at schema-gen time */

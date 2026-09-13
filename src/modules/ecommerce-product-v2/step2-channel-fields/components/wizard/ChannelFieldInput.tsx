@@ -259,6 +259,35 @@ function ChannelImageInput({ field, value, onChange, disabled }: Omit<Props, "va
 
 // ─────────────────────────────────────────────────────────────────────────────
 
+// ── P5: variant-axis divergence note ─────────────────────────────────────────
+/**
+ * For a category attribute linked to a variant axis (field.axisValues present), warn when the merchant's selection
+ * diverges from the product's variants: a value selected here but NOT a variant ("no such SKU"), or a variant value
+ * left untagged. Metadata-only — never creates/removes a SKU; purely informational. Computed live from the current
+ * value, so it updates as the merchant edits.
+ */
+function AxisDivergenceNote({ field, value }: { field: ChannelFormField; value: unknown }) {
+  const axis = field.axisValues ?? [];
+  if (axis.length === 0) return null;
+  const selected: string[] = Array.isArray(value)
+    ? value.map(String)
+    : value != null && value !== "" ? [String(value)] : [];
+  const labelOf = (v: string) => field.options?.find((o) => o.value === v)?.label ?? v;
+  const extra = selected.filter((v) => !axis.includes(v)).map(labelOf);
+  const missing = axis.filter((v) => !selected.includes(v)).map(labelOf);
+  if (extra.length === 0 && missing.length === 0) return null;
+  return (
+    <div className="mt-1.5 space-y-0.5 rounded-md border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-xs text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300">
+      {extra.length > 0 && (
+        <div>⚠️ {extra.join(", ")} ditandai di sini tapi bukan varian — tak ada SKU-nya.</div>
+      )}
+      {missing.length > 0 && (
+        <div>ℹ️ Varian {missing.join(", ")} belum ditandai di atribut ini.</div>
+      )}
+    </div>
+  );
+}
+
 export default function ChannelFieldInput({ field, value, onChange, disabled, validationRules: validationRulesOverride }: Props) {
   // Scenario E: use override when provided, otherwise fall back to field definition
   const effectiveValidation = validationRulesOverride ?? field.validationRules;
@@ -313,6 +342,7 @@ export default function ChannelFieldInput({ field, value, onChange, disabled, va
         />
       )}
       {renderInput()}
+      <AxisDivergenceNote field={field} value={value} />
     </div>
   );
 
