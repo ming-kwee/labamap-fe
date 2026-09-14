@@ -508,6 +508,9 @@ export interface ChannelFormField {
    *  variants" reference). Present on an axis-linked category attribute (e.g. product-level Color). Used to flag
    *  divergence: a selected value NOT here = added non-axis; a value here NOT selected = a variant left untagged. */
   axisValues?: string[];
+  /** P3: true when currentValue was prefilled from the master product value naming the same concept
+   *  (e.g. Fabric ← master material). Runs after P4, so axis-derived Color/Size keep derivedFromAxis instead. */
+  derivedFromMaster?: boolean;
   /** true = this field is driven from EcommerceMasterAttributeDocument.isChannelOverridable */
   isMasterField?: boolean;
   /** master product's current value for this field, resolved by backend at schema-gen time */
