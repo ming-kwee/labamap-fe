@@ -100,6 +100,16 @@ const SECTION_METADATA: Record<string, SectionMetadata> = {
     description: 'Essential product details',
     order: 1
   },
+  // Domain/category attributes (Material, Gender, Pattern, …) — the product-type-specific fields that feed all
+  // channels. A dedicated always-visible section (like Amazon "More Details" / Shopify category attributes),
+  // so they are never hidden behind a tier toggle. Ordered right after Product Information for discoverability.
+  'product-details': {
+    label: 'Additional Details',
+    icon: Tag,
+    iconColor: 'text-teal-600',
+    description: 'Attributes for this product type — shared across all channels',
+    order: 1.5
+  },
   'pricing': {
     label: 'Pricing & Inventory',
     icon: DollarSign,

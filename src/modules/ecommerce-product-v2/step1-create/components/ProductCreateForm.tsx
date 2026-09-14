@@ -86,6 +86,17 @@ function renderSection(sectionKey: string, props: SectionProps): React.ReactNode
   }
 }
 
+/**
+ * A product-type-specific domain attribute (Material / Gender / Pattern / …) — routed into the dedicated
+ * "Additional Details" section so it is always discoverable. Driven by `displayLevel` (data), not field-name
+ * literals. Variant-axis fields (Color/Size, section=variants) are excluded — the Variants flow owns them.
+ */
+function isDomainAttribute(field: any): boolean {
+  const level = (field.displayLevel || 'basic').toLowerCase().replace(/_/g, '-');
+  if (level !== 'category-specific' && level !== 'type-specific') return false;
+  return normalizeSectionKey(field.section || 'product-info') !== 'variants';
+}
+
 // ============================================================================
 // COMPONENT
 // ============================================================================
@@ -126,14 +137,10 @@ export default function ProductCreateForm({
     toggleSection,
     showJsonPreview,
     setShowJsonPreview,
-    viewLevel,
-    setViewLevel,
     promoteToStandard,
   } = useFormState({
     initialData,
     organizationDefaultCategory,
-    // Edit mode: start at 'full' so all pre-filled fields are immediately visible
-    initialViewLevel: mode === 'edit' ? 'full' : 'essential',
   });
 
   const {
@@ -333,36 +340,36 @@ export default function ProductCreateForm({
   const sortedSections = useMemo(() => {
     if (!schema?.fields) return [];
 
-    const visibleFields = getVisibleFields(schema.fields, formData);
-
-    // Fix 1: Strict tier-based filter — missing displayLevel treated as 'basic'
-    const filteredFields = visibleFields.filter((field: any) => {
-      const level = (field.displayLevel || 'basic').toLowerCase().replace(/_/g, '-');
-      switch (viewLevel) {
-        case 'essential':
-          return level === 'essential';
-        case 'standard':
-          return (
-            level === 'essential' ||
-            level === 'basic' ||
-            (formStage === 'type-specific' && level === 'type-specific')
-          );
-        case 'full':
-        default:
-          return true;
-      }
+    // No global tier filter anymore — the misleading "Showing essential/recommended/all" toggle is gone. Every
+    // field renders inside a collapsible section (the section accordion IS the disclosure). Instead, the
+    // product-type-specific domain attributes (Material/Gender/Pattern/…) are ROUTED into a dedicated
+    // "Additional Details" section so they are always discoverable and never hidden. Variant-axis fields
+    // (Color/Size, section=variants) stay with the Variants flow.
+    const routed = getVisibleFields(schema.fields, formData).map((field: any) => {
+      if (isDomainAttribute(field)) return { ...field, section: 'product-details' };
+      return field;
     });
 
-    const sortedFields = filteredFields.sort(
+    const sortedFields = routed.sort(
       (a: any, b: any) => (a.order ?? 999) - (b.order ?? 999)
     );
 
     const fieldsBySection = groupFieldsBySection(sortedFields, ['hasVariants', 'variantConfigurator']);
 
+    // Inside Additional Details, surface required attributes first (like Step 2), keeping `order` as tiebreak —
+    // so a required attribute is never buried below optional ones.
+    if (fieldsBySection['product-details']) {
+      fieldsBySection['product-details'].sort((a: any, b: any) => {
+        const ra = a.required ? 0 : 1;
+        const rb = b.required ? 0 : 1;
+        return ra !== rb ? ra - rb : (a.order ?? 999) - (b.order ?? 999);
+      });
+    }
+
     return Object.entries(fieldsBySection).sort(
       ([keyA], [keyB]) => getSectionMetadata(keyA).order - getSectionMetadata(keyB).order
     );
-  }, [schema, formData, formStage, viewLevel, getVisibleFields]);
+  }, [schema, formData, getVisibleFields]);
 
   // Commit new sections to the ref only when NOT in the middle of a schema fetch.
   // During fetch (isAddingCategoryFields=true) the ref keeps its previous value so
@@ -413,16 +420,20 @@ export default function ProductCreateForm({
 
   // Fix 5: Auto-expand sections that received type-specific fields when category schema loads.
   // Runs every time the schema changes while in type-specific stage so switching categories
-  // also reveals the sections for the new category's fields.
+  // also reveals the sections for the new category's fields. Domain attributes are routed into
+  // "Additional Details", so reveal that section (discoverability — the whole point of the redesign).
   useEffect(() => {
     if (formStage !== 'type-specific' || !schema?.fields) return;
 
     const sectionsWithCategoryFields = new Set<string>();
     for (const field of schema.fields) {
+      if (isDomainAttribute(field)) {
+        sectionsWithCategoryFields.add('product-details');
+        continue;
+      }
       const level = (field.displayLevel || 'basic').toLowerCase().replace(/_/g, '-');
       if (level === 'type-specific') {
-        const sectionKey = normalizeSectionKey(field.section || 'product-info');
-        sectionsWithCategoryFields.add(sectionKey);
+        sectionsWithCategoryFields.add(normalizeSectionKey(field.section || 'product-info'));
       }
     }
 
@@ -498,33 +509,6 @@ export default function ProductCreateForm({
       {mode === 'edit' && productId && (
         <MasterEditDirtyBanner masterProductId={productId} desired={formData} />
       )}
-
-      {/* Progressive disclosure controls */}
-      <div className="flex items-center gap-3 text-sm text-gray-500 dark:text-gray-400">
-        <span>
-          {viewLevel === 'essential' && 'Showing essential fields only'}
-          {viewLevel === 'standard' && 'Showing recommended fields'}
-          {viewLevel === 'full' && 'Showing all fields'}
-        </span>
-        {viewLevel !== 'full' && (
-          <button
-            type="button"
-            className="font-medium text-brand-600 dark:text-brand-400 hover:underline focus:outline-none"
-            onClick={() => setViewLevel(viewLevel === 'essential' ? 'standard' : 'full')}
-          >
-            {viewLevel === 'essential' ? '+ Show recommended fields' : '+ Show all fields'}
-          </button>
-        )}
-        {viewLevel === 'full' && (
-          <button
-            type="button"
-            className="text-gray-400 hover:underline focus:outline-none"
-            onClick={() => setViewLevel('essential')}
-          >
-            Show less
-          </button>
-        )}
-      </div>
 
       {/* Banner area — fixed min-height so appearing/disappearing doesn't shift sections.
           Shows the "select a product type" hint before selection.
