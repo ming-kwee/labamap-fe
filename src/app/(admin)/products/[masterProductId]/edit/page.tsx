@@ -39,6 +39,16 @@ export default function EditProductPage({ params }: Props) {
       );
 
       const attrs: Record<string, unknown> = {
+        // Start from ALL stored productAttributes so domain/category fields (gender, material, age-group,
+        // fit-type, style, pattern, care-instructions, …) restore in edit mode — not just the promoted scalars
+        // below. Data-driven: no per-field whitelist. The explicit keys after this override the promoted ones
+        // (images/variants/productType get special handling) and drop internal keys.
+        ...(detail.productAttributes ?? {}),
+        id:            undefined,   // internal keys — never form fields
+        createdAt:     undefined,
+        updatedAt:     undefined,
+        customAttributes: undefined,
+        images:        undefined,   // handled via galleryImages/mainImage below
         name:          detail.name,
         sku:           detail.sku        ?? undefined,
         basePrice:     detail.basePrice  ?? undefined,

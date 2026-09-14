@@ -422,6 +422,11 @@ export default function ChannelStoreTab({ schema, values, onChange, isSaving, la
     categoryIsUnchangedFromSchema ? (schema.categoryAttributeSection?.categoryId ?? null) : null
   );
 
+  // Live ref to values so async callbacks (category re-fetch seeding, category-default prefill) write to
+  // current state, not the snapshot captured when the effect was scheduled.
+  const valuesRef = useRef(values);
+  useEffect(() => { valuesRef.current = values; });
+
   useEffect(() => {
     if (categoryId === lastFetchedCategoryId.current) return;
     lastFetchedCategoryId.current = categoryId;
@@ -439,6 +444,22 @@ export default function ChannelStoreTab({ schema, values, onChange, isSaving, la
       })
       .then((data) => {
         setCategoryAttrs(data);
+        // Seed channelData from the re-fetched fields' currentValue (P3 master-prefill / P4 axis-prefill).
+        // extractInitialValues only runs on the INITIAL schema; when the category resolves/changes and we
+        // re-fetch here, the inputs bind to channelData — so without seeding, the prefilled category attributes
+        // (Fabric ← material, Target gender ← gender, …) render empty. Only fill fields the merchant hasn't set.
+        const catFields = [...(data.requiredFields ?? []), ...(data.optionalFields ?? [])];
+        const latest = valuesRef.current;
+        const seeded: Record<string, unknown> = {};
+        for (const f of catFields) {
+          if (f.currentValue !== undefined && f.currentValue !== null
+              && latest.channelData[f.fieldName] === undefined) {
+            seeded[f.fieldName] = f.currentValue;
+          }
+        }
+        if (Object.keys(seeded).length > 0) {
+          onChange({ ...latest, channelData: { ...latest.channelData, ...seeded } });
+        }
       })
       .catch(() => {
         // Endpoint unreachable — silent, categoryAttrs stays as schema value
@@ -470,11 +491,7 @@ export default function ChannelStoreTab({ schema, values, onChange, isSaving, la
   // ProductType's channelCategoryDefaults. Mirrors the wizard-level pre-fill and shares its
   // leaf/non-leaf rule: leaf → commit value + breadcrumb; non-leaf → browse hint only.
   // A saved/existing category always wins — this never overrides a value already present.
-
-  // Keep a live ref to values so the async callback always writes to current state,
-  // not the stale snapshot captured at mount time.
-  const valuesRef = useRef(values);
-  useEffect(() => { valuesRef.current = values; });
+  // (valuesRef is declared above, near the category re-fetch effect.)
 
   const prefillAttempted = useRef(false);
 
