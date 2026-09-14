@@ -88,6 +88,45 @@ export default function FieldRenderer({
         ))}
       </select>
     );
+  } else if (fieldType === 'multiselect' || fieldType === 'multi-select' || fieldType === 'tags') {
+    // Multi-value attribute (e.g. Material = Cotton + Polyester; Care = Machine wash + Tumble dry). Value is an
+    // array of option values. Chips make every option visible + toggleable (no hidden dropdown), matching how
+    // real PIM/omnichannel tools capture multi-valued attributes.
+    const selected: string[] = Array.isArray(value) ? value : (value ? [String(value)] : []);
+    const toggle = (v: string) => {
+      const next = selected.includes(v) ? selected.filter((x) => x !== v) : [...selected, v];
+      onChange(fieldName, next);
+    };
+    input = (
+      <div
+        className={`flex flex-wrap gap-2 rounded-lg border p-2.5 bg-white dark:bg-gray-900 ${
+          error ? 'border-red-500' : 'border-gray-300 dark:border-gray-700'
+        }`}
+      >
+        {(field.options?.length ?? 0) === 0 && (
+          <span className="text-sm text-gray-400">{field.placeholder || 'No options'}</span>
+        )}
+        {field.options?.map((option: any) => {
+          const isSel = selected.includes(option.value);
+          return (
+            <button
+              key={option.value}
+              type="button"
+              onClick={() => toggle(option.value)}
+              onBlur={() => onBlur(field)}
+              aria-pressed={isSel}
+              className={`px-3 py-1.5 rounded-full text-sm font-medium border transition-colors ${
+                isSel
+                  ? 'bg-brand-500 border-brand-500 text-white'
+                  : 'bg-gray-50 dark:bg-gray-800 border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:border-brand-400'
+              }`}
+            >
+              {option.label}
+            </button>
+          );
+        })}
+      </div>
+    );
   } else if (fieldType === 'checkbox') {
     input = (
       <input

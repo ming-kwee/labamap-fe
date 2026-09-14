@@ -76,6 +76,7 @@ export function SectionHeader({ sectionKey, fieldCount, isExpanded, onToggle }: 
 // Field types that always deserve the full row (rich/media/long inputs).
 const WIDE_TYPES = new Set([
   'textarea', 'image', 'file', 'media', 'richtext', 'rich-text', 'wysiwyg', 'html', 'category-select',
+  'multiselect', 'multi-select', 'tags',
 ]);
 // Field names that read better full-width (primary + long-form fields).
 const WIDE_NAME = /(name|title|description|summary|content|address|slug|tags|note|url)/i;
