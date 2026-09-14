@@ -3,7 +3,7 @@ import React, { useState, useEffect } from "react";
 import { useParams } from "next/navigation";
 import type { ChannelFormField, MasterMappedSuggestion } from "../../types/channelStore";
 import CategoryTreePicker from "./CategoryTreePicker";
-import MultiSelectCombobox from "./MultiSelectCombobox";
+import MultiSelectCombobox from "../../../components/inputs/MultiSelectCombobox";
 import MoneyInput from "../../../components/inputs/MoneyInput";
 import QuantityInput from "../../../components/inputs/QuantityInput";
 import { classifyNumericField } from "../../../components/inputs/field-format";
