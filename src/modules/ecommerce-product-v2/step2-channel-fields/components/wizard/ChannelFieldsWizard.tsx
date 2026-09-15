@@ -32,6 +32,9 @@ interface StoreFormValues {
   masterOverrides: Record<string, unknown>;
   channelData: Record<string, unknown>;
   variantOverrides: Record<string, Record<string, unknown>>;
+  /** Category-attribute field names the merchant explicitly overrode. Non-listed category attributes inherit from
+   *  master (re-derived at load). Persisted so master edits keep flowing to untouched attributes. */
+  overriddenCategoryAttrs?: string[];
 }
 
 /**
@@ -80,14 +83,22 @@ function extractInitialValues(schema: ChannelSchemaPerStore): StoreFormValues {
   // saved values (e.g. reverse-imported TaxonomyValue GIDs) must be seeded from there too — else they show blank
   // even though channelData holds them. The BFF sets currentValue on these fields from the saved channelData.
   const catSection = schema.categoryAttributeSection;
+  const overriddenCategoryAttrs: string[] = [];
   if (catSection) {
     for (const field of [...(catSection.requiredFields ?? []), ...(catSection.optionalFields ?? [])]) {
-      if (field.currentValue !== undefined && field.currentValue !== null && channelData[field.fieldName] === undefined) {
+      const hasValue = field.currentValue !== undefined && field.currentValue !== null;
+      if (hasValue && channelData[field.fieldName] === undefined) {
         channelData[field.fieldName] = field.currentValue;
+      }
+      // A category attribute is an explicit OVERRIDE when it has a value that did NOT come from master/axis prefill
+      // (the backend only sets derivedFromMaster/derivedFromAxis on inherited values). Prefill stays inherited so
+      // master edits keep flowing; only genuine overrides are persisted-as-override + protected.
+      if (hasValue && !field.derivedFromMaster && !field.derivedFromAxis) {
+        overriddenCategoryAttrs.push(field.fieldName);
       }
     }
   }
-  return { masterOverrides, channelData, variantOverrides };
+  return { masterOverrides, channelData, variantOverrides, overriddenCategoryAttrs };
 }
 
 
@@ -379,6 +390,8 @@ export default function ChannelFieldsWizard({ masterProductId }: Props) {
         masterOverrides: values.masterOverrides,
         channelData: values.channelData,
         variantOverrides: values.variantOverrides,
+        // Only these category attrs are frozen as overrides; the rest inherit from master on the next load.
+        overriddenCategoryAttributes: values.overriddenCategoryAttrs ?? [],
         ...(categoryId ? { categoryId } : {}),
       });
       setStoreCompletion((prev) => ({

@@ -285,6 +285,9 @@ export interface ChannelStepSaveRequest {
   masterOverrides: Record<string, unknown>;
   channelData: Record<string, unknown>;
   variantOverrides: Record<string, Record<string, unknown>>;
+  /** Category-attribute field names the merchant explicitly overrode. Non-listed attributes inherit from master
+   *  (re-derived at Step-2 load). Omit/null on legacy clients = backend treats all saved values as overrides. */
+  overriddenCategoryAttributes?: string[];
   /**
    * Scenario D: the selected category leaf node ID.
    * Backend uses this to validate category-specific required fields when computing

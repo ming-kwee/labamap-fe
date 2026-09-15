@@ -29,6 +29,8 @@ interface StoreFormValues {
   masterOverrides: Record<string, unknown>;
   channelData: Record<string, unknown>;
   variantOverrides: Record<string, Record<string, unknown>>;
+  /** Category-attribute field names the merchant explicitly overrode (see ChannelFieldsWizard). */
+  overriddenCategoryAttrs?: string[];
 }
 
 interface Props {
@@ -547,11 +549,22 @@ export default function ChannelStoreTab({ schema, values, onChange, isSaving, la
       );
       // Do NOT write channelData["categoryId"] = GID — backend skips GID values in
       // resolveCategorySlug() and derives the slug from categoryPath (Priority 3).
-      onChange({ ...values, channelData: { ...clearedData, [fieldName]: value } });
+      // New category → reset the override set (nothing overridden for the fresh attribute set yet).
+      onChange({ ...values, channelData: { ...clearedData, [fieldName]: value }, overriddenCategoryAttrs: [] });
       return;
     }
 
-    onChange({ ...values, channelData: { ...values.channelData, [fieldName]: value } });
+    // A merchant edit to a CATEGORY ATTRIBUTE marks it as an explicit override → it will be persisted-as-override
+    // and frozen (master edits stop touching it). Non-category fields are unaffected.
+    const catAttrNames = new Set([
+      ...(categoryAttrs?.requiredFields ?? []).map((f) => f.fieldName),
+      ...(categoryAttrs?.optionalFields ?? []).map((f) => f.fieldName),
+    ]);
+    const prevOverrides = values.overriddenCategoryAttrs ?? [];
+    const overriddenCategoryAttrs = catAttrNames.has(fieldName) && !prevOverrides.includes(fieldName)
+      ? [...prevOverrides, fieldName]
+      : prevOverrides;
+    onChange({ ...values, channelData: { ...values.channelData, [fieldName]: value }, overriddenCategoryAttrs });
   }
 
   function handleVariantChange(sku: string, fieldName: string, value: unknown) {

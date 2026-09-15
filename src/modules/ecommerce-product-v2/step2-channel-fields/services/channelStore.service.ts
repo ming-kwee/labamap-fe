@@ -404,6 +404,8 @@ export const ChannelProductDataService = {
           masterOverrides:  request.masterOverrides,
           channelData:      request.channelData,
           variantOverrides: request.variantOverrides,
+          ...(request.overriddenCategoryAttributes != null
+            ? { overriddenCategoryAttributes: request.overriddenCategoryAttributes } : {}),
           ...(request.categoryId != null ? { categoryId: request.categoryId } : {}),
         }),
       }
