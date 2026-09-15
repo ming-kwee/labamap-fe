@@ -183,6 +183,10 @@ export interface MerchantChannelViewProps {
   masterOverrideFields: ChannelFormField[];
   hasVariants: boolean;
 
+  /** Number of category attributes currently overridden (drives the guarded "reset all to master" link). */
+  categoryOverrideCount?: number;
+  onResetAllCategoryToMaster?: () => void;
+
   // completion helpers (per-card counts)
   isVisible: (name: string) => boolean;
   isRequired: (name: string) => boolean;
@@ -210,9 +214,25 @@ export default function MerchantChannelView(props: MerchantChannelViewProps) {
     categoryExists, categorySet, categoryBreadcrumb,
     requiredFields, categoryRequiredFields, recommendedFields, optionalFields, categoryOptionalFields,
     masterOverrideFields, hasVariants,
+    categoryOverrideCount = 0, onResetAllCategoryToMaster,
     isVisible, isRequired, isFilled,
     renderFields, renderMasterOverrides, renderCategoryField, renderVariants, renderAxisSummary, renderImages,
   } = props;
+
+  // Guarded bulk-revert link — only when this store has category-attribute overrides.
+  const resetAllCategoryLink = categoryOverrideCount > 0 && onResetAllCategoryToMaster ? (
+    <span className="inline-flex items-center gap-1.5">
+      <span className="text-[11px] text-gray-400 dark:text-gray-500">{categoryOverrideCount} di-override</span>
+      <span className="text-gray-300 dark:text-gray-600">·</span>
+      <button
+        type="button"
+        onClick={onResetAllCategoryToMaster}
+        className="text-[11px] font-medium text-brand-600 hover:underline dark:text-brand-400"
+      >
+        reset semua ke master
+      </button>
+    </span>
+  ) : null;
 
   const channelName = CHANNEL_LABEL[channelType] ?? storeName;
 
@@ -264,9 +284,12 @@ export default function MerchantChannelView(props: MerchantChannelViewProps) {
           {requiredFields.length > 0 && renderFields(requiredFields)}
           {categoryRequiredFields.length > 0 && (
             <div className="space-y-2">
-              <p className="text-xs font-medium text-gray-500 dark:text-gray-400">
-                Category details {categoryBreadcrumb ? <span className="font-normal text-gray-400">· {categoryBreadcrumb}</span> : null}
-              </p>
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-xs font-medium text-gray-500 dark:text-gray-400">
+                  Category details {categoryBreadcrumb ? <span className="font-normal text-gray-400">· {categoryBreadcrumb}</span> : null}
+                </p>
+                {resetAllCategoryLink}
+              </div>
               {renderFields(categoryRequiredFields)}
             </div>
           )}
@@ -325,7 +348,16 @@ export default function MerchantChannelView(props: MerchantChannelViewProps) {
       body: (
         <div className="pt-3 space-y-4">
           {recommendedFields.length > 0 && renderFields(recommendedFields)}
-          {categoryOptionalFields.length > 0 && renderFields(categoryOptionalFields)}
+          {categoryOptionalFields.length > 0 && (
+            <div className="space-y-2">
+              {/* Show the bulk-revert link here only when it wasn't already shown in the required "Category details"
+                  header (i.e. this product's category attrs are all optional — the common Shopify case). */}
+              {categoryRequiredFields.length === 0 && resetAllCategoryLink && (
+                <div className="flex justify-end">{resetAllCategoryLink}</div>
+              )}
+              {renderFields(categoryOptionalFields)}
+            </div>
+          )}
           {optionalFields.length > 0 && renderFields(optionalFields)}
         </div>
       ),

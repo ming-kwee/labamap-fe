@@ -1316,6 +1316,8 @@ export default function ChannelStoreTab({ schema, values, onChange, isSaving, la
         categoryOptionalFields={categoryAttrs?.optionalFields ?? []}
         masterOverrideFields={merchantMasterOverrides}
         hasVariants={hasVariants}
+        categoryOverrideCount={(values.overriddenCategoryAttrs ?? []).filter((n) => catFieldByName.has(n)).length}
+        onResetAllCategoryToMaster={handleResetAllToMaster}
         isVisible={(name) => visibility.isVisible(name)}
         isRequired={(name) => visibility.isRequired(name)}
         isFilled={(name) => {
@@ -1323,7 +1325,8 @@ export default function ChannelStoreTab({ schema, values, onChange, isSaving, la
           return v !== undefined && v !== null && v !== "";
         }}
         renderFields={(f) => (
-          <FieldsGrid fields={f} channelData={values.channelData} onChange={handleFieldChange} fieldErrors={fieldErrors} visibility={visibility} />
+          <FieldsGrid fields={f} channelData={values.channelData} onChange={handleFieldChange} fieldErrors={fieldErrors} visibility={visibility}
+            provenance={categoryProvenance} onResetToMaster={handleResetToMaster} />
         )}
         renderMasterOverrides={(f) => (
           <MasterOverrideSection fields={f} values={values.masterOverrides} channelName={schema.storeName} onChange={handleMasterOverrideChange} embedded />
