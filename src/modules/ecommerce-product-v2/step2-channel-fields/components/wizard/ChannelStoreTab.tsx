@@ -634,6 +634,30 @@ export default function ChannelStoreTab({ schema, values, onChange, isSaving, la
     });
   }
 
+  /** GUARDED bulk revert (power-user / legacy-product migration): reverts EVERY overridden category attribute of
+   *  THIS store to inherit from master. Shown only when overrides exist; confirms with the count first. Reverts only
+   *  the current category's attributes (preserving any unrelated override names). */
+  function handleResetAllToMaster() {
+    const names = (values.overriddenCategoryAttrs ?? []).filter((n) => catFieldByName.has(n));
+    if (names.length === 0) return;
+    const ok = typeof window === "undefined" || window.confirm(
+      `Reset ${names.length} atribut ke master? Nilai override yang Anda set untuk atribut ini akan diganti nilai master.`
+    );
+    if (!ok) return;
+    const nextChannelData = { ...values.channelData };
+    for (const fieldName of names) {
+      const masterVal = catFieldByName.get(fieldName)?.currentValue;
+      if (masterVal !== undefined && masterVal !== null) nextChannelData[fieldName] = masterVal;
+      else delete nextChannelData[fieldName];
+    }
+    const nameSet = new Set(names);
+    onChange({
+      ...values,
+      channelData: nextChannelData,
+      overriddenCategoryAttrs: (values.overriddenCategoryAttrs ?? []).filter((x) => !nameSet.has(x)),
+    });
+  }
+
   function handleVariantChange(sku: string, fieldName: string, value: unknown) {
     const existing = values.variantOverrides[sku] ?? {};
     if (value === undefined) {
@@ -1046,6 +1070,8 @@ export default function ChannelStoreTab({ schema, values, onChange, isSaving, la
     const inactiveOptional = visibleOptional.filter(
       (f) => !isFilled(f.fieldName) && !activatedOptional.has(f.fieldName)
     );
+    // Count only overrides that belong to the CURRENT category's attributes (gate the bulk-reset link).
+    const overriddenCount = (values.overriddenCategoryAttrs ?? []).filter((n) => catFieldByName.has(n)).length;
 
     return (
       <div className="space-y-2">
@@ -1063,6 +1089,20 @@ export default function ChannelStoreTab({ schema, values, onChange, isSaving, la
               {breadcrumb}
             </span>
           </div>
+          {/* Guarded bulk revert — only when this store has category-attribute overrides. Unobtrusive link + confirm. */}
+          {overriddenCount > 0 && (
+            <div className="mt-1.5 flex items-center gap-1.5">
+              <span className="text-[11px] text-violet-500 dark:text-violet-400">{overriddenCount} di-override</span>
+              <span className="text-violet-300 dark:text-violet-600">·</span>
+              <button
+                type="button"
+                onClick={handleResetAllToMaster}
+                className="text-[11px] font-medium text-brand-600 hover:underline dark:text-brand-400"
+              >
+                reset semua ke master
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Required category fields */}
