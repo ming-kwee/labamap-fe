@@ -155,6 +155,8 @@ function FieldRow({
   hasError,
   isRequired: isRequiredProp,
   validationRules: validationRulesProp,
+  provenance,
+  onResetToMaster,
 }: {
   field: ChannelFormField;
   value: unknown;
@@ -164,13 +166,37 @@ function FieldRow({
   isRequired?: boolean;
   /** Scenario E: SET_VALIDATION override from useChannelFieldVisibility */
   validationRules?: ChannelFormField["validationRules"];
+  /** Category-attribute inheritance state: "master" = inherited (tracks master), "override" = merchant-set. */
+  provenance?: "master" | "override" | null;
+  /** Revert an overridden category attribute to inherit from master again. */
+  onResetToMaster?: (fieldName: string) => void;
 }) {
   const required = isRequiredProp ?? Boolean(field.required);
+  const badge =
+    provenance === "master" ? (
+      <span className="inline-flex items-center rounded-full bg-gray-100 px-1.5 py-0.5 text-[10px] font-medium text-gray-500 dark:bg-gray-800 dark:text-gray-400">
+        dari master
+      </span>
+    ) : provenance === "override" ? (
+      <span className="inline-flex items-center gap-1.5">
+        <span className="inline-flex items-center rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 dark:bg-amber-500/15 dark:text-amber-400">
+          di-override
+        </span>
+        <button
+          type="button"
+          onClick={() => onResetToMaster?.(field.fieldName)}
+          className="text-[10px] font-medium text-brand-600 hover:underline dark:text-brand-400"
+        >
+          reset ke master
+        </button>
+      </span>
+    ) : null;
 
   if (field.fieldType === "CHECKBOX") {
     return (
       <div className="py-2">
         <ChannelFieldInput field={field} value={value} onChange={onChange} validationRules={validationRulesProp} />
+        {badge && <span className="ml-6">{badge}</span>}
         {field.helpText && (
           <p className="text-xs text-gray-400 dark:text-gray-500 mt-1 ml-6">{field.helpText}</p>
         )}
@@ -179,10 +205,13 @@ function FieldRow({
   }
   return (
     <div>
-      <label className={`block text-sm font-medium mb-1 ${hasError ? "text-red-500" : "text-gray-700 dark:text-gray-300"}`}>
-        {field.label}
-        {required && <span className="text-red-500 ml-0.5">*</span>}
-      </label>
+      <div className="mb-1 flex items-center gap-2">
+        <label className={`block text-sm font-medium ${hasError ? "text-red-500" : "text-gray-700 dark:text-gray-300"}`}>
+          {field.label}
+          {required && <span className="text-red-500 ml-0.5">*</span>}
+        </label>
+        {badge}
+      </div>
       <div className={hasError ? "ring-1 ring-red-500 rounded-xl" : undefined}>
         <ChannelFieldInput field={field} value={value} onChange={onChange} validationRules={validationRulesProp} />
       </div>
@@ -203,6 +232,8 @@ function FieldsGrid({
   onChange,
   fieldErrors,
   visibility,
+  provenance,
+  onResetToMaster,
 }: {
   fields: ChannelFormField[];
   channelData: Record<string, unknown>;
@@ -210,6 +241,9 @@ function FieldsGrid({
   fieldErrors?: Set<string>;
   /** Scenario E: visibility helpers from useChannelFieldVisibility */
   visibility?: VisibilityHelpers;
+  /** Category-attribute inheritance badge/reset (only passed for the category-attribute grid). */
+  provenance?: (fieldName: string) => "master" | "override" | null;
+  onResetToMaster?: (fieldName: string) => void;
 }) {
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 px-1">
@@ -227,6 +261,8 @@ function FieldsGrid({
               hasError={fieldErrors?.has(field.fieldName)}
               isRequired={visibility?.isRequired(field.fieldName)}
               validationRules={visibility?.getValidation(field.fieldName)}
+              provenance={provenance?.(field.fieldName)}
+              onResetToMaster={onResetToMaster}
             />
           </div>
         ))}
@@ -565,6 +601,37 @@ export default function ChannelStoreTab({ schema, values, onChange, isSaving, la
       ? [...prevOverrides, fieldName]
       : prevOverrides;
     onChange({ ...values, channelData: { ...values.channelData, [fieldName]: value }, overriddenCategoryAttrs });
+  }
+
+  // ── Category-attribute inheritance: badge provenance + reset-to-master ──────
+  const catFieldByName = new Map<string, ChannelFormField>();
+  for (const cf of [...(categoryAttrs?.requiredFields ?? []), ...(categoryAttrs?.optionalFields ?? [])]) {
+    catFieldByName.set(cf.fieldName, cf);
+  }
+  const overriddenCatSet = new Set(values.overriddenCategoryAttrs ?? []);
+
+  /** "override" = merchant-set (frozen); "master" = inherited from master; null = no master source / empty. */
+  function categoryProvenance(fieldName: string): "master" | "override" | null {
+    if (overriddenCatSet.has(fieldName)) return "override";
+    const cf = catFieldByName.get(fieldName);
+    const hasMasterSource = Boolean(cf?.derivedFromMaster || cf?.derivedFromAxis);
+    const v = values.channelData[fieldName];
+    const hasValue = v !== undefined && v !== null && !(Array.isArray(v) && v.length === 0);
+    return hasMasterSource && hasValue ? "master" : null;
+  }
+
+  /** Revert an overridden category attribute back to inheriting from master: drop it from the override set and
+   *  re-seed the master-derived value (from the re-fetched category schema, which is always master-derived). */
+  function handleResetToMaster(fieldName: string) {
+    const masterVal = catFieldByName.get(fieldName)?.currentValue;
+    const nextChannelData = { ...values.channelData };
+    if (masterVal !== undefined && masterVal !== null) nextChannelData[fieldName] = masterVal;
+    else delete nextChannelData[fieldName];
+    onChange({
+      ...values,
+      channelData: nextChannelData,
+      overriddenCategoryAttrs: (values.overriddenCategoryAttrs ?? []).filter((x) => x !== fieldName),
+    });
   }
 
   function handleVariantChange(sku: string, fieldName: string, value: unknown) {
@@ -1006,6 +1073,8 @@ export default function ChannelStoreTab({ schema, values, onChange, isSaving, la
             onChange={handleFieldChange}
             fieldErrors={fieldErrors}
             visibility={visibility}
+            provenance={categoryProvenance}
+            onResetToMaster={handleResetToMaster}
           />
         )}
 
@@ -1017,6 +1086,8 @@ export default function ChannelStoreTab({ schema, values, onChange, isSaving, la
             onChange={handleFieldChange}
             fieldErrors={fieldErrors}
             visibility={visibility}
+            provenance={categoryProvenance}
+            onResetToMaster={handleResetToMaster}
           />
         )}
 
