@@ -365,7 +365,9 @@ export default function ChannelFieldInput({ field, value, onChange, disabled, va
     case "SELECT":
       return (
         <select
-          value={(value as string) ?? ""}
+          // Defensive: a single-select must bind to a scalar. Prefill may hand a 1+-element array (master value
+          // that resolved to several options) — collapse it to the first so React doesn't throw.
+          value={Array.isArray(value) ? (String(value[0] ?? "")) : ((value as string) ?? "")}
           onChange={(e) => onChange(field.fieldName, e.target.value)}
           disabled={disabled}
           className={baseClass}
