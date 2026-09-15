@@ -610,15 +610,27 @@ export default function ChannelStoreTab({ schema, values, onChange, isSaving, la
   }
   const overriddenCatSet = new Set(values.overriddenCategoryAttrs ?? []);
 
-  /** "override" = merchant-set (frozen); "master" = inherited from master; null = no master source / empty. */
-  function categoryProvenance(fieldName: string): "master" | "override" | null {
-    if (overriddenCatSet.has(fieldName)) return "override";
+  /** True only when the attribute has a MASTER concept (P3/P4 can derive it). A pure channel-only attribute that
+   *  has no Step-1 equivalent is never derivable → gets no inheritance UI (it's just a channel field). */
+  const hasMasterSource = (fieldName: string): boolean => {
     const cf = catFieldByName.get(fieldName);
-    const hasMasterSource = Boolean(cf?.derivedFromMaster || cf?.derivedFromAxis);
+    return Boolean(cf?.derivedFromMaster || cf?.derivedFromAxis);
+  };
+
+  /** "override" = merchant-set value that overrides master; "master" = inherited from master; null = no master
+   *  concept (channel-only) or empty. The master-source check comes FIRST, so editing a channel-only attribute
+   *  does NOT show an override/reset badge — there is no master to override or reset to. */
+  function categoryProvenance(fieldName: string): "master" | "override" | null {
+    if (!hasMasterSource(fieldName)) return null;
+    if (overriddenCatSet.has(fieldName)) return "override";
     const v = values.channelData[fieldName];
     const hasValue = v !== undefined && v !== null && !(Array.isArray(v) && v.length === 0);
-    return hasMasterSource && hasValue ? "master" : null;
+    return hasValue ? "master" : null;
   }
+
+  /** Overrides that actually have a master value to revert to (excludes channel-only attributes so bulk reset can't
+   *  wipe data with no master fallback). Drives the "reset all" gate/count. */
+  const masterBackedOverrides = (values.overriddenCategoryAttrs ?? []).filter(hasMasterSource);
 
   /** Revert an overridden category attribute back to inheriting from master: drop it from the override set and
    *  re-seed the master-derived value (from the re-fetched category schema, which is always master-derived). */
@@ -638,7 +650,7 @@ export default function ChannelStoreTab({ schema, values, onChange, isSaving, la
    *  THIS store to inherit from master. Shown only when overrides exist; confirms with the count first. Reverts only
    *  the current category's attributes (preserving any unrelated override names). */
   function handleResetAllToMaster() {
-    const names = (values.overriddenCategoryAttrs ?? []).filter((n) => catFieldByName.has(n));
+    const names = masterBackedOverrides;   // channel-only overrides have no master to revert to → leave them
     if (names.length === 0) return;
     const ok = typeof window === "undefined" || window.confirm(
       `Reset ${names.length} atribut ke master? Nilai override yang Anda set untuk atribut ini akan diganti nilai master.`
@@ -1070,8 +1082,8 @@ export default function ChannelStoreTab({ schema, values, onChange, isSaving, la
     const inactiveOptional = visibleOptional.filter(
       (f) => !isFilled(f.fieldName) && !activatedOptional.has(f.fieldName)
     );
-    // Count only overrides that belong to the CURRENT category's attributes (gate the bulk-reset link).
-    const overriddenCount = (values.overriddenCategoryAttrs ?? []).filter((n) => catFieldByName.has(n)).length;
+    // Gate the bulk-reset link on overrides that actually have a master value to revert to (excludes channel-only).
+    const overriddenCount = masterBackedOverrides.length;
 
     return (
       <div className="space-y-2">
@@ -1316,7 +1328,7 @@ export default function ChannelStoreTab({ schema, values, onChange, isSaving, la
         categoryOptionalFields={categoryAttrs?.optionalFields ?? []}
         masterOverrideFields={merchantMasterOverrides}
         hasVariants={hasVariants}
-        categoryOverrideCount={(values.overriddenCategoryAttrs ?? []).filter((n) => catFieldByName.has(n)).length}
+        categoryOverrideCount={masterBackedOverrides.length}
         onResetAllCategoryToMaster={handleResetAllToMaster}
         isVisible={(name) => visibility.isVisible(name)}
         isRequired={(name) => visibility.isRequired(name)}
