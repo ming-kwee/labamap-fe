@@ -9,6 +9,7 @@
 import React, { useState, useRef, useCallback } from 'react';
 import { Upload, X, Loader2, CheckCircle2, AlertCircle } from '@/shared/ui/icons/Icons';
 import Button from '@/shared/ui/button/Button';
+import { useT } from '@/shared/contexts/LocaleContext';
 import { MediaUploadService, UploadProgress } from '../../services/media-upload.service';
 
 interface ImageUploadFieldProps {
@@ -40,6 +41,7 @@ export default function ImageUploadField({
   error,
   disabled = false
 }: ImageUploadFieldProps) {
+  const t = useT();
   const [isDragging, setIsDragging] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<UploadProgress[]>([]);
   const [isUploading, setIsUploading] = useState(false);
@@ -148,15 +150,21 @@ export default function ImageUploadField({
           >
           <Upload className={`h-12 w-12 mx-auto mb-3 ${disabled ? 'text-gray-300 dark:text-gray-600' : 'text-gray-400 dark:text-gray-500'}`} />
           <p className="text-sm text-gray-600 dark:text-gray-400 mb-1">
-            {disabled ? 'Upload disabled' : `Drag & drop ${multiple ? 'images' : 'an image'} here, or click to browse`}
+            {disabled
+              ? t('image.uploadDisabled', 'Upload disabled')
+              : multiple
+                ? t('image.dropzoneMultiple', 'Drag & drop images here, or click to browse')
+                : t('image.dropzoneSingle', 'Drag & drop an image here, or click to browse')}
           </p>
           <p className="text-xs text-gray-500 dark:text-gray-500">
-            JPEG, PNG, WEBP, GIF • Max 10MB per file
-            {multiple && ` • Up to ${maxImages} images`}
+            {t('image.fileHint', 'JPEG, PNG, WEBP, GIF • Max 10MB per file')}
+            {multiple && ` • ${t('image.upToN', 'Up to {n} images').replace('{n}', String(maxImages))}`}
           </p>
           {multiple && currentImages.length > 0 && (
             <p className="text-xs text-blue-600 dark:text-blue-400 mt-2">
-              {currentImages.length} / {maxImages} images uploaded
+              {t('image.uploadedCount', '{n} / {max} images uploaded')
+                .replace('{n}', String(currentImages.length))
+                .replace('{max}', String(maxImages))}
             </p>
           )}
           </label>
@@ -165,7 +173,7 @@ export default function ImageUploadField({
 
       {isUploading && uploadProgress.length > 0 && (
         <div className="space-y-2 mt-3">
-          <div className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Uploading...</div>
+          <div className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">{t('common.uploading', 'Uploading...')}</div>
           {uploadProgress.map((progress) => (
             <div key={progress.filename} className="flex items-center space-x-3 text-sm bg-gray-50 dark:bg-gray-800 p-2 rounded">
               {progress.status === 'uploading' && (
@@ -179,7 +187,7 @@ export default function ImageUploadField({
                 <>
                   <CheckCircle2 className="h-4 w-4 text-green-500 flex-shrink-0" />
                   <span className="flex-1 truncate text-gray-700 dark:text-gray-300">{progress.filename}</span>
-                  <span className="text-green-600 dark:text-green-400">Done</span>
+                  <span className="text-green-600 dark:text-green-400">{t('common.done', 'Done')}</span>
                 </>
               )}
               {progress.status === 'error' && (
@@ -212,13 +220,13 @@ export default function ImageUploadField({
                   type="button"
                   onClick={(e) => { e.stopPropagation(); handleRemoveImage(imageUrl); }}
                   className="absolute top-1 right-1 p-1 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-600 focus:outline-none focus:ring-2 focus:ring-red-500"
-                  title="Remove image"
+                  title={t('image.remove', 'Remove image')}
                 >
                   <X className="h-4 w-4" />
                 </button>
               )}
               {!multiple && (
-                <div className="absolute bottom-1 left-1 px-2 py-0.5 bg-blue-500 text-white text-xs rounded">Main</div>
+                <div className="absolute bottom-1 left-1 px-2 py-0.5 bg-blue-500 text-white text-xs rounded">{t('image.main', 'Main')}</div>
               )}
               {multiple && (
                 <div className="absolute bottom-1 left-1 px-2 py-0.5 bg-gray-700 text-white text-xs rounded">{index + 1}</div>

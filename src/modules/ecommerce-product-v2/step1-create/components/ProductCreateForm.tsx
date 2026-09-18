@@ -13,6 +13,7 @@ import { Alert, AlertDescription } from '@/shared/ui/alert/AlertComponents';
 import { Loader2, AlertCircle } from '@/shared/ui/icons/Icons';
 import { Card, CardContent, CardHeader, CardTitle } from '@/shared/ui/card/Card';
 import Button from '@/shared/ui/button/Button';
+import { useT } from '@/shared/contexts/LocaleContext';
 import type { MasterProduct } from '../../types/product';
 import ValidationSummary from './ValidationSummary';
 import BasicInfoSection from './sections/BasicInfoSection';
@@ -118,6 +119,7 @@ export default function ProductCreateForm({
   // context.productId so master_product_data._id === channel_product_data.masterProductId.
   // In edit mode, the real productId from the URL is used instead (initialProductId).
   const [clientProductId] = useState(() => mode === 'create' ? uuidv4() : (initialProductId ?? ''));
+  const t = useT();
 
   // Track whether we've already auto-expanded sections (runs once after first schema load)
   const hasAutoExpandedRef = useRef(false);
@@ -600,21 +602,25 @@ export default function ProductCreateForm({
       {/* Submit */}
       <div className="flex justify-end space-x-4">
         <Button type="button" variant="outline" onClick={() => window.history.back()}>
-          Cancel
+          {t('common.cancel', 'Cancel')}
         </Button>
         <Button type="submit" variant="primary" disabled={isSubmitting || isAddingCategoryFields}>
           {isSubmitting ? (
             <>
               <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-              {mode === 'edit' ? 'Saving Changes...' : 'Creating Product...'}
+              {mode === 'edit'
+                ? t('product.action.saving', 'Saving Changes...')
+                : t('product.action.creating', 'Creating Product...')}
             </>
           ) : isAddingCategoryFields ? (
             <>
               <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-              Loading category fields...
+              {t('product.action.loadingCategoryFields', 'Loading category fields...')}
             </>
           ) : (
-            mode === 'edit' ? 'Save Changes' : 'Create Product'
+            mode === 'edit'
+              ? t('product.action.save', 'Save Changes')
+              : t('product.action.create', 'Create Product')
           )}
         </Button>
       </div>

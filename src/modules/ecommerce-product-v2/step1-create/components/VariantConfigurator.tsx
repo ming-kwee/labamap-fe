@@ -14,6 +14,7 @@ import MoneyInput from '../../components/inputs/MoneyInput';
 import QuantityInput from '../../components/inputs/QuantityInput';
 import { classifyNumericField, cssColorOrNull, inputBaseClass } from '../../components/inputs/field-format';
 import { Trash2 } from '@/shared/ui/icons/Icons';
+import { useT } from '@/shared/contexts/LocaleContext';
 import type { VariantDimension as ProductTypeVariantDimension } from '@/app/(admin)/omni-admin/product-types/_types/product-type';
 
 // Module-level constant — must not be inside the component or a useMemo,
@@ -102,6 +103,8 @@ const VariantConfigurator: React.FC<VariantConfiguratorProps> = ({
     }
     return true;
   }
+
+  const t = useT();
 
   const { variantDimensions, variantConfig } = useMemo(() => {
     if (!schema?.fields) return { variantDimensions: [], variantConfig: [] };
@@ -629,7 +632,7 @@ const VariantConfigurator: React.FC<VariantConfiguratorProps> = ({
                   onClick={() => setAxis(dimension.name, allSelected ? [] : [...dimension.options])}
                   className="text-xs font-medium text-brand-600 hover:text-brand-700 dark:text-brand-400 dark:hover:text-brand-300"
                 >
-                  {allSelected ? 'Clear' : 'Select all'}
+                  {allSelected ? t('common.clear', 'Clear') : t('common.selectAll', 'Select all')}
                 </button>
               </div>
               <div className="flex flex-wrap gap-2">
@@ -679,7 +682,7 @@ const VariantConfigurator: React.FC<VariantConfiguratorProps> = ({
           disabled={totalCombinations === 1}
           className="inline-flex items-center gap-2 rounded-lg bg-brand-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-brand-700 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 dark:focus:ring-offset-gray-900"
         >
-          {variants.length > 0 ? 'Regenerate SKUs' : 'Generate SKUs'}
+          {variants.length > 0 ? t('variants.regenerateSkus', 'Regenerate SKUs') : t('variants.generateSkus', 'Generate SKUs')}
           {effectiveDimensions.length > 0 && (
             <span className="rounded-md bg-white/20 px-2 py-0.5 text-xs font-medium">
               {effectiveDimensions.map(dim => selectedOptions[dim.name]?.length || 0).join(' × ')} = {totalCombinations}
@@ -688,7 +691,7 @@ const VariantConfigurator: React.FC<VariantConfiguratorProps> = ({
         </button>
         {effectiveDimensions.length > 0 && (
           <div className="text-sm text-gray-500 dark:text-gray-400">
-            {effectiveDimensions.length} option{effectiveDimensions.length !== 1 ? 's' : ''} available
+            {t('variants.optionsAvailable', '{n} options available').replace('{n}', String(effectiveDimensions.length))}
           </div>
         )}
       </div>
@@ -699,14 +702,14 @@ const VariantConfigurator: React.FC<VariantConfiguratorProps> = ({
           {/* Header: title + bulk-edit bar */}
           <div className="flex flex-col gap-3 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
             <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-200">
-              Generated SKUs
+              {t('variants.generatedSkus', 'Generated SKUs')}
               <span className="ml-2 rounded-full bg-brand-50 px-2 py-0.5 text-xs font-medium text-brand-600 dark:bg-brand-500/10 dark:text-brand-400">
                 {variants.length}
               </span>
             </h4>
             {(priceCol || stockCol) && (
               <div className="flex flex-wrap items-center gap-2">
-                <span className="text-xs font-medium text-gray-500 dark:text-gray-400">Bulk edit:</span>
+                <span className="text-xs font-medium text-gray-500 dark:text-gray-400">{t('variants.bulkEdit', 'Bulk edit:')}</span>
                 {priceCol && (
                   <div className="flex items-center gap-1">
                     <MoneyInput
@@ -714,7 +717,7 @@ const VariantConfigurator: React.FC<VariantConfiguratorProps> = ({
                       currency={currency}
                       value={bulkPrice}
                       onChange={setBulkPrice}
-                      aria-label="Bulk price"
+                      aria-label={t('variants.bulkPriceAria', 'Bulk price')}
                       className="w-32"
                     />
                     <button
@@ -723,7 +726,7 @@ const VariantConfigurator: React.FC<VariantConfiguratorProps> = ({
                       disabled={bulkPrice === undefined}
                       className="rounded-md border border-gray-300 bg-white px-2.5 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-40 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700/50"
                     >
-                      Set price
+                      {t('variants.setPrice', 'Set price')}
                     </button>
                   </div>
                 )}
@@ -733,7 +736,7 @@ const VariantConfigurator: React.FC<VariantConfiguratorProps> = ({
                       compact
                       value={bulkStock}
                       onChange={setBulkStock}
-                      aria-label="Bulk stock"
+                      aria-label={t('variants.bulkStockAria', 'Bulk stock')}
                       className="w-28"
                     />
                     <button
@@ -742,7 +745,7 @@ const VariantConfigurator: React.FC<VariantConfiguratorProps> = ({
                       disabled={bulkStock === undefined}
                       className="rounded-md border border-gray-300 bg-white px-2.5 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-40 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700/50"
                     >
-                      Set stock
+                      {t('variants.setStock', 'Set stock')}
                     </button>
                   </div>
                 )}
@@ -755,11 +758,11 @@ const VariantConfigurator: React.FC<VariantConfiguratorProps> = ({
             <table className="w-full text-sm">
               <thead className="sticky top-0 z-10 bg-gray-50 dark:bg-gray-800/70 backdrop-blur">
                 <tr className="text-left text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
-                  {dimensionCols.length > 0 && <th className="px-4 py-2.5">Variant</th>}
+                  {dimensionCols.length > 0 && <th className="px-4 py-2.5">{t('variants.colVariant', 'Variant')}</th>}
                   {valueCols.map((field: any) => (
                     <th key={field.name} className="px-3 py-2.5 whitespace-nowrap">{field.label}</th>
                   ))}
-                  <th className="px-3 py-2.5 text-right">Actions</th>
+                  <th className="px-3 py-2.5 text-right">{t('common.actions', 'Actions')}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
@@ -854,8 +857,8 @@ const VariantConfigurator: React.FC<VariantConfiguratorProps> = ({
                     <td className="px-3 py-2 text-right align-middle">
                       <button
                         type="button"
-                        title="Remove SKU"
-                        aria-label="Remove SKU"
+                        title={t('variants.removeSku', 'Remove SKU')}
+                        aria-label={t('variants.removeSku', 'Remove SKU')}
                         onClick={() => {
                           const updated = variants.filter(v => v.id !== variant.id);
                           setVariants(updated);

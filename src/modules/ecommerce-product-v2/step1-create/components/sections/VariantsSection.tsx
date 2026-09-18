@@ -2,6 +2,7 @@
 
 import React from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/shared/ui/card/Card';
+import { useT } from '@/shared/contexts/LocaleContext';
 import VariantConfigurator from '../VariantConfigurator';
 import { onVariantsEnabled, onVariantsDisabled, resolveDualFieldNames } from '../../../utils/variant-scope';
 import type { VariantDimension } from '@/app/(admin)/omni-admin/product-types/_types/product-type';
@@ -37,6 +38,7 @@ export default function VariantsSection({
   isLoadingVariantOptions,
   isEditMode,
 }: VariantsSectionProps) {
+  const t = useT();
   const hasVariantsEnabled = !!formData['hasVariants'];
 
   const handleHasVariantsChange = (enabled: boolean) => {
@@ -69,10 +71,10 @@ export default function VariantsSection({
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center space-x-2">
-          <span>Product Options &amp; Variants</span>
+          <span>{t('variants.title', 'Product Options & Variants')}</span>
         </CardTitle>
         <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
-          Define the options (size, color, material) that create unique product variants
+          {t('variants.desc', 'Define the options (size, color, material) that create unique product variants')}
         </p>
       </CardHeader>
 
@@ -81,10 +83,10 @@ export default function VariantsSection({
         <div className="flex items-center justify-between p-4 border border-gray-200 dark:border-gray-700 rounded-lg">
           <div>
             <label htmlFor="hasVariants" className="font-medium text-base cursor-pointer text-gray-800 dark:text-gray-100">
-              This product has multiple options
+              {t('variants.hasOptionsLabel', 'This product has multiple options')}
             </label>
             <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
-              e.g. sizes, colors, or materials — each combination becomes a separate SKU
+              {t('variants.hasOptionsDesc', 'e.g. sizes, colors, or materials — each combination becomes a separate SKU')}
             </p>
           </div>
           <button

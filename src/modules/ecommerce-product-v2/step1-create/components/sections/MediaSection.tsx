@@ -10,6 +10,7 @@ import {
   CheckCircle2,
 } from '@/shared/ui/icons/Icons';
 import { Card, CardContent } from '@/shared/ui/card/Card';
+import { useT } from '@/shared/contexts/LocaleContext';
 import { MediaUploadService, UploadProgress } from '../../../services/media-upload.service';
 import { SectionHeader, FieldGrid } from './_shared/SectionShell';
 
@@ -54,6 +55,7 @@ function FeaturedImageZone({
   productId,
   error,
 }: FeaturedImageZoneProps) {
+  const t = useT();
   const fieldName = field.name || field.fieldName;
   const [isDragging, setIsDragging] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
@@ -139,20 +141,20 @@ function FeaturedImageZone({
                   htmlFor={inputId}
                   className="cursor-pointer px-3 py-1.5 bg-white text-gray-800 text-xs font-medium rounded shadow hover:bg-gray-100 transition"
                 >
-                  Replace
+                  {t('common.replace', 'Replace')}
                 </label>
                 <button
                   type="button"
                   onClick={handleRemove}
                   className="px-3 py-1.5 bg-red-500 text-white text-xs font-medium rounded shadow hover:bg-red-600 transition"
                 >
-                  Remove
+                  {t('common.remove', 'Remove')}
                 </button>
               </div>
               {/* Badge */}
               <div className="absolute top-2 left-2 flex items-center gap-1 px-2 py-0.5 bg-blue-500 text-white text-xs rounded-full">
                 <CheckCircle2 className="h-3 w-3" />
-                Featured
+                {t('media.featured', 'Featured')}
               </div>
             </div>
           ) : (
@@ -181,9 +183,9 @@ function FeaturedImageZone({
                 <>
                   <Upload className={`h-8 w-8 mb-2 ${error ? 'text-red-400' : 'text-gray-400 dark:text-gray-500'}`} />
                   <span className="text-sm text-gray-600 dark:text-gray-400 text-center px-2">
-                    Drop here or <span className="text-blue-600 dark:text-blue-400 underline">browse</span>
+                    {t('image.dropHere', 'Drop here or')} <span className="text-blue-600 dark:text-blue-400 underline">{t('common.browse', 'browse')}</span>
                   </span>
-                  <span className="text-xs text-gray-400 dark:text-gray-500 mt-1">JPEG, PNG, WEBP · max 10MB</span>
+                  <span className="text-xs text-gray-400 dark:text-gray-500 mt-1">{t('image.fileHintShort', 'JPEG, PNG, WEBP · max 10MB')}</span>
                 </>
               )}
             </label>
@@ -241,6 +243,7 @@ function GalleryStrip({
   const maxImages = field.validationRules?.maxItems ?? 10;
   const images = Array.isArray(value) ? value : [];
 
+  const t = useT();
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<UploadProgress[]>([]);
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
@@ -370,7 +373,7 @@ function GalleryStrip({
               type="button"
               onClick={() => handleRemove(index)}
               className="absolute top-1 right-1 p-0.5 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-600"
-              title="Remove image"
+              title={t('image.remove', 'Remove image')}
             >
               <X className="h-3 w-3" />
             </button>
@@ -388,7 +391,7 @@ function GalleryStrip({
             ) : (
               <>
                 <Plus className="h-5 w-5 text-gray-400 dark:text-gray-500 mb-0.5" />
-                <span className="text-xs text-gray-400 dark:text-gray-500">Add</span>
+                <span className="text-xs text-gray-400 dark:text-gray-500">{t('common.add', 'Add')}</span>
               </>
             )}
           </label>

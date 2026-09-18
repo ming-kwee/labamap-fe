@@ -2,6 +2,7 @@
 
 import React, { useState } from 'react';
 import { X, Plus } from '@/shared/ui/icons/Icons';
+import { useT } from '@/shared/contexts/LocaleContext';
 import { MediaUploadService } from '../../services/media-upload.service';
 
 interface VariantMultiImageUploadProps {
@@ -21,6 +22,7 @@ export default function VariantMultiImageUpload({
   productId,
   maxImages = 5
 }: VariantMultiImageUploadProps) {
+  const t = useT();
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [error, setError] = useState<string | null>(null);
@@ -99,7 +101,7 @@ export default function VariantMultiImageUpload({
               type="button"
               onClick={() => handleRemove(index)}
               className="absolute inset-0 bg-black bg-opacity-50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center"
-              title={`Remove image ${index + 1}`}
+              title={t('image.removeN', 'Remove image {n}').replace('{n}', String(index + 1))}
             >
               <X className="w-4 h-4 text-white" />
             </button>
@@ -119,7 +121,7 @@ export default function VariantMultiImageUpload({
           />
           <div
             className="w-10 h-10 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded flex items-center justify-center hover:border-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors"
-            title={`Add image (${images.length}/${maxImages})`}
+            title={t('image.addN', 'Add image ({n}/{max})').replace('{n}', String(images.length)).replace('{max}', String(maxImages))}
           >
             {isUploading ? (
               <div className="relative w-6 h-6">

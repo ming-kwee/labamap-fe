@@ -1,6 +1,7 @@
 'use client';
 
 import React from 'react';
+import { useT } from '@/shared/contexts/LocaleContext';
 import type { EnhancedValidationResult } from '../../types/form-schema';
 
 interface ValidationSummaryProps {
@@ -31,6 +32,7 @@ function friendlyMessage(raw: string, fieldLabels?: Record<string, string>): str
 }
 
 export default function ValidationSummary({ result, fieldLabels, onClose, className = '' }: ValidationSummaryProps) {
+  const t = useT();
   const errors = result.violations.filter(v => v.severity === 'ERROR');
 
   return (
@@ -50,17 +52,17 @@ export default function ValidationSummary({ result, fieldLabels, onClose, classN
           )}
           <p className="text-sm font-semibold text-error-700 dark:text-error-300">
             {result.valid
-              ? 'All checks passed'
+              ? t('validation.allPassed', 'All checks passed')
               : errors.length === 1
-                ? 'Please fix 1 issue before submitting'
-                : `Please fix ${errors.length} issues before submitting`}
+                ? t('validation.fixOne', 'Please fix 1 issue before submitting')
+                : t('validation.fixMany', 'Please fix {n} issues before submitting').replace('{n}', String(errors.length))}
           </p>
         </div>
         {onClose && (
           <button
             onClick={onClose}
             className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 flex-shrink-0 transition-colors"
-            aria-label="Dismiss"
+            aria-label={t('common.dismiss', 'Dismiss')}
           >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
               <path d="M18 6 6 18M6 6l12 12"/>
