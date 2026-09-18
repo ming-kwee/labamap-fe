@@ -10,7 +10,8 @@
 import React from 'react';
 import { ChevronDown, ChevronRight } from '@/shared/ui/icons/Icons';
 import { CardHeader, CardTitle } from '@/shared/ui/card/Card';
-import { getSectionMetadata } from '../../../../utils/form-utils';
+import { getSectionMetadata, normalizeSectionKey } from '../../../../utils/form-utils';
+import { useT } from '@/shared/contexts/LocaleContext';
 import FieldRenderer from '../../FieldRenderer';
 
 // Soft background tile per section accent. Literal class strings (not interpolated)
@@ -33,7 +34,13 @@ interface SectionHeaderProps {
 }
 
 export function SectionHeader({ sectionKey, fieldCount, isExpanded, onToggle }: SectionHeaderProps) {
+  const t = useT();
   const meta = getSectionMetadata(sectionKey);
+  // Judul/deskripsi section = chrome FE (bukan schema.sections[].label dari BFF) → dilokalkan di sini.
+  // Fallback = metadata English, jadi locale en tak berubah.
+  const nk = normalizeSectionKey(sectionKey);
+  const label = t(`section.${nk}.label`, meta.label);
+  const description = meta.description ? t(`section.${nk}.desc`, meta.description) : meta.description;
   const Icon = meta.icon;
   const Chevron = isExpanded ? ChevronDown : ChevronRight;
   const tint = ICON_TINT[meta.iconColor] ?? 'bg-gray-100 dark:bg-gray-700/40';
@@ -58,13 +65,13 @@ export function SectionHeader({ sectionKey, fieldCount, isExpanded, onToggle }: 
         </span>
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
-            <CardTitle className="text-base">{meta.label}</CardTitle>
+            <CardTitle className="text-base">{label}</CardTitle>
             <span className="rounded-full bg-brand-50 px-2 py-0.5 text-xs font-medium text-brand-600 dark:bg-brand-500/10 dark:text-brand-400">
-              {fieldCount} {fieldCount === 1 ? 'field' : 'fields'}
+              {fieldCount} {fieldCount === 1 ? t('common.field', 'field') : t('common.fields', 'fields')}
             </span>
           </div>
-          {meta.description && (
-            <p className="mt-0.5 truncate text-sm text-gray-500 dark:text-gray-400">{meta.description}</p>
+          {description && (
+            <p className="mt-0.5 truncate text-sm text-gray-500 dark:text-gray-400">{description}</p>
           )}
         </div>
         <Chevron className="ml-auto h-5 w-5 flex-shrink-0 text-gray-400" />
