@@ -12,6 +12,8 @@ export interface User {
   status: 'ACTIVE' | 'INACTIVE' | 'SUSPENDED';
   lastLoginAt: string;
   permissions: string[];
+  /** Bahasa UI pilihan user (mis. "id"/"en"). Dipakai LocaleProvider + switcher (Fase 1b localization). */
+  preferredLanguage?: string;
 }
 
 export interface Organization {
