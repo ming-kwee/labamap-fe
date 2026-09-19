@@ -38,8 +38,19 @@ async function handleResponse<T>(res: Response): Promise<T | null> {
 }
 
 export const ProductTypeService = {
-  async list(params?: { active?: boolean }): Promise<ProductType[]> {
-    const qs = params?.active !== undefined ? `?active=${params.active}` : "";
+  /**
+   * Lists product types.
+   *
+   * `locale` is opt-in (Fase 1d, docs/localization/01 §11): when passed and not "en",
+   * the display `name` comes back localized via `i18n_messages` (BFF key
+   * `productType.<slug>.name`); slug/id stay canonical. Omit it (admin surfaces) to get
+   * canonical English names. A missing translation falls back to English on the BFF side.
+   */
+  async list(params?: { active?: boolean; locale?: string }): Promise<ProductType[]> {
+    const q = new URLSearchParams();
+    if (params?.active !== undefined) q.set("active", String(params.active));
+    if (params?.locale && params.locale !== "en") q.set("locale", params.locale);
+    const qs = q.toString() ? `?${q.toString()}` : "";
     const res = await fetch(`${BASE}${qs}`, { method: "GET", headers: JSON_HEADERS });
     const raw = await handleResponse<unknown>(res);
     const arr = Array.isArray(raw) ? raw : ((raw as Record<string, unknown>)?.content as unknown[] ?? []);

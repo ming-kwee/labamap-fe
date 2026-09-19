@@ -13,7 +13,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { ProductTypeService } from '@/app/(admin)/omni-admin/product-types/_services/product-type.service';
 import type { ProductType } from '@/app/(admin)/omni-admin/product-types/_types/product-type';
-import { useT } from '@/shared/contexts/LocaleContext';
+import { useLocale } from '@/shared/contexts/LocaleContext';
 
 interface CategorySelectFieldProps {
   orgId: string;
@@ -35,7 +35,7 @@ export default function CategorySelectField({
   disabled,
   className,
 }: CategorySelectFieldProps) {
-  const t = useT();
+  const { locale, t } = useLocale();
   const [productTypes, setProductTypes] = useState<ProductType[]>([]);
   const [loading, setLoading]           = useState(true);
   const [error, setError]               = useState<string | null>(null);
@@ -48,11 +48,14 @@ export default function CategorySelectField({
   const listRef                 = useRef<HTMLUListElement>(null);
 
   useEffect(() => {
-    ProductTypeService.list({ active: true })
+    // Fase 1d: pass the active locale so the BFF localizes product-type names
+    // (docs/localization/01 §11). "en" is a no-op on the BFF (canonical names).
+    setLoading(true);
+    ProductTypeService.list({ active: true, locale })
       .then(setProductTypes)
       .catch(() => setError('Failed to load product types'))
       .finally(() => setLoading(false));
-  }, []);
+  }, [locale]);
 
   // Derived: selected ProductType object
   const selected = productTypes.find(pt => pt.id === value) ?? null;
