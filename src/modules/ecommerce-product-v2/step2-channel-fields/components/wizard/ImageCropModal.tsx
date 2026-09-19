@@ -3,6 +3,7 @@ import React, { useCallback, useState } from "react";
 import Cropper from "react-easy-crop";
 import type { Area } from "react-easy-crop";
 import { getCroppedBlob } from "../../../utils/image-crop";
+import { useT } from '@/shared/contexts/LocaleContext';
 
 /**
  * Crop/resize modal (images I4). Locks to the channel's aspect ratio when provided (from the
@@ -14,7 +15,7 @@ export default function ImageCropModal({
   src,
   aspect,
   maxWidth,
-  title = "Crop image",
+  title,
   onCancel,
   onCropped,
 }: {
@@ -28,6 +29,7 @@ export default function ImageCropModal({
   onCancel: () => void;
   onCropped: (blob: Blob) => void;
 }) {
+  const t = useT();
   const [crop, setCrop] = useState({ x: 0, y: 0 });
   const [zoom, setZoom] = useState(1);
   const [areaPixels, setAreaPixels] = useState<Area | null>(null);
@@ -48,8 +50,10 @@ export default function ImageCropModal({
     } catch {
       // Almost always a canvas-taint (CORS) failure on a remote image — surface a clear hint.
       setError(
-        "Couldn't process this image in the browser (it may be served without CORS). " +
-          "Try uploading the original file and cropping that instead.",
+        t(
+          'crop.corsError',
+          "Couldn't process this image in the browser (it may be served without CORS). Try uploading the original file and cropping that instead.",
+        ),
       );
     } finally {
       setBusy(false);
@@ -61,12 +65,12 @@ export default function ImageCropModal({
       <div className="w-full max-w-2xl rounded-2xl bg-white dark:bg-gray-900 shadow-2xl border border-gray-200 dark:border-gray-700 overflow-hidden">
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-3 border-b border-gray-200 dark:border-gray-700">
-          <h3 className="text-sm font-semibold text-gray-800 dark:text-gray-100">{title}</h3>
+          <h3 className="text-sm font-semibold text-gray-800 dark:text-gray-100">{title ?? t('crop.title', 'Crop image')}</h3>
           <button
             type="button"
             onClick={onCancel}
             className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors"
-            aria-label="Close"
+            aria-label={t('common.close', 'Close')}
           >
             <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
               <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
@@ -91,7 +95,7 @@ export default function ImageCropModal({
         {/* Zoom + meta */}
         <div className="px-5 py-3 space-y-2 border-t border-gray-200 dark:border-gray-700">
           <div className="flex items-center gap-3">
-            <span className="text-xs text-gray-500 dark:text-gray-400 w-10">Zoom</span>
+            <span className="text-xs text-gray-500 dark:text-gray-400 w-10">{t('crop.zoom', 'Zoom')}</span>
             <input
               type="range"
               min={1}
@@ -103,8 +107,13 @@ export default function ImageCropModal({
             />
           </div>
           <p className="text-[11px] text-gray-400 dark:text-gray-500">
-            {aspect ? `Locked to ${aspect === 1 ? "1:1 square" : `${aspect.toFixed(2)}:1`}` : "Free crop"}
-            {maxWidth ? ` · output ≤ ${maxWidth}px wide` : ""}
+            {aspect
+              ? t('crop.lockedTo', 'Locked to {ratio}').replace(
+                  '{ratio}',
+                  aspect === 1 ? t('crop.squareRatio', '1:1 square') : `${aspect.toFixed(2)}:1`,
+                )
+              : t('crop.freeCrop', 'Free crop')}
+            {maxWidth ? ` ${t('crop.outputWidth', '· output ≤ {w}px wide').replace('{w}', String(maxWidth))}` : ""}
           </p>
           {error && <p className="text-xs text-red-500">{error}</p>}
         </div>
@@ -116,7 +125,7 @@ export default function ImageCropModal({
             onClick={onCancel}
             className="px-3 py-1.5 text-sm font-medium rounded-lg border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
           >
-            Cancel
+            {t('common.cancel', 'Cancel')}
           </button>
           <button
             type="button"
@@ -124,7 +133,7 @@ export default function ImageCropModal({
             disabled={busy || !areaPixels}
             className="px-3 py-1.5 text-sm font-medium rounded-lg bg-brand-500 text-white hover:bg-brand-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
-            {busy ? "Processing…" : "Apply crop"}
+            {busy ? t('crop.processing', 'Processing…') : t('crop.apply', 'Apply crop')}
           </button>
         </div>
       </div>

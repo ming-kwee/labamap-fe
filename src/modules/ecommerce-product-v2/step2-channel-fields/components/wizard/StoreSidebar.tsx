@@ -9,6 +9,7 @@
 import React, { useMemo, useState } from "react";
 import type { ChannelType } from "../../types/channelStore";
 import { getChannelMeta } from "../stores/ChannelTypeBadge";
+import { useT } from "@/shared/contexts/LocaleContext";
 
 export interface StoreSidebarItem {
   storeId: string;
@@ -32,6 +33,7 @@ interface Props {
 const SEARCH_THRESHOLD = 8;
 
 export default function StoreSidebar({ items, activeStoreId, doneCount, onSelect }: Props) {
+  const t = useT();
   const [query, setQuery] = useState("");
   const showSearch = items.length >= SEARCH_THRESHOLD;
 
@@ -51,9 +53,11 @@ export default function StoreSidebar({ items, activeStoreId, doneCount, onSelect
       {/* Header */}
       <div className="border-b border-gray-100 px-4 py-3 dark:border-gray-800">
         <div className="flex items-center justify-between">
-          <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-200">Stores</h3>
+          <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-200">{t("sidebar.title", "Stores")}</h3>
           <span className="rounded-full bg-brand-50 px-2 py-0.5 text-xs font-medium text-brand-600 dark:bg-brand-500/10 dark:text-brand-400">
-            {doneCount}/{items.length} done
+            {t("sidebar.doneCount", "{done}/{total} done")
+              .replace("{done}", String(doneCount))
+              .replace("{total}", String(items.length))}
           </span>
         </div>
 
@@ -69,15 +73,15 @@ export default function StoreSidebar({ items, activeStoreId, doneCount, onSelect
               type="text"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search store or channel…"
-              aria-label="Search stores"
+              placeholder={t("sidebar.searchPlaceholder", "Search store or channel…")}
+              aria-label={t("sidebar.searchStores", "Search stores")}
               className="w-full rounded-lg border border-gray-200 bg-gray-50 py-2 pl-8 pr-8 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-brand-500 dark:border-gray-700 dark:bg-gray-800 dark:text-white dark:placeholder-gray-500"
             />
             {query && (
               <button
                 type="button"
                 onClick={() => setQuery("")}
-                aria-label="Clear search"
+                aria-label={t("sidebar.clearSearch", "Clear search")}
                 className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-0.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
               >
                 ✕
@@ -91,7 +95,7 @@ export default function StoreSidebar({ items, activeStoreId, doneCount, onSelect
       <div className="max-h-[60vh] space-y-0.5 overflow-y-auto p-1.5 lg:max-h-[calc(100vh-13rem)]">
         {filtered.length === 0 ? (
           <p className="px-3 py-8 text-center text-sm text-gray-400 dark:text-gray-500">
-            No stores match “{query}”.
+            {t("sidebar.noMatch", "No stores match “{query}”.").replace("{query}", query)}
           </p>
         ) : (
           filtered.map((it) => {

@@ -5,6 +5,7 @@ import { ChannelImageSpecService } from "../../services/channelImageSpec.service
 import { MediaUploadService } from "../../../services/media-upload.service";
 import { specAspect, specMaxWidth, blobToFile } from "../../../utils/image-crop";
 import ImageCropModal from "./ImageCropModal";
+import { useT } from "@/shared/contexts/LocaleContext";
 
 /**
  * Step-2 per-store image override editor (images I4 — contract docs/images/06).
@@ -31,14 +32,30 @@ export function asUrlList(v: unknown): string[] {
   return Array.isArray(v) ? v.filter((u): u is string => typeof u === "string" && u.trim().length > 0) : [];
 }
 
-/** Human-readable channel image requirements, derived from the spec DATA (never literals). */
-export function specReqParts(spec: ChannelImageSpec | null): string[] {
+/** Translator shape (from `useT`); optional so this helper stays usable without a React context. */
+type TFn = (key: string, fallback?: string) => string;
+
+/**
+ * Human-readable channel image requirements, derived from the spec DATA (never literals).
+ * The numeric/aspect/format VALUES come from the spec; only the connective words are localized.
+ * `t` is optional — callers on the render path pass `useT()`; the English fallback keeps it working
+ * for any non-React caller.
+ */
+export function specReqParts(spec: ChannelImageSpec | null, t?: TFn): string[] {
   if (!spec) return [];
+  const tr: TFn = t ?? ((_k, f) => f ?? _k);
   const parts: string[] = [];
-  if (spec.maxCount != null) parts.push(`up to ${spec.maxCount} images`);
-  if (spec.requireSquare) parts.push("square (1:1)");
-  else if (spec.allowedAspectRatios?.length) parts.push(`aspect ${spec.allowedAspectRatios.join(" / ")}`);
-  if (spec.minWidth || spec.minHeight) parts.push(`min ${spec.minWidth ?? "?"}×${spec.minHeight ?? "?"}px`);
+  if (spec.maxCount != null)
+    parts.push(tr("storeimg.upToNImages", "up to {n} images").replace("{n}", String(spec.maxCount)));
+  if (spec.requireSquare) parts.push(tr("storeimg.square", "square (1:1)"));
+  else if (spec.allowedAspectRatios?.length)
+    parts.push(tr("storeimg.aspect", "aspect {r}").replace("{r}", spec.allowedAspectRatios.join(" / ")));
+  if (spec.minWidth || spec.minHeight)
+    parts.push(
+      tr("storeimg.minWH", "min {w}×{h}px")
+        .replace("{w}", String(spec.minWidth ?? "?"))
+        .replace("{h}", String(spec.minHeight ?? "?")),
+    );
   if (spec.maxBytes) parts.push(`≤ ${(spec.maxBytes / (1024 * 1024)).toFixed(0)}MB`);
   if (spec.allowedFormats?.length) parts.push(spec.allowedFormats.join("/").toUpperCase());
   return parts;
@@ -113,6 +130,7 @@ export function ImageListEditor({
   baselineLabel: string;
   compact?: boolean;
 }) {
+  const t = useT();
   const [localEditing, setLocalEditing] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [uploadNote, setUploadNote] = useState<string | null>(null);
@@ -147,10 +165,10 @@ export function ImageListEditor({
     onChange(undefined);
   }
   function move(i: number, dir: -1 | 1) {
-    const t = i + dir;
-    if (t < 0 || t >= list.length) return;
+    const target = i + dir;
+    if (target < 0 || target >= list.length) return;
     const next = [...list];
-    [next[i], next[t]] = [next[t], next[i]];
+    [next[i], next[target]] = [next[target], next[i]];
     commit(next);
   }
   function setMain(i: number) {
@@ -189,12 +207,16 @@ export function ImageListEditor({
     const added: string[] = [];
     try {
       for (let i = 0; i < arr.length; i++) {
-        setUploadNote(`Uploading ${i + 1}/${arr.length}…`);
+        setUploadNote(
+          t("storeimg.uploadingN", "Uploading {i}/{n}…")
+            .replace("{i}", String(i + 1))
+            .replace("{n}", String(arr.length)),
+        );
         added.push(await uploadFile(arr[i]));
       }
       commit([...list, ...added]);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Upload failed");
+      setError(e instanceof Error ? e.message : t("common.uploadFailed", "Upload failed"));
     } finally {
       setUploading(false);
       setUploadNote(null);
@@ -212,14 +234,14 @@ export function ImageListEditor({
     setCropTask(null);
     if (task?.revoke) URL.revokeObjectURL(task.src);
     setUploading(true);
-    setUploadNote("Uploading cropped image…");
+    setUploadNote(t("storeimg.uploadingCropped", "Uploading cropped image…"));
     setError(null);
     try {
       const url = await uploadFile(blobToFile(blob, `crop-${Date.now()}.jpg`));
       if (task?.replaceIndex != null) commit(list.map((u, i) => (i === task.replaceIndex ? url : u)));
       else commit([...list, url]);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Upload failed");
+      setError(e instanceof Error ? e.message : t("common.uploadFailed", "Upload failed"));
     } finally {
       setUploading(false);
       setUploadNote(null);
@@ -235,7 +257,8 @@ export function ImageListEditor({
       {/* Baseline reference (read-only) */}
       <div>
         <p className="text-[11px] font-medium text-gray-500 dark:text-gray-400 mb-1">
-          {baselineLabel} <span className="font-normal text-gray-400">· read-only baseline</span>
+          {baselineLabel}{" "}
+          <span className="font-normal text-gray-400">· {t("storeimg.readOnlyBaseline", "read-only baseline")}</span>
         </p>
         {baseline.length ? (
           <div className="flex flex-wrap gap-1.5">
@@ -245,7 +268,7 @@ export function ImageListEditor({
                 {editing && !list.includes(url) && (
                   <button
                     type="button"
-                    title="Add to this store"
+                    title={t("storeimg.addToThisStore", "Add to this store")}
                     onClick={() => addFromBaseline(url)}
                     className="absolute -top-1.5 -right-1.5 h-5 w-5 flex items-center justify-center rounded-full bg-sky-500 text-white text-sm leading-none shadow hover:bg-sky-600"
                   >
@@ -256,35 +279,39 @@ export function ImageListEditor({
             ))}
           </div>
         ) : (
-          <p className="text-[11px] text-gray-400 dark:text-gray-500 italic">None.</p>
+          <p className="text-[11px] text-gray-400 dark:text-gray-500 italic">{t("storeimg.noneDot", "None.")}</p>
         )}
       </div>
 
       {!editing ? (
         <div className="flex items-center justify-between gap-3 rounded-lg bg-white/60 dark:bg-gray-800/40 border border-gray-200 dark:border-gray-700 px-3 py-2">
           <p className="text-[11px] text-gray-500 dark:text-gray-400">
-            Publishing the baseline. Customise to reorder, replace, crop or set a different main image.
+            {t(
+              "storeimg.publishingBaseline",
+              "Publishing the baseline. Customise to reorder, replace, crop or set a different main image.",
+            )}
           </p>
           <button
             type="button"
             onClick={startCustomize}
             className="flex-shrink-0 px-2.5 py-1 text-xs font-medium rounded-lg bg-sky-500 text-white hover:bg-sky-600 transition-colors"
           >
-            Customise
+            {t("storeimg.customise", "Customise")}
           </button>
         </div>
       ) : (
         <>
           <div className="flex items-center justify-between">
             <p className="text-[11px] font-medium text-gray-500 dark:text-gray-400">
-              This store <span className="font-normal text-gray-400">· first = main</span>
+              {t("storeimg.thisStore", "This store")}{" "}
+              <span className="font-normal text-gray-400">· {t("storeimg.firstIsMain", "first = main")}</span>
             </p>
             <button
               type="button"
               onClick={resetToMaster}
               className="text-[11px] text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 underline underline-offset-2"
             >
-              Reset to master
+              {t("storeimg.resetToMaster", "Reset to master")}
             </button>
           </div>
 
@@ -300,22 +327,22 @@ export function ImageListEditor({
                   <Thumb url={url} className="aspect-square w-full" />
                   {i === 0 && (
                     <span className="absolute top-0.5 left-0.5 text-[9px] font-semibold px-1 py-0.5 rounded bg-sky-500 text-white shadow">
-                      Main
+                      {t("image.main", "Main")}
                     </span>
                   )}
                   <div className="absolute inset-x-0.5 bottom-0.5 flex items-center justify-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <IconBtn title="Move left" onClick={() => move(i, -1)} disabled={i === 0}>‹</IconBtn>
-                    <IconBtn title="Move right" onClick={() => move(i, 1)} disabled={i === list.length - 1}>›</IconBtn>
-                    {i !== 0 && <IconBtn title="Set as main" onClick={() => setMain(i)}>★</IconBtn>}
-                    <IconBtn title="Crop / resize" onClick={() => openReCrop(i)}>✂</IconBtn>
-                    <IconBtn title="Remove" onClick={() => removeAt(i)}>✕</IconBtn>
+                    <IconBtn title={t("storeimg.moveLeft", "Move left")} onClick={() => move(i, -1)} disabled={i === 0}>‹</IconBtn>
+                    <IconBtn title={t("storeimg.moveRight", "Move right")} onClick={() => move(i, 1)} disabled={i === list.length - 1}>›</IconBtn>
+                    {i !== 0 && <IconBtn title={t("storeimg.setAsMain", "Set as main")} onClick={() => setMain(i)}>★</IconBtn>}
+                    <IconBtn title={t("storeimg.cropResize", "Crop / resize")} onClick={() => openReCrop(i)}>✂</IconBtn>
+                    <IconBtn title={t("common.remove", "Remove")} onClick={() => removeAt(i)}>✕</IconBtn>
                   </div>
                 </div>
               ))}
             </div>
           ) : (
             <p className="text-[11px] text-gray-400 dark:text-gray-500 italic">
-              No images yet — add from the baseline above or upload below.
+              {t("storeimg.noImagesYet", "No images yet — add from the baseline above or upload below.")}
             </p>
           )}
 
@@ -348,7 +375,7 @@ export function ImageListEditor({
               disabled={uploading}
               className="px-2.5 py-1 text-xs font-medium rounded-lg border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-50 transition-colors"
             >
-              + Upload
+              + {t("storeimg.upload", "Upload")}
             </button>
             <button
               type="button"
@@ -356,12 +383,12 @@ export function ImageListEditor({
               disabled={uploading}
               className="px-2.5 py-1 text-xs font-medium rounded-lg border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-50 transition-colors"
             >
-              ✂ Crop &amp; add
+              ✂ {t("storeimg.cropAndAdd", "Crop & add")}
             </button>
             {uploading && (
               <span className="flex items-center gap-1.5 text-[11px] text-gray-500 dark:text-gray-400">
                 <span className="h-1.5 w-1.5 rounded-full bg-sky-500 animate-pulse" />
-                {uploadNote ?? "Uploading…"}
+                {uploadNote ?? t("common.uploading", "Uploading…")}
               </span>
             )}
           </div>
@@ -375,7 +402,11 @@ export function ImageListEditor({
           src={cropTask.src}
           aspect={aspect}
           maxWidth={maxWidth}
-          title={cropTask.replaceIndex != null ? "Crop / resize image" : "Crop & add image"}
+          title={
+            cropTask.replaceIndex != null
+              ? t("storeimg.cropResizeImage", "Crop / resize image")
+              : t("storeimg.cropAddImage", "Crop & add image")
+          }
           onCancel={cancelCrop}
           onCropped={handleCropped}
         />
@@ -414,6 +445,7 @@ export default function StoreImageOverrideEditor({
   onChange,
   embedded = false,
 }: Props) {
+  const t = useT();
   const [expanded, setExpanded] = useState(false);
   const [spec, setSpec] = useState<ChannelImageSpec | null>(null);
   const [issues, setIssues] = useState<ImageIssue[]>([]);
@@ -460,15 +492,17 @@ export default function StoreImageOverrideEditor({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [channelType, effectiveList.join("|")]);
 
-  const reqParts = specReqParts(spec);
+  const reqParts = specReqParts(spec, t);
 
   const content = (
     <div className="space-y-4">
       {reqParts.length > 0 && (
             <p className="text-[11px] text-gray-500 dark:text-gray-400">
-              <span className="font-medium text-gray-600 dark:text-gray-300">{channelType} requirements:</span>{" "}
+              <span className="font-medium text-gray-600 dark:text-gray-300">
+                {t("storeimg.channelRequirements", "{channel} requirements:").replace("{channel}", channelType)}
+              </span>{" "}
               {reqParts.join(" · ")}
-              {spec?.channelSideUpload ? " · channel fetches the public URL" : ""}
+              {spec?.channelSideUpload ? ` · ${t("storeimg.channelFetchesUrl", "channel fetches the public URL")}` : ""}
             </p>
           )}
 
@@ -481,7 +515,7 @@ export default function StoreImageOverrideEditor({
             onChange={onChange}
             aspect={cropAspect}
             maxWidth={cropMaxWidth}
-            baselineLabel="Master images"
+            baselineLabel={t("storeimg.masterImages", "Master images")}
           />
 
           {/* Product-level spec warnings (observe-first) */}
@@ -490,15 +524,19 @@ export default function StoreImageOverrideEditor({
               <p className="text-xs font-medium text-amber-700 dark:text-amber-400 flex items-center gap-1.5">
                 {validating ? (
                   <>
-                    <span className="h-1.5 w-1.5 rounded-full bg-amber-500 animate-pulse" /> Checking channel image rules…
+                    <span className="h-1.5 w-1.5 rounded-full bg-amber-500 animate-pulse" />{" "}
+                    {t("storeimg.checkingRules", "Checking channel image rules…")}
                   </>
                 ) : (
-                  <>Channel image warnings (won’t block publishing)</>
+                  <>{t("storeimg.channelWarnings", "Channel image warnings (won’t block publishing)")}</>
                 )}
               </p>
               {overCount && issues.every((x) => x.code !== "MAX_COUNT") && (
                 <p className="text-xs text-amber-700 dark:text-amber-300">
-                  • {effectiveList.length} images exceeds the channel max of {spec?.maxCount}.
+                  •{" "}
+                  {t("storeimg.exceedsMax", "{n} images exceeds the channel max of {max}.")
+                    .replace("{n}", String(effectiveList.length))
+                    .replace("{max}", String(spec?.maxCount))}
                 </p>
               )}
               {issues.map((issue, i) => (
@@ -526,9 +564,11 @@ export default function StoreImageOverrideEditor({
       >
         <div className="flex items-center gap-2.5 min-w-0">
           <span className="text-[10px] font-bold text-sky-500 dark:text-sky-400 uppercase tracking-wider flex-shrink-0">
-            Images
+            {t("storeimg.eyebrow", "Images")}
           </span>
-          <span className="text-sm font-semibold text-gray-800 dark:text-gray-200 truncate">Images (per store)</span>
+          <span className="text-sm font-semibold text-gray-800 dark:text-gray-200 truncate">
+            {t("storeimg.titlePerStore", "Images (per store)")}
+          </span>
           <span
             className={`text-xs px-1.5 py-0.5 rounded-md font-medium flex-shrink-0 ${
               overrideActive
@@ -536,11 +576,16 @@ export default function StoreImageOverrideEditor({
                 : "bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400"
             }`}
           >
-            {overrideActive ? `${productList.length} custom` : `Master · ${masterImages.length}`}
+            {overrideActive
+              ? t("storeimg.nCustom", "{n} custom").replace("{n}", String(productList.length))
+              : t("storeimg.masterN", "Master · {n}").replace("{n}", String(masterImages.length))}
           </span>
           {issues.length > 0 && (
             <span className="text-xs px-1.5 py-0.5 rounded-md font-medium bg-amber-100 dark:bg-amber-500/15 text-amber-700 dark:text-amber-400 flex-shrink-0">
-              {issues.length} warning{issues.length > 1 ? "s" : ""}
+              {(issues.length > 1
+                ? t("storeimg.nWarnings", "{n} warnings")
+                : t("storeimg.nWarning", "{n} warning")
+              ).replace("{n}", String(issues.length))}
             </span>
           )}
         </div>

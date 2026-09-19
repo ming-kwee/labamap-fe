@@ -2,6 +2,7 @@
 import React from "react";
 import type { ChannelFormField } from "../../types/channelStore";
 import ChannelFieldInput from "./ChannelFieldInput";
+import { useT } from "@/shared/contexts/LocaleContext";
 
 interface Props {
   field: ChannelFormField;
@@ -31,6 +32,7 @@ const ResetIcon = () => (
 );
 
 export default function MasterOverrideField({ field, value, channelName, onChange }: Props) {
+  const t = useT();
   const isInherited = value === null || value === undefined;
 
   return (
@@ -57,7 +59,7 @@ export default function MasterOverrideField({ field, value, channelName, onChang
               transition-colors font-medium flex-shrink-0"
           >
             <EditIcon />
-            Override
+            {t("common.override", "Override")}
           </button>
         ) : (
           <button
@@ -71,7 +73,7 @@ export default function MasterOverrideField({ field, value, channelName, onChang
               transition-colors font-medium flex-shrink-0"
           >
             <ResetIcon />
-            Reset
+            {t("common.reset", "Reset")}
           </button>
         )}
       </div>
@@ -87,12 +89,13 @@ export default function MasterOverrideField({ field, value, channelName, onChang
       {/* Master reference shown only when actively overriding */}
       {!isInherited && (
         <p className="text-xs text-gray-400 dark:text-gray-500">
-          Master:{" "}
+          {t("override.masterLabel", "Master:")}{" "}
           <span className="font-mono text-gray-500 dark:text-gray-400">
             {formatMasterValue(field.masterValue)}
           </span>
           <span className="ml-1.5 text-gray-300 dark:text-gray-600">
-            · only {channelName} uses your value
+            {" "}
+            {t("override.onlyChannelUses", "· only {channel} uses your value").replace("{channel}", channelName)}
           </span>
         </p>
       )}

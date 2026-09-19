@@ -14,6 +14,7 @@
  */
 import React from "react";
 import { AlertTriangle, CheckCircle2, HelpCircle } from "@/shared/ui/icons/Icons";
+import { useT } from "@/shared/contexts/LocaleContext";
 
 export type SchemaStaleStatus = "STALE" | "FRESH" | "UNKNOWN";
 
@@ -24,15 +25,34 @@ export function deriveStaleStatus(schemaStale?: boolean | null): SchemaStaleStat
   return "UNKNOWN";
 }
 
-function tooltipFor(status: SchemaStaleStatus, apiVersion?: string): string {
+type TFn = (key: string, fallback?: string) => string;
+
+function tooltipFor(t: TFn, status: SchemaStaleStatus, apiVersion?: string): string {
   switch (status) {
-    case "STALE":
-      return `Spec ini dibuat untuk apiSchema${apiVersion ? ` versi ${apiVersion}` : " lama"}, sementara apiSchema channel sudah berubah. Ia bisa memetakan ke path yang sudah dihapus/diganti — regenerate untuk membuat ulang terhadap skema terkini.`;
-    case "FRESH":
-      return `Fingerprint apiSchema cocok${apiVersion ? ` (versi ${apiVersion})` : ""} — spec dibuat terhadap skema channel yang terkini.`;
+    case "STALE": {
+      const v = apiVersion
+        ? t("stale.tooltip.staleVersion", " version {v}").replace("{v}", apiVersion)
+        : t("stale.tooltip.staleOld", " an older version");
+      return t(
+        "stale.tooltip.stale",
+        "This spec was built for apiSchema{v}, but the channel's apiSchema has since changed. It may map to paths that were removed/renamed — regenerate to rebuild against the current schema."
+      ).replace("{v}", v);
+    }
+    case "FRESH": {
+      const v = apiVersion
+        ? t("stale.tooltip.freshVersion", " (version {v})").replace("{v}", apiVersion)
+        : "";
+      return t(
+        "stale.tooltip.fresh",
+        "apiSchema fingerprint matches{v} — the spec was built against the channel's current schema."
+      ).replace("{v}", v);
+    }
     case "UNKNOWN":
     default:
-      return "Spec belum ter-stamp fingerprint (dibuat sebelum versioning apiSchema, atau channel belum punya fingerprint). Belum terverifikasi — regenerate untuk mengaktifkan deteksi.";
+      return t(
+        "stale.tooltip.unknown",
+        "The spec has no fingerprint stamp (built before apiSchema versioning, or the channel has no fingerprint yet). Not yet verified — regenerate to enable detection."
+      );
   }
 }
 
@@ -52,29 +72,30 @@ export default function SchemaStaleBadge({
   showFresh?: boolean;
   className?: string;
 }) {
+  const t = useT();
   if (status === "FRESH" && !showFresh) return null;
 
   const cfg = {
     STALE: {
       cls: "border-error-200 bg-error-50 text-error-700 dark:border-error-500/30 dark:bg-error-500/10 dark:text-error-400",
       icon: <AlertTriangle className="h-3.5 w-3.5 flex-shrink-0" />,
-      label: "Skema usang — regenerate",
+      label: t("stale.label.stale", "Schema outdated — regenerate"),
     },
     FRESH: {
       cls: "border-success-200 bg-success-50 text-success-700 dark:border-success-500/30 dark:bg-success-500/10 dark:text-success-400",
       icon: <CheckCircle2 className="h-3.5 w-3.5 flex-shrink-0" />,
-      label: "Skema terkini",
+      label: t("stale.label.fresh", "Schema up to date"),
     },
     UNKNOWN: {
       cls: "border-warning-200 bg-warning-50 text-warning-700 dark:border-warning-500/30 dark:bg-warning-500/10 dark:text-warning-400",
       icon: <HelpCircle className="h-3.5 w-3.5 flex-shrink-0" />,
-      label: "Skema belum terverifikasi",
+      label: t("stale.label.unknown", "Schema not yet verified"),
     },
   }[status];
 
   return (
     <span
-      title={tooltipFor(status, apiVersion)}
+      title={tooltipFor(t, status, apiVersion)}
       className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs font-medium ${cfg.cls} ${className}`}
     >
       {cfg.icon}

@@ -24,6 +24,7 @@ import {
   TONE_DOT,
   type Lifecycle,
 } from "../utils/listing-lifecycle";
+import { useT } from "@/shared/contexts/LocaleContext";
 
 /**
  * Merchant (end-user) layout for Step 3 — a go-live flow modelled on Ginee / BigSeller / ChannelAdvisor:
@@ -90,6 +91,7 @@ export default function MerchantPublishView({
   onViewProduct,
   onCreateAnother,
 }: MerchantPublishViewProps) {
+  const t = useT();
   const lifecycleOf = (d: ChannelProductData): Lifecycle =>
     deriveLifecycle(d, {
       inFlight: publishingStores.has(d.storeId) || delistingStores.has(d.storeId),
@@ -122,9 +124,9 @@ export default function MerchantPublishView({
               onError={(e) => ((e.target as HTMLImageElement).src = PLACEHOLDER)}
             />
             <div className="min-w-0">
-              <h2 className="text-lg font-bold text-gray-900 dark:text-white truncate">{product?.name ?? "Your product"}</h2>
+              <h2 className="text-lg font-bold text-gray-900 dark:text-white truncate">{product?.name ?? t("publish.hero.yourProduct", "Your product")}</h2>
               <p className="text-sm text-gray-500 dark:text-gray-400 truncate">
-                {[product?.sku && `SKU ${product.sku}`, price].filter(Boolean).join(" · ") || "Ready to go live"}
+                {[product?.sku && `SKU ${product.sku}`, price].filter(Boolean).join(" · ") || t("publish.hero.readyToGoLive", "Ready to go live")}
               </p>
             </div>
           </div>
@@ -132,13 +134,13 @@ export default function MerchantPublishView({
           {/* Summary + primary CTA */}
           <div className="flex flex-col items-stretch md:items-end gap-2.5 flex-shrink-0">
             <div className="flex items-center gap-1.5 flex-wrap md:justify-end">
-              <Pill tone="success">{publishedCount} live</Pill>
-              <Pill tone="brand">{readyStores.length} ready</Pill>
-              {attention > 0 && <Pill tone="warning">{attention} need attention</Pill>}
+              <Pill tone="success">{publishedCount} {t("publish.pill.live", "live")}</Pill>
+              <Pill tone="brand">{readyStores.length} {t("publish.pill.ready", "ready")}</Pill>
+              {attention > 0 && <Pill tone="warning">{attention} {t("publish.pill.needAttention", "need attention")}</Pill>}
             </div>
             {allLive ? (
               <span className="inline-flex items-center gap-1.5 text-sm font-semibold text-success-600 dark:text-success-400">
-                <CheckCircle2 className="h-5 w-5" /> All channels are live 🎉
+                <CheckCircle2 className="h-5 w-5" /> {t("publish.allLive", "All channels are live 🎉")}
               </span>
             ) : (
               <button
@@ -148,7 +150,7 @@ export default function MerchantPublishView({
                 className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold bg-brand-500 text-white hover:bg-brand-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-sm"
               >
                 <Send className="h-4 w-4" />
-                {readyStores.length > 0 ? `Publish all ready (${readyStores.length})` : "Nothing ready yet"}
+                {readyStores.length > 0 ? t("publish.publishAllReady", "Publish all ready ({n})").replace("{n}", String(readyStores.length)) : t("publish.nothingReady", "Nothing ready yet")}
               </button>
             )}
           </div>
@@ -181,8 +183,8 @@ export default function MerchantPublishView({
             <CheckCircle2 className="h-5 w-5 text-success-600 dark:text-success-400 flex-shrink-0" />
             <p className="text-sm font-medium text-success-800 dark:text-success-300">
               {allLive
-                ? "Every channel is live — nice work!"
-                : `${publishedCount} of ${storeData.length} channels live.`}
+                ? t("publish.everyLive", "Every channel is live — nice work!")
+                : t("publish.nLive", "{n} of {total} channels live.").replace("{n}", String(publishedCount)).replace("{total}", String(storeData.length))}
             </p>
           </div>
           <div className="flex items-center gap-2 flex-shrink-0">
@@ -191,14 +193,14 @@ export default function MerchantPublishView({
               onClick={onViewProduct}
               className="px-3 py-1.5 rounded-lg text-sm font-medium bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
             >
-              View product
+              {t("publish.viewProduct", "View product")}
             </button>
             <button
               type="button"
               onClick={onCreateAnother}
               className="px-3 py-1.5 rounded-lg text-sm font-medium text-brand-600 dark:text-brand-400 hover:underline"
             >
-              + Create another
+              + {t("publish.createAnother", "Create another")}
             </button>
           </div>
         </div>
@@ -236,6 +238,7 @@ function ChannelRow({
   onHistory: () => void;
   fixUrl: string;
 }) {
+  const t = useT();
   const label = CHANNEL_LABEL[data.channelType] ?? data.channelType;
   const meta = getChannelMeta(data.channelType);
   const state = lc.state;
@@ -250,7 +253,7 @@ function ChannelRow({
   const showFix = state === "failed" || (state === "blocked" && !updateGate);
   const canHistory = lc.isLive || state === "delisted" || (data.publishAttempts ?? 0) > 0;
   // What the pending UPDATE would change (variants/images/product) — shown on a live_changed row.
-  const changeChips = state === "live_changed" ? describeDiffChanges(diff) : [];
+  const changeChips = state === "live_changed" ? describeDiffChanges(diff, t) : [];
 
   // One-line status detail under the channel name — keeps every row the same height so a
   // published listing stays just as visible as one that still needs work.
@@ -261,16 +264,16 @@ function ChannelRow({
           <span className="h-1.5 w-16 flex-shrink-0 overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700">
             <span className="block h-full rounded-full bg-warning-500" style={{ width: `${data.completionPercentage}%` }} />
           </span>
-          <span className="tabular-nums">{data.completionPercentage}% · lengkapi info wajib</span>
+          <span className="tabular-nums">{data.completionPercentage}% · {t("publish.sub.completeRequired", "complete required info")}</span>
         </span>
       );
     }
-    if (state === "ready") return <span>Siap tayang</span>;
+    if (state === "ready") return <span>{t("publish.sub.readyToPublish", "Ready to publish")}</span>;
     if (inFlight) {
       return (
         <span className="flex items-center gap-1.5 text-warning-600 dark:text-warning-400">
           <RefreshCw className="h-3 w-3 animate-spin flex-shrink-0" />
-          {state === "processing" ? "Masih diproses — cek lagi sebentar" : "Publishing…"}
+          {state === "processing" ? t("publish.sub.processing", "Still processing — check back shortly") : t("publish.sub.publishing", "Publishing…")}
         </span>
       );
     }
@@ -278,7 +281,7 @@ function ChannelRow({
       return (
         <span className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
           <span className="text-success-600 dark:text-success-400">
-            Live{publishedTime ? ` · ${new Date(publishedTime).toLocaleDateString()}` : ""}
+            {t("publish.sub.live", "Live")}{publishedTime ? ` · ${new Date(publishedTime).toLocaleDateString()}` : ""}
           </span>
           {result?.operation && (
             <span className="text-gray-400 dark:text-gray-500">· {operationMessage(result.operation).text}</span>
@@ -286,13 +289,13 @@ function ChannelRow({
         </span>
       );
     }
-    if (state === "update_failed") return <span className="text-success-600 dark:text-success-400">Masih tayang — update terakhir gagal</span>;
-    if (state === "delisted") return <span>Dihapus dari channel · publish ulang untuk listing baru</span>;
-    if (updateGate) return <span className="text-warning-600 dark:text-warning-400">Update belum tersedia — delist lalu publish ulang</span>;
+    if (state === "update_failed") return <span className="text-success-600 dark:text-success-400">{t("publish.sub.updateFailed", "Still live — last update failed")}</span>;
+    if (state === "delisted") return <span>{t("publish.sub.delisted", "Removed from channel · re-publish for a new listing")}</span>;
+    if (updateGate) return <span className="text-warning-600 dark:text-warning-400">{t("publish.sub.updateGate", "Update not available yet — delist then re-publish")}</span>;
     if (showFix) {
       return (
         <span className={state === "blocked" ? "text-warning-600 dark:text-warning-400" : "text-error-600 dark:text-error-400"}>
-          {state === "blocked" ? "Ada info wajib yang belum lengkap" : "Publishing gagal — belum tayang"}
+          {state === "blocked" ? t("publish.sub.blocked", "Some required info is incomplete") : t("publish.sub.failed", "Publishing failed — not live")}
         </span>
       );
     }
@@ -348,17 +351,17 @@ function ChannelRow({
           {(lc.channelUrl || canHistory || lc.isDelistable) && (
             <div className="flex items-center gap-1.5">
               {lc.channelUrl && (
-                <a href={lc.channelUrl} target="_blank" rel="noopener noreferrer" title="Lihat di channel" className={ICON_BTN}>
+                <a href={lc.channelUrl} target="_blank" rel="noopener noreferrer" title={t("publish.action.viewOnChannel", "View on channel")} className={ICON_BTN}>
                   <ExternalLink className="h-4 w-4" />
                 </a>
               )}
               {canHistory && (
-                <button type="button" onClick={onHistory} title="Riwayat" className={ICON_BTN}>
+                <button type="button" onClick={onHistory} title={t("publish.action.history", "History")} className={ICON_BTN}>
                   <Clock className="h-4 w-4" />
                 </button>
               )}
               {lc.isDelistable && (
-                <button type="button" onClick={onDelist} title="Delist" className={ICON_BTN_DANGER}>
+                <button type="button" onClick={onDelist} title={t("publish.action.delist", "Delist")} className={ICON_BTN_DANGER}>
                   <Trash2 className="h-4 w-4" />
                 </button>
               )}
@@ -375,7 +378,7 @@ function ChannelRow({
           {state === "live_changed" && !updateGate && changeChips.length > 0 && (
             <div className="rounded-lg border border-brand-200 bg-brand-50/60 px-3 py-2 dark:border-brand-500/30 dark:bg-brand-500/10">
               <p className="flex items-center gap-1.5 text-xs font-medium text-brand-700 dark:text-brand-400">
-                <RefreshCw className="h-3.5 w-3.5 flex-shrink-0" /> Perubahan belum tayang
+                <RefreshCw className="h-3.5 w-3.5 flex-shrink-0" /> {t("publish.pendingChanges", "Changes not published yet")}
               </p>
               <div className="mt-1.5 flex flex-wrap gap-1.5">
                 {changeChips.map((c, i) => (
@@ -393,10 +396,10 @@ function ChannelRow({
           {updateGate && (
             <div className="rounded-lg border border-warning-200 bg-warning-50 px-3 py-2 dark:border-warning-500/30 dark:bg-warning-500/10">
               <p className="flex items-center gap-1.5 text-xs font-medium text-warning-700 dark:text-warning-400">
-                <AlertTriangle className="h-3.5 w-3.5 flex-shrink-0" /> Update belum tersedia
+                <AlertTriangle className="h-3.5 w-3.5 flex-shrink-0" /> {t("publish.updateGate.title", "Update not available yet")}
               </p>
               <p className="mt-1 text-xs text-warning-600 dark:text-warning-300">
-                Mengubah listing yang sudah tayang belum aktif untuk channel ini. Delist lalu publish ulang.
+                {t("publish.updateGate.desc", "Editing a live listing isn't active for this channel yet. Delist then re-publish.")}
               </p>
             </div>
           )}
@@ -424,43 +427,44 @@ function RowAction({
   onPublish: () => void;
   onDelistThenRepublish: () => void;
 }) {
+  const t = useT();
   if (state === "publishing")
-    return <RowButton disabled icon={<RefreshCw className="h-4 w-4 animate-spin" />}>Publishing…</RowButton>;
+    return <RowButton disabled icon={<RefreshCw className="h-4 w-4 animate-spin" />}>{t("publish.sub.publishing", "Publishing…")}</RowButton>;
   if (state === "processing")
-    return <RowButton disabled tone="warning" icon={<RefreshCw className="h-4 w-4 animate-spin" />}>Memproses…</RowButton>;
+    return <RowButton disabled tone="warning" icon={<RefreshCw className="h-4 w-4 animate-spin" />}>{t("publish.rowAction.processing", "Processing…")}</RowButton>;
   if (state === "ready")
-    return <RowButton onClick={onPublish} icon={<Send className="h-4 w-4" />}>Publish</RowButton>;
+    return <RowButton onClick={onPublish} icon={<Send className="h-4 w-4" />}>{t("publish.rowAction.publish", "Publish")}</RowButton>;
   if (state === "draft")
-    return <RowLink href={fixUrl} tone="warning">Lengkapi setup →</RowLink>;
+    return <RowLink href={fixUrl} tone="warning">{t("publish.rowAction.finishSetup", "Finish setup →")}</RowLink>;
   if (updateGate)
     return (
       <RowButton onClick={onDelistThenRepublish} tone="warning" icon={<RefreshCw className="h-4 w-4" />}>
-        Delist &amp; publish ulang
+        {t("publish.rowAction.delistRepublish", "Delist & re-publish")}
       </RowButton>
     );
   if (state === "live_changed")
     return (
       <RowButton onClick={onPublish} icon={<RefreshCw className="h-4 w-4" />}>
-        {`Perbarui${lc.changeCount ? ` (${lc.changeCount})` : ""}`}
+        {`${t("publish.rowAction.update", "Update")}${lc.changeCount ? ` (${lc.changeCount})` : ""}`}
       </RowButton>
     );
   if (state === "live")
     return lc.diffKnown ? (
       <span className="inline-flex items-center gap-1 px-2 text-xs font-medium text-gray-400 dark:text-gray-500">
-        <CheckCircle2 className="h-4 w-4" /> Tersinkron
+        <CheckCircle2 className="h-4 w-4" /> {t("publish.rowAction.synced", "Synced")}
       </span>
     ) : (
-      <RowGhost onClick={onPublish} icon={<RefreshCw className="h-4 w-4" />}>Perbarui</RowGhost>
+      <RowGhost onClick={onPublish} icon={<RefreshCw className="h-4 w-4" />}>{t("publish.rowAction.update", "Update")}</RowGhost>
     );
   if (state === "delisted")
-    return <RowButton onClick={onPublish} icon={<Send className="h-4 w-4" />}>Publish ulang</RowButton>;
+    return <RowButton onClick={onPublish} icon={<Send className="h-4 w-4" />}>{t("publish.rowAction.republish", "Re-publish")}</RowButton>;
   if (state === "update_failed")
-    return <RowButton onClick={onPublish} icon={<RefreshCw className="h-4 w-4" />}>Coba update lagi</RowButton>;
+    return <RowButton onClick={onPublish} icon={<RefreshCw className="h-4 w-4" />}>{t("publish.rowAction.retryUpdate", "Try update again")}</RowButton>;
   if (showFix)
     return (
       <>
-        <RowButton onClick={onPublish} icon={<RefreshCw className="h-4 w-4" />}>Coba lagi</RowButton>
-        <RowLink href={fixUrl}>Perbaiki</RowLink>
+        <RowButton onClick={onPublish} icon={<RefreshCw className="h-4 w-4" />}>{t("publish.rowAction.retry", "Try again")}</RowButton>
+        <RowLink href={fixUrl}>{t("publish.rowAction.fix", "Fix")}</RowLink>
       </>
     );
   return null;
@@ -529,35 +533,36 @@ function RowLink({ href, tone = "neutral", children }: { href: string; tone?: "n
  * When the diff reports dirty but itemizes nothing (product-level scalar change — the backend diff does not
  * bucket per-field product changes), we say so plainly instead of leaving the merchant guessing.
  */
-function describeDiffChanges(diff?: PublishDiffResponse): string[] {
+function describeDiffChanges(diff: PublishDiffResponse | undefined, t: (key: string, fallback?: string) => string): string[] {
   if (!diff) return [];
   const out: string[] = [];
   const v = diff.variants, pi = diff.productImages, vi = diff.variantImages;
   const n = (a?: string[]) => a?.length ?? 0;
 
-  if (n(v?.add)) out.push(`${n(v?.add)} varian baru`);
-  if (n(v?.update)) out.push(`${n(v?.update)} varian diperbarui`);
-  if (n(v?.delete)) out.push(`${n(v?.delete)} varian dihapus`);
+  if (n(v?.add)) out.push(t("publish.diff.variantsAdded", "{n} new variants").replace("{n}", String(n(v?.add))));
+  if (n(v?.update)) out.push(t("publish.diff.variantsUpdated", "{n} variants updated").replace("{n}", String(n(v?.update))));
+  if (n(v?.delete)) out.push(t("publish.diff.variantsDeleted", "{n} variants removed").replace("{n}", String(n(v?.delete))));
 
   const imgAdd = n(pi?.add) + n(vi?.add);
   const imgDel = n(pi?.delete) + n(vi?.delete);
-  if (imgAdd) out.push(`${imgAdd} gambar baru`);
-  if (imgDel) out.push(`${imgDel} gambar dihapus`);
+  if (imgAdd) out.push(t("publish.diff.imagesAdded", "{n} new images").replace("{n}", String(imgAdd)));
+  if (imgDel) out.push(t("publish.diff.imagesDeleted", "{n} images removed").replace("{n}", String(imgDel)));
 
-  if (diff.product?.changed) out.push("Info produk (nama/harga/kategori/dll.)");
+  if (diff.product?.changed) out.push(t("publish.diff.productInfo", "Product info (name/price/category/etc.)"));
 
   // dirty but nothing itemized → a product-level field changed that the diff doesn't break down.
-  if (out.length === 0 && diff.dirty) out.push("Perubahan pada info produk");
+  if (out.length === 0 && diff.dirty) out.push(t("publish.diff.productChanges", "Changes to product info"));
   return out;
 }
 
 function FixList({ result, blocked }: { result?: StorePublishResult; blocked: boolean }) {
+  const t = useT();
   const fe = result?.fieldErrors ?? [];
   return (
     <div className={`rounded-lg border px-3 py-2 ${blocked ? "bg-warning-50 dark:bg-warning-500/10 border-warning-200 dark:border-warning-500/30" : "bg-error-50 dark:bg-error-500/10 border-error-200 dark:border-error-500/30"}`}>
       <p className={`text-xs font-medium flex items-center gap-1.5 ${blocked ? "text-warning-700 dark:text-warning-400" : "text-error-700 dark:text-error-400"}`}>
         <AlertTriangle className="h-3.5 w-3.5 flex-shrink-0" />
-        {blocked ? "Finish these before publishing" : "Publishing failed — belum tayang"}
+        {blocked ? t("publish.fix.finishBeforePublish", "Finish these before publishing") : t("publish.sub.failed", "Publishing failed — not live")}
       </p>
       {fe.length > 0 ? (
         <ul className="mt-1.5 space-y-1">
@@ -570,7 +575,7 @@ function FixList({ result, blocked }: { result?: StorePublishResult; blocked: bo
         </ul>
       ) : (
         <p className={`mt-1 text-xs ${blocked ? "text-warning-600 dark:text-warning-300" : "text-error-600 dark:text-error-400"}`}>
-          {result?.error ?? "Something went wrong. Try again."}
+          {result?.error ?? t("publish.fix.somethingWrong", "Something went wrong. Try again.")}
         </p>
       )}
     </div>

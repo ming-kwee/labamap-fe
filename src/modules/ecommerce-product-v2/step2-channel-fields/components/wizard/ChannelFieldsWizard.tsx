@@ -13,6 +13,7 @@ import { ProductTypeService } from "@/app/(admin)/omni-admin/product-types/_serv
 import { normaliseChannelType, applyChannelCategoryDefault } from "../../utils/categoryPrefill";
 import { isFieldVisible, isFieldRequired } from "../../hooks/useChannelFieldVisibility";
 import { useAuth } from "@/shared/contexts/AuthContext";
+import { useT } from "@/shared/contexts/LocaleContext";
 import ChannelTypeBadge from "../stores/ChannelTypeBadge";
 import ChannelStoreTab from "./ChannelStoreTab";
 import ListingDirtyBadge from "./ListingDirtyBadge";
@@ -109,6 +110,7 @@ interface Props {
 }
 
 export default function ChannelFieldsWizard({ masterProductId }: Props) {
+  const t = useT();
   const router = useRouter();
   const searchParams = useSearchParams();
   const targetStoreId = searchParams.get("storeId") ?? null;
@@ -490,7 +492,7 @@ export default function ChannelFieldsWizard({ masterProductId }: Props) {
     if (activeBlockingAxis.length > 0) {
       setActiveTabFieldErrors(new Set());
       setContinueWarning(
-        `Resolve variant-option issues on ${activeChannel.storeName} before continuing:\n` +
+        t("wizard.shell.resolveAxisBeforeContinue", "Resolve variant-option issues on {store} before continuing:").replace("{store}", activeChannel.storeName) + "\n" +
         activeBlockingAxis.map((i) => `${i.dimension}: ${i.message}`).join("\n")
       );
       return;
@@ -579,7 +581,7 @@ export default function ChannelFieldsWizard({ masterProductId }: Props) {
         })
         .filter(Boolean);
       setContinueWarning(
-        "Please fill all required fields in at least one store before continuing.\n" + lines.join("\n")
+        t("wizard.shell.fillRequiredBeforeContinue", "Please fill all required fields in at least one store before continuing.") + "\n" + lines.join("\n")
       );
       return;
     }
@@ -654,7 +656,7 @@ export default function ChannelFieldsWizard({ masterProductId }: Props) {
       <div className="flex items-center justify-center min-h-96">
         <div className="text-center">
           <div className="inline-block h-10 w-10 rounded-full border-4 border-brand-500 border-t-transparent animate-spin mb-4" />
-          <p className="text-sm text-gray-500 dark:text-gray-400">Loading channel fields…</p>
+          <p className="text-sm text-gray-500 dark:text-gray-400">{t("wizard.shell.loadingFields", "Loading channel fields…")}</p>
         </div>
       </div>
     );
@@ -666,23 +668,26 @@ export default function ChannelFieldsWizard({ masterProductId }: Props) {
   if (loadErrorCode === "PRODUCT_TYPE_MISSING") {
     return (
       <div className="rounded-2xl bg-warning-50 dark:bg-warning-500/10 border border-warning-200 dark:border-warning-500/30 px-6 py-5">
-        <p className="font-medium text-warning-700 dark:text-warning-400">Produk ini belum punya Product Type</p>
+        <p className="font-medium text-warning-700 dark:text-warning-400">{t("wizard.shell.noProductTypeTitle", "This product has no Product Type yet")}</p>
         <p className="text-sm text-warning-600 dark:text-warning-300 mt-1">
-          Channel Fields (Step 2) dibentuk dari <strong>Product Type</strong> produk. Tetapkan Product Type di{" "}
-          <strong>Step 1 (Master Product)</strong> dulu, lalu kembali ke sini.
+          {t("wizard.shell.noProductTypeBodyPre", "Channel Fields (Step 2) are built from the product's")}{" "}
+          <strong>{t("wizard.shell.productType", "Product Type")}</strong>
+          {t("wizard.shell.noProductTypeBodyMid", ". Set a Product Type in")}{" "}
+          <strong>{t("wizard.shell.step1MasterProduct", "Step 1 (Master Product)")}</strong>
+          {t("wizard.shell.noProductTypeBodyPost", " first, then come back here.")}
         </p>
         <div className="mt-3 flex items-center gap-2">
           <Link
             href={`/products/${masterProductId}/edit`}
             className="px-4 py-2 rounded-lg text-sm font-medium bg-warning-500 text-white hover:bg-warning-600 transition-colors"
           >
-            Ke Step 1: Master Product
+            {t("wizard.shell.goToStep1", "Go to Step 1: Master Product")}
           </Link>
           <button
             onClick={loadStoreList}
             className="px-4 py-2 rounded-lg text-sm font-medium bg-warning-100 dark:bg-warning-500/20 text-warning-700 dark:text-warning-400 hover:bg-warning-200 transition-colors"
           >
-            Coba lagi
+            {t("common.retry", "Retry")}
           </button>
         </div>
       </div>
@@ -692,13 +697,13 @@ export default function ChannelFieldsWizard({ masterProductId }: Props) {
   if (loadError) {
     return (
       <div className="rounded-2xl bg-error-50 dark:bg-error-500/10 border border-error-200 dark:border-error-500/30 px-6 py-5">
-        <p className="font-medium text-error-700 dark:text-error-400">Failed to load channel schema</p>
+        <p className="font-medium text-error-700 dark:text-error-400">{t("wizard.shell.loadFailed", "Failed to load channel schema")}</p>
         <p className="text-sm text-error-600 dark:text-error-300 mt-1">{loadError}</p>
         <button
           onClick={loadStoreList}
           className="mt-3 px-4 py-2 rounded-lg text-sm font-medium bg-error-100 dark:bg-error-500/20 text-error-700 dark:text-error-400 hover:bg-error-200 transition-colors"
         >
-          Retry
+          {t("common.retry", "Retry")}
         </button>
       </div>
     );
@@ -708,9 +713,11 @@ export default function ChannelFieldsWizard({ masterProductId }: Props) {
     return (
       <div className="flex flex-col items-center justify-center py-20 text-center">
         <div className="h-16 w-16 rounded-2xl bg-gray-100 dark:bg-gray-800 flex items-center justify-center mb-4 text-2xl">🔌</div>
-        <p className="font-medium text-gray-900 dark:text-white">No stores connected</p>
+        <p className="font-medium text-gray-900 dark:text-white">{t("wizard.shell.noStoresTitle", "No stores connected")}</p>
         <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-          Connect stores in <a href="/channels/stores" className="text-brand-500 underline">Channel Stores</a> before filling channel-specific fields.
+          {t("wizard.shell.noStoresBodyPre", "Connect stores in")}{" "}
+          <a href="/channels/stores" className="text-brand-500 underline">{t("wizard.shell.channelStoresLink", "Channel Stores")}</a>
+          {t("wizard.shell.noStoresBodyPost", " before filling channel-specific fields.")}
         </p>
       </div>
     );
@@ -763,17 +770,19 @@ export default function ChannelFieldsWizard({ masterProductId }: Props) {
       {/* Header */}
       <div>
         <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400 mb-1">
-          <Link href={`/products/${masterProductId}/edit`} className="hover:text-brand-500 transition-colors">Step 1: Master Product</Link>
+          <Link href={`/products/${masterProductId}/edit`} className="hover:text-brand-500 transition-colors">{t("pubdash.breadcrumb.step1", "Step 1: Master Product")}</Link>
           <span>›</span>
-          <span className="font-medium text-gray-900 dark:text-white">Step 2: Channel Fields</span>
+          <span className="font-medium text-gray-900 dark:text-white">{t("pubdash.breadcrumb.step2", "Step 2: Channel Fields")}</span>
           <span>›</span>
-          <Link href={`/products/${masterProductId}/publish`} className="hover:text-brand-500 transition-colors">Step 3: Preview &amp; Publish</Link>
+          <Link href={`/products/${masterProductId}/publish`} className="hover:text-brand-500 transition-colors">{t("pubdash.breadcrumb.step3", "Step 3: Preview & Publish")}</Link>
         </div>
         <div className="flex items-start justify-between gap-4">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Channel-Specific Fields</h1>
+            <h1 className="text-2xl font-bold text-gray-900 dark:text-white">{t("wizard.shell.pageTitle", "Channel-Specific Fields")}</h1>
             <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-              {doneCount}/{channels.length} stores complete · autosaves every 30 s
+              {t("wizard.shell.completionSummary", "{done}/{total} stores complete · autosaves every 30 s")
+                .replace("{done}", String(doneCount))
+                .replace("{total}", String(channels.length))}
             </p>
           </div>
           {/* View toggle: merchant (guided) vs developer (schema-role form) — shared with Step 3 */}
@@ -817,7 +826,9 @@ export default function ChannelFieldsWizard({ masterProductId }: Props) {
               <div className="flex flex-col items-center justify-center py-16 text-center">
                 <div className="h-8 w-8 rounded-full border-2 border-brand-500 border-t-transparent animate-spin mb-3" />
                 <p className="text-sm text-gray-500 dark:text-gray-400">
-                  {hydratingStoreId === activeStoreId ? "Memuat field channel…" : "Menyiapkan…"}
+                  {hydratingStoreId === activeStoreId
+                    ? t("wizard.shell.loadingFields", "Loading channel fields…")
+                    : t("wizard.shell.preparing", "Preparing…")}
                 </p>
               </div>
             ) : (
@@ -840,7 +851,7 @@ export default function ChannelFieldsWizard({ masterProductId }: Props) {
           {activeBlockingAxis.length > 0 && (
             <div className="rounded-xl bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/30 px-4 py-3 space-y-1">
               <p className="text-sm font-medium text-red-700 dark:text-red-400">
-                Variant-option issues on {activeChannel.storeName} must be fixed before publishing:
+                {t("wizard.shell.axisIssuesBanner", "Variant-option issues on {store} must be fixed before publishing:").replace("{store}", activeChannel.storeName)}
               </p>
               {activeBlockingAxis.map((i, idx) => (
                 <p key={`${i.code}-${i.dimension}-${idx}`} className="text-sm text-red-600 dark:text-red-300">
@@ -861,7 +872,7 @@ export default function ChannelFieldsWizard({ masterProductId }: Props) {
           {activeDropped.length > 0 && (
             <div className="rounded-xl bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/30 px-4 py-3 space-y-1">
               <p className="text-sm font-medium text-amber-700 dark:text-amber-400">
-                Beberapa nilai kategori tidak valid (bukan pilihan yang tersedia) dan telah dihapus — silakan pilih ulang:
+                {t("wizard.shell.droppedCategoryValues", "Some category values are invalid (not available options) and have been removed — please re-select:")}
               </p>
               <p className="text-sm text-amber-600 dark:text-amber-300">{activeDropped.join(", ")}</p>
             </div>
@@ -871,7 +882,7 @@ export default function ChannelFieldsWizard({ masterProductId }: Props) {
               onClick={handlePreviousStep}
               className="px-5 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
             >
-              ← Previous Step
+              {t("wizard.shell.previousStep", "← Previous Step")}
             </button>
             <div className="flex items-center gap-3">
               {!isLastTab && (
@@ -879,20 +890,20 @@ export default function ChannelFieldsWizard({ masterProductId }: Props) {
                   onClick={handleNext}
                   className="px-5 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
                 >
-                  Next: {channels[activeStoreIndex + 1]?.storeName ?? "Next"} →
+                  {t("wizard.shell.nextStore", "Next: {store} →").replace("{store}", channels[activeStoreIndex + 1]?.storeName ?? t("common.next", "Next"))}
                 </button>
               )}
               <button
                 onClick={handleContinueToPreview}
                 disabled={activeBlockingAxis.length > 0}
-                title={activeBlockingAxis.length > 0 ? "Resolve the variant-option issues above before continuing" : undefined}
+                title={activeBlockingAxis.length > 0 ? t("wizard.shell.resolveAxisTooltip", "Resolve the variant-option issues above before continuing") : undefined}
                 className={`px-6 py-2.5 rounded-xl text-sm font-medium transition-colors ${
                   activeBlockingAxis.length > 0
                     ? "bg-gray-200 dark:bg-gray-700 text-gray-400 dark:text-gray-500 cursor-not-allowed"
                     : "bg-brand-500 text-white hover:bg-brand-600"
                 }`}
               >
-                Continue to Preview →
+                {t("wizard.shell.continueToPreview", "Continue to Preview →")}
               </button>
             </div>
           </div>

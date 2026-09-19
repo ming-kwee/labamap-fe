@@ -3,6 +3,7 @@ import React from "react";
 import type { ChannelFormField, VariantOverrideRow, MasterProductSnapshot } from "../../types/channelStore";
 import ChannelFieldInput from "./ChannelFieldInput";
 import { Thumb, asUrlList } from "./StoreImageOverrideEditor";
+import { useT } from "@/shared/contexts/LocaleContext";
 
 interface Props {
   variantFields: ChannelFormField[];
@@ -29,6 +30,7 @@ export default function VariantOverridesTable({
   masterVariants,
   onEditImages,
 }: Props) {
+  const t = useT();
   if (variants.length === 0 || variantFields.length === 0) return null;
 
   return (
@@ -41,7 +43,7 @@ export default function VariantOverridesTable({
             </th>
             {onEditImages && (
               <th className="text-left px-4 py-3 font-medium text-gray-700 dark:text-gray-300 min-w-[150px]">
-                Images
+                {t("wizard.variants.imagesCol", "Images")}
               </th>
             )}
             {variantFields.map((field) => (
@@ -54,7 +56,7 @@ export default function VariantOverridesTable({
                   {field.required && <span className="text-error-500">*</span>}
                   {field.isMasterField && (
                     <span className="text-xs font-normal px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400">
-                      master
+                      {t("badge.master", "master")}
                     </span>
                   )}
                 </div>
@@ -90,7 +92,7 @@ export default function VariantOverridesTable({
                       type="button"
                       onClick={() => onEditImages(variant.sku)}
                       disabled={disabled}
-                      title="Edit variant images"
+                      title={t("wizard.variants.editImagesTitle", "Edit variant images")}
                       className="group/img flex items-center gap-2 rounded-lg border border-gray-200 dark:border-gray-700 px-2 py-1.5 hover:border-sky-300 dark:hover:border-sky-500/50 hover:bg-sky-50/50 dark:hover:bg-sky-500/5 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       {imgEffective.length > 0 ? (
@@ -116,17 +118,17 @@ export default function VariantOverridesTable({
                       <span className="flex flex-col items-start gap-0.5 leading-none">
                         {imgOverrideActive ? (
                           <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-sky-100 dark:bg-sky-500/15 text-sky-700 dark:text-sky-300">
-                            custom
+                            {t("common.custom", "custom")}
                           </span>
                         ) : imgBaseline.length > 0 ? (
                           <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400">
-                            master · {imgBaseline.length}
+                            {t("badge.master", "master")} · {imgBaseline.length}
                           </span>
                         ) : (
-                          <span className="text-[10px] text-gray-400 dark:text-gray-500">No images</span>
+                          <span className="text-[10px] text-gray-400 dark:text-gray-500">{t("image.none", "No images")}</span>
                         )}
                         <span className="text-[10px] text-gray-400 dark:text-gray-500 group-hover/img:text-sky-600 dark:group-hover/img:text-sky-400 transition-colors">
-                          ✎ Edit
+                          ✎ {t("common.edit", "Edit")}
                         </span>
                       </span>
                     </button>
@@ -153,7 +155,7 @@ export default function VariantOverridesTable({
                               {masterCellValue !== undefined ? String(masterCellValue) : "—"}
                             </span>
                             <span className="text-xs px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-700 text-gray-400 dark:text-gray-500">
-                              master
+                              {t("badge.master", "master")}
                             </span>
                           </div>
                           <button
@@ -162,7 +164,7 @@ export default function VariantOverridesTable({
                             disabled={disabled}
                             className="text-xs text-brand-600 dark:text-brand-400 hover:underline disabled:opacity-50 disabled:cursor-not-allowed"
                           >
-                            ✏ Override
+                            ✏ {t("common.override", "Override")}
                           </button>
                         </div>
                       </td>
@@ -186,7 +188,7 @@ export default function VariantOverridesTable({
                             disabled={disabled}
                             className="text-xs text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 disabled:opacity-50 disabled:cursor-not-allowed"
                           >
-                            ↩ master: {masterCellValue !== undefined ? String(masterCellValue) : "—"}
+                            ↩ {t("badge.master", "master")}: {masterCellValue !== undefined ? String(masterCellValue) : "—"}
                           </button>
                         </div>
                       </td>

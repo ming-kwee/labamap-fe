@@ -14,6 +14,7 @@ import type {
   PublishStep,
 } from "../../step2-channel-fields/types/channelStore";
 import { TONE_PILL, type LifecycleTone } from "../utils/listing-lifecycle";
+import { useT } from "@/shared/contexts/LocaleContext";
 
 /**
  * "Riwayat & Status listing" slide-over (§4c). Reads the append-only publish audit for one
@@ -92,6 +93,7 @@ function StepRow({ step }: { step: PublishStep }) {
 }
 
 function AttemptCard({ entry }: { entry: PublishHistoryEntry }) {
+  const t = useT();
   const [expanded, setExpanded] = useState(false);
   const steps = entry.steps ?? [];
   const opTone = OP_TONE[(entry.operation ?? "").toUpperCase()] ?? "neutral";
@@ -105,7 +107,7 @@ function AttemptCard({ entry }: { entry: PublishHistoryEntry }) {
         <div className="flex flex-wrap items-center gap-1.5">
           {entry.operation && <Pill tone={opTone}>{entry.operation}</Pill>}
           <Pill tone={sTone}>{entry.syncStatus ?? (entry.success ? "COMPLETED" : "FAILED")}</Pill>
-          {entry.dryRun && <Pill tone="neutral">DRY RUN</Pill>}
+          {entry.dryRun && <Pill tone="neutral">{t("history.dryRun", "DRY RUN")}</Pill>}
         </div>
         {entry.success ? (
           <CheckCircle2 className="h-4 w-4 flex-shrink-0 text-success-500" />
@@ -138,7 +140,7 @@ function AttemptCard({ entry }: { entry: PublishHistoryEntry }) {
             className="inline-flex items-center gap-1 text-xs font-medium text-brand-600 dark:text-brand-400 hover:underline"
           >
             {expanded ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
-            {steps.length} langkah
+            {t("history.nSteps", "{n} steps").replace("{n}", String(steps.length))}
           </button>
           {expanded && (
             <ul className="mt-1 border-l border-gray-200 dark:border-gray-700 pl-3">
@@ -150,7 +152,7 @@ function AttemptCard({ entry }: { entry: PublishHistoryEntry }) {
 
       {entry.syncWorkflowId && (
         <p className="mt-2 truncate font-mono text-[11px] text-gray-400 dark:text-gray-500" title={entry.syncWorkflowId}>
-          workflow: {entry.syncWorkflowId}
+          {t("history.workflow", "workflow: {id}").replace("{id}", entry.syncWorkflowId)}
         </p>
       )}
     </li>
@@ -165,6 +167,7 @@ export default function ListingHistoryDrawer({
   channelLabel,
   onClose,
 }: ListingHistoryDrawerProps) {
+  const t = useT();
   const [entries, setEntries] = useState<PublishHistoryEntry[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -176,11 +179,11 @@ export default function ListingHistoryDrawer({
       const data = await ChannelProductDataService.getPublishHistory(masterProductId, storeId);
       setEntries(data);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Gagal memuat riwayat");
+      setError(err instanceof Error ? err.message : t("history.loadError", "Failed to load history"));
     } finally {
       setLoading(false);
     }
-  }, [masterProductId, storeId]);
+  }, [masterProductId, storeId, t]);
 
   useEffect(() => {
     if (isOpen) load();
@@ -203,7 +206,7 @@ export default function ListingHistoryDrawer({
         {/* Header */}
         <div className="flex items-start justify-between gap-3 border-b border-gray-200 dark:border-gray-800 px-5 py-4">
           <div className="min-w-0">
-            <h3 className="text-base font-semibold text-gray-900 dark:text-white">Riwayat &amp; Status</h3>
+            <h3 className="text-base font-semibold text-gray-900 dark:text-white">{t("history.title", "History & Status")}</h3>
             <p className="text-sm text-gray-500 dark:text-gray-400 truncate">
               {channelLabel} · {storeName}
             </p>
@@ -212,7 +215,7 @@ export default function ListingHistoryDrawer({
             <button
               type="button"
               onClick={load}
-              title="Muat ulang"
+              title={t("common.reload", "Reload")}
               className="rounded-lg p-2 text-gray-400 hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-800 dark:hover:text-gray-300"
             >
               <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
@@ -222,7 +225,7 @@ export default function ListingHistoryDrawer({
               onClick={onClose}
               className="rounded-lg px-2.5 py-1.5 text-sm font-medium text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800"
             >
-              Tutup
+              {t("common.close", "Close")}
             </button>
           </div>
         </div>
@@ -239,7 +242,7 @@ export default function ListingHistoryDrawer({
             <div className="rounded-xl border border-error-200 dark:border-error-500/30 bg-error-50 dark:bg-error-500/10 px-4 py-3">
               <p className="text-sm font-medium text-error-700 dark:text-error-400">{error}</p>
               <button onClick={load} className="mt-2 text-xs font-medium text-brand-600 dark:text-brand-400 hover:underline">
-                Coba lagi
+                {t("common.retry", "Retry")}
               </button>
             </div>
           )}
@@ -247,7 +250,7 @@ export default function ListingHistoryDrawer({
           {!loading && !error && entries.length === 0 && (
             <div className="py-16 text-center">
               <Clock className="mx-auto mb-3 h-10 w-10 text-gray-300 dark:text-gray-600" />
-              <p className="text-sm text-gray-500 dark:text-gray-400">Belum ada riwayat publish untuk listing ini.</p>
+              <p className="text-sm text-gray-500 dark:text-gray-400">{t("history.empty", "No publish history yet for this listing.")}</p>
             </div>
           )}
 

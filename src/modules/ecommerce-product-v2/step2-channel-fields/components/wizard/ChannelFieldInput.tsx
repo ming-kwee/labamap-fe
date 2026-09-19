@@ -9,6 +9,7 @@ import QuantityInput from "../../../components/inputs/QuantityInput";
 import { classifyNumericField } from "../../../components/inputs/field-format";
 import { MediaUploadService } from "../../../services/media-upload.service";
 import { useAuth } from "@/shared/contexts/AuthContext";
+import { useT } from "@/shared/contexts/LocaleContext";
 
 const BASE = "http://localhost:8888/labamap/api/v1";
 
@@ -29,6 +30,7 @@ interface Props {
  * Eager-embedded fields (options[] already populated by backend) skip the fetch entirely.
  */
 function useMerchantOptions(field: ChannelFormField) {
+  const t = useT();
   const isLazy =
     field.optionsSource === "MERCHANT_API" &&
     Boolean(field.optionsEndpoint) &&
@@ -51,7 +53,7 @@ function useMerchantOptions(field: ChannelFormField) {
       })
       .then((data) => setOptions(data.options ?? []))
       .catch((err: unknown) =>
-        setError(err instanceof Error ? err.message : "Failed to load options")
+        setError(err instanceof Error ? err.message : t("field.loadOptionsGeneric", "Failed to load options"))
       )
       .finally(() => setLoading(false));
     // Runs once — endpoint is fixed for the lifetime of this field instance
@@ -62,21 +64,25 @@ function useMerchantOptions(field: ChannelFormField) {
 }
 
 function OptionsSkeleton({ label }: { label: string }) {
+  const t = useT();
   return (
     <div className="w-full rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2.5 flex items-center gap-2">
       <span className="h-4 w-4 rounded-full border-2 border-brand-500 border-t-transparent animate-spin flex-shrink-0" />
       <span className="text-sm text-gray-400 dark:text-gray-500 animate-pulse">
-        Loading {label} options…
+        {t("field.loadingOptions", "Loading {label} options…").replace("{label}", label)}
       </span>
     </div>
   );
 }
 
 function OptionsError({ label, error }: { label: string; error: string }) {
+  const t = useT();
   return (
     <div className="w-full rounded-xl border border-red-200 dark:border-red-500/30 bg-red-50 dark:bg-red-500/10 px-3 py-2.5">
       <span className="text-sm text-red-600 dark:text-red-400">
-        Failed to load {label} options: {error}
+        {t("field.loadOptionsFailed", "Failed to load {label} options: {error}")
+          .replace("{label}", label)
+          .replace("{error}", error)}
       </span>
     </div>
   );
@@ -91,6 +97,7 @@ interface MappingSuggestionBannerProps {
 }
 
 function MappingSuggestionBanner({ suggestion, onAccept, onDismiss }: MappingSuggestionBannerProps) {
+  const t = useT();
   const { confidence, masterField, masterValue, suggestedLabel } = suggestion;
 
   if (confidence === "NONE") {
@@ -98,8 +105,9 @@ function MappingSuggestionBanner({ suggestion, onAccept, onDismiss }: MappingSug
       <div className="mb-2 flex items-start gap-2 rounded-lg border border-amber-200 dark:border-amber-500/30 bg-amber-50 dark:bg-amber-500/10 px-3 py-2">
         <span className="mt-0.5 text-amber-500 flex-shrink-0">⚠</span>
         <p className="text-xs text-amber-700 dark:text-amber-400">
-          No mapping found for master {masterField} value{" "}
-          <strong>&ldquo;{String(masterValue)}&rdquo;</strong>. Please select the closest option manually.
+          {t("field.mapping.noneBefore", "No mapping found for master {masterField} value")
+            .replace("{masterField}", masterField)}{" "}
+          <strong>&ldquo;{String(masterValue)}&rdquo;</strong>. {t("field.mapping.noneAfter", "Please select the closest option manually.")}
         </p>
       </div>
     );
@@ -124,13 +132,13 @@ function MappingSuggestionBanner({ suggestion, onAccept, onDismiss }: MappingSug
                 : "bg-amber-100 dark:bg-amber-500/20 text-amber-700 dark:text-amber-400"
             }`}
           >
-            {isExact ? "Exact match" : "Fuzzy match"}
+            {isExact ? t("field.mapping.exact", "Exact match") : t("field.mapping.fuzzy", "Fuzzy match")}
           </span>
           <p className="text-xs text-gray-700 dark:text-gray-300">
-            Based on master <span className="font-medium">{masterField}</span>{" "}
+            {t("field.mapping.basedOn", "Based on master")} <span className="font-medium">{masterField}</span>{" "}
             <span className="italic">&ldquo;{String(masterValue)}&rdquo;</span>
             {!isExact && (
-              <span className="text-amber-600 dark:text-amber-400"> — verify before accepting</span>
+              <span className="text-amber-600 dark:text-amber-400"> {t("field.mapping.verify", "— verify before accepting")}</span>
             )}
           </p>
           <p className="mt-0.5 text-xs font-medium text-gray-900 dark:text-white">
@@ -147,14 +155,14 @@ function MappingSuggestionBanner({ suggestion, onAccept, onDismiss }: MappingSug
                 : "bg-amber-500 hover:bg-amber-600 text-white"
             }`}
           >
-            Accept
+            {t("common.accept", "Accept")}
           </button>
           <button
             type="button"
             onClick={onDismiss}
             className="px-2.5 py-1 rounded-lg text-xs font-medium text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors"
           >
-            Pick different
+            {t("field.mapping.pickDifferent", "Pick different")}
           </button>
         </div>
       </div>
@@ -171,6 +179,7 @@ function MappingSuggestionBanner({ suggestion, onAccept, onDismiss }: MappingSug
  * the auth context, productId from the /products/[masterProductId]/… route — no prop threading needed.
  */
 function ChannelImageInput({ field, value, onChange, disabled }: Omit<Props, "validationRules">) {
+  const t = useT();
   const { organization } = useAuth();
   const params = useParams();
   const orgId = organization?.organizationId ?? "";
@@ -190,7 +199,7 @@ function ChannelImageInput({ field, value, onChange, disabled }: Omit<Props, "va
       const res = await MediaUploadService.uploadImage(file, orgId, productId, "gallery");
       onChange(field.fieldName, res.publicUrl);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Upload failed");
+      setError(err instanceof Error ? err.message : t("common.uploadFailed", "Upload failed"));
     } finally {
       setUploading(false);
       if (inputRef.current) inputRef.current.value = ""; // allow re-selecting the same file
@@ -223,7 +232,7 @@ function ChannelImageInput({ field, value, onChange, disabled }: Omit<Props, "va
               onClick={() => inputRef.current?.click()}
               className="px-2.5 py-1 rounded-lg text-xs font-medium border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:border-brand-400 disabled:opacity-50"
             >
-              {uploading ? "Uploading…" : "Replace"}
+              {uploading ? t("common.uploading", "Uploading...") : t("common.replace", "Replace")}
             </button>
             <button
               type="button"
@@ -231,7 +240,7 @@ function ChannelImageInput({ field, value, onChange, disabled }: Omit<Props, "va
               onClick={() => onChange(field.fieldName, "")}
               className="px-2.5 py-1 rounded-lg text-xs font-medium text-red-500 hover:text-red-600 disabled:opacity-50"
             >
-              Remove
+              {t("common.remove", "Remove")}
             </button>
           </div>
         </div>
@@ -245,10 +254,10 @@ function ChannelImageInput({ field, value, onChange, disabled }: Omit<Props, "va
           {uploading ? (
             <>
               <span className="h-4 w-4 rounded-full border-2 border-brand-500 border-t-transparent animate-spin" />
-              Uploading…
+              {t("common.uploading", "Uploading...")}
             </>
           ) : (
-            <>+ Upload {field.label}</>
+            <>{t("field.uploadCta", "+ Upload {label}").replace("{label}", field.label)}</>
           )}
         </button>
       )}
@@ -267,6 +276,7 @@ function ChannelImageInput({ field, value, onChange, disabled }: Omit<Props, "va
  * value, so it updates as the merchant edits.
  */
 function AxisDivergenceNote({ field, value }: { field: ChannelFormField; value: unknown }) {
+  const t = useT();
   const axis = field.axisValues ?? [];
   if (axis.length === 0) return null;
   const selected: string[] = Array.isArray(value)
@@ -279,16 +289,17 @@ function AxisDivergenceNote({ field, value }: { field: ChannelFormField; value: 
   return (
     <div className="mt-1.5 space-y-0.5 rounded-md border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-xs text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300">
       {extra.length > 0 && (
-        <div>⚠️ {extra.join(", ")} ditandai di sini tapi bukan varian — tak ada SKU-nya.</div>
+        <div>⚠️ {t("field.axis.extraNotVariant", "{values} marked here but not a variant — no SKU for it.").replace("{values}", extra.join(", "))}</div>
       )}
       {missing.length > 0 && (
-        <div>ℹ️ Varian {missing.join(", ")} belum ditandai di atribut ini.</div>
+        <div>ℹ️ {t("field.axis.variantNotMarked", "Variant {values} not yet marked on this attribute.").replace("{values}", missing.join(", "))}</div>
       )}
     </div>
   );
 }
 
 export default function ChannelFieldInput({ field, value, onChange, disabled, validationRules: validationRulesOverride }: Props) {
+  const t = useT();
   // Scenario E: use override when provided, otherwise fall back to field definition
   const effectiveValidation = validationRulesOverride ?? field.validationRules;
   // Always call hook at top level — React rules
@@ -372,7 +383,7 @@ export default function ChannelFieldInput({ field, value, onChange, disabled, va
           disabled={disabled}
           className={baseClass}
         >
-          <option value="">Select…</option>
+          <option value="">{t("field.selectPlaceholder", "Select…")}</option>
           {options.map((opt) => (
             <option key={opt.value} value={opt.value}>{opt.label}</option>
           ))}
@@ -387,7 +398,7 @@ export default function ChannelFieldInput({ field, value, onChange, disabled, va
           value={selected}
           onChange={(next) => onChange(field.fieldName, next)}
           disabled={disabled}
-          placeholder={field.placeholder ?? "Select…"}
+          placeholder={field.placeholder ?? t("field.selectPlaceholder", "Select…")}
         />
       );
     }

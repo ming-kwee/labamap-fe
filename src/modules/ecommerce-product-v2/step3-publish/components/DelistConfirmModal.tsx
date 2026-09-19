@@ -3,6 +3,7 @@ import React from "react";
 import { Modal } from "@/shared/ui/modal";
 import Button from "@/shared/ui/button/Button";
 import { AlertTriangle, Trash2, RefreshCw } from "@/shared/ui/icons/Icons";
+import { useT } from "@/shared/contexts/LocaleContext";
 
 /**
  * Confirmation for the delist action (§6.2). Delisting removes the listing from the
@@ -30,6 +31,7 @@ export default function DelistConfirmModal({
   onConfirm,
   onClose,
 }: DelistConfirmModalProps) {
+  const t = useT();
   return (
     <Modal
       isOpen={isOpen}
@@ -44,12 +46,15 @@ export default function DelistConfirmModal({
           </div>
           <div className="min-w-0">
             <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
-              Hapus listing dari {channelLabel}?
+              {t("publish.delist.title", "Delist from {channel}?").replace("{channel}", channelLabel)}
             </h3>
             <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
-              Produk <strong className="text-gray-800 dark:text-gray-200">{storeName}</strong> tidak
-              lagi tampil untuk pembeli di channel ini. Data produk di sistem tetap ada — kamu bisa{" "}
-              <strong>publish ulang</strong> nanti (membuat listing baru).
+              {t("publish.delist.bodyBefore", "Product")}{" "}
+              <strong className="text-gray-800 dark:text-gray-200">{storeName}</strong>{" "}
+              {t(
+                "publish.delist.bodyAfter",
+                "will no longer be visible to buyers on this channel. Your product data stays in the system — you can re-publish it later (creating a new listing)."
+              )}
             </p>
           </div>
         </div>
@@ -62,7 +67,7 @@ export default function DelistConfirmModal({
 
         <div className="mt-6 flex items-center justify-end gap-3">
           <Button variant="outline" onClick={onClose} disabled={isDelisting}>
-            Batal
+            {t("common.cancel", "Cancel")}
           </Button>
           <button
             type="button"
@@ -71,9 +76,9 @@ export default function DelistConfirmModal({
             className="inline-flex items-center justify-center gap-2 rounded-lg bg-error-500 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-error-600 disabled:cursor-wait disabled:opacity-60"
           >
             {isDelisting ? (
-              <><RefreshCw className="h-4 w-4 animate-spin" /> Menghapus…</>
+              <><RefreshCw className="h-4 w-4 animate-spin" /> {t("publish.delist.deleting", "Delisting…")}</>
             ) : (
-              <><Trash2 className="h-4 w-4" /> Ya, delist</>
+              <><Trash2 className="h-4 w-4" /> {t("publish.delist.confirm", "Yes, delist")}</>
             )}
           </button>
         </div>

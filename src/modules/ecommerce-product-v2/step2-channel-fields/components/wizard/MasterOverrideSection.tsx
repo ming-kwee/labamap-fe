@@ -2,6 +2,7 @@
 import React, { useState } from "react";
 import type { ChannelFormField } from "../../types/channelStore";
 import MasterOverrideField from "./MasterOverrideField";
+import { useT } from "@/shared/contexts/LocaleContext";
 
 interface Props {
   fields: ChannelFormField[];
@@ -26,6 +27,7 @@ const ChevronIcon = ({ expanded }: { expanded: boolean }) => (
 );
 
 export default function MasterOverrideSection({ fields, values, channelName, onChange, embedded = false }: Props) {
+  const t = useT();
   const overrideCount = fields.filter((f) => values[f.fieldName] != null).length;
   const [expanded, setExpanded] = useState(overrideCount > 0);
 
@@ -35,7 +37,9 @@ export default function MasterOverrideSection({ fields, values, channelName, onC
     <>
       {/* Context banner */}
       <p className="text-xs text-gray-500 dark:text-gray-400 px-1">
-        Changes here apply to <strong>{channelName}</strong> only — all other channels keep the master value.
+        {t("wizard.override.noteBefore", "Changes here apply to")}{" "}
+        <strong>{channelName}</strong>{" "}
+        {t("wizard.override.noteAfter", "only — all other channels keep the master value.")}
       </p>
 
       {/* Override field cards */}
@@ -71,14 +75,14 @@ export default function MasterOverrideSection({ fields, values, channelName, onC
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-2.5 min-w-0">
             <span className="text-[10px] font-bold text-brand-500 dark:text-brand-400 uppercase tracking-wider flex-shrink-0">
-              Override
+              {t("common.override", "Override")}
             </span>
             <span className="text-sm font-semibold text-gray-800 dark:text-gray-200 truncate">
-              Product Data
+              {t("wizard.override.dataTitle", "Product Data")}
             </span>
             {overrideCount > 0 ? (
               <span className="inline-flex items-center text-xs font-semibold px-2 py-0.5 rounded-full bg-brand-100 dark:bg-brand-500/20 text-brand-700 dark:text-brand-400 flex-shrink-0">
-                {overrideCount} active
+                {t("wizard.override.activeCount", "{n} active").replace("{n}", String(overrideCount))}
               </span>
             ) : (
               <span className="text-xs bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 px-1.5 py-0.5 rounded-md text-gray-400 dark:text-gray-500 font-medium flex-shrink-0">
@@ -88,7 +92,7 @@ export default function MasterOverrideSection({ fields, values, channelName, onC
           </div>
           <div className="flex items-center gap-1.5 flex-shrink-0">
             <span className="text-xs text-gray-400 dark:text-gray-500 hidden sm:block">
-              {expanded ? "Collapse" : "Expand"}
+              {expanded ? t("common.collapse", "Collapse") : t("common.expand", "Expand")}
             </span>
             <ChevronIcon expanded={expanded} />
           </div>

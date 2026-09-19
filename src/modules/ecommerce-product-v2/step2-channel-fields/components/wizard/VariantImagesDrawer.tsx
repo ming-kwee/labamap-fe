@@ -4,6 +4,7 @@ import type { ChannelType, ChannelImageSpec } from "../../types/channelStore";
 import { ChannelImageSpecService } from "../../services/channelImageSpec.service";
 import { specAspect, specMaxWidth } from "../../../utils/image-crop";
 import { ImageListEditor, specReqParts } from "./StoreImageOverrideEditor";
+import { useT } from '@/shared/contexts/LocaleContext';
 
 /**
  * Per-SKU variant image editor, presented as a right-side slide-over (images I4) — same drawer shell
@@ -44,6 +45,7 @@ export default function VariantImagesDrawer({
   onChange: (urls: string[] | undefined) => void;
   onClose: () => void;
 }) {
+  const t = useT();
   const [spec, setSpec] = useState<ChannelImageSpec | null>(null);
 
   useEffect(() => {
@@ -73,14 +75,14 @@ export default function VariantImagesDrawer({
   const reqParts = specReqParts(spec);
 
   return (
-    <div className="fixed inset-0 z-99999 flex justify-end" role="dialog" aria-modal="true" aria-label={`Variant images for ${sku}`}>
+    <div className="fixed inset-0 z-99999 flex justify-end" role="dialog" aria-modal="true" aria-label={t('varimg.dialogLabel', 'Variant images for {sku}').replace('{sku}', sku)}>
       <div className="absolute inset-0 bg-gray-900/40 backdrop-blur-sm" onClick={onClose} />
       <aside className="relative flex h-full w-full max-w-md flex-col bg-white dark:bg-gray-900 shadow-2xl">
         {/* Header */}
         <div className="flex items-start justify-between gap-3 border-b border-gray-200 dark:border-gray-800 px-5 py-4">
           <div className="min-w-0">
             <h3 className="text-base font-semibold text-gray-900 dark:text-white flex items-center gap-2">
-              <span className="truncate">Gambar variant — {sku}</span>
+              <span className="truncate">{t('varimg.header', 'Variant image — {sku}').replace('{sku}', sku)}</span>
               {variantLabel && variantLabel !== sku && (
                 <span className="text-sm font-normal text-gray-400 dark:text-gray-500 truncate">{variantLabel}</span>
               )}
@@ -91,7 +93,7 @@ export default function VariantImagesDrawer({
                   {channelName ?? channelType}:
                 </span>{" "}
                 {reqParts.join(" · ")}
-                {spec?.channelSideUpload ? " · channel fetches the public URL" : ""}
+                {spec?.channelSideUpload ? ` · ${t('varimg.channelFetches', 'channel fetches the public URL')}` : ""}
               </p>
             )}
           </div>
@@ -100,7 +102,7 @@ export default function VariantImagesDrawer({
             onClick={onClose}
             className="flex-shrink-0 rounded-lg px-2.5 py-1.5 text-sm font-medium text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800"
           >
-            Tutup
+            {t('common.close', 'Close')}
           </button>
         </div>
 
@@ -114,7 +116,7 @@ export default function VariantImagesDrawer({
             onChange={onChange}
             aspect={specAspect(spec)}
             maxWidth={specMaxWidth(spec)}
-            baselineLabel="Master variant images"
+            baselineLabel={t('varimg.baselineLabel', 'Master variant images')}
           />
         </div>
 
@@ -125,7 +127,7 @@ export default function VariantImagesDrawer({
             onClick={onClose}
             className="rounded-lg bg-brand-500 px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-brand-600"
           >
-            Selesai
+            {t('common.done', 'Done')}
           </button>
         </div>
       </aside>

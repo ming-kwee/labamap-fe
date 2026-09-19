@@ -10,6 +10,7 @@ import type {
 import { ChannelStoreService } from "../../services/channelStore.service";
 import { ChannelCredentialSchemaService } from "../../services/channelStore.service";
 import { getChannelMeta } from "./ChannelTypeBadge";
+import { useT } from "@/shared/contexts/LocaleContext";
 
 /**
  * OAuth-capable channels (Phase B).
@@ -58,6 +59,7 @@ interface Props {
 }
 
 export default function ConnectStoreModal({ organizationId, onClose, onConnect, existingStore }: Props) {
+  const t = useT();
   // ── Mode detection ─────────────────────────────────────────────────────────
   const isReconnectMode =
     existingStore?.connectionStatus === "RECONNECT_REQUIRED" ||
@@ -118,7 +120,7 @@ export default function ConnectStoreModal({ organizationId, onClose, onConnect, 
   // ── OAuth flow ─────────────────────────────────────────────────────────────
   async function handleOAuthConnect() {
     if (channelType === "shopify" && !shopDomain.trim()) {
-      setError("Shopify store domain is required.");
+      setError(t("store.modal.err.shopDomainRequired", "Shopify store domain is required."));
       return;
     }
     setError(null);
@@ -143,7 +145,7 @@ export default function ConnectStoreModal({ organizationId, onClose, onConnect, 
       window.location.href = resp.authorizationUrl;
       // Do NOT set submitting=false — page is navigating away
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to start authorization");
+      setError(err instanceof Error ? err.message : t("store.modal.err.oauthStart", "Failed to start authorization"));
       setSubmitting(false);
     }
   }
@@ -174,7 +176,7 @@ export default function ConnectStoreModal({ organizationId, onClose, onConnect, 
       });
       onClose();
     } catch (err) {
-      setError(err instanceof Error ? err.message : isEditMode ? "Failed to save changes" : "Failed to connect store");
+      setError(err instanceof Error ? err.message : isEditMode ? t("store.modal.err.save", "Failed to save changes") : t("store.modal.err.connect", "Failed to connect store"));
     } finally {
       setSubmitting(false);
     }
@@ -184,10 +186,10 @@ export default function ConnectStoreModal({ organizationId, onClose, onConnect, 
   const channelLabel  = CHANNEL_OPTIONS.find((o) => o.value === channelType)?.label ?? channelType;
 
   const titleText = isReconnectMode
-    ? `Reconnect ${existingStore?.storeName ?? channelLabel}`
+    ? t("store.modal.reconnectTitle", "Reconnect {name}").replace("{name}", existingStore?.storeName ?? channelLabel)
     : isEditMode
-    ? `Edit ${existingStore?.storeName ?? "Store"}`
-    : "Connect New Store";
+    ? t("store.modal.editTitle", "Edit {name}").replace("{name}", existingStore?.storeName ?? "Store")
+    : t("store.modal.connectTitle", "Connect New Store");
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
@@ -203,10 +205,10 @@ export default function ConnectStoreModal({ organizationId, onClose, onConnect, 
           {isReconnectMode && (
             <div className="rounded-xl bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/30 px-4 py-3">
               <p className="text-sm text-amber-700 dark:text-amber-400">
-                <strong>Re-authorization required.</strong>{" "}
+                <strong>{t("store.modal.reauthRequired", "Re-authorization required.")}</strong>{" "}
                 {existingStore?.disconnectReason === "app_uninstalled"
-                  ? "The app was uninstalled from the marketplace. Re-authorize to reconnect."
-                  : "Your access token has expired. Click below to re-authorize access."}
+                  ? t("store.modal.reasonUninstalled", "The app was uninstalled from the marketplace. Re-authorize to reconnect.")
+                  : t("store.modal.reasonExpired", "Your access token has expired. Click below to re-authorize access.")}
               </p>
             </div>
           )}
@@ -214,7 +216,7 @@ export default function ConnectStoreModal({ organizationId, onClose, onConnect, 
           {/* Channel type selector (locked in edit/reconnect mode) */}
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-              Channel Type <span className="text-error-500">*</span>
+              {t("store.modal.channelType", "Channel Type")} <span className="text-error-500">*</span>
             </label>
             <select
               value={channelType}
@@ -234,10 +236,10 @@ export default function ConnectStoreModal({ organizationId, onClose, onConnect, 
               {/* Store name */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                  Store Name
+                  {t("store.modal.storeName", "Store Name")}
                   {channelType !== "shopify" && <span className="text-error-500"> *</span>}
                   {channelType === "shopify" && (
-                    <span className="text-gray-400 font-normal"> (optional — auto-filled from Shopify if blank)</span>
+                    <span className="text-gray-400 font-normal"> {t("store.modal.storeNameOptionalShopify", "(optional — auto-filled from Shopify if blank)")}</span>
                   )}
                 </label>
                 <input
@@ -245,7 +247,7 @@ export default function ConnectStoreModal({ organizationId, onClose, onConnect, 
                   value={storeName}
                   onChange={(e) => setStoreName(e.target.value)}
                   required={channelType !== "shopify"}
-                  placeholder={`e.g. My ${channelLabel} Store`}
+                  placeholder={t("store.modal.storeNamePlaceholder", "e.g. My {label} Store").replace("{label}", channelLabel)}
                   className="w-full rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2.5 text-sm text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-brand-500"
                 />
               </div>
@@ -253,13 +255,13 @@ export default function ConnectStoreModal({ organizationId, onClose, onConnect, 
               {/* Region (optional) */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                  Region <span className="text-gray-400 font-normal">(optional)</span>
+                  {t("store.modal.region", "Region")} <span className="text-gray-400 font-normal">{t("common.optionalParen", "(optional)")}</span>
                 </label>
                 <input
                   type="text"
                   value={region}
                   onChange={(e) => setRegion(e.target.value)}
-                  placeholder="e.g. US, EU, SEA"
+                  placeholder={t("store.modal.regionPlaceholder", "e.g. US, EU, SEA")}
                   className="w-full rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2.5 text-sm text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-brand-500"
                 />
               </div>
@@ -268,7 +270,7 @@ export default function ConnectStoreModal({ organizationId, onClose, onConnect, 
               {channelType === "shopify" && (
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    Shopify Domain <span className="text-error-500">*</span>
+                    {t("store.modal.shopifyDomain", "Shopify Domain")} <span className="text-error-500">*</span>
                   </label>
                   <input
                     type="text"
@@ -278,7 +280,7 @@ export default function ConnectStoreModal({ organizationId, onClose, onConnect, 
                     className="w-full rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2.5 text-sm text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-brand-500"
                   />
                   <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
-                    Your Shopify store domain, e.g. <span className="font-mono">my-brand.myshopify.com</span>
+                    {t("store.modal.shopifyDomainHelp", "Your Shopify store domain, e.g.")} <span className="font-mono">my-brand.myshopify.com</span>
                   </p>
                 </div>
               )}
@@ -290,12 +292,11 @@ export default function ConnectStoreModal({ organizationId, onClose, onConnect, 
                     {channelMeta.code}
                   </span>
                   <p className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                    Authorize via {channelLabel}
+                    {t("store.modal.authorizeVia", "Authorize via {label}").replace("{label}", channelLabel)}
                   </p>
                 </div>
                 <p className="text-xs text-gray-500 dark:text-gray-400">
-                  You will be redirected to {channelLabel} to grant access.
-                  No credentials to enter — the backend securely handles token exchange.
+                  {t("store.modal.oauthExplain", "You will be redirected to {label} to grant access. No credentials to enter — the backend securely handles token exchange.").replace("{label}", channelLabel)}
                 </p>
               </div>
 
@@ -311,7 +312,7 @@ export default function ConnectStoreModal({ organizationId, onClose, onConnect, 
                   onClick={onClose}
                   className="flex-1 px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
                 >
-                  Cancel
+                  {t("common.cancel", "Cancel")}
                 </button>
                 <button
                   type="button"
@@ -320,10 +321,10 @@ export default function ConnectStoreModal({ organizationId, onClose, onConnect, 
                   className="flex-1 px-4 py-2.5 rounded-xl bg-brand-500 text-white text-sm font-medium hover:bg-brand-600 transition-colors disabled:opacity-60"
                 >
                   {submitting
-                    ? "Redirecting…"
+                    ? t("store.modal.redirecting", "Redirecting…")
                     : isReconnectMode
-                    ? `Reconnect with ${channelLabel}`
-                    : `Connect with ${channelLabel}`}
+                    ? t("store.modal.reconnectWith", "Reconnect with {label}").replace("{label}", channelLabel)
+                    : t("store.modal.connectWith", "Connect with {label}").replace("{label}", channelLabel)}
                 </button>
               </div>
             </div>
@@ -342,7 +343,7 @@ export default function ConnectStoreModal({ organizationId, onClose, onConnect, 
                   type="text"
                   value={storeName}
                   onChange={(e) => setStoreName(e.target.value)}
-                  placeholder={`e.g. My ${channelLabel} Store`}
+                  placeholder={t("store.modal.storeNamePlaceholder", "e.g. My {label} Store").replace("{label}", channelLabel)}
                   className="w-full rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2.5 text-sm text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-brand-500"
                 />
               </div>
@@ -350,14 +351,14 @@ export default function ConnectStoreModal({ organizationId, onClose, onConnect, 
               {/* Store URL */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                  Store URL <span className="text-error-500">*</span>
+                  {t("store.modal.storeUrl", "Store URL")} <span className="text-error-500">*</span>
                 </label>
                 <input
                   required
                   type="text"
                   value={storeUrl}
                   onChange={(e) => setStoreUrl(e.target.value)}
-                  placeholder="e.g. https://mysite.example.com/store"
+                  placeholder={t("store.modal.storeUrlPlaceholder", "e.g. https://mysite.example.com/store")}
                   className="w-full rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2.5 text-sm text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-brand-500"
                 />
               </div>
@@ -365,13 +366,13 @@ export default function ConnectStoreModal({ organizationId, onClose, onConnect, 
               {/* Region (optional) */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                  Region <span className="text-gray-400 font-normal">(optional)</span>
+                  {t("store.modal.region", "Region")} <span className="text-gray-400 font-normal">{t("common.optionalParen", "(optional)")}</span>
                 </label>
                 <input
                   type="text"
                   value={region}
                   onChange={(e) => setRegion(e.target.value)}
-                  placeholder="e.g. US, EU, SEA"
+                  placeholder={t("store.modal.regionPlaceholder", "e.g. US, EU, SEA")}
                   className="w-full rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2.5 text-sm text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-brand-500"
                 />
               </div>
@@ -379,10 +380,10 @@ export default function ConnectStoreModal({ organizationId, onClose, onConnect, 
               {/* Credentials — schema-driven */}
               <div className="space-y-3 pt-2 border-t border-gray-100 dark:border-gray-800">
                 <div>
-                  <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Credentials</p>
+                  <p className="text-sm font-medium text-gray-700 dark:text-gray-300">{t("store.modal.credentials", "Credentials")}</p>
                   {isEditMode && (
                     <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
-                      Leave blank to keep existing credentials.
+                      {t("store.modal.leaveBlankKeep", "Leave blank to keep existing credentials.")}
                     </p>
                   )}
                 </div>
@@ -390,7 +391,7 @@ export default function ConnectStoreModal({ organizationId, onClose, onConnect, 
                 {schemaLoading && (
                   <div className="flex items-center gap-2 py-2">
                     <div className="h-4 w-4 rounded-full border-2 border-brand-500 border-t-transparent animate-spin" />
-                    <span className="text-xs text-gray-400 dark:text-gray-500">Loading credential fields…</span>
+                    <span className="text-xs text-gray-400 dark:text-gray-500">{t("store.modal.loadingCreds", "Loading credential fields…")}</span>
                   </div>
                 )}
 
@@ -411,7 +412,7 @@ export default function ConnectStoreModal({ organizationId, onClose, onConnect, 
                       type={field.inputType}
                       value={credentials[field.chnlCredName] ?? ""}
                       onChange={(e) => handleCredentialChange(field.chnlCredName, e.target.value)}
-                      placeholder={isEditMode ? "Leave blank to keep existing" : field.inputType === "password" ? "•••••••••" : ""}
+                      placeholder={isEditMode ? t("store.modal.leaveBlankPlaceholder", "Leave blank to keep existing") : field.inputType === "password" ? "•••••••••" : ""}
                       className="w-full rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-brand-500"
                     />
                     {field.helpText && (
@@ -433,7 +434,7 @@ export default function ConnectStoreModal({ organizationId, onClose, onConnect, 
                   onClick={onClose}
                   className="flex-1 px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
                 >
-                  Cancel
+                  {t("common.cancel", "Cancel")}
                 </button>
                 <button
                   type="submit"
@@ -441,8 +442,8 @@ export default function ConnectStoreModal({ organizationId, onClose, onConnect, 
                   className="flex-1 px-4 py-2.5 rounded-xl bg-brand-500 text-white text-sm font-medium hover:bg-brand-600 transition-colors disabled:opacity-60"
                 >
                   {submitting
-                    ? (isEditMode ? "Saving…" : "Connecting…")
-                    : (isEditMode ? "Save Changes" : "Connect Store")}
+                    ? (isEditMode ? t("common.saving", "Saving…") : t("store.modal.connecting", "Connecting…"))
+                    : (isEditMode ? t("product.action.save", "Save Changes") : t("store.connectStore", "Connect Store"))}
                 </button>
               </div>
             </form>

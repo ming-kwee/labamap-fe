@@ -1,6 +1,7 @@
 "use client";
 import React, { useState, useCallback, useEffect, useRef } from "react";
 import type { ChannelFormField, CategoryTreeNode } from "../../types/channelStore";
+import { useT } from "@/shared/contexts/LocaleContext";
 
 const BASE = "http://localhost:8888/labamap/api/v1";
 
@@ -48,6 +49,7 @@ function highlight(text: string, query: string): React.ReactNode {
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export default function CategoryTreePicker({ field, value, onChange, disabled }: Props) {
+  const t = useT();
   const config = field.categoryTreeConfig!;
   const suggestion = field.masterMappedSuggestion;
 
@@ -168,7 +170,7 @@ export default function CategoryTreePicker({ field, value, onChange, disabled }:
         return res.json();
       })
       .then(raw => setCurrentNodes(normalizeNodes(raw)))
-      .catch(err => setBrowseError(err instanceof Error ? err.message : "Failed to load categories"))
+      .catch(err => setBrowseError(err instanceof Error ? err.message : t('catpick.loadFailed', 'Failed to load categories')))
       .finally(() => setLoadingBrowse(false));
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [config.rootEndpoint, config.childEndpoint]);
@@ -211,7 +213,7 @@ export default function CategoryTreePicker({ field, value, onChange, disabled }:
         });
         setSearchResults(results);
       })
-      .catch(err => setSearchError(err instanceof Error ? err.message : "Search failed"))
+      .catch(err => setSearchError(err instanceof Error ? err.message : t('catpick.searchFailed', 'Search failed')))
       .finally(() => setLoadingSearch(false));
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [config.searchEndpoint]);
@@ -305,10 +307,11 @@ export default function CategoryTreePicker({ field, value, onChange, disabled }:
         <div className="flex items-start justify-between rounded-lg border border-brand-200 dark:border-brand-500/30 bg-brand-50 dark:bg-brand-500/10 px-3 py-2 gap-2">
           <div className="min-w-0">
             <span className="text-[10px] font-semibold uppercase tracking-wider text-brand-700 dark:text-brand-400">
-              Suggested category
+              {t('catpick.suggested', 'Suggested category')}
             </span>
             <p className="text-xs text-gray-700 dark:text-gray-300 mt-0.5">
-              Based on master <span className="font-medium">{suggestion.masterField}</span>{" "}
+              {t('catpick.basedOn', 'Based on master')}{" "}
+              <span className="font-medium">{suggestion.masterField}</span>{" "}
               <span className="italic">&ldquo;{String(suggestion.masterValue)}&rdquo;</span>
             </p>
             <p className="text-xs font-medium text-gray-900 dark:text-white mt-0.5">
@@ -318,11 +321,11 @@ export default function CategoryTreePicker({ field, value, onChange, disabled }:
           <div className="flex items-center gap-1.5 flex-shrink-0">
             <button type="button" onClick={handleAcceptSuggestion} disabled={disabled}
               className="px-2.5 py-1 rounded-lg text-xs font-medium bg-brand-500 hover:bg-brand-600 text-white transition-colors disabled:opacity-50">
-              Accept
+              {t('common.accept', 'Accept')}
             </button>
             <button type="button" onClick={() => setSuggestionDismissed(true)}
               className="px-2.5 py-1 rounded-lg text-xs font-medium text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors">
-              Browse
+              {t('catpick.browse', 'Browse')}
             </button>
           </div>
         </div>
@@ -337,22 +340,23 @@ export default function CategoryTreePicker({ field, value, onChange, disabled }:
               <path d="M12 9v4"/><path d="M12 17h.01"/>
             </svg>
             <div className="min-w-0">
-              <p className="text-sm font-semibold text-amber-800 dark:text-amber-300">No category selected</p>
+              <p className="text-sm font-semibold text-amber-800 dark:text-amber-300">{t('catpick.noneSelected', 'No category selected')}</p>
               <p className="text-xs text-amber-700 dark:text-amber-400 mt-0.5 leading-relaxed">
-                Select the <span className="font-medium">{field.label}</span> for this product.
-                Set a default per Product Type in{" "}
+                {t('catpick.selectForPre', 'Select the')}{" "}
+                <span className="font-medium">{field.label}</span>{" "}
+                {t('catpick.selectForPost', 'for this product. Set a default per Product Type in')}{" "}
                 <a href="/omni-admin/channel-category-mapping" target="_blank" rel="noopener noreferrer"
                   className="underline hover:text-amber-900 dark:hover:text-amber-200">
-                  Channel Rules
+                  {t('catpick.channelRules', 'Channel Rules')}
                 </a>
-                {" "}to pre-fill this automatically.
+                {" "}{t('catpick.prefillHint', 'to pre-fill this automatically.')}
               </p>
             </div>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
             <button type="button" onClick={openPicker} disabled={disabled}
               className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-amber-500 hover:bg-amber-600 text-white transition-colors disabled:opacity-50">
-              Browse category
+              {t('catpick.browseCategory', 'Browse category')}
             </button>
           </div>
         </div>
@@ -375,7 +379,7 @@ export default function CategoryTreePicker({ field, value, onChange, disabled }:
           </div>
           <button type="button" onClick={openPicker} disabled={disabled}
             className="flex-shrink-0 px-3 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm text-brand-600 dark:text-brand-400 hover:border-brand-400 hover:bg-brand-50 dark:hover:bg-brand-500/10 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
-            Change
+            {t('common.change', 'Change')}
           </button>
         </div>
       ) : null}
@@ -394,7 +398,7 @@ export default function CategoryTreePicker({ field, value, onChange, disabled }:
               type="text"
               value={searchQuery}
               onChange={e => setSearchQuery(e.target.value)}
-              placeholder={hasSearchEndpoint ? "Search all categories…" : "Filter this level…"}
+              placeholder={hasSearchEndpoint ? t('catpick.searchAllPlaceholder', 'Search all categories…') : t('catpick.filterLevelPlaceholder', 'Filter this level…')}
               className="flex-1 text-sm bg-transparent text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 outline-none"
             />
             {searchQuery && (
@@ -414,7 +418,7 @@ export default function CategoryTreePicker({ field, value, onChange, disabled }:
                 className={`text-xs transition-colors ${browsePath.length === 0
                   ? "text-gray-900 dark:text-white font-medium pointer-events-none"
                   : "text-brand-600 dark:text-brand-400 hover:underline"}`}>
-                All categories
+                {t('catpick.allCategories', 'All categories')}
               </button>
               {browsePath.map((node, i) => (
                 <React.Fragment key={node.id}>
@@ -439,7 +443,7 @@ export default function CategoryTreePicker({ field, value, onChange, disabled }:
                 {loadingSearch && (
                   <div className="flex items-center gap-2 px-3 py-3">
                     <span className="h-3.5 w-3.5 rounded-full border-2 border-brand-500 border-t-transparent animate-spin flex-shrink-0" />
-                    <span className="text-sm text-gray-400 dark:text-gray-500">Searching…</span>
+                    <span className="text-sm text-gray-400 dark:text-gray-500">{t('common.searching', 'Searching…')}</span>
                   </div>
                 )}
                 {!loadingSearch && searchError && (
@@ -448,17 +452,17 @@ export default function CategoryTreePicker({ field, value, onChange, disabled }:
                 {!loadingSearch && !searchError && searchResults !== null && searchResults.length === 0 && (
                   <div className="px-3 py-4 text-center space-y-1">
                     <p className="text-sm font-medium text-gray-600 dark:text-gray-400">
-                      No results for &ldquo;{searchQuery}&rdquo;
+                      {t('catpick.noResultsFor', 'No results for “{q}”').replace('{q}', searchQuery)}
                     </p>
                     <p className="text-xs text-gray-400 dark:text-gray-500">
-                      This category may not exist in {field.label}.
+                      {t('catpick.mayNotExist', 'This category may not exist in {field}.').replace('{field}', field.label)}
                     </p>
                   </div>
                 )}
                 {!loadingSearch && !searchError && searchResults && searchResults.length > 0 && (
                   <>
                     <div className="px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500 bg-gray-50 dark:bg-gray-900/40 border-b border-gray-100 dark:border-gray-700/50">
-                      {searchResults.length} result{searchResults.length !== 1 ? "s" : ""}
+                      {t('catpick.resultCount', '{n} result{s}').replace('{n}', String(searchResults.length)).replace('{s}', searchResults.length !== 1 ? "s" : "")}
                     </div>
                     {searchResults.map(result => (
                       <button key={result.id} type="button"
@@ -487,7 +491,7 @@ export default function CategoryTreePicker({ field, value, onChange, disabled }:
                         {result.hasChildren ? (
                           <span className="text-gray-400 dark:text-gray-500 text-xs ml-2 group-hover:text-brand-500 transition-colors flex-shrink-0">›</span>
                         ) : (
-                          <span className="text-brand-500 text-xs ml-2 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">Select</span>
+                          <span className="text-brand-500 text-xs ml-2 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">{t('common.select', 'Select')}</span>
                         )}
                       </button>
                     ))}
@@ -502,7 +506,7 @@ export default function CategoryTreePicker({ field, value, onChange, disabled }:
                 {loadingBrowse && (
                   <div className="flex items-center gap-2 px-3 py-3">
                     <span className="h-4 w-4 rounded-full border-2 border-brand-500 border-t-transparent animate-spin flex-shrink-0" />
-                    <span className="text-sm text-gray-400 dark:text-gray-500 animate-pulse">Loading…</span>
+                    <span className="text-sm text-gray-400 dark:text-gray-500 animate-pulse">{t('common.loading', 'Loading…')}</span>
                   </div>
                 )}
                 {!loadingBrowse && browseError && (
@@ -511,16 +515,16 @@ export default function CategoryTreePicker({ field, value, onChange, disabled }:
                 {!loadingBrowse && !browseError && isSearching && filteredNodes.length === 0 && (
                   <div className="px-3 py-4 text-center space-y-1.5">
                     <p className="text-sm font-medium text-gray-600 dark:text-gray-400">
-                      No match for &ldquo;{searchQuery}&rdquo; at this level
+                      {t('catpick.noMatchLevel', 'No match for “{q}” at this level').replace('{q}', searchQuery)}
                     </p>
                     <p className="text-xs text-gray-400 dark:text-gray-500">
-                      Navigate into a sub-category and search again,<br />
-                      or <button type="button" className="underline text-brand-500" onClick={() => setSearchQuery("")}>clear the filter</button> to browse.
+                      {t('catpick.navigateHint', 'Navigate into a sub-category and search again,')}<br />
+                      {t('catpick.orText', 'or')}{" "}<button type="button" className="underline text-brand-500" onClick={() => setSearchQuery("")}>{t('catpick.clearFilter', 'clear the filter')}</button>{" "}{t('catpick.toBrowse', 'to browse.')}
                     </p>
                   </div>
                 )}
                 {!loadingBrowse && !browseError && !isSearching && currentNodes.length === 0 && (
-                  <div className="px-3 py-3 text-sm text-gray-400 dark:text-gray-500">No categories found</div>
+                  <div className="px-3 py-3 text-sm text-gray-400 dark:text-gray-500">{t('catpick.noCategories', 'No categories found')}</div>
                 )}
                 {!loadingBrowse && !browseError && filteredNodes.map(node => (
                   <button key={node.id} type="button" onClick={() => selectNode(node)}
@@ -532,7 +536,7 @@ export default function CategoryTreePicker({ field, value, onChange, disabled }:
                     {node.hasChildren ? (
                       <span className="text-gray-400 dark:text-gray-500 text-xs group-hover:text-brand-500 transition-colors">›</span>
                     ) : (
-                      <span className="text-brand-500 text-xs opacity-0 group-hover:opacity-100 transition-opacity">Select</span>
+                      <span className="text-brand-500 text-xs opacity-0 group-hover:opacity-100 transition-opacity">{t('common.select', 'Select')}</span>
                     )}
                   </button>
                 ))}
@@ -544,12 +548,14 @@ export default function CategoryTreePicker({ field, value, onChange, disabled }:
           <div className="flex items-center justify-between px-3 py-2 border-t border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/50">
             <span className="text-[10px] text-gray-400 dark:text-gray-500">
               {hasSearchEndpoint
-                ? (isSearching ? "Full-tree search" : "Browse or type to search")
-                : (isSearching ? `${filteredNodes.length} match${filteredNodes.length !== 1 ? "es" : ""} at this level` : `${currentNodes.length} categories`)}
+                ? (isSearching ? t('catpick.fullTreeSearch', 'Full-tree search') : t('catpick.browseOrType', 'Browse or type to search'))
+                : (isSearching
+                    ? t('catpick.matchCount', '{n} match{es} at this level').replace('{n}', String(filteredNodes.length)).replace('{es}', filteredNodes.length !== 1 ? "es" : "")
+                    : t('catpick.categoriesCount', '{n} categories').replace('{n}', String(currentNodes.length)))}
             </span>
             <button type="button" onClick={() => setIsOpen(false)}
               className="text-xs text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors">
-              Cancel
+              {t('common.cancel', 'Cancel')}
             </button>
           </div>
         </div>

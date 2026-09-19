@@ -11,6 +11,7 @@ import { ChannelStoreService } from "../../services/channelStore.service";
 import { useAuth } from "@/shared/contexts/AuthContext";
 import ChannelTypeBadge from "./ChannelTypeBadge";
 import ConnectStoreModal from "./ConnectStoreModal";
+import { useT } from "@/shared/contexts/LocaleContext";
 
 /** OAuth-capable channels — these use the reconnect button, not the edit button */
 const OAUTH_CHANNELS = new Set<string>(["shopify", "wix", "tiktok", "amazon", "ebay"]);
@@ -90,6 +91,7 @@ interface StoreCardProps {
 }
 
 function StoreCard({ store, orgId, onEdit, onReconnect, onDeactivate, onReactivate, onDelete }: StoreCardProps) {
+  const t = useT();
   const [confirming,   setConfirming]   = useState<"deactivate" | "delete" | null>(null);
   const [loading,      setLoading]      = useState(false);
   const [actionError,  setActionError]  = useState<string | null>(null);
@@ -104,7 +106,7 @@ function StoreCard({ store, orgId, onEdit, onReconnect, onDeactivate, onReactiva
       await ChannelStoreService.deactivateStore(store.storeId, orgId);
       onDeactivate(store.storeId);
     } catch (err) {
-      setActionError(err instanceof Error ? err.message : "Failed to deactivate");
+      setActionError(err instanceof Error ? err.message : t("store.err.deactivate", "Failed to deactivate"));
       setLoading(false); setConfirming(null);
     }
   }
@@ -115,7 +117,7 @@ function StoreCard({ store, orgId, onEdit, onReconnect, onDeactivate, onReactiva
       const updated = await ChannelStoreService.reactivateStore(store.storeId, orgId);
       onReactivate(updated);
     } catch (err) {
-      setActionError(err instanceof Error ? err.message : "Failed to reactivate");
+      setActionError(err instanceof Error ? err.message : t("store.err.reactivate", "Failed to reactivate"));
       setLoading(false);
     }
   }
@@ -126,7 +128,7 @@ function StoreCard({ store, orgId, onEdit, onReconnect, onDeactivate, onReactiva
       await ChannelStoreService.deleteStore(store.storeId, orgId);
       onDelete(store.storeId);
     } catch (err) {
-      setActionError(err instanceof Error ? err.message : "Failed to delete");
+      setActionError(err instanceof Error ? err.message : t("store.err.delete", "Failed to delete"));
       setLoading(false); setConfirming(null);
     }
   }
@@ -146,7 +148,7 @@ function StoreCard({ store, orgId, onEdit, onReconnect, onDeactivate, onReactiva
         {/* Connection status badge */}
         <span className={`flex-shrink-0 inline-flex items-center gap-1 rounded-full text-xs font-medium px-2 py-0.5 ${cfg.badgeClass}`}>
           <span className={`h-1.5 w-1.5 rounded-full ${cfg.dotClass}`} />
-          {cfg.label}
+          {t("store.status." + status, cfg.label)}
         </span>
       </div>
 
@@ -163,11 +165,11 @@ function StoreCard({ store, orgId, onEdit, onReconnect, onDeactivate, onReactiva
 
       {/* Dates */}
       <div className="text-xs text-gray-400 dark:text-gray-500 space-y-0.5">
-        <p>Connected: {formatDate(store.connectedAt)}</p>
-        {store.lastSyncedAt && <p>Last sync: {formatDate(store.lastSyncedAt)}</p>}
+        <p>{t("store.connected", "Connected:")} {formatDate(store.connectedAt)}</p>
+        {store.lastSyncedAt && <p>{t("store.lastSync", "Last sync:")} {formatDate(store.lastSyncedAt)}</p>}
         {store.disconnectedAt && (
           <p className="text-error-500 dark:text-error-400">
-            Disconnected: {formatDate(store.disconnectedAt)}
+            {t("store.disconnectedAt", "Disconnected:")} {formatDate(store.disconnectedAt)}
             {store.disconnectReason && ` (${store.disconnectReason.replace(/_/g, " ")})`}
           </p>
         )}
@@ -185,19 +187,19 @@ function StoreCard({ store, orgId, onEdit, onReconnect, onDeactivate, onReactiva
           <div className="space-y-1.5">
             <p className="text-xs text-center text-gray-500 dark:text-gray-400">
               {confirming === "delete"
-                ? "Permanently delete this store and all its data?"
-                : "Pause this store connection?"}
+                ? t("store.confirmDelete", "Permanently delete this store and all its data?")
+                : t("store.confirmDeactivate", "Pause this store connection?")}
             </p>
             <div className="flex gap-2">
               <button onClick={() => setConfirming(null)} disabled={loading}
                 className="flex-1 px-3 py-1.5 text-xs rounded-lg border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
-                Cancel
+                {t("common.cancel", "Cancel")}
               </button>
               <button onClick={confirming === "delete" ? handleDelete : handleDeactivate} disabled={loading}
                 className="flex-1 px-3 py-1.5 text-xs rounded-lg bg-error-500 text-white hover:bg-error-600 transition-colors disabled:opacity-60">
                 {loading
-                  ? (confirming === "delete" ? "Deleting…" : "Deactivating…")
-                  : (confirming === "delete" ? "Delete" : "Confirm")}
+                  ? (confirming === "delete" ? t("store.deleting", "Deleting…") : t("store.deactivating", "Deactivating…"))
+                  : (confirming === "delete" ? t("common.delete", "Delete") : t("common.confirm", "Confirm"))}
               </button>
             </div>
           </div>
@@ -207,34 +209,34 @@ function StoreCard({ store, orgId, onEdit, onReconnect, onDeactivate, onReactiva
             {!isOAuth && (
               <button onClick={() => { setActionError(null); onEdit(store); }}
                 className="flex-1 px-3 py-1.5 text-xs rounded-lg border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
-                Edit
+                {t("common.edit", "Edit")}
               </button>
             )}
             <button onClick={() => { setActionError(null); setConfirming("deactivate"); }}
               className="flex-1 px-3 py-1.5 text-xs rounded-lg border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
-              Deactivate
+              {t("store.deactivate", "Deactivate")}
             </button>
           </div>
         ) : status === "RECONNECT_REQUIRED" ? (
           <div className="flex gap-2">
             <button onClick={() => { setActionError(null); onReconnect(store); }}
               className="flex-1 px-3 py-1.5 text-xs rounded-lg bg-amber-500 text-white hover:bg-amber-600 transition-colors font-medium">
-              Reconnect
+              {t("store.reconnect", "Reconnect")}
             </button>
             <button onClick={() => { setActionError(null); setConfirming("deactivate"); }}
               className="px-3 py-1.5 text-xs rounded-lg border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
-              Deactivate
+              {t("store.deactivate", "Deactivate")}
             </button>
           </div>
         ) : status === "DISCONNECTED" ? (
           <div className="flex gap-2">
             <button onClick={() => { setActionError(null); onReconnect(store); }}
               className="flex-1 px-3 py-1.5 text-xs rounded-lg bg-brand-500 text-white hover:bg-brand-600 transition-colors font-medium">
-              Reconnect
+              {t("store.reconnect", "Reconnect")}
             </button>
             <button onClick={() => { setActionError(null); setConfirming("delete"); }}
               className="px-3 py-1.5 text-xs rounded-lg border border-error-200 dark:border-error-500/40 text-error-600 dark:text-error-400 hover:bg-error-50 dark:hover:bg-error-500/10 transition-colors">
-              Delete
+              {t("common.delete", "Delete")}
             </button>
           </div>
         ) : (
@@ -242,11 +244,11 @@ function StoreCard({ store, orgId, onEdit, onReconnect, onDeactivate, onReactiva
           <div className="flex gap-2">
             <button onClick={handleReactivate} disabled={loading}
               className="flex-1 px-3 py-1.5 text-xs rounded-lg bg-success-500 text-white hover:bg-success-600 transition-colors disabled:opacity-60">
-              {loading ? "Reactivating…" : "Reactivate"}
+              {loading ? t("store.reactivating", "Reactivating…") : t("store.reactivate", "Reactivate")}
             </button>
             <button onClick={() => { setActionError(null); setConfirming("delete"); }}
               className="px-3 py-1.5 text-xs rounded-lg border border-error-200 dark:border-error-500/40 text-error-600 dark:text-error-400 hover:bg-error-50 dark:hover:bg-error-500/10 transition-colors">
-              Delete
+              {t("common.delete", "Delete")}
             </button>
           </div>
         )}
@@ -256,7 +258,7 @@ function StoreCard({ store, orgId, onEdit, onReconnect, onDeactivate, onReactiva
           <Link
             href={`/reverse-sync/import?storeId=${encodeURIComponent(store.storeId)}`}
             className="block w-full text-center px-3 py-1.5 text-xs rounded-lg border border-brand-300 text-brand-600 hover:bg-brand-50 dark:border-brand-500/40 dark:text-brand-400 dark:hover:bg-brand-500/10 transition-colors">
-            Import from channel
+            {t("store.importFromChannel", "Import from channel")}
           </Link>
         )}
       </div>
@@ -268,6 +270,7 @@ function StoreCard({ store, orgId, onEdit, onReconnect, onDeactivate, onReactiva
 interface KpiTilesProps { stores: ChannelStoreConnection[]; loading: boolean }
 
 function KpiTiles({ stores, loading }: KpiTilesProps) {
+  const t = useT();
   const counts = {
     active:    stores.filter((s) => deriveStatus(s) === "ACTIVE").length,
     reconnect: stores.filter((s) => deriveStatus(s) === "RECONNECT_REQUIRED").length,
@@ -275,19 +278,19 @@ function KpiTiles({ stores, loading }: KpiTilesProps) {
     inactive:  stores.filter((s) => deriveStatus(s) === "INACTIVE").length,
   };
   const tiles = [
-    { label: "Active",       value: counts.active,       sub: "stores",           icon: "✓", bg: "bg-success-50 dark:bg-success-500/10",  text: "text-success-700 dark:text-success-400" },
-    { label: "Reconnect",    value: counts.reconnect,    sub: "need action",      icon: "⚠", bg: "bg-amber-50 dark:bg-amber-500/10",       text: "text-amber-700 dark:text-amber-400" },
-    { label: "Disconnected", value: counts.disconnected, sub: "by marketplace",   icon: "✗", bg: "bg-error-50 dark:bg-error-500/10",       text: "text-error-700 dark:text-error-400" },
-    { label: "Inactive",     value: counts.inactive,     sub: "paused",           icon: "–", bg: "bg-gray-100 dark:bg-gray-800/80",        text: "text-gray-600 dark:text-gray-400" },
+    { label: "Active",       value: counts.active,       sub: t("store.kpi.sub.active", "stores"),        icon: "✓", bg: "bg-success-50 dark:bg-success-500/10",  text: "text-success-700 dark:text-success-400" },
+    { label: "Reconnect",    value: counts.reconnect,    sub: t("store.kpi.sub.reconnect", "need action"),   icon: "⚠", bg: "bg-amber-50 dark:bg-amber-500/10",       text: "text-amber-700 dark:text-amber-400" },
+    { label: "Disconnected", value: counts.disconnected, sub: t("store.kpi.sub.disconnected", "by marketplace"), icon: "✗", bg: "bg-error-50 dark:bg-error-500/10",       text: "text-error-700 dark:text-error-400" },
+    { label: "Inactive",     value: counts.inactive,     sub: t("store.kpi.sub.inactive", "paused"),         icon: "–", bg: "bg-gray-100 dark:bg-gray-800/80",        text: "text-gray-600 dark:text-gray-400" },
   ];
   return (
     <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-      {tiles.map((t) => (
-        <div key={t.label} className={`rounded-2xl p-5 flex items-center gap-4 ${t.bg}`}>
-          <span className={`text-2xl ${t.text}`}>{t.icon}</span>
+      {tiles.map((tile) => (
+        <div key={tile.label} className={`rounded-2xl p-5 flex items-center gap-4 ${tile.bg}`}>
+          <span className={`text-2xl ${tile.text}`}>{tile.icon}</span>
           <div>
-            <p className={`text-3xl font-bold ${t.text}`}>{loading ? "—" : t.value}</p>
-            <p className={`text-xs font-medium ${t.text} opacity-70`}>{t.sub}</p>
+            <p className={`text-3xl font-bold ${tile.text}`}>{loading ? "—" : tile.value}</p>
+            <p className={`text-xs font-medium ${tile.text} opacity-70`}>{tile.sub}</p>
           </div>
         </div>
       ))}
@@ -297,6 +300,7 @@ function KpiTiles({ stores, loading }: KpiTilesProps) {
 
 // ── Main dashboard ────────────────────────────────────────────────────────────
 function ChannelStoresDashboardInner() {
+  const t = useT();
   const { organization } = useAuth();
   const orgId = organization?.organizationId ?? "";
 
@@ -332,19 +336,19 @@ function ChannelStoresDashboardInner() {
 
     if (connected) {
       const label = CHANNEL_LABELS[connected] ?? connected;
-      setToast({ message: `${label} store connected successfully!`, type: "success" });
+      setToast({ message: t("store.toast.connected", "{label} store connected successfully!").replace("{label}", label), type: "success" });
       loadStores();
       window.history.replaceState({}, "", "/channels/stores");
     } else if (reconnected) {
       const label = CHANNEL_LABELS[reconnected] ?? reconnected;
-      setToast({ message: `${label} reconnected successfully!`, type: "success" });
+      setToast({ message: t("store.toast.reconnected", "{label} reconnected successfully!").replace("{label}", label), type: "success" });
       loadStores();
       window.history.replaceState({}, "", "/channels/stores");
     } else if (errorParam) {
-      setToast({ message: `Connection failed: ${decodeURIComponent(errorParam)}`, type: "error" });
+      setToast({ message: t("store.toast.connectFailed", "Connection failed: {err}").replace("{err}", decodeURIComponent(errorParam)), type: "error" });
       window.history.replaceState({}, "", "/channels/stores");
     }
-  }, [searchParams, loadStores]);
+  }, [searchParams, loadStores, t]);
 
   // ── Handlers ─────────────────────────────────────────────────────────────
   async function handleConnect(request: StoreConnectionRequest) {
@@ -420,16 +424,16 @@ function ChannelStoresDashboardInner() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Channel Stores</h1>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">{t("store.title", "Channel Stores")}</h1>
           <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
-            Manage connected store integrations for your organization
+            {t("store.subtitle", "Manage connected store integrations for your organization")}
           </p>
         </div>
         <button
           onClick={() => { setEditingStore(null); setShowModal(true); }}
           className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-brand-500 text-white text-sm font-medium hover:bg-brand-600 transition-colors"
         >
-          + Connect Store
+          + {t("store.connectStore", "Connect Store")}
         </button>
       </div>
 
@@ -440,18 +444,18 @@ function ChannelStoresDashboardInner() {
         <div className="flex items-center justify-center py-20">
           <div className="text-center">
             <div className="inline-block h-8 w-8 rounded-full border-4 border-brand-500 border-t-transparent animate-spin mb-3" />
-            <p className="text-sm text-gray-500 dark:text-gray-400">Loading stores…</p>
+            <p className="text-sm text-gray-500 dark:text-gray-400">{t("store.loading", "Loading stores…")}</p>
           </div>
         </div>
       )}
 
       {!loading && error && (
         <div className="rounded-2xl bg-error-50 dark:bg-error-500/10 border border-error-200 dark:border-error-500/30 px-6 py-5">
-          <p className="font-medium text-error-700 dark:text-error-400">Failed to load stores</p>
+          <p className="font-medium text-error-700 dark:text-error-400">{t("store.loadError", "Failed to load stores")}</p>
           <p className="text-sm text-error-600 dark:text-error-300 mt-1">{error}</p>
           <button onClick={loadStores}
             className="mt-3 px-4 py-2 rounded-lg text-sm font-medium bg-error-100 dark:bg-error-500/20 text-error-700 dark:text-error-400 hover:bg-error-200 transition-colors">
-            Retry
+            {t("common.retry", "Retry")}
           </button>
         </div>
       )}
@@ -459,11 +463,11 @@ function ChannelStoresDashboardInner() {
       {!loading && !error && stores.length === 0 && (
         <div className="flex flex-col items-center justify-center py-20 text-center">
           <div className="h-16 w-16 rounded-2xl bg-gray-100 dark:bg-gray-800 flex items-center justify-center mb-4 text-2xl">🔌</div>
-          <p className="font-medium text-gray-900 dark:text-white">No stores connected</p>
-          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Connect your first store to start publishing products.</p>
+          <p className="font-medium text-gray-900 dark:text-white">{t("store.empty.title", "No stores connected")}</p>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">{t("store.empty.desc", "Connect your first store to start publishing products.")}</p>
           <button onClick={() => setShowModal(true)}
             className="mt-4 px-5 py-2.5 rounded-xl bg-brand-500 text-white text-sm font-medium hover:bg-brand-600 transition-colors">
-            Connect Store
+            {t("store.connectStore", "Connect Store")}
           </button>
         </div>
       )}
@@ -474,7 +478,7 @@ function ChannelStoresDashboardInner() {
           <div className="flex items-center gap-2">
             <span className="h-2 w-2 rounded-full bg-amber-400" />
             <p className="text-sm font-medium text-amber-700 dark:text-amber-400">
-              Attention required ({attentionStores.length})
+              {t("store.attentionRequired", "Attention required ({n})").replace("{n}", String(attentionStores.length))}
             </p>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -491,7 +495,7 @@ function ChannelStoresDashboardInner() {
       {!loading && !error && activeStores.length > 0 && (
         <>
           <p className="text-sm text-gray-500 dark:text-gray-400">
-            {activeStores.length} active store{activeStores.length !== 1 ? "s" : ""}
+            {activeStores.length} {t("store.activeStores", "active stores")}
           </p>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {activeStores.map((store) => (
@@ -507,7 +511,7 @@ function ChannelStoresDashboardInner() {
       {!loading && !error && inactiveStores.length > 0 && (
         <div className="space-y-3">
           <p className="text-sm font-medium text-gray-500 dark:text-gray-400">
-            Inactive ({inactiveStores.length})
+            {t("store.inactiveCount", "Inactive ({n})").replace("{n}", String(inactiveStores.length))}
           </p>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {inactiveStores.map((store) => (

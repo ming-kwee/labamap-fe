@@ -158,6 +158,44 @@ const SECTION_METADATA: Record<string, SectionMetadata> = {
     iconColor: 'text-gray-600',
     description: 'Size, color, and other variations',
     order: 8
+  },
+  // Backend Step-1 section vocabulary (ecommerce_master_attributes.section) uses these keys —
+  // normalizeSectionKey maps e.g. pricing_inventory → pricing-inventory. Kept in sync so the
+  // header shows a real label/icon (EN fallback) and the i18n key `section.<nk>.label` resolves (ID).
+  'pricing-inventory': {
+    label: 'Pricing & Inventory',
+    icon: DollarSign,
+    iconColor: 'text-green-600',
+    description: 'Pricing, costs, and stock levels',
+    order: 2
+  },
+  'publishing': {
+    label: 'SEO & Publishing',
+    icon: Star,
+    iconColor: 'text-yellow-600',
+    description: 'Search optimization and publishing metadata',
+    order: 6
+  },
+  'variant-attributes': {
+    label: 'Variant Configuration',
+    icon: Settings,
+    iconColor: 'text-gray-600',
+    description: 'Variant axes and per-variant attributes',
+    order: 8.5
+  },
+  'compliance': {
+    label: 'Compliance & Legal',
+    icon: FileText,
+    iconColor: 'text-indigo-600',
+    description: 'Regulatory and legal information',
+    order: 9
+  },
+  'general': {
+    label: 'General Information',
+    icon: Package,
+    iconColor: 'text-blue-600',
+    description: 'General product details',
+    order: 0.5
   }
 };
 

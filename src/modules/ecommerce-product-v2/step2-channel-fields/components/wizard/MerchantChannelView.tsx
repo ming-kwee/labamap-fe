@@ -1,6 +1,7 @@
 "use client";
 import React, { useState } from "react";
 import type { ChannelType, ChannelFormField } from "../../types/channelStore";
+import { useT } from "@/shared/contexts/LocaleContext";
 
 /**
  * Merchant (end-user) layout for Step 2 — an alternative render of ChannelStoreTab's data.
@@ -76,12 +77,13 @@ type CardStatus =
   | { kind: "optional" };
 
 function StatusChip({ status }: { status: CardStatus }) {
+  const t = useT();
   if (status.kind === "done")
-    return <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-success-50 dark:bg-success-500/15 text-success-700 dark:text-success-400">✓ Done</span>;
+    return <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-success-50 dark:bg-success-500/15 text-success-700 dark:text-success-400">{t("merchant.chip.done", "✓ Done")}</span>;
   if (status.kind === "required")
-    return <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-warning-50 dark:bg-warning-500/15 text-warning-700 dark:text-warning-400">Required</span>;
+    return <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-warning-50 dark:bg-warning-500/15 text-warning-700 dark:text-warning-400">{t("merchant.chip.required", "Required")}</span>;
   if (status.kind === "optional")
-    return <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400">Optional</span>;
+    return <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400">{t("merchant.chip.optional", "Optional")}</span>;
   const complete = status.filled >= status.total && status.total > 0;
   return (
     <span
@@ -219,17 +221,21 @@ export default function MerchantChannelView(props: MerchantChannelViewProps) {
     renderFields, renderMasterOverrides, renderCategoryField, renderVariants, renderAxisSummary, renderImages,
   } = props;
 
+  const t = useT();
+
   // Guarded bulk-revert link — only when this store has category-attribute overrides.
   const resetAllCategoryLink = categoryOverrideCount > 0 && onResetAllCategoryToMaster ? (
     <span className="inline-flex items-center gap-1.5">
-      <span className="text-[11px] text-gray-400 dark:text-gray-500">{categoryOverrideCount} di-override</span>
+      <span className="text-[11px] text-gray-400 dark:text-gray-500">
+        {t("merchant.overriddenCount", "{count} overridden").replace("{count}", String(categoryOverrideCount))}
+      </span>
       <span className="text-gray-300 dark:text-gray-600">·</span>
       <button
         type="button"
         onClick={onResetAllCategoryToMaster}
         className="text-[11px] font-medium text-brand-600 hover:underline dark:text-brand-400"
       >
-        reset semua ke master
+        {t("wizard.resetAllToMaster", "reset all to master")}
       </button>
     </span>
   ) : null;
@@ -263,8 +269,8 @@ export default function MerchantChannelView(props: MerchantChannelViewProps) {
     cards.push({
       id: "mv-category",
       icon: "category",
-      title: `${channelName} category`,
-      subtitle: categorySet ? categoryBreadcrumb : "Choose where buyers find this product",
+      title: t("merchant.categoryTitle", "{channel} category").replace("{channel}", channelName),
+      subtitle: categorySet ? categoryBreadcrumb : t("merchant.categorySubtitle", "Choose where buyers find this product"),
       status: categorySet ? { kind: "done" } : { kind: "required" },
       defaultOpen: !categorySet,
       body: <div className="pt-3">{renderCategoryField()}</div>,
@@ -275,8 +281,8 @@ export default function MerchantChannelView(props: MerchantChannelViewProps) {
     cards.push({
       id: "mv-required",
       icon: "required",
-      title: "Required to publish",
-      subtitle: `${channelName} needs these before your listing goes live`,
+      title: t("merchant.requiredTitle", "Required to publish"),
+      subtitle: t("merchant.requiredSubtitle", "{channel} needs these before your listing goes live").replace("{channel}", channelName),
       status: { kind: "count", filled: requiredCardFilled, total: requiredCardTotal },
       defaultOpen: requiredCardFilled < requiredCardTotal,
       body: (
@@ -286,7 +292,7 @@ export default function MerchantChannelView(props: MerchantChannelViewProps) {
             <div className="space-y-2">
               <div className="flex items-center justify-between gap-2">
                 <p className="text-xs font-medium text-gray-500 dark:text-gray-400">
-                  Category details {categoryBreadcrumb ? <span className="font-normal text-gray-400">· {categoryBreadcrumb}</span> : null}
+                  {t("merchant.categoryDetails", "Category details")} {categoryBreadcrumb ? <span className="font-normal text-gray-400">· {categoryBreadcrumb}</span> : null}
                 </p>
                 {resetAllCategoryLink}
               </div>
@@ -302,8 +308,8 @@ export default function MerchantChannelView(props: MerchantChannelViewProps) {
     cards.push({
       id: "mv-details",
       icon: "details",
-      title: "Product details",
-      subtitle: `Title & description — inherits your master product unless you customise it for ${channelName}`,
+      title: t("merchant.detailsTitle", "Product details"),
+      subtitle: t("merchant.detailsSubtitle", "Title & description — inherits your master product unless you customise it for {channel}").replace("{channel}", channelName),
       status: { kind: "optional" },
       defaultOpen: false,
       body: <div className="pt-3">{renderMasterOverrides(masterOverrideFields)}</div>,
@@ -313,8 +319,8 @@ export default function MerchantChannelView(props: MerchantChannelViewProps) {
   cards.push({
     id: "mv-photos",
     icon: "photos",
-    title: "Photos",
-    subtitle: `Images buyers see on ${channelName} — inherits master photos unless customised`,
+    title: t("merchant.photosTitle", "Photos"),
+    subtitle: t("merchant.photosSubtitle", "Images buyers see on {channel} — inherits master photos unless customised").replace("{channel}", channelName),
     status: { kind: "optional" },
     defaultOpen: true,
     body: <div className="pt-3">{renderImages()}</div>,
@@ -324,8 +330,8 @@ export default function MerchantChannelView(props: MerchantChannelViewProps) {
     cards.push({
       id: "mv-variants",
       icon: "variations",
-      title: "Variations",
-      subtitle: "Options like size & colour, plus per-variant details",
+      title: t("merchant.variantsTitle", "Variations"),
+      subtitle: t("merchant.variantsSubtitle", "Options like size & colour, plus per-variant details"),
       status: { kind: "optional" },
       defaultOpen: true,
       body: (
@@ -341,8 +347,8 @@ export default function MerchantChannelView(props: MerchantChannelViewProps) {
     cards.push({
       id: "mv-optional",
       icon: "optional",
-      title: "Optional details",
-      subtitle: "Improve listing quality & discoverability — not required to publish",
+      title: t("merchant.optionalTitle", "Optional details"),
+      subtitle: t("merchant.optionalSubtitle", "Improve listing quality & discoverability — not required to publish"),
       status: { kind: "optional" },
       defaultOpen: false,
       body: (
@@ -377,20 +383,25 @@ export default function MerchantChannelView(props: MerchantChannelViewProps) {
           <div className="min-w-0 flex-1">
             <h3 className="text-base font-bold text-gray-900 dark:text-white">
               {hasNoRequired
-                ? `Ready to publish on ${channelName}`
+                ? t("merchant.heroReadyToPublish", "Ready to publish on {channel}").replace("{channel}", channelName)
                 : remaining === 0
-                ? `All set for ${channelName} 🎉`
-                : `Finish your ${channelName} listing`}
+                ? t("merchant.heroAllSet", "All set for {channel} 🎉").replace("{channel}", channelName)
+                : t("merchant.heroFinishListing", "Finish your {channel} listing").replace("{channel}", channelName)}
             </h3>
             <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
               {hasNoRequired ? (
-                "No required fields for this store."
+                t("merchant.heroNoRequired", "No required fields for this store.")
               ) : remaining === 0 ? (
-                "Every required detail is filled in."
+                t("merchant.heroAllFilled", "Every required detail is filled in.")
               ) : (
                 <>
                   <span className="font-semibold text-gray-700 dark:text-gray-200 tabular-nums">{remaining}</span>{" "}
-                  required {remaining === 1 ? "detail" : "details"} left · {requiredFilled}/{requiredTotal} done
+                  {(remaining === 1
+                    ? t("merchant.heroRequiredLeftOne", "required detail left · {filled}/{total} done")
+                    : t("merchant.heroRequiredLeftMany", "required details left · {filled}/{total} done")
+                  )
+                    .replace("{filled}", String(requiredFilled))
+                    .replace("{total}", String(requiredTotal))}
                 </>
               )}
             </p>
@@ -398,12 +409,12 @@ export default function MerchantChannelView(props: MerchantChannelViewProps) {
           <div className="flex-shrink-0 self-start">
             {isSaving ? (
               <span className="flex items-center gap-1.5 text-xs text-gray-400 dark:text-gray-500">
-                <span className="h-1.5 w-1.5 rounded-full bg-gray-400 animate-pulse" /> Saving…
+                <span className="h-1.5 w-1.5 rounded-full bg-gray-400 animate-pulse" /> {t("common.saving", "Saving…")}
               </span>
             ) : lastSaved ? (
-              <span className="text-xs text-success-600 dark:text-success-400">✓ Saved {lastSaved.toLocaleTimeString()}</span>
+              <span className="text-xs text-success-600 dark:text-success-400">✓ {t("common.savedAt", "Saved {t}").replace("{t}", lastSaved.toLocaleTimeString())}</span>
             ) : (
-              <span className="text-xs text-gray-400 dark:text-gray-500">Autosaves as you type</span>
+              <span className="text-xs text-gray-400 dark:text-gray-500">{t("merchant.autosaves", "Autosaves as you type")}</span>
             )}
           </div>
         </div>

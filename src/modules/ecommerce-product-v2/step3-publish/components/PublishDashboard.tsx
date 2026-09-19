@@ -57,6 +57,7 @@ function EffectiveValueRow({
   storeData: ChannelProductData;
   master: MasterProduct | null;
 }) {
+  const t = useT();
   const { value, source } = getEffectiveValue(fieldName, storeData, master);
   if (value === undefined || value === null) return null;
   const displayVal = typeof value === "number" && fieldName === "price"
@@ -71,11 +72,11 @@ function EffectiveValueRow({
         </span>
         {source === "overridden" ? (
           <span className="inline-flex items-center text-xs font-medium px-1.5 py-0.5 rounded bg-brand-50 dark:bg-brand-500/10 text-brand-700 dark:text-brand-400">
-            ✏ Overridden
+            ✏ {t("badge.overridden", "Overridden")}
           </span>
         ) : (
           <span className="inline-flex items-center text-xs px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400">
-            master
+            {t("badge.master", "master")}
           </span>
         )}
       </div>
@@ -119,6 +120,10 @@ import type { PublishTraceRequest } from "@/modules/ecommerce-product-v2/types/p
 import { useWizardViewMode } from "@/modules/ecommerce-product-v2/utils/viewMode";
 import ViewModeToggle from "@/modules/ecommerce-product-v2/components/ViewModeToggle";
 import MerchantPublishView from "./MerchantPublishView";
+import { useT } from "@/shared/contexts/LocaleContext";
+
+/** Shape of the translate fn from useT — passed into module-level helpers that render text. */
+type TFn = (key: string, fallback?: string) => string;
 
 // ─── Publish payload builder ──────────────────────────────────────────────────
 //
@@ -164,13 +169,13 @@ function mergeListing(data: ChannelProductData, listing: ListingState | undefine
 // verdict (publish still running after the FE poll window — doc 04 §"Workflow polling").
 type BadgeStatus = ChannelProductStatus | "PROCESSING";
 
-function statusBadge(status: BadgeStatus) {
+function statusBadge(status: BadgeStatus, t: TFn) {
   const variants: Record<string, { cls: string; dot: string; label: string }> = {
-    PUBLISHED:  { cls: "bg-success-50 dark:bg-success-500/10 text-success-700 dark:text-success-400", dot: "bg-success-500",         label: "Published" },
-    READY:      { cls: "bg-brand-50 dark:bg-brand-500/10 text-brand-700 dark:text-brand-400",       dot: "bg-brand-500",            label: "Ready" },
-    PROCESSING: { cls: "bg-warning-50 dark:bg-warning-500/10 text-warning-700 dark:text-warning-400", dot: "bg-warning-500 animate-pulse", label: "Publishing…" },
-    FAILED:     { cls: "bg-error-50 dark:bg-error-500/10 text-error-700 dark:text-error-400",       dot: "bg-error-500",            label: "Failed" },
-    DRAFT:      { cls: "bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400",             dot: "bg-gray-400",             label: "Draft" },
+    PUBLISHED:  { cls: "bg-success-50 dark:bg-success-500/10 text-success-700 dark:text-success-400", dot: "bg-success-500",         label: t("pubdash.status.PUBLISHED", "Published") },
+    READY:      { cls: "bg-brand-50 dark:bg-brand-500/10 text-brand-700 dark:text-brand-400",       dot: "bg-brand-500",            label: t("pubdash.status.READY", "Ready") },
+    PROCESSING: { cls: "bg-warning-50 dark:bg-warning-500/10 text-warning-700 dark:text-warning-400", dot: "bg-warning-500 animate-pulse", label: t("pubdash.status.PROCESSING", "Publishing…") },
+    FAILED:     { cls: "bg-error-50 dark:bg-error-500/10 text-error-700 dark:text-error-400",       dot: "bg-error-500",            label: t("pubdash.status.FAILED", "Failed") },
+    DRAFT:      { cls: "bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400",             dot: "bg-gray-400",             label: t("pubdash.status.DRAFT", "Draft") },
   };
   const v = variants[status] ?? variants.DRAFT;
   return (
@@ -226,7 +231,7 @@ interface Readiness {
  * Translate the raw APM/JOLT analysis + Step-2 completion into a merchant
  * readiness summary. No engine jargon leaks out of this function.
  */
-function deriveReadiness(a: AdaptivePatternMatchingResponse, completionPct: number): Readiness {
+function deriveReadiness(a: AdaptivePatternMatchingResponse, completionPct: number, t: TFn): Readiness {
   const autoMapped = a.fieldMappings?.length ?? 0;
   const warnings = a.matchingMetadata?.warnings ?? [];
 
@@ -239,7 +244,7 @@ function deriveReadiness(a: AdaptivePatternMatchingResponse, completionPct: numb
     if (w.includes("[JOLT-READINESS]")) continue;
     const c = parseConflict(w);
     if (c && c.type === "ERROR") {
-      issues.push(`Data untuk "${friendlyField(c.target)}" bentrok — perlu diperbaiki.`);
+      issues.push(t("pubdash.readiness.conflict", 'Data for "{field}" conflicts — needs fixing.').replace("{field}", friendlyField(c.target)));
       continue;
     }
     if (w.startsWith("⚠") || w.startsWith("✗")) {
@@ -292,7 +297,8 @@ function PublishReadinessCard({
   completionPct: number;
   channelFieldsUrl: string;
 }) {
-  const r = deriveReadiness(analysis, completionPct);
+  const t = useT();
+  const r = deriveReadiness(analysis, completionPct, t);
   const meta = READINESS_META[r.level];
   const Icon = r.level === "READY" ? CheckCircle2 : AlertTriangle;
 
@@ -301,7 +307,7 @@ function PublishReadinessCard({
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <Package className="h-5 w-5" />
-          Kesiapan Publish
+          {t("pubdash.readiness.title", "Publish Readiness")}
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -309,28 +315,28 @@ function PublishReadinessCard({
         <div className={`flex items-start gap-3 rounded-xl border px-4 py-3 ${meta.bg}`}>
           <Icon className={`h-5 w-5 flex-shrink-0 mt-0.5 ${meta.fg}`} />
           <div>
-            <p className={`font-semibold ${meta.fg}`}>{meta.title}</p>
-            <p className="text-sm text-gray-600 dark:text-gray-400">{meta.sub}</p>
+            <p className={`font-semibold ${meta.fg}`}>{t("pubdash.readiness." + r.level + ".title", meta.title)}</p>
+            <p className="text-sm text-gray-600 dark:text-gray-400">{t("pubdash.readiness." + r.level + ".sub", meta.sub)}</p>
           </div>
         </div>
 
         {/* Reassurance */}
         <p className="text-sm text-gray-600 dark:text-gray-400 flex items-center gap-2">
           <CheckCircle2 className="h-4 w-4 flex-shrink-0 text-success-500" />
-          <span><strong>{r.autoMapped}</strong> info produk sudah otomatis dipetakan ke format channel.</span>
+          <span><strong>{r.autoMapped}</strong> {t("pubdash.readiness.autoMapped", "product details were automatically mapped to the channel format.")}</span>
         </p>
 
         {/* Things to fix */}
         {(r.requiredIncomplete || r.issues.length > 0) && (
           <div className="space-y-2">
             <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
-              Perlu dilengkapi
+              {t("pubdash.readiness.toComplete", "To complete")}
             </p>
             <ul className="space-y-1.5">
               {r.requiredIncomplete && (
                 <li className="flex items-start gap-2 text-sm text-gray-700 dark:text-gray-300">
                   <span className="text-warning-500 flex-shrink-0">•</span>
-                  <span>Beberapa info wajib channel belum lengkap ({r.completionPct}%).</span>
+                  <span>{t("pubdash.readiness.requiredIncomplete", "Some required channel info is incomplete ({pct}%).").replace("{pct}", String(r.completionPct))}</span>
                 </li>
               )}
               {r.issues.map((it, i) => (
@@ -344,7 +350,7 @@ function PublishReadinessCard({
               href={channelFieldsUrl}
               className="inline-flex items-center gap-1 text-sm font-medium text-brand-600 dark:text-brand-400 hover:underline"
             >
-              Lengkapi di Channel Fields →
+              {t("pubdash.completeInChannelFields", "Complete in Channel Fields →")}
             </Link>
           </div>
         )}
@@ -352,7 +358,7 @@ function PublishReadinessCard({
         {/* Optional gaps — soft note */}
         {r.optionalGaps > 0 && (
           <p className="text-xs text-gray-400 dark:text-gray-500">
-            {r.optionalGaps} field channel opsional belum terisi otomatis — tidak wajib, tapi bisa dilengkapi untuk listing lebih lengkap.
+            {t("pubdash.readiness.optionalGaps", "{n} optional channel fields aren't auto-filled — not required, but you can complete them for a richer listing.").replace("{n}", String(r.optionalGaps))}
           </p>
         )}
       </CardContent>
@@ -387,6 +393,7 @@ interface Props {
 }
 
 export default function PublishDashboard({ masterProductId }: Props) {
+  const t = useT();
   const router = useRouter();
   const searchParams = useSearchParams();
   const { organization } = useAuth();
@@ -510,7 +517,7 @@ export default function PublishDashboard({ masterProductId }: Props) {
       const byStore = new Map(listings.map((l) => [l.storeId, l]));
       setStoreData(data.map((d) => mergeListing(d, byStore.get(d.storeId))));
     } catch (err) {
-      setLoadError(err instanceof Error ? err.message : "Failed to load store data");
+      setLoadError(err instanceof Error ? err.message : t("pubdash.loadError", "Failed to load store data"));
     } finally {
       setLoading(false);
     }
@@ -579,12 +586,12 @@ export default function PublishDashboard({ masterProductId }: Props) {
       const result = await analyzePatternMatching(request);
 
       if (result.status === "ERROR") {
-        throw new Error(result.message ?? "Pattern matching failed");
+        throw new Error(result.message ?? t("pubdash.err.patternMatching", "Pattern matching failed"));
       }
 
       setAnalysisByChannel((prev) => ({ ...prev, [store.channelType]: result }));
     } catch (err) {
-      setAnalyzeError(err instanceof Error ? err.message : "Analysis failed");
+      setAnalyzeError(err instanceof Error ? err.message : t("pubdash.err.analysis", "Analysis failed"));
     } finally {
       setIsAnalyzing(false);
     }
@@ -645,8 +652,8 @@ export default function PublishDashboard({ masterProductId }: Props) {
         channelProductId,
         channelUrl,
         error:
-          outcome === "FAILED" ? (raw.error ?? raw.message ?? "Publish failed")
-          : outcome === "BLOCKED" ? (raw.message ?? "Update untuk listing yang sudah tayang belum tersedia di channel ini.")
+          outcome === "FAILED" ? (raw.error ?? raw.message ?? t("pubdash.err.publishFailed", "Publish failed"))
+          : outcome === "BLOCKED" ? (raw.message ?? t("pubdash.err.updateBlocked", "Updating an already-live listing isn't available on this channel yet."))
           : undefined,
         fieldErrors: outcome === "FAILED" ? raw.fieldErrors : undefined,
       },
@@ -678,7 +685,7 @@ export default function PublishDashboard({ masterProductId }: Props) {
         prev.map((d) =>
           d.storeId === storeId
             ? wasLive
-              ? { ...d, status: "PUBLISHED", publishError: raw.error ?? raw.message ?? "Update gagal" }
+              ? { ...d, status: "PUBLISHED", publishError: raw.error ?? raw.message ?? t("pubdash.err.updateFailed", "Update failed") }
               : { ...d, status: "FAILED", publishError: raw.error ?? raw.message }
             : d
         )
@@ -723,7 +730,7 @@ export default function PublishDashboard({ masterProductId }: Props) {
       // anything non-terminal (PROCESSING/PENDING/blank) → keep polling, never a false failure.
       await settleStore(storeId, result);
     } catch (err) {
-      const msg = err instanceof Error ? err.message : "Publish failed";
+      const msg = err instanceof Error ? err.message : t("pubdash.err.publishFailed", "Publish failed");
       // Pre-flight gate (HTTP 400) carries per-field errors — surface them individually
       // so the merchant sees which fields to fix, not one opaque string. Merchant-fixable codes
       // (missing required field, or a resolved variant-axis issue) are "BLOCKED", not "FAILED".
@@ -782,9 +789,9 @@ export default function PublishDashboard({ masterProductId }: Props) {
         return "DELISTED";
       }
       if (outcome === "PROCESSING") return "PROCESSING";
-      throw new Error(resp.message ?? "Delist gagal");
+      throw new Error(resp.message ?? t("pubdash.err.delistFailed", "Delist failed"));
     } catch (err) {
-      setDelistError(err instanceof Error ? err.message : "Delist gagal");
+      setDelistError(err instanceof Error ? err.message : t("pubdash.err.delistFailed", "Delist failed"));
       return "FAILED";
     } finally {
       setDelistingStores((prev) => {
@@ -870,7 +877,7 @@ export default function PublishDashboard({ masterProductId }: Props) {
         })
       );
     } catch (err) {
-      setBatchError(err instanceof Error ? err.message : "Batch publish failed");
+      setBatchError(err instanceof Error ? err.message : t("pubdash.err.batchPublish", "Batch publish failed"));
     } finally {
       setBatchPublishing(false);
     }
@@ -936,11 +943,11 @@ export default function PublishDashboard({ masterProductId }: Props) {
             className="mb-2"
           >
             <ArrowLeft className="h-4 w-4 mr-2" />
-            Back to Channel Fields
+            {t("pubdash.backToChannelFields", "Back to Channel Fields")}
           </Button>
-          <h1 className="text-3xl font-bold">Publish to Sales Channel</h1>
+          <h1 className="text-3xl font-bold">{t("pubdash.title", "Publish to Sales Channel")}</h1>
           <p className="text-gray-600 dark:text-gray-400">
-            Cek kesiapan produk, lalu publish ke toko yang terhubung.
+            {t("pubdash.subtitle", "Check product readiness, then publish to your connected stores.")}
           </p>
         </div>
         <ViewModeToggle value={viewMode} onChange={setViewMode} />
@@ -948,11 +955,11 @@ export default function PublishDashboard({ masterProductId }: Props) {
 
       {/* Breadcrumb */}
       <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
-        <Link href={`/products/${masterProductId}/edit`} className="hover:text-brand-500 transition-colors">Step 1: Master Product</Link>
+        <Link href={`/products/${masterProductId}/edit`} className="hover:text-brand-500 transition-colors">{t("pubdash.breadcrumb.step1", "Step 1: Master Product")}</Link>
         <span>›</span>
-        <Link href={channelFieldsUrl} className="hover:text-brand-500 transition-colors">Step 2: Channel Fields</Link>
+        <Link href={channelFieldsUrl} className="hover:text-brand-500 transition-colors">{t("pubdash.breadcrumb.step2", "Step 2: Channel Fields")}</Link>
         <span>›</span>
-        <span className="font-medium text-gray-900 dark:text-white">Step 3: Preview &amp; Publish</span>
+        <span className="font-medium text-gray-900 dark:text-white">{t("pubdash.breadcrumb.step3", "Step 3: Preview & Publish")}</span>
       </div>
 
       {/* Loading */}
@@ -960,7 +967,7 @@ export default function PublishDashboard({ masterProductId }: Props) {
         <div className="flex items-center justify-center py-20">
           <div className="text-center">
             <div className="inline-block h-10 w-10 rounded-full border-4 border-brand-500 border-t-transparent animate-spin mb-3" />
-            <p className="text-sm text-gray-500 dark:text-gray-400">Loading store data…</p>
+            <p className="text-sm text-gray-500 dark:text-gray-400">{t("pubdash.loading", "Loading store data…")}</p>
           </div>
         </div>
       )}
@@ -968,10 +975,10 @@ export default function PublishDashboard({ masterProductId }: Props) {
       {/* Load error */}
       {!loading && loadError && (
         <div className="rounded-2xl bg-error-50 dark:bg-error-500/10 border border-error-200 dark:border-error-500/30 px-6 py-5">
-          <p className="font-medium text-error-700 dark:text-error-400">Failed to load store data</p>
+          <p className="font-medium text-error-700 dark:text-error-400">{t("pubdash.loadError", "Failed to load store data")}</p>
           <p className="text-sm text-error-600 dark:text-error-300 mt-1">{loadError}</p>
           <button onClick={loadData} className="mt-3 px-4 py-2 rounded-lg text-sm font-medium bg-error-100 dark:bg-error-500/20 text-error-700 dark:text-error-400 hover:bg-error-200 transition-colors">
-            Retry
+            {t("common.retry", "Retry")}
           </button>
         </div>
       )}
@@ -980,10 +987,10 @@ export default function PublishDashboard({ masterProductId }: Props) {
       {!loading && !loadError && storeData.length === 0 && (
         <div className="flex flex-col items-center justify-center py-20 text-center">
           <div className="h-16 w-16 rounded-2xl bg-gray-100 dark:bg-gray-800 flex items-center justify-center mb-4 text-2xl">📦</div>
-          <p className="font-medium text-gray-900 dark:text-white">No channel data found</p>
-          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Go back to Step 2 to fill channel-specific fields.</p>
+          <p className="font-medium text-gray-900 dark:text-white">{t("pubdash.empty.title", "No channel data found")}</p>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">{t("pubdash.empty.desc", "Go back to Step 2 to fill channel-specific fields.")}</p>
           <Button onClick={() => router.push(channelFieldsUrl)} className="mt-4">
-            ← Back to Channel Fields
+            ← {t("pubdash.backToChannelFields", "Back to Channel Fields")}
           </Button>
         </div>
       )}
@@ -1031,46 +1038,46 @@ export default function PublishDashboard({ masterProductId }: Props) {
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <Package className="h-5 w-5" />
-                  Master Product
+                  {t("pubdash.masterProduct", "Master Product")}
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
                 {product ? (
                   <>
                     <div>
-                      <div className="text-sm text-gray-600 dark:text-gray-400">Product Name</div>
+                      <div className="text-sm text-gray-600 dark:text-gray-400">{t("pubdash.field.productName", "Product Name")}</div>
                       <div className="font-medium">{product.name ?? "—"}</div>
                     </div>
                     <div>
-                      <div className="text-sm text-gray-600 dark:text-gray-400">SKU</div>
+                      <div className="text-sm text-gray-600 dark:text-gray-400">{t("pubdash.field.sku", "SKU")}</div>
                       <div className="font-medium">{product.sku ?? "—"}</div>
                     </div>
                     {product.price != null && (
                       <div>
-                        <div className="text-sm text-gray-600 dark:text-gray-400">Price</div>
+                        <div className="text-sm text-gray-600 dark:text-gray-400">{t("pubdash.field.price", "Price")}</div>
                         <div className="font-medium">${product.price.toFixed(2)}</div>
                       </div>
                     )}
                     {product.category && (
                       <div>
-                        <div className="text-sm text-gray-600 dark:text-gray-400">Category</div>
+                        <div className="text-sm text-gray-600 dark:text-gray-400">{t("pubdash.field.category", "Category")}</div>
                         <div className="font-medium">{product.category}</div>
                       </div>
                     )}
                     {product.brand && (
                       <div>
-                        <div className="text-sm text-gray-600 dark:text-gray-400">Brand</div>
+                        <div className="text-sm text-gray-600 dark:text-gray-400">{t("pubdash.field.brand", "Brand")}</div>
                         <div className="font-medium">{product.brand}</div>
                       </div>
                     )}
                   </>
                 ) : (
                   <div>
-                    <div className="text-sm text-gray-600 dark:text-gray-400">Product ID</div>
+                    <div className="text-sm text-gray-600 dark:text-gray-400">{t("pubdash.field.productId", "Product ID")}</div>
                     <div className="font-mono text-xs break-all">{masterProductId}</div>
                     {productMissing && (
                       <p className="text-xs text-warning-600 dark:text-warning-400 mt-2">
-                        ⚠ Data produk lengkap tidak ada di sesi. Masuk dari halaman buat produk untuk cek kesiapan.
+                        ⚠ {t("pubdash.productMissingSession", "Full product data isn't in this session. Enter from the create-product page to check readiness.")}
                       </p>
                     )}
                   </div>
@@ -1081,12 +1088,12 @@ export default function PublishDashboard({ masterProductId }: Props) {
             {/* Channel Readiness — KPI tiles */}
             <div className="grid grid-cols-2 gap-3">
               {[
-                { label: "Total",     value: storeData.length, color: "text-gray-700 dark:text-gray-300" },
-                { label: "Ready",     value: readyCount,       color: "text-brand-700 dark:text-brand-400" },
-                { label: "Published", value: publishedCount,   color: "text-success-700 dark:text-success-400" },
-                { label: "Failed",    value: failedCount,      color: "text-error-700 dark:text-error-400" },
+                { label: t("pubdash.kpi.total", "Total"),         value: storeData.length, color: "text-gray-700 dark:text-gray-300" },
+                { label: t("pubdash.kpi.ready", "Ready"),         value: readyCount,       color: "text-brand-700 dark:text-brand-400" },
+                { label: t("pubdash.kpi.published", "Published"), value: publishedCount,   color: "text-success-700 dark:text-success-400" },
+                { label: t("pubdash.kpi.failed", "Failed"),       value: failedCount,      color: "text-error-700 dark:text-error-400" },
                 ...(delistedCount > 0
-                  ? [{ label: "Delisted", value: delistedCount, color: "text-gray-500 dark:text-gray-400" }]
+                  ? [{ label: t("pubdash.kpi.delisted", "Delisted"), value: delistedCount, color: "text-gray-500 dark:text-gray-400" }]
                   : []),
               ].map((stat) => (
                 <div key={stat.label} className="bg-white dark:bg-white/[0.03] border border-gray-200 dark:border-gray-800 rounded-2xl px-4 py-3">
@@ -1099,7 +1106,7 @@ export default function PublishDashboard({ masterProductId }: Props) {
             {/* Connected Stores — select + analyze */}
             <Card>
               <CardHeader>
-                <CardTitle>Connected Stores</CardTitle>
+                <CardTitle>{t("pubdash.connectedStores", "Connected Stores")}</CardTitle>
               </CardHeader>
               <CardContent className="p-0">
                 {storeData.map((data) => {
@@ -1132,7 +1139,7 @@ export default function PublishDashboard({ masterProductId }: Props) {
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 onClick={(e) => e.stopPropagation()}
-                                title="Lihat di channel"
+                                title={t("publish.action.viewOnChannel", "View on channel")}
                                 className="text-gray-400 hover:text-brand-500"
                               >
                                 <ExternalLink className="h-3.5 w-3.5" />
@@ -1160,14 +1167,14 @@ export default function PublishDashboard({ masterProductId }: Props) {
                             if (product) handleAnalyze(data.storeId);
                           }}
                           disabled={!product || (isAnalyzing && selectedStoreId === data.storeId)}
-                          title={!product ? "Product data needed — navigate from create page" : undefined}
+                          title={!product ? t("pubdash.productDataNeeded", "Product data needed — navigate from create page") : undefined}
                         >
                           {isAnalyzing && selectedStoreId === data.storeId ? (
                             <RefreshCw className="h-3 w-3 animate-spin" />
                           ) : (
                             <span className="flex items-center gap-1">
                               <Brain className="h-3 w-3" />
-                              {hasAnalysis ? "Cek ulang" : "Cek"}
+                              {hasAnalysis ? t("pubdash.recheck", "Re-check") : t("pubdash.check", "Check")}
                             </span>
                           )}
                         </button>
@@ -1181,7 +1188,7 @@ export default function PublishDashboard({ masterProductId }: Props) {
             {/* Batch Actions */}
             <Card>
               <CardHeader>
-                <CardTitle>Batch Actions</CardTitle>
+                <CardTitle>{t("pubdash.batchActions", "Batch Actions")}</CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
                 <Button
@@ -1190,8 +1197,8 @@ export default function PublishDashboard({ masterProductId }: Props) {
                   className="w-full"
                 >
                   {batchPublishing
-                    ? <><RefreshCw className="h-4 w-4 mr-2 animate-spin" />Publishing…</>
-                    : <><Send className="h-4 w-4 mr-2" />Publish All Ready ({readyCount})</>
+                    ? <><RefreshCw className="h-4 w-4 mr-2 animate-spin" />{t("publish.sub.publishing", "Publishing…")}</>
+                    : <><Send className="h-4 w-4 mr-2" />{t("pubdash.publishAllReady", "Publish All Ready ({n})").replace("{n}", String(readyCount))}</>
                   }
                 </Button>
                 {batchError && (
@@ -1203,7 +1210,7 @@ export default function PublishDashboard({ masterProductId }: Props) {
                   className="w-full"
                 >
                   <ArrowLeft className="h-4 w-4 mr-2" />
-                  Edit Channel Fields
+                  {t("pubdash.editChannelFields", "Edit Channel Fields")}
                 </Button>
               </CardContent>
             </Card>
@@ -1217,12 +1224,12 @@ export default function PublishDashboard({ masterProductId }: Props) {
                     <div>
                       <p className="text-sm font-semibold text-success-800 dark:text-success-300">
                         {publishedCount === storeData.length
-                          ? "All channels published!"
-                          : `${publishedCount} of ${storeData.length} channels published`}
+                          ? t("pubdash.allPublished", "All channels published!")
+                          : t("pubdash.nPublished", "{n} of {total} channels published").replace("{n}", String(publishedCount)).replace("{total}", String(storeData.length))}
                       </p>
                       {failedCount > 0 && (
                         <p className="text-xs text-error-600 dark:text-error-400 mt-0.5">
-                          {failedCount} channel{failedCount !== 1 ? "s" : ""} failed — fix above and retry
+                          {t("pubdash.nFailed", "{n} channel(s) failed — fix above and retry").replace("{n}", String(failedCount))}
                         </p>
                       )}
                     </div>
@@ -1233,13 +1240,13 @@ export default function PublishDashboard({ masterProductId }: Props) {
                       className="w-full"
                       onClick={() => router.push(`/products/${masterProductId}`)}
                     >
-                      View product
+                      {t("publish.viewProduct", "View product")}
                     </Button>
                     <button
                       onClick={() => router.push("/products/v2/create")}
                       className="w-full text-sm text-center text-gray-500 dark:text-gray-400 hover:text-brand-600 dark:hover:text-brand-400 transition-colors py-1"
                     >
-                      + Create another product
+                      + {t("pubdash.createAnotherProduct", "Create another product")}
                     </button>
                   </div>
                 </CardContent>
@@ -1255,9 +1262,9 @@ export default function PublishDashboard({ masterProductId }: Props) {
               <Card>
                 <CardContent className="p-12 text-center">
                   <Info className="h-12 w-12 mx-auto text-gray-400 mb-4" />
-                  <h3 className="text-lg font-semibold mb-2">Select a Store to Begin</h3>
+                  <h3 className="text-lg font-semibold mb-2">{t("pubdash.selectStore.title", "Select a Store to Begin")}</h3>
                   <p className="text-gray-600 dark:text-gray-400">
-                    Pilih toko yang terhubung di panel kiri untuk mempublish produk kamu.
+                    {t("pubdash.selectStore.desc", "Pick a connected store in the left panel to publish your product.")}
                   </p>
                 </CardContent>
               </Card>
@@ -1274,8 +1281,8 @@ export default function PublishDashboard({ masterProductId }: Props) {
                         <div>
                           <p className="font-semibold">{currentStoreData.storeName ?? currentStoreData.storeId}</p>
                           <div className="flex items-center gap-2 mt-1">
-                            {currentLifecycle ? <LifecycleBadge lc={currentLifecycle} /> : statusBadge(currentPublishStatus)}
-                            <span className="text-xs text-gray-500">{currentStoreData.completionPercentage}% complete</span>
+                            {currentLifecycle ? <LifecycleBadge lc={currentLifecycle} /> : statusBadge(currentPublishStatus, t)}
+                            <span className="text-xs text-gray-500">{currentStoreData.completionPercentage}% {t("pubdash.complete", "complete")}</span>
                             {currentLifecycle?.channelUrl && (
                               <a
                                 href={currentLifecycle.channelUrl}
@@ -1283,7 +1290,7 @@ export default function PublishDashboard({ masterProductId }: Props) {
                                 rel="noopener noreferrer"
                                 className="inline-flex items-center gap-1 text-xs font-medium text-brand-600 dark:text-brand-400 hover:underline"
                               >
-                                <ExternalLink className="h-3.5 w-3.5" /> Lihat di channel
+                                <ExternalLink className="h-3.5 w-3.5" /> {t("publish.action.viewOnChannel", "View on channel")}
                               </a>
                             )}
                           </div>
@@ -1297,17 +1304,17 @@ export default function PublishDashboard({ masterProductId }: Props) {
                           disabled={isAnalyzing || !product}
                         >
                           {isAnalyzing
-                            ? <><RefreshCw className="h-4 w-4 mr-2 animate-spin" />Memeriksa…</>
-                            : <><Brain className="h-4 w-4 mr-2" />Cek kesiapan (opsional)</>
+                            ? <><RefreshCw className="h-4 w-4 mr-2 animate-spin" />{t("pubdash.checking", "Checking…")}</>
+                            : <><Brain className="h-4 w-4 mr-2" />{t("pubdash.checkReadiness", "Check readiness (optional)")}</>
                           }
                         </Button>
-                        <span title="Dry-run pipeline publish untuk debugging teknis — tidak mengirim ke channel">
+                        <span title={t("pubdash.diagnosticTitle", "Dry-run publish pipeline for technical debugging — nothing is sent to the channel")}>
                           <Button
                             variant="outline"
                             size="sm"
                             onClick={() => openDiagnose(selectedStoreId)}
                           >
-                            <Code className="h-4 w-4 mr-2" />Diagnostik
+                            <Code className="h-4 w-4 mr-2" />{t("pubdash.diagnostic", "Diagnostic")}
                           </Button>
                         </span>
                       </div>
@@ -1319,11 +1326,11 @@ export default function PublishDashboard({ masterProductId }: Props) {
                 {productMissing && (
                   <div className="rounded-2xl bg-warning-50 dark:bg-warning-500/10 border border-warning-200 dark:border-warning-500/30 px-6 py-4">
                     <p className="font-medium text-warning-700 dark:text-warning-400 flex items-center gap-2">
-                      <AlertTriangle className="h-4 w-4" /> Data produk tidak ada di sesi
+                      <AlertTriangle className="h-4 w-4" /> {t("pubdash.noProductSession.title", "No product data in this session")}
                     </p>
                     <p className="text-sm text-warning-600 dark:text-warning-300 mt-1">
-                      Cek kesiapan butuh data produk lengkap. Silakan masuk dari{" "}
-                      <Link href="/products/v2/create" className="underline">halaman buat produk</Link>.
+                      {t("pubdash.noProductSession.desc", "Checking readiness needs full product data. Please enter from the")}{" "}
+                      <Link href="/products/v2/create" className="underline">{t("pubdash.createProductPage", "create-product page")}</Link>.
                     </p>
                   </div>
                 )}
@@ -1332,7 +1339,7 @@ export default function PublishDashboard({ masterProductId }: Props) {
                 {analyzeError && (
                   <div className="rounded-2xl bg-error-50 dark:bg-error-500/10 border border-error-200 dark:border-error-500/30 px-6 py-4">
                     <p className="font-medium text-error-700 dark:text-error-400 flex items-center gap-2">
-                      <AlertTriangle className="h-4 w-4" /> Gagal memeriksa
+                      <AlertTriangle className="h-4 w-4" /> {t("pubdash.checkFailed", "Check failed")}
                     </p>
                     <p className="text-sm text-error-600 dark:text-error-300 mt-1">{analyzeError}</p>
                   </div>
@@ -1343,9 +1350,9 @@ export default function PublishDashboard({ masterProductId }: Props) {
                   <Card>
                     <CardContent className="p-12 text-center">
                       <RefreshCw className="h-12 w-12 mx-auto text-brand-600 animate-spin mb-4" />
-                      <h3 className="text-lg font-semibold mb-2">Memeriksa kesiapan produk…</h3>
+                      <h3 className="text-lg font-semibold mb-2">{t("pubdash.checkingReadiness", "Checking product readiness…")}</h3>
                       <p className="text-gray-600 dark:text-gray-400">
-                        Mencocokkan info produk kamu dengan format channel. Sebentar ya.
+                        {t("pubdash.checkingReadinessDesc", "Matching your product info against the channel format. One moment.")}
                       </p>
                     </CardContent>
                   </Card>
@@ -1373,12 +1380,12 @@ export default function PublishDashboard({ masterProductId }: Props) {
                     {(product || currentStoreData.masterOverrides) && (
                       <div className="mb-5 p-3 rounded-lg bg-gray-50 dark:bg-gray-800/40 border border-gray-200 dark:border-gray-700">
                         <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-2">
-                          Effective Values for {currentStoreData.channelType}
+                          {t("pubdash.effectiveValues", "Effective Values for {channel}").replace("{channel}", currentStoreData.channelType)}
                         </p>
-                        <EffectiveValueRow label="Title"    fieldName="name"           storeData={currentStoreData} master={product} />
-                        <EffectiveValueRow label="Price"    fieldName="price"          storeData={currentStoreData} master={product} />
-                        <EffectiveValueRow label="Stock"    fieldName="quantity"       storeData={currentStoreData} master={product} />
-                        <EffectiveValueRow label="Compare"  fieldName="compareAtPrice" storeData={currentStoreData} master={product} />
+                        <EffectiveValueRow label={t("pubdash.ev.title", "Title")}    fieldName="name"           storeData={currentStoreData} master={product} />
+                        <EffectiveValueRow label={t("pubdash.ev.price", "Price")}    fieldName="price"          storeData={currentStoreData} master={product} />
+                        <EffectiveValueRow label={t("pubdash.ev.stock", "Stock")}    fieldName="quantity"       storeData={currentStoreData} master={product} />
+                        <EffectiveValueRow label={t("pubdash.ev.compare", "Compare")}  fieldName="compareAtPrice" storeData={currentStoreData} master={product} />
                       </div>
                     )}
                     {(() => {
@@ -1388,16 +1395,16 @@ export default function PublishDashboard({ masterProductId }: Props) {
                       const delisting = delistingStores.has(storeId);
                       const r = publishResults[storeId];
                       const HEADLINE: Record<string, string> = {
-                        draft: "Ready to Publish?",
-                        ready: "Ready to Publish?",
-                        publishing: "Publishing…",
-                        processing: "Masih diproses…",
-                        live: "Listing tayang",
-                        live_changed: "Ada perubahan belum ter-publish",
-                        blocked: "Perlu tindakan",
-                        update_failed: "Masih tayang — update terakhir gagal",
-                        failed: "Publish gagal",
-                        delisted: "Listing sudah di-delist",
+                        draft: t("pubdash.headline.ready", "Ready to Publish?"),
+                        ready: t("pubdash.headline.ready", "Ready to Publish?"),
+                        publishing: t("publish.sub.publishing", "Publishing…"),
+                        processing: t("pubdash.headline.processing", "Still processing…"),
+                        live: t("pubdash.headline.live", "Listing is live"),
+                        live_changed: t("pubdash.headline.liveChanged", "Unpublished changes pending"),
+                        blocked: t("pubdash.headline.blocked", "Action needed"),
+                        update_failed: t("publish.sub.updateFailed", "Still live — last update failed"),
+                        failed: t("pubdash.headline.failed", "Publish failed"),
+                        delisted: t("pubdash.headline.delisted", "Listing has been delisted"),
                       };
                       // The idempotent-update gate (200 BLOCKED, operation=UPDATE) is distinct from the
                       // pre-flight gate (missing required fields) — the former routes to Delist & Republish.
@@ -1411,7 +1418,7 @@ export default function PublishDashboard({ masterProductId }: Props) {
                           disabled={inFlight || delisting || batchPublishing}
                         >
                           {inFlight
-                            ? <><RefreshCw className="h-4 w-4 mr-2 animate-spin" />Publishing…</>
+                            ? <><RefreshCw className="h-4 w-4 mr-2 animate-spin" />{t("publish.sub.publishing", "Publishing…")}</>
                             : <><Send className="h-4 w-4 mr-2" />{label}</>}
                         </Button>
                       );
@@ -1420,52 +1427,52 @@ export default function PublishDashboard({ masterProductId }: Props) {
                         <>
                           <div className="flex flex-wrap items-center justify-between gap-4">
                             <div>
-                              <h3 className="font-semibold text-lg mb-1">{HEADLINE[lc.state] ?? "Publish"}</h3>
+                              <h3 className="font-semibold text-lg mb-1">{HEADLINE[lc.state] ?? t("publish.rowAction.publish", "Publish")}</h3>
                               <p className="text-sm text-gray-600 dark:text-gray-400">
                                 <strong>{currentStoreData.storeName ?? storeId}</strong> ·{" "}
                                 <strong className="capitalize">{currentStoreData.channelType}</strong>
                               </p>
                               {!lc.isLive && lc.state !== "delisted" && currentStoreData.completionPercentage < 100 && (
                                 <p className="text-xs text-warning-600 dark:text-warning-400 mt-1">
-                                  ⚠ {currentStoreData.completionPercentage}% complete — some required fields may be missing
+                                  ⚠ {t("pubdash.completeWarning", "{pct}% complete — some required fields may be missing").replace("{pct}", String(currentStoreData.completionPercentage))}
                                 </p>
                               )}
                               {lc.channelProductId && (
-                                <p className="text-xs text-gray-400 dark:text-gray-500 mt-1 font-mono">Listing id: {lc.channelProductId}</p>
+                                <p className="text-xs text-gray-400 dark:text-gray-500 mt-1 font-mono">{t("pubdash.listingId", "Listing id:")} {lc.channelProductId}</p>
                               )}
                             </div>
 
                             {/* Contextual primary action (§3) */}
                             <div className="flex items-center gap-2">
-                              {lc.state === "publishing" && publishBtn("Publishing…")}
+                              {lc.state === "publishing" && publishBtn(t("publish.sub.publishing", "Publishing…"))}
                               {lc.state === "processing" && (
                                 <span className="flex items-center gap-2 text-warning-600 dark:text-warning-400">
-                                  <RefreshCw className="h-5 w-5 animate-spin" /><span className="font-medium">Masih diproses…</span>
+                                  <RefreshCw className="h-5 w-5 animate-spin" /><span className="font-medium">{t("pubdash.headline.processing", "Still processing…")}</span>
                                 </span>
                               )}
-                              {(lc.state === "draft" || lc.state === "ready") && publishBtn("Publish to Store")}
-                              {lc.state === "failed" && publishBtn("Coba lagi")}
-                              {lc.state === "update_failed" && publishBtn("Coba update lagi")}
-                              {lc.state === "delisted" && publishBtn("Publish ulang")}
+                              {(lc.state === "draft" || lc.state === "ready") && publishBtn(t("pubdash.publishToStore", "Publish to Store"))}
+                              {lc.state === "failed" && publishBtn(t("publish.rowAction.retry", "Try again"))}
+                              {lc.state === "update_failed" && publishBtn(t("publish.rowAction.retryUpdate", "Try update again"))}
+                              {lc.state === "delisted" && publishBtn(t("publish.rowAction.republish", "Re-publish"))}
                               {/* Live listing — the update action reflects the authoritative dirty-state
                                   diff (DiffEngine): disabled "Up to date" when clean, "Perbarui listing (N)"
                                   when dirty, disabled hint when the channel can't push updates yet. */}
                               {lc.state === "live" && lc.diffKnown && (
-                                <Button variant="outline" disabled>Up to date</Button>
+                                <Button variant="outline" disabled>{t("pubdash.upToDate", "Up to date")}</Button>
                               )}
                               {lc.state === "live" && !lc.diffKnown && (
-                                <span title="Kirim perubahan ke channel — backend memutuskan UPDATE atau NO-OP">
-                                  {publishBtn("Perbarui listing", false)}
+                                <span title={t("pubdash.updateHint", "Send changes to the channel — the backend decides UPDATE or NO-OP")}>
+                                  {publishBtn(t("pubdash.updateListing", "Update listing"), false)}
                                 </span>
                               )}
                               {lc.state === "live_changed" && !lc.updateBlocked &&
-                                publishBtn(`Perbarui listing${lc.changeCount ? ` (${lc.changeCount})` : ""}`, true)}
+                                publishBtn(`${t("pubdash.updateListing", "Update listing")}${lc.changeCount ? ` (${lc.changeCount})` : ""}`, true)}
                               {lc.state === "live_changed" && lc.updateBlocked && (
-                                <Button variant="outline" disabled>Update belum didukung</Button>
+                                <Button variant="outline" disabled>{t("pubdash.updateNotSupported", "Update not supported yet")}</Button>
                               )}
                               {/* Pre-flight block (missing fields) keeps a retry; the update-gate block
                                   routes through the banner's Delist & re-publish instead. */}
-                              {lc.state === "blocked" && preflightBlocked && publishBtn("Coba lagi")}
+                              {lc.state === "blocked" && preflightBlocked && publishBtn(t("publish.rowAction.retry", "Try again"))}
                             </div>
                           </div>
 
@@ -1485,15 +1492,15 @@ export default function PublishDashboard({ masterProductId }: Props) {
                             const vChanged = (v.add?.length ?? 0) + (v.update?.length ?? 0) + (v.delete?.length ?? 0);
                             const imgChanged = df.summary?.imagesChanged ?? 0;
                             const parts: string[] = [];
-                            if (df.product?.changed) parts.push("info produk");
-                            if (vChanged) parts.push(`${vChanged} varian`);
-                            if (imgChanged) parts.push(`${imgChanged} gambar`);
+                            if (df.product?.changed) parts.push(t("pubdash.changed.productInfo", "product info"));
+                            if (vChanged) parts.push(t("pubdash.changed.variants", "{n} variants").replace("{n}", String(vChanged)));
+                            if (imgChanged) parts.push(t("pubdash.changed.images", "{n} images").replace("{n}", String(imgChanged)));
                             if (parts.length === 0) return null;
                             return (
                               <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
-                                Perubahan siap dikirim: {parts.join(", ")}.
+                                {t("pubdash.changesReady", "Changes ready to send:")} {parts.join(", ")}.
                                 {imgChanged > 0 && (
-                                  <span className="text-gray-400 dark:text-gray-500"> (hitungan gambar masih perkiraan)</span>
+                                  <span className="text-gray-400 dark:text-gray-500"> {t("pubdash.imageCountApprox", "(image count is still an estimate)")}</span>
                                 )}
                               </p>
                             );
@@ -1507,14 +1514,14 @@ export default function PublishDashboard({ masterProductId }: Props) {
                                 disabled={delisting}
                                 className="inline-flex items-center gap-1.5 text-sm font-medium text-error-600 dark:text-error-400 hover:underline disabled:opacity-50"
                               >
-                                <Trash2 className="h-4 w-4" /> {delisting ? "Menghapus…" : "Delist"}
+                                <Trash2 className="h-4 w-4" /> {delisting ? t("store.deleting", "Deleting…") : t("publish.action.delist", "Delist")}
                               </button>
                             )}
                             <button
                               onClick={() => openHistory(currentStoreData)}
                               className="inline-flex items-center gap-1.5 text-sm font-medium text-gray-500 dark:text-gray-400 hover:text-brand-600 dark:hover:text-brand-400 hover:underline"
                             >
-                              <Clock className="h-4 w-4" /> Riwayat
+                              <Clock className="h-4 w-4" /> {t("publish.action.history", "History")}
                             </button>
                           </div>
 
@@ -1522,17 +1529,16 @@ export default function PublishDashboard({ masterProductId }: Props) {
                           {lc.state === "processing" && (
                             <div className="mt-3 p-3 rounded-lg border bg-warning-50 dark:bg-warning-500/10 border-warning-200 dark:border-warning-500/30">
                               <p className="text-sm font-medium flex items-center gap-2 text-warning-700 dark:text-warning-400">
-                                <RefreshCw className="h-4 w-4 flex-shrink-0 animate-spin" /> Masih diproses di channel
+                                <RefreshCw className="h-4 w-4 flex-shrink-0 animate-spin" /> {t("pubdash.processing.title", "Still processing on the channel")}
                               </p>
                               <p className="mt-1 text-sm text-warning-600 dark:text-warning-300">
-                                Publish belum selesai — listing dengan banyak gambar bisa butuh waktu lebih lama.
-                                Status akan diperbarui otomatis; kalau perlu, muat ulang untuk melihat hasil akhirnya.
+                                {t("pubdash.processing.desc", "Publish isn't finished yet — listings with many images can take longer. The status updates automatically; reload to see the final result if needed.")}
                               </p>
                               <button
                                 onClick={loadData}
                                 className="mt-2 inline-flex items-center gap-1 text-xs font-medium text-brand-600 dark:text-brand-400 hover:underline"
                               >
-                                <RefreshCw className="h-3.5 w-3.5" /> Muat ulang status
+                                <RefreshCw className="h-3.5 w-3.5" /> {t("pubdash.reloadStatus", "Reload status")}
                               </button>
                             </div>
                           )}
@@ -1541,10 +1547,10 @@ export default function PublishDashboard({ masterProductId }: Props) {
                           {lc.state === "update_failed" && (
                             <div className="mt-3 p-3 rounded-lg border bg-success-50 dark:bg-success-500/10 border-success-200 dark:border-success-500/30">
                               <p className="text-sm font-medium flex items-center gap-2 text-success-700 dark:text-success-400">
-                                <CheckCircle2 className="h-4 w-4 flex-shrink-0" /> Masih tayang di channel
+                                <CheckCircle2 className="h-4 w-4 flex-shrink-0" /> {t("pubdash.stillLive.title", "Still live on the channel")}
                               </p>
                               <p className="mt-1 text-sm text-success-700/80 dark:text-success-300">
-                                Update terakhir gagal, tapi listing tetap aktif dan bisa dibeli. Silakan coba update lagi.
+                                {t("pubdash.stillLive.desc", "The last update failed, but the listing stays active and buyable. Try updating again.")}
                                 {currentStoreData.publishError ? ` (${currentStoreData.publishError})` : ""}
                               </p>
                             </div>
@@ -1556,18 +1562,17 @@ export default function PublishDashboard({ masterProductId }: Props) {
                           {(updateGateBlocked || (lc.state === "live_changed" && lc.updateBlocked)) && (
                             <div className="mt-3 p-3 rounded-lg border bg-warning-50 dark:bg-warning-500/10 border-warning-200 dark:border-warning-500/30">
                               <p className="text-sm font-medium flex items-center gap-2 text-warning-700 dark:text-warning-400">
-                                <AlertTriangle className="h-4 w-4 flex-shrink-0" /> Update listing live belum tersedia
+                                <AlertTriangle className="h-4 w-4 flex-shrink-0" /> {t("pubdash.updateGate.title", "Updating a live listing isn't available yet")}
                               </p>
                               <p className="mt-1 text-sm text-warning-600 dark:text-warning-300">
-                                Ada perubahan, tapi mengubah listing yang sudah tayang belum aktif untuk channel ini.
-                                Delist listing lalu publish ulang, atau tunggu dukungan update aktif.
+                                {t("pubdash.updateGate.desc", "There are changes, but editing a live listing isn't active for this channel yet. Delist the listing then re-publish, or wait for update support.")}
                               </p>
                               <button
                                 onClick={() => handleDelistThenRepublish(storeId)}
                                 disabled={delisting || inFlight}
                                 className="mt-2 inline-flex items-center gap-1.5 rounded-lg bg-warning-500 px-3 py-1.5 text-sm font-semibold text-white hover:bg-warning-600 disabled:opacity-60"
                               >
-                                <RefreshCw className={`h-4 w-4 ${delisting || inFlight ? "animate-spin" : ""}`} /> Delist &amp; Publish ulang
+                                <RefreshCw className={`h-4 w-4 ${delisting || inFlight ? "animate-spin" : ""}`} /> {t("publish.rowAction.delistRepublish", "Delist & re-publish")}
                               </button>
                             </div>
                           )}
@@ -1586,7 +1591,7 @@ export default function PublishDashboard({ masterProductId }: Props) {
                                   blocked ? "text-warning-700 dark:text-warning-400" : "text-error-700 dark:text-error-400"
                                 }`}>
                                   <AlertTriangle className="h-4 w-4 flex-shrink-0" />
-                                  {blocked ? "Lengkapi field berikut sebelum publish" : "Publish gagal — belum tayang"}
+                                  {blocked ? t("pubdash.fixFieldsBefore", "Complete the following fields before publishing") : t("publish.sub.failed", "Publishing failed — not live")}
                                 </p>
                                 {fe.length > 0 ? (
                                   <ul className="mt-2 space-y-1.5">
@@ -1602,7 +1607,7 @@ export default function PublishDashboard({ masterProductId }: Props) {
                                   </ul>
                                 ) : (
                                   <p className={`mt-1 text-sm ${blocked ? "text-warning-600 dark:text-warning-300" : "text-error-600 dark:text-error-400"}`}>
-                                    {r?.error ?? "Publish failed"}
+                                    {r?.error ?? t("pubdash.publishFailedFallback", "Publish failed")}
                                   </p>
                                 )}
                                 {blocked && (
@@ -1610,14 +1615,14 @@ export default function PublishDashboard({ masterProductId }: Props) {
                                     href={channelFieldsUrl}
                                     className="mt-2 inline-flex items-center gap-1 text-sm font-medium text-brand-600 dark:text-brand-400 hover:underline"
                                   >
-                                    Lengkapi di Channel Fields →
+                                    {t("pubdash.completeInChannelFields", "Complete in Channel Fields →")}
                                   </Link>
                                 )}
                                 <button
                                   onClick={() => openDiagnose(storeId)}
                                   className="mt-2 flex items-center gap-1 text-xs font-medium text-gray-500 dark:text-gray-400 hover:text-brand-600 dark:hover:text-brand-400 hover:underline"
                                 >
-                                  <Code className="h-3.5 w-3.5" /> Kenapa gagal? Lihat diagnostik pipeline
+                                  <Code className="h-3.5 w-3.5" /> {t("pubdash.whyFailed", "Why did it fail? See pipeline diagnostics")}
                                 </button>
                               </div>
                             );

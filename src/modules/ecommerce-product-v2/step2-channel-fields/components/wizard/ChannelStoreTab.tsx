@@ -22,6 +22,7 @@ import VariantImagesDrawer from "./VariantImagesDrawer";
 import MerchantChannelView from "./MerchantChannelView";
 import { ProductTypeService } from "@/app/(admin)/omni-admin/product-types/_services/product-type.service";
 import { normaliseChannelType, applyChannelCategoryDefault } from "../../utils/categoryPrefill";
+import { useT } from "@/shared/contexts/LocaleContext";
 
 const BASE = "http://localhost:8888/labamap/api/v1";
 
@@ -89,6 +90,7 @@ function SectionHeader({
   variant?: "required" | "optional" | "default";
   right?: React.ReactNode;
 }) {
+  const t = useT();
   const stripeClass = {
     required: "border-l-4 border-l-orange-400 dark:border-l-orange-500 border border-orange-200/60 dark:border-orange-500/20 bg-orange-50/40 dark:bg-orange-500/5",
     optional:  "border-l-4 border-l-gray-300 dark:border-l-gray-600 border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/40",
@@ -100,12 +102,12 @@ function SectionHeader({
       <div className="flex items-center gap-2.5 min-w-0">
         {variant === "required" && (
           <span className="text-[10px] font-bold text-orange-500 dark:text-orange-400 uppercase tracking-wider flex-shrink-0">
-            Required
+            {t("wizard.tag.required", "Required")}
           </span>
         )}
         {variant === "optional" && (
           <span className="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider flex-shrink-0">
-            Optional
+            {t("wizard.tag.optional", "Optional")}
           </span>
         )}
         <span className="text-sm font-semibold text-gray-800 dark:text-gray-200 truncate">{label}</span>
@@ -118,12 +120,12 @@ function SectionHeader({
         {onToggle ? (
           <>
             <span className="text-xs text-gray-400 dark:text-gray-500 hidden sm:block">
-              {expanded ? "Collapse" : "Expand"}
+              {expanded ? t("common.collapse", "Collapse") : t("common.expand", "Expand")}
             </span>
             <ChevronIcon expanded={expanded} className="text-gray-400" />
           </>
         ) : variant === "required" ? (
-          <span className="text-xs text-orange-400 dark:text-orange-500">mandatory</span>
+          <span className="text-xs text-orange-400 dark:text-orange-500">{t("wizard.section.mandatory", "mandatory")}</span>
         ) : null}
       </div>
     </div>
@@ -171,23 +173,24 @@ function FieldRow({
   /** Revert an overridden category attribute to inherit from master again. */
   onResetToMaster?: (fieldName: string) => void;
 }) {
+  const t = useT();
   const required = isRequiredProp ?? Boolean(field.required);
   const badge =
     provenance === "master" ? (
       <span className="inline-flex items-center rounded-full bg-gray-100 px-1.5 py-0.5 text-[10px] font-medium text-gray-500 dark:bg-gray-800 dark:text-gray-400">
-        dari master
+        {t("badge.fromMaster", "from master")}
       </span>
     ) : provenance === "override" ? (
       <span className="inline-flex items-center gap-1.5">
         <span className="inline-flex items-center rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 dark:bg-amber-500/15 dark:text-amber-400">
-          di-override
+          {t("badge.overridden", "overridden")}
         </span>
         <button
           type="button"
           onClick={() => onResetToMaster?.(field.fieldName)}
           className="text-[10px] font-medium text-brand-600 hover:underline dark:text-brand-400"
         >
-          reset ke master
+          {t("wizard.resetToMaster", "reset to master")}
         </button>
       </span>
     ) : null;
@@ -216,7 +219,7 @@ function FieldRow({
         <ChannelFieldInput field={field} value={value} onChange={onChange} validationRules={validationRulesProp} />
       </div>
       {hasError && (
-        <p className="text-xs text-red-500 mt-1">This field is required</p>
+        <p className="text-xs text-red-500 mt-1">{t("validation.fieldRequired", "This field is required")}</p>
       )}
       {field.helpText && !hasError && (
         <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">{field.helpText}</p>
@@ -362,6 +365,7 @@ function VariantAxisSummary({
   channelName: string;
   validation?: AxisValidationIssue[];
 }) {
+  const t = useT();
   const issues = validation ?? [];
   if (axes.length === 0 && issues.length === 0) return null;
 
@@ -369,17 +373,19 @@ function VariantAxisSummary({
     <div className="space-y-2">
       <div className="px-4 py-3 border-l-4 border-l-teal-400 dark:border-l-teal-500 border border-teal-200/60 dark:border-teal-500/20 bg-teal-50/40 dark:bg-teal-500/5 rounded-xl">
         <div className="flex items-center gap-2.5 mb-0.5">
-          <span className="text-[10px] font-bold text-teal-500 dark:text-teal-400 uppercase tracking-wider flex-shrink-0">Variant</span>
+          <span className="text-[10px] font-bold text-teal-500 dark:text-teal-400 uppercase tracking-wider flex-shrink-0">{t("wizard.tag.variant", "Variant")}</span>
           <span className="text-sm font-semibold text-teal-800 dark:text-teal-200">
-            Variant options → {channelName}
+            {t("wizard.axis.title", "Variant options → {channel}").replace("{channel}", channelName)}
           </span>
           <span className="text-xs bg-white dark:bg-gray-800 border border-teal-200 dark:border-teal-500/30 px-1.5 py-0.5 rounded-md text-teal-600 dark:text-teal-400 font-medium">
             {axes.length}
           </span>
         </div>
         <p className="text-xs text-teal-600 dark:text-teal-400">
-          Derived from your Step 1 variants — these are the dimensions your SKUs actually vary on.
-          Edit per-variant values in the table above; the option value lists follow automatically.
+          {t(
+            "wizard.axis.desc",
+            "Derived from your Step 1 variants — these are the dimensions your SKUs actually vary on. Edit per-variant values in the table above; the option value lists follow automatically."
+          )}
         </p>
       </div>
 
@@ -391,11 +397,11 @@ function VariantAxisSummary({
               className="flex items-center gap-3 px-3 py-2.5 rounded-lg border bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700"
             >
               <span className="text-xs bg-teal-100 dark:bg-teal-500/20 text-teal-700 dark:text-teal-300 px-1.5 py-0.5 rounded-md font-medium flex-shrink-0">
-                Option {idx + 1}
+                {t("wizard.axis.option", "Option {n}").replace("{n}", String(idx + 1))}
               </span>
               <span className="text-sm font-medium text-gray-800 dark:text-gray-200 flex-shrink-0">{axis.name}</span>
               <span className="text-xs text-gray-500 dark:text-gray-400 truncate">
-                {axis.values.length} value{axis.values.length === 1 ? "" : "s"} — {axis.values.join(", ")}
+                {axis.values.length} {t("wizard.axis.valueWord", "values")} — {axis.values.join(", ")}
               </span>
             </div>
           ))}
@@ -421,6 +427,7 @@ function VariantAxisSummary({
 // ── Main component ────────────────────────────────────────────────────────────
 
 export default function ChannelStoreTab({ schema, values, onChange, isSaving, lastSaved, masterProduct, masterProductId, fieldErrors, orgId = "", viewMode = "developer" }: Props) {
+  const t = useT();
   const [optionalExpanded, setOptionalExpanded] = useState(false);
   // SKU whose per-variant image editor modal is open (null = closed).
   const [editingImagesSku, setEditingImagesSku] = useState<string | null>(null);
@@ -653,7 +660,10 @@ export default function ChannelStoreTab({ schema, values, onChange, isSaving, la
     const names = masterBackedOverrides;   // channel-only overrides have no master to revert to → leave them
     if (names.length === 0) return;
     const ok = typeof window === "undefined" || window.confirm(
-      `Reset ${names.length} atribut ke master? Nilai override yang Anda set untuk atribut ini akan diganti nilai master.`
+      t(
+        "wizard.resetAllConfirm",
+        "Reset {n} attribute(s) to master? The override values you set for these attributes will be replaced with the master values."
+      ).replace("{n}", String(names.length))
     );
     if (!ok) return;
     const nextChannelData = { ...values.channelData };
@@ -786,11 +796,14 @@ export default function ChannelStoreTab({ schema, values, onChange, isSaving, la
         dimension: d.attributeName,
         code: "NOT_EXPRESSIBLE_ON_CHANNEL",
         severity: "WARNING",
-        message: `not offered as a variant option for this ${schema.storeName} category — SKUs differing only by ${d.attributeName} may collide. Pick a category that supports it, or adjust Step 1.`,
+        message: t(
+          "wizard.axis.notExpressible",
+          "not offered as a variant option for this {store} category — SKUs differing only by {dim} may collide. Pick a category that supports it, or adjust Step 1."
+        ).replace("{store}", schema.storeName).replace("{dim}", d.attributeName),
       });
     }
     return extra.length > 0 ? [...backend, ...extra] : backend;
-  }, [categoryAttrs?.axisValidation, resolvedAxes, masterProduct, schema.storeName]);
+  }, [categoryAttrs?.axisValidation, resolvedAxes, masterProduct, schema.storeName, t]);
 
   // Names of option{n} fields the backend explicitly declares as schema variant fields — we must
   // not prune per-SKU values for those (they belong to the backend, not to derived axes).
@@ -907,10 +920,10 @@ export default function ChannelStoreTab({ schema, values, onChange, isSaving, la
                 <polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/>
               </svg>
               <span className="text-xs text-brand-700 dark:text-brand-300">
-                Variant axes defined by <strong>{ptName}</strong>:{" "}
+                {t("wizard.variantAxesBy", "Variant axes defined by")} <strong>{ptName}</strong>:{" "}
                 {[...ptDims].sort((a, b) => a.order - b.order).map(d => d.attributeName).join(" × ")}
                 {ptDims.some(d => d.required) && (
-                  <span className="ml-1 text-brand-500 dark:text-brand-400">(required per SKU)</span>
+                  <span className="ml-1 text-brand-500 dark:text-brand-400">{t("wizard.requiredPerSku", "(required per SKU)")}</span>
                 )}
               </span>
             </div>
@@ -944,7 +957,7 @@ export default function ChannelStoreTab({ schema, values, onChange, isSaving, la
                 </span>
               </div>
               <span className="text-xs text-blue-500 dark:text-blue-400 italic hidden sm:block">
-                from your {schema.channelType} account
+                {t("wizard.merchantData.fromAccount", "from your {channel} account").replace("{channel}", schema.channelType)}
               </span>
             </div>
           </div>
@@ -1002,7 +1015,7 @@ export default function ChannelStoreTab({ schema, values, onChange, isSaving, la
       return (
         <div className="flex items-center gap-2.5 px-4 py-3 border-l-4 border-l-violet-400 dark:border-l-violet-500 border border-violet-200/60 dark:border-violet-500/20 bg-violet-50/40 dark:bg-violet-500/5 rounded-xl">
           <span className="h-3.5 w-3.5 rounded-full border-2 border-violet-500 border-t-transparent animate-spin flex-shrink-0" />
-          <span className="text-sm text-violet-700 dark:text-violet-300">Loading category fields…</span>
+          <span className="text-sm text-violet-700 dark:text-violet-300">{t("wizard.category.loading", "Loading category fields…")}</span>
         </div>
       );
     }
@@ -1011,7 +1024,7 @@ export default function ChannelStoreTab({ schema, values, onChange, isSaving, la
       return (
         <div className="px-4 py-3 rounded-xl border border-red-200 dark:border-red-500/30 bg-red-50 dark:bg-red-500/10">
           <span className="text-sm text-red-600 dark:text-red-400">
-            Failed to load category fields: {catAttrsError}
+            {t("wizard.category.loadError", "Failed to load category fields:")} {catAttrsError}
           </span>
         </div>
       );
@@ -1047,10 +1060,10 @@ export default function ChannelStoreTab({ schema, values, onChange, isSaving, la
             </svg>
             <div className="min-w-0">
               <p className="text-sm font-semibold text-violet-800 dark:text-violet-200">
-                Category-specific fields applied
+                {t("wizard.category.applied", "Category-specific fields applied")}
               </p>
               <p className="text-xs text-violet-600 dark:text-violet-400 mt-0.5 truncate">
-                {breadcrumb} — {optionalFields.length} optional
+                {breadcrumb} — {t("wizard.category.optionalCount", "{n} optional").replace("{n}", String(optionalFields.length))}
               </p>
             </div>
           </div>
@@ -1104,14 +1117,14 @@ export default function ChannelStoreTab({ schema, values, onChange, isSaving, la
           {/* Guarded bulk revert — only when this store has category-attribute overrides. Unobtrusive link + confirm. */}
           {overriddenCount > 0 && (
             <div className="mt-1.5 flex items-center gap-1.5">
-              <span className="text-[11px] text-violet-500 dark:text-violet-400">{overriddenCount} di-override</span>
+              <span className="text-[11px] text-violet-500 dark:text-violet-400">{t("wizard.category.overriddenCount", "{n} overridden").replace("{n}", String(overriddenCount))}</span>
               <span className="text-violet-300 dark:text-violet-600">·</span>
               <button
                 type="button"
                 onClick={handleResetAllToMaster}
                 className="text-[11px] font-medium text-brand-600 hover:underline dark:text-brand-400"
               >
-                reset semua ke master
+                {t("wizard.resetAllToMaster", "reset all to master")}
               </button>
             </div>
           )}
@@ -1147,7 +1160,7 @@ export default function ChannelStoreTab({ schema, values, onChange, isSaving, la
         {inactiveOptional.length > 0 && (
           <div className="flex flex-wrap items-center gap-2 pt-0.5">
             <span className="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider mr-0.5">
-              Add
+              {t("common.add", "Add")}
             </span>
             {inactiveOptional.map((f) => (
               <button
@@ -1379,18 +1392,18 @@ export default function ChannelStoreTab({ schema, values, onChange, isSaving, la
           /* No required fields — show a simple "no requirements" line */
           <div className="flex items-center justify-between gap-3">
             <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-success-50 dark:bg-success-500/10 text-success-700 dark:text-success-400">
-              ✓ No required fields
+              ✓ {t("wizard.noRequired", "No required fields")}
             </span>
             <div className="flex-shrink-0">
               {isSaving && (
                 <span className="flex items-center gap-1 text-xs text-gray-400 dark:text-gray-500">
                   <span className="h-1.5 w-1.5 rounded-full bg-gray-400 animate-pulse" />
-                  Saving…
+                  {t("common.saving", "Saving…")}
                 </span>
               )}
               {!isSaving && lastSaved && (
                 <span className="text-xs text-success-600 dark:text-success-400">
-                  ✓ Saved {lastSaved.toLocaleTimeString()}
+                  ✓ {t("common.savedAt", "Saved {t}").replace("{t}", lastSaved.toLocaleTimeString())}
                 </span>
               )}
             </div>
@@ -1417,7 +1430,11 @@ export default function ChannelStoreTab({ schema, values, onChange, isSaving, la
                   ? "bg-warning-50 dark:bg-warning-500/10 text-warning-600 dark:text-warning-400"
                   : "bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400"
               }`}>
-                {pct === 100 ? "✓ Complete" : pct > 0 ? "In progress" : "Not started"}
+                {pct === 100
+                  ? `✓ ${t("wizard.status.complete", "Complete")}`
+                  : pct > 0
+                  ? t("wizard.status.inProgress", "In progress")
+                  : t("wizard.status.notStarted", "Not started")}
               </span>
             </div>
 
@@ -1427,16 +1444,16 @@ export default function ChannelStoreTab({ schema, values, onChange, isSaving, la
                 <span className="text-xs text-gray-500 dark:text-gray-400">
                   <span className="font-medium tabular-nums">{stats.requiredFilled}</span>
                   <span className="text-gray-400 dark:text-gray-500">/{stats.requiredTotal}</span>
-                  <span className="ml-1">required</span>
+                  <span className="ml-1">{t("wizard.requiredWord", "required")}</span>
                 </span>
                 {stats.channelRequiredTotal > 0 && (
                   <span className="text-xs px-1.5 py-0.5 rounded-md bg-orange-50 dark:bg-orange-500/10 text-orange-600 dark:text-orange-400 font-medium tabular-nums">
-                    Ch {stats.channelRequiredFilled}/{stats.channelRequiredTotal}
+                    {t("wizard.abbrevChannel", "Ch")} {stats.channelRequiredFilled}/{stats.channelRequiredTotal}
                   </span>
                 )}
                 {stats.categoryRequiredTotal > 0 && (
                   <span className="text-xs px-1.5 py-0.5 rounded-md bg-violet-50 dark:bg-violet-500/10 text-violet-600 dark:text-violet-400 font-medium tabular-nums">
-                    Cat {stats.categoryRequiredFilled}/{stats.categoryRequiredTotal}
+                    {t("wizard.abbrevCategory", "Cat")} {stats.categoryRequiredFilled}/{stats.categoryRequiredTotal}
                   </span>
                 )}
               </div>
@@ -1444,12 +1461,12 @@ export default function ChannelStoreTab({ schema, values, onChange, isSaving, la
                 {isSaving && (
                   <span className="flex items-center gap-1 text-xs text-gray-400 dark:text-gray-500">
                     <span className="h-1.5 w-1.5 rounded-full bg-gray-400 animate-pulse" />
-                    Saving…
+                    {t("common.saving", "Saving…")}
                   </span>
                 )}
                 {!isSaving && lastSaved && (
                   <span className="text-xs text-success-600 dark:text-success-400">
-                    ✓ Saved {lastSaved.toLocaleTimeString()}
+                    ✓ {t("common.savedAt", "Saved {t}").replace("{t}", lastSaved.toLocaleTimeString())}
                   </span>
                 )}
               </div>

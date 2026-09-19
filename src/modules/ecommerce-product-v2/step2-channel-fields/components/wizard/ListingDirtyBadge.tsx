@@ -4,6 +4,7 @@ import { RefreshCw, CheckCircle2, AlertTriangle } from "@/shared/ui/icons/Icons"
 import { PublishService } from "../../services/channelStore.service";
 import type { PublishDiffResponse } from "../../types/channelStore";
 import { TONE_PILL } from "../../../step3-publish/utils/listing-lifecycle";
+import { useT } from "@/shared/contexts/LocaleContext";
 
 /**
  * Live-listing dirty-state badge for the Step-2 editor (DiffEngine 02-frontend-dirty-state §4.2).
@@ -71,6 +72,7 @@ export interface ListingDirtyBadgeProps {
 }
 
 export default function ListingDirtyBadge({ masterProductId, storeId, live, desired }: ListingDirtyBadgeProps) {
+  const t = useT();
   const { diff, loading } = usePublishDiff({ masterProductId, storeId, enabled: live, desired });
 
   if (!live) return null;
@@ -81,7 +83,7 @@ export default function ListingDirtyBadge({ masterProductId, storeId, live, desi
   if (loading && !diff) {
     return (
       <span className={`${base} ${TONE_PILL.neutral}`}>
-        <RefreshCw className="h-3 w-3 animate-spin" /> Memeriksa perubahan…
+        <RefreshCw className="h-3 w-3 animate-spin" /> {t("dirty.checking", "Checking changes…")}
       </span>
     );
   }
@@ -90,7 +92,7 @@ export default function ListingDirtyBadge({ masterProductId, storeId, live, desi
   if (!diff.dirty) {
     return (
       <span className={`${base} ${TONE_PILL.success}`}>
-        <CheckCircle2 className="h-3 w-3" /> Up to date
+        <CheckCircle2 className="h-3 w-3" /> {t("dirty.upToDate", "Up to date")}
       </span>
     );
   }
@@ -101,13 +103,16 @@ export default function ListingDirtyBadge({ masterProductId, storeId, live, desi
     <span
       className={`${base} ${blocked ? TONE_PILL.warning : TONE_PILL.brand}`}
       title={blocked
-        ? "Ada perubahan, tapi update untuk channel ini belum didukung — delist lalu publish ulang di Step 3."
-        : "Perubahan ini belum ada di channel — buka Step 3 lalu Perbarui listing."}
+        ? t("dirty.blockedTooltip", "There are changes, but updating this channel isn't supported yet — delist then re-publish in Step 3.")
+        : t("dirty.pendingTooltip", "These changes aren't on the channel yet — go to Step 3 and update the listing.")}
     >
       <AlertTriangle className="h-3 w-3" />
       {blocked
-        ? "Perubahan tertahan"
-        : `${n ? `${n} ` : ""}perubahan belum ter-publish`}
+        ? t("dirty.held", "Changes held")
+        : t("dirty.nChanges", "{n} changes not yet published")
+            .replace("{n}", n ? String(n) : "")
+            .replace(/\s+/g, " ")
+            .trim()}
     </span>
   );
 }
