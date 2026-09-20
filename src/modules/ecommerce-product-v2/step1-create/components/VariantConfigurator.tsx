@@ -262,14 +262,21 @@ const VariantConfigurator: React.FC<VariantConfiguratorProps> = ({
       const rawArr = Array.isArray(parsed?.variants) ? parsed.variants as VariantOption[] : [];
       // Normalise: ensure every variant has an `id` so React keys and updateVariant() work.
       const variantArr = rawArr.map((variant, idx) => {
-        if (variant.id) return variant;
+        // Treat a stored numeric 0 as "empty" so money/qty cells render "0" as a
+        // placeholder shadow (never a real "0" to delete) — matching product-level.
+        // Dimension values are always strings, so this only affects numeric fields.
+        const cleaned: VariantOption = { ...variant };
+        for (const [k, val] of Object.entries(cleaned)) {
+          if (typeof val === 'number' && val === 0) (cleaned as any)[k] = undefined;
+        }
+        if (cleaned.id) return cleaned;
         // Derive id from sku, or from dimension values, or index fallback
-        const skuVal = variant.sku as string | undefined;
-        const dimId = Object.entries(variant)
+        const skuVal = cleaned.sku as string | undefined;
+        const dimId = Object.entries(cleaned)
           .filter(([k]) => !NON_DIMENSION_KEYS.has(k))
           .map(([, val]) => String(val).toLowerCase().replace(/\s+/g, '-'))
           .join('-');
-        return { ...variant, id: dimId || skuVal || `variant-${idx}` };
+        return { ...cleaned, id: dimId || skuVal || `variant-${idx}` };
       });
       return { variants: variantArr, options: parsed?.options ?? null };
     } catch {
@@ -477,18 +484,21 @@ const VariantConfigurator: React.FC<VariantConfiguratorProps> = ({
         id,
         ...combination,
         variantImages: existing?.variantImages || [],
-        price: existing?.price || 0,
-        comparePrice: existing?.comparePrice || 0,
-        inventory: existing?.inventory || 0,
+        // Leave money/qty empty (undefined) rather than a concrete 0, so MoneyInput/
+        // QuantityInput show "0" as a placeholder shadow (like product-level) instead
+        // of a real "0" the user must delete before typing.
+        price: existing?.price,
+        comparePrice: existing?.comparePrice,
+        inventory: existing?.inventory,
         sku: existing?.sku || `SKU-${idParts.toUpperCase()}`,
         barcode: existing?.barcode || '',
-        weight: existing?.weight || 0
+        weight: existing?.weight
       };
 
       effectiveVariantConfig.forEach((field: any) => {
         if (!Object.prototype.hasOwnProperty.call(variant, field.name)) {
           const existingValue = existing?.[field.name];
-          variant[field.name] = field.type === 'number' ? (existingValue || 0) : (existingValue || '');
+          variant[field.name] = field.type === 'number' ? existingValue : (existingValue || '');
         }
       });
 
@@ -817,7 +827,7 @@ const VariantConfigurator: React.FC<VariantConfiguratorProps> = ({
                               compact
                               currency={currency}
                               value={variant[field.name]}
-                              onChange={(v) => updateVariant(variant.id, field.name, v ?? 0)}
+                              onChange={(v) => updateVariant(variant.id, field.name, v ?? '')}
                               aria-label={field.label}
                               className="w-32"
                             />
@@ -825,7 +835,7 @@ const VariantConfigurator: React.FC<VariantConfiguratorProps> = ({
                             <QuantityInput
                               compact
                               value={variant[field.name]}
-                              onChange={(v) => updateVariant(variant.id, field.name, v ?? 0)}
+                              onChange={(v) => updateVariant(variant.id, field.name, v ?? '')}
                               aria-label={field.label}
                               className="w-28"
                             />
