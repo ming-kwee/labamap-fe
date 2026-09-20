@@ -1,5 +1,5 @@
 "use client";
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Dropdown } from "@/shared/ui/dropdown/Dropdown";
 
 interface Option {
@@ -33,6 +33,7 @@ export default function MultiSelectCombobox({
 }: Props) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
+  const rootRef = useRef<HTMLDivElement>(null);
 
   // Map each selected value to its option; fall back to the raw value so a stale/unknown
   // value still renders (and stays removable) instead of silently vanishing.
@@ -50,8 +51,22 @@ export default function MultiSelectCombobox({
     onChange(value.includes(v) ? value.filter((x) => x !== v) : [...value, v]);
   }
 
+  // Collapse on any click/tap outside the whole control (trigger + popover both live inside
+  // rootRef). Self-contained so it works regardless of surrounding DOM — the shared Dropdown's
+  // `.dropdown-toggle` heuristic behaved inconsistently between Step 1 and Step 2.
+  useEffect(() => {
+    if (!open) return;
+    const onDocMouseDown = (e: MouseEvent) => {
+      if (rootRef.current && !rootRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", onDocMouseDown);
+    return () => document.removeEventListener("mousedown", onDocMouseDown);
+  }, [open]);
+
   return (
-    <div className="relative">
+    <div ref={rootRef} className="relative">
       {/* Trigger: token chips + placeholder */}
       <div
         role="button"
