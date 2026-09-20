@@ -14,6 +14,7 @@
  */
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useT } from "@/shared/contexts/LocaleContext";
 import {
   AlertTriangle,
   ArrowLeft,
@@ -62,13 +63,29 @@ function norm(s: string): string {
   return s.replace(/^product\./, "").toLowerCase();
 }
 
+/**
+ * Origin is emitted as an i18n key (+ optional data arg) rather than a pre-built string, so the
+ * render site — where a component's `t` is in scope — does the translation. `buildLineage` is a
+ * plain (non-component) helper and must never call the `useT` hook itself.
+ */
+type OriginKey =
+  | "excludedSupport"
+  | "passthrough"
+  | "builtBy"
+  | "fromPostProcessing"
+  | "removedBy"
+  | "stagingStripped"
+  | "joltNotInBody"
+  | "notInBody";
+
 interface LineageRow {
   field: string;
   inJolt: boolean;
   joltValue?: unknown;
   inBody: boolean;
   bodyValue?: string;
-  origin: string;
+  originKey: OriginKey;
+  originArg?: string;
   tone: Tone;
 }
 
@@ -113,18 +130,19 @@ function buildLineage(t: PublishTraceResponse): LineageRow[] {
     const isExcluded = attr ? (!!attr.isSupportField || excluded.has((attr.chnlAttrName ?? "").toLowerCase())) : false;
     const inBody = !!attr && !isExcluded;
 
-    let origin: string;
+    let originKey: OriginKey;
+    let originArg: string | undefined;
     let tone: Tone;
-    if (attr && isExcluded)          { origin = "excluded — support field"; tone = "bad"; }
-    else if (inBody && inJolt)       { origin = "passthrough (JOLT → body)"; tone = "ok"; }
-    else if (inBody && builtBy.has(n)) { origin = `dibangun: ${builtBy.get(n)!.join(", ")}`; tone = "ok"; }
-    else if (inBody)                 { origin = "dari post-processing"; tone = "ok"; }
-    else if (removedBy.has(n))       { origin = `dihapus rule: ${removedBy.get(n)!.join(", ")}`; tone = "bad"; }
-    else if (stripped.has(n))        { origin = "staging key di-strip"; tone = "muted"; }
-    else if (inJolt)                 { origin = "JOLT hasilkan, tak sampai body"; tone = "warn"; }
-    else                             { origin = "tak masuk body"; tone = "warn"; }
+    if (attr && isExcluded)          { originKey = "excludedSupport"; tone = "bad"; }
+    else if (inBody && inJolt)       { originKey = "passthrough"; tone = "ok"; }
+    else if (inBody && builtBy.has(n)) { originKey = "builtBy"; originArg = builtBy.get(n)!.join(", "); tone = "ok"; }
+    else if (inBody)                 { originKey = "fromPostProcessing"; tone = "ok"; }
+    else if (removedBy.has(n))       { originKey = "removedBy"; originArg = removedBy.get(n)!.join(", "); tone = "bad"; }
+    else if (stripped.has(n))        { originKey = "stagingStripped"; tone = "muted"; }
+    else if (inJolt)                 { originKey = "joltNotInBody"; tone = "warn"; }
+    else                             { originKey = "notInBody"; tone = "warn"; }
 
-    rows.push({ field: disp, inJolt, joltValue, inBody, bodyValue: attr?.value, origin, tone });
+    rows.push({ field: disp, inJolt, joltValue, inBody, bodyValue: attr?.value, originKey, originArg, tone });
   }
 
   // Problems first (excluded/dropped), so the debug-worthy fields sit at the top.
@@ -138,13 +156,14 @@ function Pill({ children, tone = "muted" }: { children: React.ReactNode; tone?: 
 }
 
 function CopyButton({ value }: { value: string }) {
+  const t = useT();
   const [copied, setCopied] = useState(false);
   return (
     <button
       onClick={() => navigator.clipboard?.writeText(value).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1500); })}
       className="inline-flex items-center gap-1 text-xs text-gray-500 hover:text-brand-600 dark:text-gray-400 dark:hover:text-brand-400"
     >
-      <Copy className="h-3.5 w-3.5" />{copied ? "Copied" : "Copy JSON"}
+      <Copy className="h-3.5 w-3.5" />{copied ? t("ptdiff.copied", "Copied") : t("ptdiff.copyJson", "Copy JSON")}
     </button>
   );
 }
@@ -192,6 +211,7 @@ function ColumnHeader({ icon, title, subtitle }: { icon: React.ReactNode; title:
 // ─── Gate stage (preflight + semantic) ───────────────────────────────────────────
 
 function GateSection({ gate }: { gate: PublishTraceGate }) {
+  const t = useT();
   const pf = gate.preflight;
   const sem = gate.semantic;
   const blocked = gate.wouldBlockPublish === true;
@@ -203,8 +223,8 @@ function GateSection({ gate }: { gate: PublishTraceGate }) {
         {blocked
           ? <AlertTriangle className="h-4 w-4 text-error-500" />
           : <CheckCircle2 className="h-4 w-4 text-success-500" />}
-        <h3 className="text-sm font-semibold text-gray-800 dark:text-gray-200">Gate</h3>
-        <span className="text-[11px] text-gray-500 dark:text-gray-400">preflight + semantic — di publish nyata MEMBLOKIR (di trace hanya dicatat)</span>
+        <h3 className="text-sm font-semibold text-gray-800 dark:text-gray-200">{t("ptdiff.gate.title", "Gate")}</h3>
+        <span className="text-[11px] text-gray-500 dark:text-gray-400">{t("ptdiff.gate.subtitle", "preflight + semantic — in a real publish this BLOCKS (in trace it's only recorded)")}</span>
       </div>
 
       {/* Overall verdict */}
@@ -213,26 +233,26 @@ function GateSection({ gate }: { gate: PublishTraceGate }) {
           ? "border-error-200 bg-error-50 text-error-700 dark:border-error-500/30 dark:bg-error-500/10 dark:text-error-400"
           : "border-success-200 bg-success-50 text-success-700 dark:border-success-500/30 dark:bg-success-500/10 dark:text-success-400"
       }`}>
-        {blocked ? "Publish nyata AKAN diblok gate — perbaiki penyebab di bawah." : "Gate lolos — tak ada blocker."}
+        {blocked ? t("ptdiff.gate.verdictBlocked", "A real publish WOULD be blocked by the gate — fix the cause below.") : t("ptdiff.gate.verdictPassed", "Gate passed — no blockers.")}
       </div>
 
       <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
         {/* Preflight */}
         <div className="rounded-lg border border-gray-200 p-3 dark:border-gray-800">
-          <p className="mb-1.5 text-xs font-semibold text-gray-700 dark:text-gray-300">Preflight — field wajib merchant</p>
+          <p className="mb-1.5 text-xs font-semibold text-gray-700 dark:text-gray-300">{t("ptdiff.gate.preflightTitle", "Preflight — merchant required fields")}</p>
           {!pf?.ran ? (
-            <p className="text-xs text-gray-400">Tidak dijalankan.</p>
+            <p className="text-xs text-gray-400">{t("ptdiff.gate.notRun", "Not run.")}</p>
           ) : pf.passed ? (
             <p className="flex items-center gap-1.5 text-xs text-success-700 dark:text-success-400">
-              <CheckCircle2 className="h-3.5 w-3.5" /> Lolos — semua field wajib terisi.
+              <CheckCircle2 className="h-3.5 w-3.5" /> {t("ptdiff.gate.preflightPassed", "Passed — all required fields filled.")}
             </p>
           ) : (
             <div className="space-y-1.5">
-              <p className="text-xs text-error-700 dark:text-error-400">{pf.missingFields?.length ?? 0} field wajib hilang/invalid:</p>
+              <p className="text-xs text-error-700 dark:text-error-400">{t("ptdiff.gate.preflightMissing", "{n} required fields missing/invalid:").replace("{n}", String(pf.missingFields?.length ?? 0))}</p>
               <ul className="space-y-1">
                 {pf.missingFields?.map((f, i) => (
                   <li key={i} className="flex flex-wrap items-baseline gap-1.5">
-                    <Pill tone="bad">{f.label || f.field || "field"}</Pill>
+                    <Pill tone="bad">{f.label || f.field || t("ptdiff.gate.fieldFallback", "field")}</Pill>
                     {f.reason && <span className="text-[11px] text-gray-500 dark:text-gray-400">{f.reason}</span>}
                     {f.source && <span className="font-mono text-[10px] text-gray-400">{f.source}</span>}
                   </li>
@@ -244,19 +264,19 @@ function GateSection({ gate }: { gate: PublishTraceGate }) {
 
         {/* Semantic */}
         <div className="rounded-lg border border-gray-200 p-3 dark:border-gray-800">
-          <p className="mb-1.5 text-xs font-semibold text-gray-700 dark:text-gray-300">Semantic validator — cegah scramble mapping</p>
+          <p className="mb-1.5 text-xs font-semibold text-gray-700 dark:text-gray-300">{t("ptdiff.gate.semanticTitle", "Semantic validator — prevents scrambled mapping")}</p>
           {!sem?.ran ? (
             <p className="flex items-start gap-1.5 text-xs text-warning-700 dark:text-warning-400">
               <Info className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" />
-              Fail-open — knowledge base kosong{semTokens != null ? ` (${semTokens} token)` : ""}. Spec TIDAK divalidasi (bukan berarti aman).
+              {t("ptdiff.gate.semanticFailOpen", "Fail-open — knowledge base empty{tokens}. Spec was NOT validated (does not mean it's safe).").replace("{tokens}", semTokens != null ? t("ptdiff.gate.tokensParen", " ({n} tokens)").replace("{n}", String(semTokens)) : "")}
             </p>
           ) : sem.passed ? (
             <p className="flex items-center gap-1.5 text-xs text-success-700 dark:text-success-400">
-              <CheckCircle2 className="h-3.5 w-3.5" /> Lolos — tak ada mismatch{semTokens != null ? ` · ${semTokens} token` : ""}.
+              <CheckCircle2 className="h-3.5 w-3.5" /> {t("ptdiff.gate.semanticPassed", "Passed — no mismatch{tokens}.").replace("{tokens}", semTokens != null ? t("ptdiff.gate.tokensDot", " · {n} tokens").replace("{n}", String(semTokens)) : "")}
             </p>
           ) : (
             <div className="space-y-1.5">
-              <p className="text-xs text-error-700 dark:text-error-400">{sem.violations?.length ?? 0} mismatch semantik:</p>
+              <p className="text-xs text-error-700 dark:text-error-400">{t("ptdiff.gate.semanticViolations", "{n} semantic mismatches:").replace("{n}", String(sem.violations?.length ?? 0))}</p>
               <ul className="space-y-1">
                 {sem.violations?.map((v, i) => (
                   <li key={i} className="rounded border border-error-200 bg-error-50/60 px-2 py-1 dark:border-error-500/30 dark:bg-error-500/10">
@@ -299,6 +319,7 @@ function readStash(masterProductId: string): Stashed | null {
 // ─── Page component ──────────────────────────────────────────────────────────────
 
 export default function PublishTraceDiff({ masterProductId }: { masterProductId: string }) {
+  const t = useT();
   const [request, setRequest] = useState<PublishTraceRequest | null>(null);
   const [trace, setTrace] = useState<PublishTraceResponse | null>(null);
   const [storeName, setStoreName] = useState<string | null>(null);
@@ -323,11 +344,11 @@ export default function PublishTraceDiff({ masterProductId }: { masterProductId:
       const res = await tracePublish(request);
       setTrace(res);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Trace gagal");
+      setError(err instanceof Error ? err.message : t("ptdiff.traceFailed", "Trace failed"));
     } finally {
       setLoading(false);
     }
-  }, [request]);
+  }, [request, t]);
 
   const jolt = trace?.joltSpec;
   const isGenerated = jolt?.generatedBy === "ai-agent-v1";
@@ -342,13 +363,12 @@ export default function PublishTraceDiff({ masterProductId }: { masterProductId:
     return (
       <div className="mx-auto max-w-2xl px-6 py-16 text-center">
         <Info className="mx-auto mb-3 h-8 w-8 text-gray-400" />
-        <h2 className="text-lg font-semibold text-gray-800 dark:text-gray-200">Tidak ada data trace</h2>
+        <h2 className="text-lg font-semibold text-gray-800 dark:text-gray-200">{t("ptdiff.empty.title", "No trace data")}</h2>
         <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-          Buka halaman ini dari tombol <strong>Side-by-side JOLT | DSL</strong> di Publish-Trace Inspector
-          (Step 3 → Diagnostik), supaya datanya terisi.
+          {t("ptdiff.empty.descBefore", "Open this page from the ")}<strong>{t("ptdiff.empty.descButton", "Side-by-side JOLT | DSL")}</strong>{t("ptdiff.empty.descAfter", " button in the Publish-Trace Inspector (Step 3 → Diagnostics) so the data is populated.")}
         </p>
         <Link href={publishHref} className="mt-4 inline-flex items-center gap-1.5 text-sm font-medium text-brand-600 hover:underline dark:text-brand-400">
-          <ArrowLeft className="h-4 w-4" /> Kembali ke Publish
+          <ArrowLeft className="h-4 w-4" /> {t("ptdiff.backToPublish", "Back to Publish")}
         </Link>
       </div>
     );
@@ -360,10 +380,10 @@ export default function PublishTraceDiff({ masterProductId }: { masterProductId:
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div className="min-w-0">
           <Link href={publishHref} className="mb-1 inline-flex items-center gap-1.5 text-xs font-medium text-gray-500 hover:text-brand-600 dark:text-gray-400 dark:hover:text-brand-400">
-            <ArrowLeft className="h-3.5 w-3.5" /> Kembali ke Publish
+            <ArrowLeft className="h-3.5 w-3.5" /> {t("ptdiff.backToPublish", "Back to Publish")}
           </Link>
           <h1 className="flex items-center gap-2 text-xl font-semibold text-gray-900 dark:text-white">
-            <Code className="h-5 w-5 text-brand-500" /> Publish Trace — JOLT | DSL
+            <Code className="h-5 w-5 text-brand-500" /> {t("ptdiff.pageTitle", "Publish Trace — JOLT | DSL")}
           </h1>
           {/* Which channel store this trace is for */}
           <div className="mt-1.5 flex flex-wrap items-center gap-2">
@@ -372,18 +392,18 @@ export default function PublishTraceDiff({ masterProductId }: { masterProductId:
             <span className="font-mono text-xs text-gray-400">{request?.storeId ?? trace?.storeId ?? "?"}</span>
           </div>
           <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-            Dry-run pipeline — apa yang benar-benar dikirim ke channel & kenapa.
+            {t("ptdiff.subtitle", "Dry-run pipeline — what actually gets sent to the channel & why.")}
           </p>
         </div>
         <Button variant="outline" size="sm" onClick={rerun} disabled={loading || !request}>
-          <RefreshCw className={`mr-2 h-4 w-4 ${loading ? "animate-spin" : ""}`} /> Jalankan ulang
+          <RefreshCw className={`mr-2 h-4 w-4 ${loading ? "animate-spin" : ""}`} /> {t("ptdiff.rerun", "Re-run")}
         </Button>
       </div>
 
       {error && (
         <div className="mb-4 rounded-xl border border-error-200 bg-error-50 px-4 py-3 dark:border-error-500/30 dark:bg-error-500/10">
           <p className="flex items-center gap-2 font-medium text-error-700 dark:text-error-400">
-            <AlertTriangle className="h-4 w-4" /> Trace gagal dipanggil
+            <AlertTriangle className="h-4 w-4" /> {t("ptdiff.traceCallFailed", "Trace call failed")}
           </p>
           <p className="mt-1 text-sm text-error-600 dark:text-error-300">{error}</p>
         </div>
@@ -395,7 +415,7 @@ export default function PublishTraceDiff({ masterProductId }: { masterProductId:
           {(trace.warnings?.length ?? 0) > 0 && (
             <div className="mb-4 rounded-xl border border-warning-200 bg-warning-50 px-4 py-3 dark:border-warning-500/30 dark:bg-warning-500/10">
               <p className="flex items-center gap-2 text-sm font-medium text-warning-700 dark:text-warning-400">
-                <Info className="h-4 w-4" /> Catatan / gate warnings
+                <Info className="h-4 w-4" /> {t("ptdiff.warningsTitle", "Notes / gate warnings")}
               </p>
               <ul className="mt-1.5 space-y-1">
                 {trace.warnings!.map((w, i) => (
@@ -407,12 +427,12 @@ export default function PublishTraceDiff({ masterProductId }: { masterProductId:
 
           {/* JOLT resolution summary */}
           <div className="mb-3 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
-            <SummaryTile label="JOLT source" value={jolt?.source ?? "—"} />
-            <SummaryTile label="Generated by" value={jolt?.generatedBy ?? "—"} tone={isGenerated ? "warn" : undefined} />
-            <SummaryTile label="Version" value={jolt?.version ?? "—"} />
-            <SummaryTile label="Operations" value={jolt?.operations != null ? String(jolt.operations) : "—"} />
-            <SummaryTile label="Resolved category" value={trace.resolvedCategory ?? "—"} />
-            <SummaryTile label="Field ke body" value={`${sentCount} / ${lineage.length}`} />
+            <SummaryTile label={t("ptdiff.tile.joltSource", "JOLT source")} value={jolt?.source ?? "—"} />
+            <SummaryTile label={t("ptdiff.tile.generatedBy", "Generated by")} value={jolt?.generatedBy ?? "—"} tone={isGenerated ? "warn" : undefined} />
+            <SummaryTile label={t("ptdiff.tile.version", "Version")} value={jolt?.version ?? "—"} />
+            <SummaryTile label={t("ptdiff.tile.operations", "Operations")} value={jolt?.operations != null ? String(jolt.operations) : "—"} />
+            <SummaryTile label={t("ptdiff.tile.resolvedCategory", "Resolved category")} value={trace.resolvedCategory ?? "—"} />
+            <SummaryTile label={t("ptdiff.tile.fieldsToBody", "Fields to body")} value={`${sentCount} / ${lineage.length}`} />
           </div>
 
           {/* Schema-staleness — STALE means this generated spec targets an OLD apiSchema.
@@ -429,32 +449,44 @@ export default function PublishTraceDiff({ masterProductId }: { masterProductId:
           {/* HERO — aligned per-field lineage (JOLT → DSL/body) */}
           <div className="mb-6 overflow-hidden rounded-xl border border-gray-200 dark:border-gray-800">
             <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)_minmax(0,1.3fr)] items-center gap-2 border-b border-gray-100 bg-gray-50 px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:border-gray-800 dark:bg-gray-800/50 dark:text-gray-400">
-              <span>Field</span>
-              <span className="flex items-center gap-1.5"><Zap className="h-3.5 w-3.5" /> JOLT (kiri)</span>
-              <span className="flex items-center gap-1.5"><Database className="h-3.5 w-3.5" /> DSL / body channel (kanan)</span>
+              <span>{t("ptdiff.col.field", "Field")}</span>
+              <span className="flex items-center gap-1.5"><Zap className="h-3.5 w-3.5" /> {t("ptdiff.col.joltLeft", "JOLT (left)")}</span>
+              <span className="flex items-center gap-1.5"><Database className="h-3.5 w-3.5" /> {t("ptdiff.col.dslRight", "DSL / channel body (right)")}</span>
             </div>
             <div className="divide-y divide-gray-100 dark:divide-gray-800">
               {lineage.length === 0 ? (
-                <p className="px-3 py-6 text-center text-xs text-gray-400">Tidak ada field untuk ditampilkan.</p>
+                <p className="px-3 py-6 text-center text-xs text-gray-400">{t("ptdiff.noFields", "No fields to display.")}</p>
               ) : (
-                lineage.map((r, i) => (
+                lineage.map((r, i) => {
+                  const notFromJolt = t("ptdiff.notFromJolt", "not produced by JOLT");
+                  const originText =
+                    r.originKey === "excludedSupport"   ? t("ptdiff.origin.excludedSupport", "excluded — support field")
+                    : r.originKey === "passthrough"     ? t("ptdiff.origin.passthrough", "passthrough (JOLT → body)")
+                    : r.originKey === "builtBy"         ? t("ptdiff.origin.builtBy", "built: {rule}").replace("{rule}", r.originArg ?? "")
+                    : r.originKey === "fromPostProcessing" ? t("ptdiff.origin.fromPostProcessing", "from post-processing")
+                    : r.originKey === "removedBy"       ? t("ptdiff.origin.removedBy", "removed by rule: {rule}").replace("{rule}", r.originArg ?? "")
+                    : r.originKey === "stagingStripped" ? t("ptdiff.origin.stagingStripped", "staging key stripped")
+                    : r.originKey === "joltNotInBody"   ? t("ptdiff.origin.joltNotInBody", "produced by JOLT, didn't reach body")
+                    : t("ptdiff.origin.notInBody", "not in body");
+                  return (
                   <div key={i} className="grid grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)_minmax(0,1.3fr)] items-center gap-2 px-3 py-2">
                     <span className="truncate font-mono text-xs font-medium text-gray-800 dark:text-gray-200" title={r.field}>{r.field}</span>
-                    <span className="truncate font-mono text-[11px] text-gray-600 dark:text-gray-300" title={r.inJolt ? fmt(r.joltValue) : "tidak dihasilkan JOLT"}>
-                      {r.inJolt ? fmt(r.joltValue) : <span className="text-gray-400">— tak dihasilkan JOLT</span>}
+                    <span className="truncate font-mono text-[11px] text-gray-600 dark:text-gray-300" title={r.inJolt ? fmt(r.joltValue) : notFromJolt}>
+                      {r.inJolt ? fmt(r.joltValue) : <span className="text-gray-400">{t("ptdiff.notFromJoltDash", "— not produced by JOLT")}</span>}
                     </span>
                     <span className="flex min-w-0 items-center gap-1.5">
                       <ArrowRight className="h-3 w-3 flex-shrink-0 text-gray-300 dark:text-gray-600" />
                       {r.inBody
                         ? <CheckCircle2 className="h-3.5 w-3.5 flex-shrink-0 text-success-500" />
                         : <AlertTriangle className={`h-3.5 w-3.5 flex-shrink-0 ${r.tone === "bad" ? "text-error-500" : "text-warning-500"}`} />}
-                      <Pill tone={r.tone}>{r.origin}</Pill>
+                      <Pill tone={r.tone}>{originText}</Pill>
                       {r.inBody && r.bodyValue != null && (
                         <span className="truncate font-mono text-[11px] text-gray-500 dark:text-gray-400" title={r.bodyValue}>{r.bodyValue}</span>
                       )}
                     </span>
                   </div>
-                ))
+                  );
+                })
               )}
             </div>
           </div>
@@ -463,35 +495,35 @@ export default function PublishTraceDiff({ masterProductId }: { masterProductId:
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
             {/* LEFT — JOLT */}
             <section className="rounded-xl border border-gray-200 p-4 dark:border-gray-800">
-              <ColumnHeader icon={<Zap className="h-4 w-4 text-brand-500" />} title="JOLT" subtitle="spec yang menang + input & output transform" />
+              <ColumnHeader icon={<Zap className="h-4 w-4 text-brand-500" />} title="JOLT" subtitle={t("ptdiff.jolt.subtitle", "winning spec + input & output transform")} />
               <div className="space-y-2">
                 <div className="grid grid-cols-2 gap-2">
-                  <SummaryTile label="Source" value={jolt?.source ?? "—"} />
-                  <SummaryTile label="Operations" value={jolt?.operations != null ? String(jolt.operations) : "—"} />
+                  <SummaryTile label={t("ptdiff.tile.source", "Source")} value={jolt?.source ?? "—"} />
+                  <SummaryTile label={t("ptdiff.tile.operations", "Operations")} value={jolt?.operations != null ? String(jolt.operations) : "—"} />
                 </div>
                 {isGenerated && (
                   <p className="flex items-start gap-1.5 rounded-lg bg-warning-50 px-3 py-2 text-xs text-warning-700 dark:bg-warning-500/10 dark:text-warning-400">
                     <AlertTriangle className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" />
-                    Spec <code className="font-mono">ai-agent-v1</code> (generated) menang — field yang tak dipetakan master→apiSchema bisa terjatuh di JOLT.
+                    {t("ptdiff.jolt.generatedWarnBefore", "Spec ")}<code className="font-mono">ai-agent-v1</code>{t("ptdiff.jolt.generatedWarnAfter", " (generated) wins — fields not mapped master→apiSchema can drop out in JOLT.")}
                   </p>
                 )}
-                <JsonBlock label="afterMerge (input transform)" data={trace.afterMerge} />
-                <JsonBlock label="afterJolt (output JOLT)" data={trace.afterJolt} defaultOpen />
-                {(trace.stagedKeys?.length ?? 0) > 0 && <JsonBlock label={`stagedKeys (${trace.stagedKeys!.length})`} data={trace.stagedKeys} />}
+                <JsonBlock label={t("ptdiff.json.afterMerge", "afterMerge (input transform)")} data={trace.afterMerge} />
+                <JsonBlock label={t("ptdiff.json.afterJolt", "afterJolt (JOLT output)")} data={trace.afterJolt} defaultOpen />
+                {(trace.stagedKeys?.length ?? 0) > 0 && <JsonBlock label={t("ptdiff.json.stagedKeys", "stagedKeys ({n})").replace("{n}", String(trace.stagedKeys!.length))} data={trace.stagedKeys} />}
               </div>
             </section>
 
             {/* RIGHT — DSL (post-proc → afterPostProcessing → channelAttributes) */}
             <section className="rounded-xl border border-gray-200 p-4 dark:border-gray-800">
-              <ColumnHeader icon={<Database className="h-4 w-4 text-brand-500" />} title="DSL / body channel" subtitle="post-processing → afterPostProcessing → body final" />
+              <ColumnHeader icon={<Database className="h-4 w-4 text-brand-500" />} title={t("ptdiff.dsl.title", "DSL / channel body")} subtitle={t("ptdiff.dsl.subtitle", "post-processing → afterPostProcessing → final body")} />
               <div className="space-y-3">
                 {/* Post-processing timeline */}
                 <div>
                   <p className="mb-1.5 text-xs font-medium text-gray-600 dark:text-gray-300">
-                    Post-processing ({trace.postProcessing?.length ?? 0} rule)
+                    {t("ptdiff.dsl.postProcessingCount", "Post-processing ({n} rules)").replace("{n}", String(trace.postProcessing?.length ?? 0))}
                   </p>
                   {(trace.postProcessing?.length ?? 0) === 0 ? (
-                    <p className="text-xs text-gray-400">Tidak ada rule post-processing.</p>
+                    <p className="text-xs text-gray-400">{t("ptdiff.dsl.noPostProcessing", "No post-processing rules.")}</p>
                   ) : (
                     <ol className="space-y-1.5">
                       {trace.postProcessing!.map((r, i) => (
@@ -513,24 +545,24 @@ export default function PublishTraceDiff({ masterProductId }: { masterProductId:
                   )}
                 </div>
 
-                <JsonBlock label="afterPostProcessing (dokumen DSL)" data={trace.afterPostProcessing} />
+                <JsonBlock label={t("ptdiff.json.afterPostProcessing", "afterPostProcessing (DSL document)")} data={trace.afterPostProcessing} />
 
                 {/* Final channel attributes */}
                 <div>
                   <p className="mb-1.5 text-xs font-medium text-gray-600 dark:text-gray-300">
-                    Body final — channelAttributes ({trace.channelAttributes?.length ?? 0})
+                    {t("ptdiff.dsl.finalBody", "Final body — channelAttributes ({n})").replace("{n}", String(trace.channelAttributes?.length ?? 0))}
                   </p>
                   {(trace.channelAttributes?.length ?? 0) === 0 ? (
-                    <p className="text-xs text-gray-400">Tidak ada channelAttributes.</p>
+                    <p className="text-xs text-gray-400">{t("ptdiff.dsl.noChannelAttributes", "No channelAttributes.")}</p>
                   ) : (
                     <div className="overflow-x-auto rounded-lg border border-gray-200 dark:border-gray-800">
                       <table className="w-full text-left text-xs">
                         <thead className="bg-gray-50 text-gray-500 dark:bg-gray-800/50 dark:text-gray-400">
                           <tr>
-                            <th className="px-3 py-2 font-medium">Attribute</th>
-                            <th className="px-3 py-2 font-medium">Type</th>
-                            <th className="px-3 py-2 font-medium">Value</th>
-                            <th className="px-3 py-2 font-medium">Body?</th>
+                            <th className="px-3 py-2 font-medium">{t("ptdiff.table.attribute", "Attribute")}</th>
+                            <th className="px-3 py-2 font-medium">{t("ptdiff.table.type", "Type")}</th>
+                            <th className="px-3 py-2 font-medium">{t("ptdiff.table.value", "Value")}</th>
+                            <th className="px-3 py-2 font-medium">{t("ptdiff.table.body", "Body?")}</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
@@ -543,8 +575,8 @@ export default function PublishTraceDiff({ masterProductId }: { masterProductId:
                                 <td className="max-w-[200px] px-3 py-2"><span className="block truncate font-mono text-gray-600 dark:text-gray-300" title={a.value}>{a.value ?? "—"}</span></td>
                                 <td className="px-3 py-2">
                                   {isExcluded
-                                    ? <Pill tone="bad">excluded</Pill>
-                                    : <Pill tone="ok">sent</Pill>}
+                                    ? <Pill tone="bad">{t("ptdiff.pill.excluded", "excluded")}</Pill>
+                                    : <Pill tone="ok">{t("ptdiff.pill.sent", "sent")}</Pill>}
                                 </td>
                               </tr>
                             );
@@ -559,7 +591,7 @@ export default function PublishTraceDiff({ masterProductId }: { masterProductId:
           </div>
 
           <div className="mt-4">
-            <JsonBlock label="Full trace response (raw)" data={trace} />
+            <JsonBlock label={t("ptdiff.json.fullTrace", "Full trace response (raw)")} data={trace} />
           </div>
         </>
       )}

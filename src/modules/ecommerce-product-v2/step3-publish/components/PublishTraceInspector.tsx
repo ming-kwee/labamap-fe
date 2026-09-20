@@ -36,6 +36,10 @@ import type {
   PublishTraceResponse,
 } from "@/modules/ecommerce-product-v2/types/publish-trace";
 import SchemaStaleBadge, { deriveStaleStatus } from "./SchemaStaleBadge";
+import { useT } from "@/shared/contexts/LocaleContext";
+
+/** Translator function shape returned by useT — accepts a key and an English fallback. */
+type TFn = (key: string, fallback?: string) => string;
 
 // ─── Small presentational helpers ─────────────────────────────────────────────
 
@@ -63,6 +67,7 @@ function Section({
 }
 
 function CopyButton({ value }: { value: string }) {
+  const t = useT();
   const [copied, setCopied] = useState(false);
   return (
     <button
@@ -75,7 +80,7 @@ function CopyButton({ value }: { value: string }) {
       className="inline-flex items-center gap-1 text-xs text-gray-500 hover:text-brand-600 dark:text-gray-400 dark:hover:text-brand-400"
     >
       <Copy className="h-3.5 w-3.5" />
-      {copied ? "Copied" : "Copy JSON"}
+      {copied ? t("ptins.copied", "Copied") : t("ptins.copyJson", "Copy JSON")}
     </button>
   );
 }
@@ -123,60 +128,66 @@ function KeyPill({ children, tone = "muted" }: { children: React.ReactNode; tone
 type Tone = "ok" | "warn" | "bad" | "muted";
 interface FieldTraceRow { stage: string; present: boolean; detail?: string; tone: Tone; }
 
-/** Trace one field name across every pipeline stage. Substring, case-insensitive. */
-function traceField(q: string, t: PublishTraceResponse): FieldTraceRow[] {
+/**
+ * Trace one field name across every pipeline stage. Substring, case-insensitive.
+ * `t` is passed in from the render site — these helpers are not React components,
+ * so they can't call the useT hook themselves.
+ */
+function traceField(q: string, trace: PublishTraceResponse, t: TFn): FieldTraceRow[] {
   const lc = q.trim().toLowerCase();
   if (!lc) return [];
   const match = (k?: string) => !!k && (k.toLowerCase() === lc || k.toLowerCase().includes(lc));
   const keysOf = (o?: Record<string, unknown>) => (o ? Object.keys(o).filter(match) : []);
   const rows: FieldTraceRow[] = [];
 
-  const inMerge = keysOf(t.afterMerge);
-  rows.push({ stage: "afterMerge (input transform)", present: inMerge.length > 0, detail: inMerge.join(", ") || undefined, tone: inMerge.length ? "muted" : "warn" });
+  const inMerge = keysOf(trace.afterMerge);
+  rows.push({ stage: t("ptins.stageAfterMerge", "afterMerge (input transform)"), present: inMerge.length > 0, detail: inMerge.join(", ") || undefined, tone: inMerge.length ? "muted" : "warn" });
 
-  const inJolt = keysOf(t.afterJolt);
-  rows.push({ stage: "afterJolt (output JOLT)", present: inJolt.length > 0, detail: inJolt.join(", ") || "JOLT tidak menghasilkan field ini", tone: inJolt.length ? "ok" : "warn" });
+  const inJolt = keysOf(trace.afterJolt);
+  rows.push({ stage: t("ptins.stageAfterJolt", "afterJolt (output JOLT)"), present: inJolt.length > 0, detail: inJolt.join(", ") || t("ptins.joltNoField", "JOLT did not produce this field"), tone: inJolt.length ? "ok" : "warn" });
 
-  const addedBy = (t.postProcessing ?? []).filter((r) => (r.keysAdded ?? []).some(match));
-  const removedBy = (t.postProcessing ?? []).filter((r) => (r.keysRemoved ?? []).some(match));
-  if (addedBy.length) rows.push({ stage: "post-processing", present: true, detail: `dibangun oleh rule: ${addedBy.map((r) => r.rule).join(", ")}`, tone: "ok" });
-  if (removedBy.length) rows.push({ stage: "post-processing", present: false, detail: `dihapus oleh rule: ${removedBy.map((r) => r.rule).join(", ")}`, tone: "bad" });
+  const addedBy = (trace.postProcessing ?? []).filter((r) => (r.keysAdded ?? []).some(match));
+  const removedBy = (trace.postProcessing ?? []).filter((r) => (r.keysRemoved ?? []).some(match));
+  if (addedBy.length) rows.push({ stage: "post-processing", present: true, detail: t("ptins.builtByRule", "built by rule: {rules}").replace("{rules}", addedBy.map((r) => r.rule).join(", ")), tone: "ok" });
+  if (removedBy.length) rows.push({ stage: "post-processing", present: false, detail: t("ptins.removedByRule", "removed by rule: {rules}").replace("{rules}", removedBy.map((r) => r.rule).join(", ")), tone: "bad" });
 
-  const inPost = keysOf(t.afterPostProcessing);
+  const inPost = keysOf(trace.afterPostProcessing);
   rows.push({ stage: "afterPostProcessing", present: inPost.length > 0, detail: inPost.join(", ") || undefined, tone: inPost.length ? "muted" : "warn" });
 
-  const staged = (t.stagedKeys ?? []).filter(match);
+  const staged = (trace.stagedKeys ?? []).filter(match);
   if (staged.length) rows.push({ stage: "stagedKeys (_reserved)", present: true, detail: staged.join(", "), tone: "muted" });
-  const stripped = (t.stagingKeysStripped ?? []).filter(match);
-  if (stripped.length) rows.push({ stage: "stagingKeysStripped", present: false, detail: `${stripped.join(", ")} — di-strip, tak masuk body`, tone: "muted" });
+  const stripped = (trace.stagingKeysStripped ?? []).filter(match);
+  if (stripped.length) rows.push({ stage: "stagingKeysStripped", present: false, detail: t("ptins.strippedNotInBody", "{keys} — stripped, not in body").replace("{keys}", stripped.join(", ")), tone: "muted" });
 
-  const attrs = (t.channelAttributes ?? []).filter((a) => match(a.chnlAttrName) || match(a.attrId));
+  const attrs = (trace.channelAttributes ?? []).filter((a) => match(a.chnlAttrName) || match(a.attrId));
   if (attrs.length) {
     for (const a of attrs) {
-      const excluded = !!a.isSupportField || (t.supportFieldsExcludedBySync ?? []).some((n) => n.toLowerCase() === (a.chnlAttrName ?? "").toLowerCase());
+      const excluded = !!a.isSupportField || (trace.supportFieldsExcludedBySync ?? []).some((n) => n.toLowerCase() === (a.chnlAttrName ?? "").toLowerCase());
       rows.push({
         stage: `channelAttributes → ${a.chnlAttrName ?? a.attrId}`,
         present: !excluded,
-        detail: excluded ? "isSupportField=true → DIKECUALIKAN dari body channel" : `type=${a.type ?? "?"} → dikirim ke channel`,
+        detail: excluded
+          ? t("ptins.detailExcluded", "isSupportField=true → EXCLUDED from channel body")
+          : t("ptins.detailSent", "type={type} → sent to channel").replace("{type}", a.type ?? "?"),
         tone: excluded ? "bad" : "ok",
       });
     }
   } else {
-    rows.push({ stage: "channelAttributes (body final)", present: false, detail: "tidak ada di body channel final", tone: "warn" });
+    rows.push({ stage: t("ptins.stageChannelAttrsBodyFinal", "channelAttributes (body final)"), present: false, detail: t("ptins.notInFinalBody", "not in the final channel body"), tone: "warn" });
   }
 
   return rows;
 }
 
-/** One-line verdict headline for the searched field. */
-function fieldVerdict(rows: FieldTraceRow[]): { text: string; tone: Tone } {
+/** One-line verdict headline for the searched field. `t` passed from render site. */
+function fieldVerdict(rows: FieldTraceRow[], t: TFn): { text: string; tone: Tone } {
   const attrRow = rows.find((r) => r.stage.startsWith("channelAttributes →"));
   if (attrRow) {
     return attrRow.present
-      ? { text: "Field ini terkirim ke body channel.", tone: "ok" }
-      : { text: "Field ada di channelAttributes tapi DIKECUALIKAN dari body (support field).", tone: "bad" };
+      ? { text: t("ptins.verdictSent", "This field is sent to the channel body."), tone: "ok" }
+      : { text: t("ptins.verdictExcluded", "This field is in channelAttributes but EXCLUDED from the body (support field)."), tone: "bad" };
   }
-  return { text: "Field ini TIDAK sampai ke body channel final.", tone: "warn" };
+  return { text: t("ptins.verdictNotReached", "This field does NOT reach the final channel body."), tone: "warn" };
 }
 
 // ─── Main component ────────────────────────────────────────────────────────────
@@ -197,6 +208,7 @@ const TONE_TEXT: Record<Tone, string> = {
 };
 
 export default function PublishTraceInspector({ isOpen, onClose, request, storeName }: Props) {
+  const t = useT();
   const router = useRouter();
   const [trace, setTrace] = useState<PublishTraceResponse | null>(null);
   const [loading, setLoading] = useState(false);
@@ -222,13 +234,13 @@ export default function PublishTraceInspector({ isOpen, onClose, request, storeN
         setTrace(res);
       } catch (err) {
         if (signal?.aborted || (err as Error)?.name === "AbortError") return;
-        setError(err instanceof Error ? err.message : "Trace gagal");
+        setError(err instanceof Error ? err.message : t("ptins.traceFailed", "Trace failed"));
       } finally {
         // Don't flip loading off for an aborted run — the newer run owns the flag now.
         if (!signal?.aborted) setLoading(false);
       }
     },
-    [request],
+    [request, t],
   );
 
   // Fetch when the modal opens (and re-fetch if the request identity changes).
@@ -239,8 +251,8 @@ export default function PublishTraceInspector({ isOpen, onClose, request, storeN
     return () => ctrl.abort();
   }, [isOpen, run]);
 
-  const fieldRows = useMemo(() => (trace ? traceField(query, trace) : []), [trace, query]);
-  const verdict = fieldRows.length ? fieldVerdict(fieldRows) : null;
+  const fieldRows = useMemo(() => (trace ? traceField(query, trace, t) : []), [trace, query, t]);
+  const verdict = fieldRows.length ? fieldVerdict(fieldRows, t) : null;
 
   const jolt = trace?.joltSpec;
   const isGenerated = jolt?.generatedBy === "ai-agent-v1";
@@ -261,10 +273,10 @@ export default function PublishTraceInspector({ isOpen, onClose, request, storeN
         <div className="border-b border-gray-100 px-6 py-4 pr-14 dark:border-gray-800">
           <h3 className="flex items-center gap-2 text-lg font-semibold text-gray-900 dark:text-white">
             <Code className="h-5 w-5 text-brand-500" />
-            Publish-Trace Inspector
+            {t("ptins.title", "Publish-Trace Inspector")}
           </h3>
           <p className="mt-0.5 text-sm text-gray-500 dark:text-gray-400">
-            Dry-run pipeline publish — read-only, tidak mengirim ke channel.{" "}
+            {t("ptins.subtitle", "Dry-run pipeline publish — read-only, nothing is sent to the channel.")}{" "}
             <span className="font-mono text-xs">{request.channelId ?? "?"}</span> ·{" "}
             <span className="font-mono text-xs">{request.storeId ?? "?"}</span>
           </p>
@@ -275,18 +287,18 @@ export default function PublishTraceInspector({ isOpen, onClose, request, storeN
           {loading && (
             <div className="flex flex-col items-center justify-center py-16 text-center">
               <RefreshCw className="mb-3 h-8 w-8 animate-spin text-brand-500" />
-              <p className="text-sm text-gray-500 dark:text-gray-400">Menjalankan trace pipeline…</p>
+              <p className="text-sm text-gray-500 dark:text-gray-400">{t("ptins.running", "Running trace pipeline…")}</p>
             </div>
           )}
 
           {!loading && error && (
             <div className="rounded-xl border border-error-200 bg-error-50 px-4 py-3 dark:border-error-500/30 dark:bg-error-500/10">
               <p className="flex items-center gap-2 font-medium text-error-700 dark:text-error-400">
-                <AlertTriangle className="h-4 w-4" /> Trace gagal dipanggil
+                <AlertTriangle className="h-4 w-4" /> {t("ptins.traceCallFailed", "Trace call failed")}
               </p>
               <p className="mt-1 text-sm text-error-600 dark:text-error-300">{error}</p>
               <Button variant="outline" size="sm" onClick={() => run()} className="mt-3">
-                <RefreshCw className="mr-2 h-4 w-4" /> Coba lagi
+                <RefreshCw className="mr-2 h-4 w-4" /> {t("common.retry", "Retry")}
               </Button>
             </div>
           )}
@@ -297,7 +309,7 @@ export default function PublishTraceInspector({ isOpen, onClose, request, storeN
               {(trace.warnings?.length ?? 0) > 0 && (
                 <div className="rounded-xl border border-warning-200 bg-warning-50 px-4 py-3 dark:border-warning-500/30 dark:bg-warning-500/10">
                   <p className="flex items-center gap-2 text-sm font-medium text-warning-700 dark:text-warning-400">
-                    <Info className="h-4 w-4" /> Catatan / warnings
+                    <Info className="h-4 w-4" /> {t("ptins.warnings", "Notes / warnings")}
                   </p>
                   <ul className="mt-1.5 space-y-1">
                     {trace.warnings!.map((w, i) => (
@@ -309,22 +321,22 @@ export default function PublishTraceInspector({ isOpen, onClose, request, storeN
 
               {/* 1. Summary — which JOLT spec won */}
               <Section
-                title="Ringkasan resolusi JOLT"
+                title={t("ptins.joltSummaryTitle", "JOLT resolution summary")}
                 icon={<Zap className="h-4 w-4 text-brand-500" />}
-                hint="Spec mana yang menang — akar-masalah paling sering."
+                hint={t("ptins.joltSummaryHint", "Which spec won — the most common root cause.")}
               >
                 <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-                  <SummaryTile label="Source" value={jolt?.source ?? "—"} />
+                  <SummaryTile label={t("ptins.tileSource", "Source")} value={jolt?.source ?? "—"} />
                   <SummaryTile
-                    label="Generated by"
+                    label={t("ptins.tileGeneratedBy", "Generated by")}
                     value={jolt?.generatedBy ?? "—"}
                     tone={isGenerated ? "warn" : "ok"}
                   />
-                  <SummaryTile label="Version" value={jolt?.version ?? "—"} />
-                  <SummaryTile label="API version" value={jolt?.apiVersion ?? "—"} />
-                  <SummaryTile label="Operations" value={jolt?.operations != null ? String(jolt.operations) : "—"} />
-                  <SummaryTile label="Resolved category" value={trace.resolvedCategory ?? "—"} />
-                  <SummaryTile label="Channel category id" value={trace.channelCategoryId ?? "—"} />
+                  <SummaryTile label={t("ptins.tileVersion", "Version")} value={jolt?.version ?? "—"} />
+                  <SummaryTile label={t("ptins.tileApiVersion", "API version")} value={jolt?.apiVersion ?? "—"} />
+                  <SummaryTile label={t("ptins.tileOperations", "Operations")} value={jolt?.operations != null ? String(jolt.operations) : "—"} />
+                  <SummaryTile label={t("ptins.tileResolvedCategory", "Resolved category")} value={trace.resolvedCategory ?? "—"} />
+                  <SummaryTile label={t("ptins.tileChannelCategoryId", "Channel category id")} value={trace.channelCategoryId ?? "—"} />
                 </div>
 
                 {/* Schema-staleness badge — is this generated spec built against the channel's
@@ -336,9 +348,9 @@ export default function PublishTraceInspector({ isOpen, onClose, request, storeN
                       <p className="flex items-start gap-1.5 rounded-lg bg-error-50 px-3 py-2 text-xs text-error-700 dark:bg-error-500/10 dark:text-error-400">
                         <AlertTriangle className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" />
                         <span>
-                          Spec dibuat terhadap apiSchema lama — bisa memetakan ke path yang sudah dihapus/diganti
-                          (mis. nama produk gagal terpetakan). <strong>Regenerate</strong> = hapus spec; AI agent
-                          membangun ulang otomatis (ter-stamp fingerprint terkini) pada publish/analyse berikutnya.{" "}
+                          {t("ptins.staleLead", "Spec was built against an old apiSchema — it may map to paths that were removed/renamed (e.g. the product name fails to map.)")}{" "}
+                          <strong>{t("ptins.regenerate", "Regenerate")}</strong>{" "}
+                          {t("ptins.staleRegenNote", "= delete the spec; the AI agent rebuilds it automatically (stamped with the current fingerprint) on the next publish/analyse.")}{" "}
                           <button
                             onClick={() =>
                               router.push(
@@ -349,7 +361,7 @@ export default function PublishTraceInspector({ isOpen, onClose, request, storeN
                             }
                             className="inline font-medium underline hover:no-underline"
                           >
-                            Kelola spec di Admin →
+                            {t("ptins.manageSpecInAdmin", "Manage spec in Admin →")}
                           </button>
                         </span>
                       </p>
@@ -360,56 +372,58 @@ export default function PublishTraceInspector({ isOpen, onClose, request, storeN
                 {isGenerated && (
                   <p className="flex items-start gap-1.5 rounded-lg bg-warning-50 px-3 py-2 text-xs text-warning-700 dark:bg-warning-500/10 dark:text-warning-400">
                     <AlertTriangle className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" />
-                    Spec <code className="font-mono">ai-agent-v1</code> (generated) menang atas seed — field
-                    yang tak dipetakan master→apiSchema bisa terjatuh di JOLT. Cek di bawah apakah field
-                    dibangun ulang di post-processing.
+                    {t("ptins.generatedWinsPre", "Spec")}{" "}
+                    <code className="font-mono">ai-agent-v1</code>{" "}
+                    {t("ptins.generatedWinsPost", "(generated) wins over the seed — a field not mapped master→apiSchema can be dropped in JOLT. Check below whether the field is rebuilt in post-processing.")}
                   </p>
                 )}
                 <button
                   onClick={openSideBySide}
                   className="inline-flex items-center gap-1.5 rounded-lg border border-brand-200 bg-brand-50 px-3 py-1.5 text-xs font-medium text-brand-700 hover:bg-brand-100 dark:border-brand-500/30 dark:bg-brand-500/10 dark:text-brand-300 dark:hover:bg-brand-500/20"
                 >
-                  <ExternalLink className="h-3.5 w-3.5" /> Buka side-by-side JOLT | DSL — lihat field per-field
+                  <ExternalLink className="h-3.5 w-3.5" /> {t("ptins.openSideBySide", "Open side-by-side JOLT | DSL — see field by field")}
                 </button>
               </Section>
 
               {/* Gate — preflight + semantic (merge → jolt → GATE → DSL) */}
               {trace.gate && (
                 <Section
-                  title="Gate — preflight + semantic"
+                  title={t("ptins.gateTitle", "Gate — preflight + semantic")}
                   icon={trace.gate.wouldBlockPublish
                     ? <AlertTriangle className="h-4 w-4 text-error-500" />
                     : <CheckCircle2 className="h-4 w-4 text-success-500" />}
-                  hint="Di publish nyata memblokir; di trace hanya dicatat (pipeline diteruskan)."
+                  hint={t("ptins.gateHint", "In a real publish it blocks; in a trace it is only recorded (the pipeline continues).")}
                 >
                   <div className={`rounded-lg border px-3 py-2 text-sm font-medium ${
                     trace.gate.wouldBlockPublish
                       ? "border-error-200 bg-error-50 text-error-700 dark:border-error-500/30 dark:bg-error-500/10 dark:text-error-400"
                       : "border-success-200 bg-success-50 text-success-700 dark:border-success-500/30 dark:bg-success-500/10 dark:text-success-400"
                   }`}>
-                    {trace.gate.wouldBlockPublish ? "Publish nyata AKAN diblok gate." : "Gate lolos — tak ada blocker."}
+                    {trace.gate.wouldBlockPublish
+                      ? t("ptins.gateWouldBlock", "A real publish WOULD be blocked by the gate.")
+                      : t("ptins.gatePassed", "Gate passed — no blockers.")}
                   </div>
                   <div className="mt-2 grid grid-cols-1 gap-2 text-xs sm:grid-cols-2">
                     <div className="rounded-lg border border-gray-200 px-3 py-2 dark:border-gray-800">
-                      <p className="mb-1 font-medium text-gray-700 dark:text-gray-300">Preflight (field wajib)</p>
+                      <p className="mb-1 font-medium text-gray-700 dark:text-gray-300">{t("ptins.preflightTitle", "Preflight (required fields)")}</p>
                       {!trace.gate.preflight?.ran ? (
-                        <p className="text-gray-400">tidak dijalankan</p>
+                        <p className="text-gray-400">{t("ptins.notRun", "not run")}</p>
                       ) : trace.gate.preflight.passed ? (
-                        <p className="text-success-700 dark:text-success-400">lolos</p>
+                        <p className="text-success-700 dark:text-success-400">{t("ptins.checkPassed", "passed")}</p>
                       ) : (
                         <div className="flex flex-wrap gap-1">
                           {trace.gate.preflight.missingFields?.map((f, i) => (
-                            <KeyPill key={i} tone="bad">{f.label || f.field || "field"}</KeyPill>
+                            <KeyPill key={i} tone="bad">{f.label || f.field || t("ptins.fieldFallback", "field")}</KeyPill>
                           ))}
                         </div>
                       )}
                     </div>
                     <div className="rounded-lg border border-gray-200 px-3 py-2 dark:border-gray-800">
-                      <p className="mb-1 font-medium text-gray-700 dark:text-gray-300">Semantic (anti-scramble)</p>
+                      <p className="mb-1 font-medium text-gray-700 dark:text-gray-300">{t("ptins.semanticTitle", "Semantic (anti-scramble)")}</p>
                       {!trace.gate.semantic?.ran ? (
-                        <p className="text-warning-700 dark:text-warning-400">fail-open — knowledge base kosong (tak divalidasi)</p>
+                        <p className="text-warning-700 dark:text-warning-400">{t("ptins.semanticFailOpen", "fail-open — knowledge base empty (not validated)")}</p>
                       ) : trace.gate.semantic.passed ? (
-                        <p className="text-success-700 dark:text-success-400">lolos</p>
+                        <p className="text-success-700 dark:text-success-400">{t("ptins.checkPassed", "passed")}</p>
                       ) : (
                         <div className="space-y-1">
                           {trace.gate.semantic.violations?.map((v, i) => (
@@ -426,16 +440,16 @@ export default function PublishTraceInspector({ isOpen, onClose, request, storeN
 
               {/* 2. Field finder */}
               <Section
-                title="Cari field"
+                title={t("ptins.findFieldTitle", "Find field")}
                 icon={<Search className="h-4 w-4 text-brand-500" />}
-                hint="Ketik nama field (mis. category_id, image, attribute_list) — lihat di tahap mana ia muncul/hilang."
+                hint={t("ptins.findFieldHint", "Type a field name (e.g. category_id, image, attribute_list) — see at which stage it appears/disappears.")}
               >
                 <div className="relative">
                   <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
                   <input
                     value={query}
                     onChange={(e) => setQuery(e.target.value)}
-                    placeholder="nama field…"
+                    placeholder={t("ptins.findFieldPlaceholder", "field name…")}
                     className="w-full rounded-lg border border-gray-200 bg-white py-2 pl-9 pr-3 text-sm text-gray-800 placeholder:text-gray-400 focus:border-brand-400 focus:outline-none focus:ring-1 focus:ring-brand-400 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200"
                   />
                 </div>
@@ -471,12 +485,12 @@ export default function PublishTraceInspector({ isOpen, onClose, request, storeN
 
               {/* 3. Post-processing timeline */}
               <Section
-                title={`Post-processing timeline (${trace.postProcessing?.length ?? 0} rule)`}
+                title={t("ptins.postProcTitle", "Post-processing timeline ({count} rules)").replace("{count}", String(trace.postProcessing?.length ?? 0))}
                 icon={<ChevronRight className="h-4 w-4 text-brand-500" />}
-                hint="Rule apa yang membangun / mengubah tiap field, urut prioritas."
+                hint={t("ptins.postProcHint", "Which rule builds / changes each field, in priority order.")}
               >
                 {(trace.postProcessing?.length ?? 0) === 0 ? (
-                  <p className="text-xs text-gray-400">Tidak ada rule post-processing.</p>
+                  <p className="text-xs text-gray-400">{t("ptins.postProcEmpty", "No post-processing rules.")}</p>
                 ) : (
                   <ol className="space-y-2">
                     {trace.postProcessing!.map((r, i) => (
@@ -508,21 +522,21 @@ export default function PublishTraceInspector({ isOpen, onClose, request, storeN
 
               {/* 4. Final channel attributes */}
               <Section
-                title={`Body final — channelAttributes (${trace.channelAttributes?.length ?? 0})`}
+                title={t("ptins.finalBodyTitle", "Final body — channelAttributes ({count})").replace("{count}", String(trace.channelAttributes?.length ?? 0))}
                 icon={<Database className="h-4 w-4 text-brand-500" />}
-                hint="Atribut persis seperti dikirim. Yang ber-badge merah dikecualikan dari body channel."
+                hint={t("ptins.finalBodyHint", "Attributes exactly as sent. Those with a red badge are excluded from the channel body.")}
               >
                 {(trace.channelAttributes?.length ?? 0) === 0 ? (
-                  <p className="text-xs text-gray-400">Tidak ada channelAttributes.</p>
+                  <p className="text-xs text-gray-400">{t("ptins.finalBodyEmpty", "No channelAttributes.")}</p>
                 ) : (
                   <div className="overflow-x-auto rounded-lg border border-gray-200 dark:border-gray-800">
                     <table className="w-full text-left text-xs">
                       <thead className="bg-gray-50 text-gray-500 dark:bg-gray-800/50 dark:text-gray-400">
                         <tr>
-                          <th className="px-3 py-2 font-medium">Attribute</th>
-                          <th className="px-3 py-2 font-medium">Type</th>
-                          <th className="px-3 py-2 font-medium">Value</th>
-                          <th className="px-3 py-2 font-medium">Body?</th>
+                          <th className="px-3 py-2 font-medium">{t("ptins.thAttribute", "Attribute")}</th>
+                          <th className="px-3 py-2 font-medium">{t("ptins.thType", "Type")}</th>
+                          <th className="px-3 py-2 font-medium">{t("ptins.thValue", "Value")}</th>
+                          <th className="px-3 py-2 font-medium">{t("ptins.thBody", "Body?")}</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
@@ -549,11 +563,11 @@ export default function PublishTraceInspector({ isOpen, onClose, request, storeN
                               <td className="px-3 py-2">
                                 {excluded ? (
                                   <span className="inline-flex items-center gap-1 rounded bg-error-50 px-1.5 py-0.5 font-medium text-error-700 dark:bg-error-500/10 dark:text-error-400">
-                                    excluded
+                                    {t("ptins.badgeExcluded", "excluded")}
                                   </span>
                                 ) : (
                                   <span className="inline-flex items-center gap-1 rounded bg-success-50 px-1.5 py-0.5 font-medium text-success-700 dark:bg-success-500/10 dark:text-success-400">
-                                    sent
+                                    {t("ptins.badgeSent", "sent")}
                                   </span>
                                 )}
                               </td>
@@ -566,7 +580,7 @@ export default function PublishTraceInspector({ isOpen, onClose, request, storeN
                 )}
                 {(trace.supportFieldsExcludedBySync?.length ?? 0) > 0 && (
                   <div className="flex flex-wrap items-center gap-1 text-xs text-gray-500 dark:text-gray-400">
-                    <span>Dikecualikan sync-service:</span>
+                    <span>{t("ptins.excludedBySync", "Excluded by sync-service:")}</span>
                     {trace.supportFieldsExcludedBySync!.map((n) => (
                       <KeyPill key={n} tone="bad">{n}</KeyPill>
                     ))}
@@ -575,13 +589,13 @@ export default function PublishTraceInspector({ isOpen, onClose, request, storeN
               </Section>
 
               {/* Raw stage snapshots */}
-              <Section title="Snapshot mentah per-tahap" icon={<Code className="h-4 w-4 text-brand-500" />}>
+              <Section title={t("ptins.rawSnapshotsTitle", "Raw per-stage snapshots")} icon={<Code className="h-4 w-4 text-brand-500" />}>
                 <div className="space-y-2">
                   <JsonBlock label="afterMerge" data={trace.afterMerge} />
                   <JsonBlock label="afterJolt" data={trace.afterJolt} />
                   <JsonBlock label="stagedKeys" data={trace.stagedKeys} />
                   <JsonBlock label="afterPostProcessing" data={trace.afterPostProcessing} />
-                  <JsonBlock label="Full response" data={trace} />
+                  <JsonBlock label={t("ptins.fullResponse", "Full response")} data={trace} />
                 </div>
               </Section>
             </>
@@ -590,12 +604,12 @@ export default function PublishTraceInspector({ isOpen, onClose, request, storeN
 
         {/* Footer */}
         <div className="flex items-center justify-between border-t border-gray-100 px-6 py-3 dark:border-gray-800">
-          <span className="text-xs text-gray-400">Read-only diagnostic · aman diulang</span>
+          <span className="text-xs text-gray-400">{t("ptins.footerNote", "Read-only diagnostic · safe to repeat")}</span>
           <div className="flex items-center gap-2">
             <Button variant="outline" size="sm" onClick={() => run()} disabled={loading}>
-              <RefreshCw className={`mr-2 h-4 w-4 ${loading ? "animate-spin" : ""}`} /> Jalankan ulang
+              <RefreshCw className={`mr-2 h-4 w-4 ${loading ? "animate-spin" : ""}`} /> {t("ptins.rerun", "Re-run")}
             </Button>
-            <Button size="sm" onClick={onClose}>Tutup</Button>
+            <Button size="sm" onClick={onClose}>{t("common.close", "Close")}</Button>
           </div>
         </div>
       </div>
