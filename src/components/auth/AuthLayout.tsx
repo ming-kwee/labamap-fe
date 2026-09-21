@@ -1,27 +1,24 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useAuth } from '@/shared/contexts/AuthContext';
 import SignInForm from './SignInForm';
 import SignUpForm from './SignUpForm';
+import AuthShell from './AuthShell';
 import { LogoutButton } from './LogoutButton';
 import { Card, CardContent, CardHeader, CardTitle } from '@/shared/ui/card/Card';
 import Button from '@/shared/ui/button/Button';
-import { Loader2, Package, User, Building } from '@/shared/ui/icons/Icons';
+import { Loader2, User, Building } from '@/shared/ui/icons/Icons';
 
 interface AuthLayoutProps {
   children: React.ReactNode;
   requireAuth?: boolean;
-  fallbackToDemo?: boolean;
   className?: string;
 }
-
-type AuthMode = 'login' | 'signup';
 
 export const AuthLayout: React.FC<AuthLayoutProps> = ({
   children,
   requireAuth = true,
-  fallbackToDemo = false,
   className = ""
 }) => {
   const { user, organization, isAuthenticated, isLoading } = useAuth();
@@ -56,25 +53,18 @@ export const AuthLayout: React.FC<AuthLayoutProps> = ({
     );
   }
 
-  // If authentication is required and user is not authenticated
+  // If authentication is required and user is not authenticated — render the shared elegant
+  // AuthShell so the app-root login matches the /signin route exactly (identical on refresh).
   if (requireAuth && !isAuthenticated) {
-    console.log('[AuthLayout] Rendering login/signup form - requireAuth:', requireAuth, 'isAuthenticated:', isAuthenticated);
     return (
-      <div className={`min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900 p-4 ${className}`}>
-        <div className="w-full max-w-lg">
-          {authMode === 'login' && (
-            <SignInForm
-              onSwitchToSignUp={switchToSignUp}
-              showBackLink={false}
-            />
+      <div className={className}>
+        <AuthShell>
+          {authMode === 'login' ? (
+            <SignInForm onSwitchToSignUp={switchToSignUp} showBackLink={false} />
+          ) : (
+            <SignUpForm onSwitchToLogin={switchToLogin} />
           )}
-
-          {authMode === 'signup' && (
-            <SignUpForm
-              onSwitchToLogin={switchToLogin}
-            />
-          )}
-        </div>
+        </AuthShell>
       </div>
     );
   }
