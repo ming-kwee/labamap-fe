@@ -8,9 +8,11 @@ import { useT } from "@/shared/contexts/LocaleContext";
  *
  * The developer view is organised by the backend's schema roles (required / recommended / optional /
  * master_overrides / merchant_data / category), which is precise but reads like a form dump. Merchants
- * on Ginee / BigSeller / ChannelAdvisor / Linnworks instead get a *guided, plain-language flow*:
- * category → product details → photos → what the channel requires → variations → optional extras, with
- * a completion hero and per-step status so they always know what's left to publish.
+ * on Ginee / BigSeller / ChannelAdvisor / Linnworks instead get a *guided, plain-language flow* whose
+ * block order mirrors Step 1 for mental continuity: category → what the channel requires → product details
+ * → additional details (product attributes) → photos → variations → optional extras, with a completion
+ * hero and per-step status so they always know what's left to publish. "Additional details" reuses Step 1's
+ * label/copy so a merchant recognises the same attribute block instead of hunting for it in a generic pile.
  *
  * This component owns NO business logic. Every field is rendered through the exact same callbacks the
  * developer view uses (`renderFields` = the shared FieldsGrid, `renderVariants` = the shared variant
@@ -24,6 +26,10 @@ const ICONS: Record<string, React.ReactNode> = {
   ),
   details: (
     <><path d="M4 4h16v16H4z" opacity="0" /><line x1="5" y1="7" x2="19" y2="7" /><line x1="5" y1="12" x2="19" y2="12" /><line x1="5" y1="17" x2="13" y2="17" /></>
+  ),
+  // Product attributes (Material/Pattern/Style/…) — a sliders glyph, distinct from the category tag.
+  attributes: (
+    <><line x1="4" y1="21" x2="4" y2="14" /><line x1="4" y1="10" x2="4" y2="3" /><line x1="12" y1="21" x2="12" y2="12" /><line x1="12" y1="8" x2="12" y2="3" /><line x1="20" y1="21" x2="20" y2="16" /><line x1="20" y1="12" x2="20" y2="3" /><line x1="1" y1="14" x2="7" y2="14" /><line x1="9" y1="8" x2="15" y2="8" /><line x1="17" y1="16" x2="23" y2="16" /></>
   ),
   photos: (
     <><rect x="3" y="3" width="18" height="18" rx="2" /><circle cx="8.5" cy="8.5" r="1.5" /><path d="m21 15-5-5L5 21" /></>
@@ -74,10 +80,12 @@ type CardStatus =
   | { kind: "done" }
   | { kind: "count"; filled: number; total: number }
   | { kind: "required" }
-  | { kind: "optional" };
+  | { kind: "optional" }
+  | { kind: "none" };   // no chip — for structural cards (e.g. Variations) where "Optional" would mislead
 
 function StatusChip({ status }: { status: CardStatus }) {
   const t = useT();
+  if (status.kind === "none") return null;
   if (status.kind === "done")
     return <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-success-50 dark:bg-success-500/15 text-success-700 dark:text-success-400">{t("merchant.chip.done", "✓ Done")}</span>;
   if (status.kind === "required")
@@ -258,7 +266,9 @@ export default function MerchantChannelView(props: MerchantChannelViewProps) {
   const requiredCardTotal = rChannel.total + rCategory.total;
   const requiredCardFilled = rChannel.filled + rCategory.filled;
 
-  const optionalCount = recommendedFields.length + optionalFields.length + categoryOptionalFields.length;
+  // Category attributes now get their own "Additional details" card (mirrors Step 1), so the tail
+  // "Optional details" card only carries channel recommended/optional extras.
+  const optionalCount = recommendedFields.length + optionalFields.length;
   const remaining = Math.max(0, requiredTotal - requiredFilled);
 
   // Build the card list so the "jump to" chips and the cards stay in sync.
@@ -316,6 +326,32 @@ export default function MerchantChannelView(props: MerchantChannelViewProps) {
     });
   }
 
+  // Additional details — the product-type attributes (Material/Pattern/Style/…) that are OPTIONAL for this
+  // channel. Placed right after "Product details" and reusing Step 1's "Additional Details" label + copy, so
+  // the merchant recognises the same block instead of finding these fields buried at the bottom of a generic
+  // "Optional" pile (the fracture we're fixing). Required category attributes stay in "Required to publish"
+  // (grouped by publish-urgency); this card is their optional half.
+  if (categoryOptionalFields.length > 0) {
+    cards.push({
+      id: "mv-attributes",
+      icon: "attributes",
+      title: t("merchant.attributesTitle", "Additional details"),
+      subtitle: t("merchant.attributesSubtitle", "Attributes for this product type — shared across all channels"),
+      status: { kind: "optional" },
+      defaultOpen: false,
+      body: (
+        <div className="pt-3 space-y-2">
+          {/* Show the bulk-revert link here when this product's category attrs are all optional (no required
+              half showed it in the "Required" card's "Category details" header). */}
+          {categoryRequiredFields.length === 0 && resetAllCategoryLink && (
+            <div className="flex justify-end">{resetAllCategoryLink}</div>
+          )}
+          {renderFields(categoryOptionalFields)}
+        </div>
+      ),
+    });
+  }
+
   cards.push({
     id: "mv-photos",
     icon: "photos",
@@ -332,7 +368,9 @@ export default function MerchantChannelView(props: MerchantChannelViewProps) {
       icon: "variations",
       title: t("merchant.variantsTitle", "Variations"),
       subtitle: t("merchant.variantsSubtitle", "Options like size & colour, plus per-variant details"),
-      status: { kind: "optional" },
+      // No chip: Variations are structural (this product HAS variants), not an "Optional" add-on. Labelling
+      // them "Optional" contradicts Step 1, where variants are the prominent final step.
+      status: { kind: "none" },
       defaultOpen: true,
       body: (
         <div className="pt-3 space-y-3">
@@ -354,16 +392,6 @@ export default function MerchantChannelView(props: MerchantChannelViewProps) {
       body: (
         <div className="pt-3 space-y-4">
           {recommendedFields.length > 0 && renderFields(recommendedFields)}
-          {categoryOptionalFields.length > 0 && (
-            <div className="space-y-2">
-              {/* Show the bulk-revert link here only when it wasn't already shown in the required "Category details"
-                  header (i.e. this product's category attrs are all optional — the common Shopify case). */}
-              {categoryRequiredFields.length === 0 && resetAllCategoryLink && (
-                <div className="flex justify-end">{resetAllCategoryLink}</div>
-              )}
-              {renderFields(categoryOptionalFields)}
-            </div>
-          )}
           {optionalFields.length > 0 && renderFields(optionalFields)}
         </div>
       ),
