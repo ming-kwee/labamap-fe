@@ -320,6 +320,12 @@ export default function ChannelFieldInput({ field, value, onChange, disabled, va
 
   const baseClass =
     "w-full rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2.5 text-sm text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-brand-500 disabled:opacity-50 disabled:cursor-not-allowed";
+  // A native <select> shows its placeholder option ("Select…") in the CONTAINER's text colour — placeholder-gray-400
+  // only affects <input>/<textarea>, so an empty select would look as dark as a filled one. Strip the baked value
+  // colour here and set it per-state on the select (muted when empty, crisp when filled) so empty vs filled is
+  // scannable at a glance. Distinguished by LIGHTNESS, not hue (colour-blind-safe; these are optional fields so no
+  // red/green urgency colouring).
+  const selectBase = baseClass.replace(" text-gray-900 dark:text-white", "");
 
   // Scenario C: CATEGORY_TREE is fully self-contained — renders its own suggestion
   // banner, browsing panel, and breadcrumb. No generic banner wrapper needed.
@@ -373,15 +379,18 @@ export default function ChannelFieldInput({ field, value, onChange, disabled, va
         />
       );
 
-    case "SELECT":
+    case "SELECT": {
+      // Defensive: a single-select must bind to a scalar. Prefill may hand a 1+-element array (master value
+      // that resolved to several options) — collapse it to the first so React doesn't throw.
+      const selectValue = Array.isArray(value) ? String(value[0] ?? "") : ((value as string) ?? "");
+      const isEmpty = selectValue === "";
       return (
         <select
-          // Defensive: a single-select must bind to a scalar. Prefill may hand a 1+-element array (master value
-          // that resolved to several options) — collapse it to the first so React doesn't throw.
-          value={Array.isArray(value) ? (String(value[0] ?? "")) : ((value as string) ?? "")}
+          value={selectValue}
           onChange={(e) => onChange(field.fieldName, e.target.value)}
           disabled={disabled}
-          className={baseClass}
+          // Empty → muted placeholder colour; filled → crisp value colour (same empty/filled cue inputs get).
+          className={`${selectBase} ${isEmpty ? "text-gray-400 dark:text-gray-500" : "text-gray-900 dark:text-white"}`}
         >
           <option value="">{t("field.selectPlaceholder", "Select…")}</option>
           {options.map((opt) => (
@@ -389,6 +398,7 @@ export default function ChannelFieldInput({ field, value, onChange, disabled, va
           ))}
         </select>
       );
+    }
 
     case "MULTISELECT": {
       const selected = Array.isArray(value) ? (value as string[]) : [];
