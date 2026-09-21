@@ -374,7 +374,11 @@ export default function CategoryTreePicker({ field, value, onChange, disabled }:
                 ))}
               </span>
             ) : (
-              <span className="text-xs text-gray-500 dark:text-gray-400 font-mono">{String(value)}</span>
+              // No resolved breadcrumb (cold tree/taxonomy cache AND no persisted durable label). Show a friendly
+              // prompt — never the raw GID, which is meaningless to a merchant and looks broken.
+              <span className="text-xs italic text-gray-500 dark:text-gray-400">
+                {t('catpick.selectedUnresolved', 'Category selected — click Change to view or update')}
+              </span>
             )}
           </div>
           <button type="button" onClick={openPicker} disabled={disabled}

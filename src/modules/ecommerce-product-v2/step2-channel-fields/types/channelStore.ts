@@ -294,6 +294,16 @@ export interface ChannelStepSaveRequest {
    * completionPercentage. Omit if the store's schema has no CATEGORY_TREE field.
    */
   categoryId?: string;
+
+  /**
+   * Phase 6 — durable channel category label. Persisted to ChannelProductData's dedicated
+   * channelCategoryId/Name/Path fields so the picker breadcrumb + merchant category card show the real label
+   * even when the tree/taxonomy cache is cold (otherwise the UI falls back to the raw GID).
+   * channelCategoryPath is the full breadcrumb incl. the leaf, joined with " › ".
+   */
+  channelCategoryId?: string;
+  channelCategoryName?: string;
+  channelCategoryPath?: string;
 }
 
 // ─── Scenario D: Category-Dependent Dynamic Field Injection ───────────────────

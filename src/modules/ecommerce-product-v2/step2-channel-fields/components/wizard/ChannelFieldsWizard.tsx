@@ -378,13 +378,21 @@ export default function ChannelFieldsWizard({ masterProductId }: Props) {
     try {
       // Derive top-level categoryId from the CATEGORY_TREE field value (not channelData["categoryId"]).
       // Backend resolveCategorySlug() skips GID-format values and falls back to categoryPath (Priority 3).
-      const categoryTreeFieldName = channel.sections
+      const categoryTreeField = channel.sections
         .flatMap((s) => s.fields ?? [])
-        .find((f) => f.fieldType === "CATEGORY_TREE")
-        ?.fieldName;
+        .find((f) => f.fieldType === "CATEGORY_TREE");
+      const categoryTreeFieldName = categoryTreeField?.fieldName;
       const categoryId = categoryTreeFieldName
         ? (values.channelData[categoryTreeFieldName] as string | undefined)
         : undefined;
+      // Phase 6 — persist the human-readable label alongside the id so the display survives a cold cache /
+      // refresh (otherwise the picker + breadcrumb fall back to the raw GID). Names come from the picker's
+      // resolved selectedPath; path is the full breadcrumb incl. the leaf.
+      const selectedPath = categoryTreeField?.categoryTreeConfig?.selectedPath ?? [];
+      const channelCategoryName = selectedPath.length
+        ? selectedPath[selectedPath.length - 1]?.name : undefined;
+      const channelCategoryPath = selectedPath.length
+        ? selectedPath.map((n) => n.name).filter(Boolean).join(" › ") : undefined;
       const result = await ChannelProductDataService.saveChannelData(orgId, {
         masterProductId,
         storeId,
@@ -395,6 +403,11 @@ export default function ChannelFieldsWizard({ masterProductId }: Props) {
         // Only these category attrs are frozen as overrides; the rest inherit from master on the next load.
         overriddenCategoryAttributes: values.overriddenCategoryAttrs ?? [],
         ...(categoryId ? { categoryId } : {}),
+        // Persist the durable label only when we have a committed id AND a resolved name (avoid stamping a
+        // half-known label from a preFill hint).
+        ...(categoryId && channelCategoryName
+          ? { channelCategoryId: categoryId, channelCategoryName, channelCategoryPath }
+          : {}),
       });
       setStoreCompletion((prev) => ({
         ...prev,

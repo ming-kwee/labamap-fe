@@ -407,6 +407,10 @@ export const ChannelProductDataService = {
           ...(request.overriddenCategoryAttributes != null
             ? { overriddenCategoryAttributes: request.overriddenCategoryAttributes } : {}),
           ...(request.categoryId != null ? { categoryId: request.categoryId } : {}),
+          // Phase 6 — durable category label so the display never falls back to the raw GID.
+          ...(request.channelCategoryId != null ? { channelCategoryId: request.channelCategoryId } : {}),
+          ...(request.channelCategoryName != null ? { channelCategoryName: request.channelCategoryName } : {}),
+          ...(request.channelCategoryPath != null ? { channelCategoryPath: request.channelCategoryPath } : {}),
         }),
       }
     ).then((r) => handleResponse<ChannelProductData>(r));
