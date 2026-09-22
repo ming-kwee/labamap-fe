@@ -7,7 +7,7 @@
  * Spec: docs/ai/frontend/FRONTEND-ADMIN-RECOMMENDATIONS.md §P2-K
  */
 
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ChannelValueMapping,
   ChannelValueMappingRequest,
@@ -175,6 +175,26 @@ export default function ChannelValueMappingsPage() {
   }, []);
 
   useEffect(() => { load(); }, [load]);
+
+  // Persist the channel filter + search in the URL query string, so a refresh (F5) keeps the current
+  // view while a clean entry from the sidebar (no query) still defaults to "All".
+  const urlHydrated = useRef(false);
+  useEffect(() => {
+    const p = new URLSearchParams(window.location.search);
+    const ch = p.get("channel");
+    const q = p.get("q");
+    if (ch) setChannelFilter(ch);
+    if (q) setSearch(q);
+    urlHydrated.current = true;
+  }, []);
+  useEffect(() => {
+    if (!urlHydrated.current) return; // don't clobber the URL before the initial read is applied
+    const p = new URLSearchParams(window.location.search);
+    if (channelFilter && channelFilter !== "all") p.set("channel", channelFilter); else p.delete("channel");
+    if (search.trim()) p.set("q", search.trim()); else p.delete("q");
+    const qs = p.toString();
+    window.history.replaceState(null, "", qs ? `${window.location.pathname}?${qs}` : window.location.pathname);
+  }, [channelFilter, search]);
 
   function showToast(message: string, type: "success" | "error") {
     setToast({ message, type });
