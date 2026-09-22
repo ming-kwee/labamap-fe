@@ -285,9 +285,13 @@ export default function AddEditValueMappingModal({
             </div>
             <div className="space-y-2">
               <div className="grid grid-cols-[1fr_1fr_1fr_auto] gap-2 text-[11px] text-gray-400 px-1">
-                <span>Master value</span>
-                <span>Channel value{liveOptions.length > 0 ? " (pilih)" : ""}</span>
-                <span>Channel label (opsional)</span>
+                <span title="Nilai kanonik master (mis. cotton) — bukan teks lokal">Master value</span>
+                <span title="Identifier/ID channel yang dikirim saat publish (mis. value_id TikTok, atau label kanonik Shopify) — bukan teks berbahasa lokal">
+                  Channel value{liveOptions.length > 0 ? " (pilih)" : ""} <span className="text-gray-300 dark:text-gray-600">· ID/kanonik</span>
+                </span>
+                <span title="Hanya untuk tampilan/preview admin — TIDAK dikirim ke channel; boleh dilokalisasi">
+                  Channel label (opsional) <span className="text-gray-300 dark:text-gray-600">· tampilan saja</span>
+                </span>
                 <span />
               </div>
               {rows.map((row, i) => {
