@@ -206,14 +206,26 @@ export default function ChannelValueMappingsPage() {
 
   const channels = useMemo(() => Array.from(new Set(mappings.map((m) => m.channelType))).sort(), [mappings]);
 
-  // (channelType|masterFieldName) appearing more than once → flag as possibly duplicate/legacy.
-  const dupKeys = useMemo(() => {
-    const count = new Map<string, number>();
+  // Flag a (channelType|masterFieldName) with >1 row as possibly duplicate/legacy — EXCEPT the
+  // legitimate axis pattern: a name-bridge (attr-id, 0 values) paired with a *_value_id variant slot.
+  const dupFlags = useMemo(() => {
+    const groups = new Map<string, ChannelValueMapping[]>();
     for (const m of mappings) {
       const k = `${m.channelType}|${m.masterFieldName}`;
-      count.set(k, (count.get(k) ?? 0) + 1);
+      const g = groups.get(k) ?? [];
+      g.push(m);
+      groups.set(k, g);
     }
-    return new Set(Array.from(count.entries()).filter(([, n]) => n > 1).map(([k]) => k));
+    const flags = new Map<string, boolean>();
+    for (const [k, rows] of groups) {
+      if (rows.length <= 1) { flags.set(k, false); continue; }
+      const kinds = rows.map((r) => fieldKind(r.channelFieldName));
+      const legitPair = rows.length === 2
+        && kinds.includes("attr-id") && kinds.includes("slot")
+        && rows.some((r) => fieldKind(r.channelFieldName) === "attr-id" && r.mappings.length === 0);
+      flags.set(k, !legitPair);
+    }
+    return flags;
   }, [mappings]);
 
   const filtered = useMemo(() => {
@@ -305,7 +317,7 @@ export default function ChannelValueMappingsPage() {
             </thead>
             <tbody>
               {filtered.map((m) => (
-                <MappingRow key={m.id} mapping={m} duplicate={dupKeys.has(`${m.channelType}|${m.masterFieldName}`)} onEdit={(x) => setModal({ mode: "edit", mapping: x })} onDelete={(x) => setDeleteTarget(x)} />
+                <MappingRow key={m.id} mapping={m} duplicate={dupFlags.get(`${m.channelType}|${m.masterFieldName}`) ?? false} onEdit={(x) => setModal({ mode: "edit", mapping: x })} onDelete={(x) => setDeleteTarget(x)} />
               ))}
             </tbody>
           </table>
