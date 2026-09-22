@@ -16,6 +16,14 @@ const API_ROOT =
 const BASE = `${API_ROOT}/admin/channel-mappings`;
 const JSON_HEADERS = { "Content-Type": "application/json" };
 
+/** A live channel category attribute (fieldName + resolved label + its option labels). */
+export interface LiveChannelField {
+  fieldName: string;
+  label: string;
+  /** Option LABELS (what a value-map `channelValue` stores — P3 resolves label → value_id at runtime). */
+  options: string[];
+}
+
 export interface ValueMappingPage {
   content: ChannelValueMapping[];
   page: number;
@@ -70,6 +78,36 @@ export const ChannelValueMappingService = {
       totalPages: Number(raw?.totalPages ?? 1),
       hasNext: Boolean(raw?.hasNext ?? false),
     };
+  },
+
+  /**
+   * Live channel category attributes for a (store, category) — used by the Add/Edit modal to let the admin
+   * pick channel option LABELS instead of typing them. GET /merchant-data/{channelType}/{storeId}/category-attributes.
+   */
+  async liveChannelOptions(
+    channelType: string,
+    storeId: string,
+    categoryId: string,
+    organizationId: string,
+  ): Promise<LiveChannelField[]> {
+    const qs = new URLSearchParams({ categoryId, organizationId }).toString();
+    const url = `${API_ROOT}/merchant-data/${encodeURIComponent(channelType)}/${encodeURIComponent(storeId)}/category-attributes?${qs}`;
+    const res = await fetch(url, { method: "GET", headers: JSON_HEADERS });
+    if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+    const data = (await res.json()) as Record<string, unknown>;
+    const all = [
+      ...(Array.isArray(data.requiredFields) ? data.requiredFields : []),
+      ...(Array.isArray(data.optionalFields) ? data.optionalFields : []),
+    ] as Record<string, unknown>[];
+    return all.map((f) => ({
+      fieldName: String(f.fieldName ?? ""),
+      label: String(f.label ?? f.fieldName ?? ""),
+      options: Array.isArray(f.options)
+        ? (f.options as Record<string, unknown>[])
+            .map((o) => String(o.label ?? o.value ?? ""))
+            .filter(Boolean)
+        : [],
+    }));
   },
 
   /** POST /admin/channel-mappings */
