@@ -2,7 +2,7 @@
 
 import React, { useState, useRef, useCallback, useMemo, useEffect } from "react";
 import Link from "next/link";
-import { MasterAttribute, AttributeCategory, AttributeType, AttributeFilters } from "../_types/attribute";
+import { MasterAttribute, AttributeCategory, AttributeType, AttributeFilters, SortField } from "../_types/attribute";
 import { AttributeService } from "../_services/attribute.service";
 // CategoryService removed — product_categories migrated to tags (2026-06-16).
 // Attribute categoryIds will be migrated to productTypeIds in a future sprint.
@@ -128,19 +128,38 @@ const TYPE_CONFIG: Record<AttributeType, { label: string; bg: string; text: stri
 
 // ─── Section config ───────────────────────────────────────────────────────────
 
-// Actual section values returned by backend
+// Canonical section display order — MIRRORS the merchant Step-1 form
+// (BFF DataDrivenSchemaGenerationService.getSectionOrder). Keep in sync so the admin
+// list reads in the SAME order a merchant sees the form.
 const SECTION_ORDER = [
-  "product_info", "pricing_inventory", "variants", "shipping",
-  "media", "publishing", "tax", "channel",
+  "product_info", "media", "pricing_inventory", "variants", "shipping",
+  "publishing", "variant_attributes", "compliance", "general",
 ];
 
+// Rank a section for sorting. Known form sections follow SECTION_ORDER (1..N). Data-only
+// sections the Step-1 form doesn't render (listing/tax/channel) trail after them; a truly
+// unsectioned attribute sorts last — matching the BFF (unknown→100, null→999).
+const SECTION_RANK: Record<string, number> = {
+  ...Object.fromEntries(SECTION_ORDER.map((s, i) => [s, i + 1])),
+  listing: 50, tax: 51, channel: 52,
+};
+function getSectionRank(section: string | undefined): number {
+  const key = (section ?? "").toLowerCase();
+  if (key === "") return 999;
+  return SECTION_RANK[key] ?? 100;
+}
+
 const SECTION_CONFIG: Record<string, { label: string; icon: string; color: string }> = {
-  product_info:       { label: "Product Info",       icon: "📝", color: "#3b82f6" },
+  product_info:       { label: "Product Info",        icon: "📝", color: "#3b82f6" },
+  media:              { label: "Media",               icon: "🖼",  color: "#8b5cf6" },
   pricing_inventory:  { label: "Pricing & Inventory", icon: "💰", color: "#10b981" },
   variants:           { label: "Variants",            icon: "🔀", color: "#ec4899" },
   shipping:           { label: "Shipping",            icon: "🚚", color: "#0ea5e9" },
-  media:              { label: "Media",               icon: "🖼",  color: "#8b5cf6" },
   publishing:         { label: "Publishing",          icon: "📢", color: "#6366f1" },
+  variant_attributes: { label: "Variant Attributes",  icon: "🧬", color: "#d946ef" },
+  compliance:         { label: "Compliance",          icon: "✅", color: "#14b8a6" },
+  general:            { label: "General",             icon: "📋", color: "#6b7280" },
+  listing:            { label: "Listing",             icon: "🏷",  color: "#f97316" },
   tax:                { label: "Tax",                 icon: "🧾", color: "#f59e0b" },
   channel:            { label: "Channel",             icon: "📡", color: "#6366f1" },
   "":                 { label: "General",             icon: "📋", color: "#6b7280" },
@@ -867,7 +886,7 @@ export default function MasterAttributesPage() {
   const [selectedCategoryId, setSelectedCategoryId] = useState<string>("all");
   const [filters, setFilters] = useState<AttributeFilters>({
     search: "", categoryId: "all", productTypeId: "all", status: "all", type: "all", required: "all",
-    sortField: "sortOrder", sortDir: "asc",
+    sortField: "formOrder", sortDir: "asc",
   });
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   const [previewId, setPreviewId] = useState<string | null>(null);
@@ -889,8 +908,8 @@ export default function MasterAttributesPage() {
   const [ptLoading, setPtLoading] = useState(true);
   const [ptError, setPtError] = useState(false);
 
-  // View mode: flat list vs grouped by section
-  const [viewMode, setViewMode] = useState<"flat" | "grouped">("flat");
+  // View mode: flat list vs grouped by section. Default grouped so the page opens in Form order.
+  const [viewMode, setViewMode] = useState<"flat" | "grouped">("grouped");
   const [collapsedSections, setCollapsedSections] = useState<Set<string>>(new Set());
 
   // Tab: master attributes vs channel fields
@@ -1015,7 +1034,8 @@ export default function MasterAttributesPage() {
     // Sort
     list.sort((a, b) => {
       let cmp = 0;
-      if (filters.sortField === "sortOrder") cmp = a.sortOrder - b.sortOrder;
+      if (filters.sortField === "formOrder") cmp = (getSectionRank(a.section) - getSectionRank(b.section)) || (a.sortOrder - b.sortOrder);
+      else if (filters.sortField === "sortOrder") cmp = a.sortOrder - b.sortOrder;
       else if (filters.sortField === "name") cmp = a.name.localeCompare(b.name);
       else if (filters.sortField === "type") cmp = a.type.localeCompare(b.type);
       else if (filters.sortField === "usageCount") cmp = a.usageCount - b.usageCount;
@@ -1059,14 +1079,9 @@ export default function MasterAttributesPage() {
       map.get(key)!.push(attr);
     }
     return [...map.entries()].sort(([a], [b]) => {
-      const ai = SECTION_ORDER.indexOf(a);
-      const bi = SECTION_ORDER.indexOf(b);
-      if (ai !== -1 && bi !== -1) return ai - bi;
-      if (ai !== -1) return -1;
-      if (bi !== -1) return 1;
-      if (!a) return 1;   // unsectioned always last
-      if (!b) return -1;
-      return a.localeCompare(b);
+      const ra = getSectionRank(a);
+      const rb = getSectionRank(b);
+      return ra !== rb ? ra - rb : a.localeCompare(b);
     });
   }, [filteredAttributes]);
 
@@ -1607,10 +1622,11 @@ export default function MasterAttributesPage() {
                 <span className="text-xs text-gray-400">Sort:</span>
                 <select
                   value={filters.sortField}
-                  onChange={e => setFilters(f => ({ ...f, sortField: e.target.value as "sortOrder" | "name" | "type" | "usageCount" | "updatedAt" }))}
+                  onChange={e => setFilters(f => ({ ...f, sortField: e.target.value as SortField }))}
                   className="text-xs border border-gray-200 dark:border-gray-700 rounded-lg px-2.5 py-1.5 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 focus:outline-none"
                 >
-                  <option value="sortOrder">Position</option>
+                  <option value="formOrder">Form order</option>
+                  <option value="sortOrder">Position (within section)</option>
                   <option value="name">Name</option>
                   <option value="type">Type</option>
                   <option value="usageCount">Usage</option>
@@ -1668,8 +1684,25 @@ export default function MasterAttributesPage() {
           <span className="text-xs text-gray-400">{filteredAttributes.length} attribute{filteredAttributes.length !== 1 ? "s" : ""}</span>
 
           <div className="ml-auto flex items-center gap-3">
-            {/* Reorder mode toggle */}
-            {viewMode === "flat" && (
+            {/* Collapse / expand all sections (grouped view) */}
+            {viewMode === "grouped" && (
+              <button
+                onClick={() => {
+                  const keys = groupedAttributes.map(([k]) => k);
+                  const allCollapsed = keys.length > 0 && keys.every(k => collapsedSections.has(k));
+                  setCollapsedSections(allCollapsed ? new Set() : new Set(keys));
+                }}
+                className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded-lg border border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+                title="Collapse / expand all sections"
+              >
+                <span className="hidden sm:inline">
+                  {groupedAttributes.length > 0 && groupedAttributes.every(([k]) => collapsedSections.has(k)) ? "Expand all" : "Collapse all"}
+                </span>
+                <span className="sm:hidden">↕</span>
+              </button>
+            )}
+            {/* Reorder mode toggle — only meaningful when sorted purely by position */}
+            {viewMode === "flat" && filters.sortField === "sortOrder" && (
               <button
                 onClick={() => setReorderMode(v => !v)}
                 className={`flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded-lg border transition-all ${
@@ -1778,8 +1811,8 @@ export default function MasterAttributesPage() {
                     {/* Section header */}
                     <button
                       onClick={toggleSection}
-                      className="w-full flex items-center gap-2.5 px-4 py-2.5 rounded-xl mb-2 text-left transition-colors hover:opacity-90"
-                      style={{ background: sc.color + "12" }}
+                      className="w-full flex items-center gap-2.5 px-4 py-2.5 rounded-xl mb-2 text-left transition-colors hover:opacity-90 sticky top-0 z-10 backdrop-blur-sm"
+                      style={{ background: sc.color + "20" }}
                     >
                       <span className="text-base leading-none">{sc.icon}</span>
                       <span className="font-semibold text-sm" style={{ color: sc.color }}>{sc.label}</span>

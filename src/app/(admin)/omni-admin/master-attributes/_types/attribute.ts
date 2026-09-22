@@ -412,7 +412,7 @@ export function attributeToDocPayload(
 
 // ─── Filter / sort types ───────────────────────────────────────────────────────
 
-export type SortField = "sortOrder" | "name" | "type" | "usageCount" | "updatedAt";
+export type SortField = "formOrder" | "sortOrder" | "name" | "type" | "usageCount" | "updatedAt";
 export type SortDir = "asc" | "desc";
 
 export interface AttributeFilters {
