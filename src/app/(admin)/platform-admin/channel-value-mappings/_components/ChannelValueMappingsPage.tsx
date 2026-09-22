@@ -23,6 +23,31 @@ const EditIcon = () => (<svg width="13" height="13" viewBox="0 0 24 24" fill="no
 const TrashIcon = () => (<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6" /><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" /><path d="M10 11v6M14 11v6M9 6V4h6v2" /></svg>);
 const ChevronDownIcon = () => (<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m6 9 6 6 6-6" /></svg>);
 const ArrowRightIcon = () => (<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14m-7-7 7 7-7 7" /></svg>);
+
+/** Classify a channelFieldName so the admin can tell "why some are IDs and some are text" at a glance. */
+type FieldKind = "attr-id" | "slot" | "field";
+function fieldKind(cf: string): FieldKind {
+  if (/^\d+$/.test(cf)) return "attr-id";
+  if (/_value_id$/i.test(cf)) return "slot";
+  return "field";
+}
+const KIND_META: Record<FieldKind, { label: string; cls: string; title: string }> = {
+  "attr-id": {
+    label: "attr-id",
+    cls: "bg-indigo-50 text-indigo-600 dark:bg-indigo-900/20 dark:text-indigo-300",
+    title: "channelFieldName = ID atribut channel (mis. TikTok attribute_id 100157). Atribut kategori biasa; channelValue di-resolve ke value_id saat publish.",
+  },
+  "slot": {
+    label: "variant slot",
+    cls: "bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:text-amber-300",
+    title: "Slot sumbu varian (SKU), mis. color_value_id. channelValue = value_id numerik yang dipatch ke sales_attributes saat publish.",
+  },
+  "field": {
+    label: "field",
+    cls: "bg-gray-100 text-gray-500 dark:bg-gray-700 dark:text-gray-300",
+    title: "Nama field channel (mis. Shopify 'color'). Untuk channel label-based, channelValue dikirim sebagai label kanonik.",
+  },
+};
 const SearchIcon = () => (<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8" /><path d="m21 21-4.35-4.35" /></svg>);
 const MapIcon = () => (<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M14 11a2 2 0 1 0-4 0 2 2 0 0 0 4 0z" /><path d="M3 7h4l2-2h6l2 2h4v12H3z" /></svg>);
 
@@ -43,13 +68,16 @@ function ChannelBadge({ channelType }: { channelType: string }) {
 
 function MappingRow({
   mapping,
+  duplicate,
   onEdit,
   onDelete,
 }: {
   mapping: ChannelValueMapping;
+  duplicate?: boolean;
   onEdit: (m: ChannelValueMapping) => void;
   onDelete: (m: ChannelValueMapping) => void;
 }) {
+  const kind = KIND_META[fieldKind(mapping.channelFieldName)];
   const [expanded, setExpanded] = useState(false);
   return (
     <>
@@ -60,6 +88,11 @@ function MappingRow({
             <code className="text-xs font-mono text-gray-800 dark:text-gray-200 bg-gray-100 dark:bg-gray-700 px-1.5 py-0.5 rounded">{mapping.masterFieldName}</code>
             <span className="text-gray-400"><ArrowRightIcon /></span>
             <code className="text-xs font-mono text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-900/20 px-1.5 py-0.5 rounded">{mapping.channelFieldName}</code>
+            <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium ${kind.cls}`} title={kind.title}>{kind.label}</span>
+            {duplicate && (
+              <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-rose-50 text-rose-600 dark:bg-rose-900/20 dark:text-rose-300"
+                title="Master field ini punya lebih dari satu baris pada channel yang sama — cek apakah salah satunya duplikat/legacy.">⚠ ganda</span>
+            )}
           </div>
         </td>
         <td className="px-3 py-2.5 text-center">
@@ -173,6 +206,16 @@ export default function ChannelValueMappingsPage() {
 
   const channels = useMemo(() => Array.from(new Set(mappings.map((m) => m.channelType))).sort(), [mappings]);
 
+  // (channelType|masterFieldName) appearing more than once → flag as possibly duplicate/legacy.
+  const dupKeys = useMemo(() => {
+    const count = new Map<string, number>();
+    for (const m of mappings) {
+      const k = `${m.channelType}|${m.masterFieldName}`;
+      count.set(k, (count.get(k) ?? 0) + 1);
+    }
+    return new Set(Array.from(count.entries()).filter(([, n]) => n > 1).map(([k]) => k));
+  }, [mappings]);
+
   const filtered = useMemo(() => {
     const q = search.toLowerCase().trim();
     return mappings
@@ -262,7 +305,7 @@ export default function ChannelValueMappingsPage() {
             </thead>
             <tbody>
               {filtered.map((m) => (
-                <MappingRow key={m.id} mapping={m} onEdit={(x) => setModal({ mode: "edit", mapping: x })} onDelete={(x) => setDeleteTarget(x)} />
+                <MappingRow key={m.id} mapping={m} duplicate={dupKeys.has(`${m.channelType}|${m.masterFieldName}`)} onEdit={(x) => setModal({ mode: "edit", mapping: x })} onDelete={(x) => setDeleteTarget(x)} />
               ))}
             </tbody>
           </table>
