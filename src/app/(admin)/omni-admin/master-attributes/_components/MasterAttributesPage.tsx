@@ -522,6 +522,7 @@ interface AttributeListItemProps {
   isSelected: boolean;
   categories: AttributeCategory[];
   showSection?: boolean;   // flat mode: show section badge on the card
+  isCommon?: boolean;      // product-type view: attribute applies to ALL types (not specific to this one)
   reorderMode?: boolean;   // drag-drop only active when reorder mode is on
   onToggleExpand: (id: string) => void;
   onSelect: (id: string) => void;
@@ -539,7 +540,7 @@ interface AttributeListItemProps {
 
 function AttributeListItem({
   attribute, index, isExpanded, isSelected, categories,
-  showSection = false, reorderMode = false,
+  showSection = false, isCommon = false, reorderMode = false,
   onToggleExpand, onSelect, onEdit, onDelete, onInsertAfter,
   isDragging, isDragOver, onDragStart, onDragOver, onDrop, onDragEnd,
 }: AttributeListItemProps) {
@@ -558,7 +559,7 @@ function AttributeListItem({
         ${reorderMode && isDragging ? "opacity-40 scale-[0.98]" : "opacity-100"}
         ${reorderMode && isDragOver ? "border-brand-400 shadow-lg shadow-brand-500/10 ring-2 ring-brand-400/20" : "border-gray-200 dark:border-gray-700/60"}
         ${isSelected ? "ring-2 ring-brand-400/30 border-brand-300 dark:border-brand-500/40" : ""}
-        bg-white dark:bg-gray-800/40 hover:bg-gray-50/50 dark:hover:bg-gray-800/70
+        ${isCommon ? "bg-slate-50 dark:bg-slate-800/30 hover:bg-slate-100/70 dark:hover:bg-slate-800/50 border-dashed" : "bg-white dark:bg-gray-800/40 hover:bg-gray-50/50 dark:hover:bg-gray-800/70"}
         hover:border-gray-300 dark:hover:border-gray-600
         hover:shadow-sm
       `}
@@ -609,6 +610,12 @@ function AttributeListItem({
             )}
             {attribute.scope === "CATEGORY_SPECIFIC" && assignedCategories.length > 2 && (
               <span className="text-[10px] text-gray-400">+{assignedCategories.length - 2}</span>
+            )}
+            {isCommon && (
+              <span className="inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 dark:bg-slate-700/50 dark:text-slate-300"
+                title="Common field — applies to all product types, not specific to this one">
+                <span className="h-1.5 w-1.5 rounded-full bg-slate-400" /> common
+              </span>
             )}
           </div>
           <div className="flex items-center gap-3 mt-0.5">
@@ -912,6 +919,9 @@ export default function MasterAttributesPage() {
   const [viewMode, setViewMode] = useState<"flat" | "grouped">("grouped");
   const [collapsedSections, setCollapsedSections] = useState<Set<string>>(new Set());
 
+  // Product-type view: also show the common (all-types) fields that help form the product. Default on.
+  const [includeCommon, setIncludeCommon] = useState(true);
+
   // Tab: master attributes vs channel fields
   const [activeTab, setActiveTab] = useState<"master" | "channel">("master");
 
@@ -996,7 +1006,10 @@ export default function MasterAttributesPage() {
       if (filters.productTypeId === "unassigned") {
         list = list.filter(a => a.productTypeIds.length === 0);
       } else {
-        list = list.filter(a => a.productTypeIds.includes(filters.productTypeId));
+        // Type-specific fields, plus (optionally) the common all-types fields that also form the product.
+        list = includeCommon
+          ? list.filter(a => a.productTypeIds.includes(filters.productTypeId) || a.productTypeIds.length === 0)
+          : list.filter(a => a.productTypeIds.includes(filters.productTypeId));
       }
     } else {
       // Category filter — Phase 2: exact match OR any descendant via path-prefix subtree
@@ -1043,7 +1056,7 @@ export default function MasterAttributesPage() {
     });
 
     return list;
-  }, [masterAttributes, channelAttributes, activeTab, filters, categorySubtreeIds]);
+  }, [masterAttributes, channelAttributes, activeTab, filters, categorySubtreeIds, includeCommon]);
 
   // Category attribute counts (master tab only) — Phase 2: counts include descendants
   const categoryCounts = useMemo(() => {
@@ -1084,6 +1097,13 @@ export default function MasterAttributesPage() {
       return ra !== rb ? ra - rb : a.localeCompare(b);
     });
   }, [filteredAttributes]);
+
+  // In a specific product-type view, an attribute with no productTypeIds is a COMMON (all-types) field.
+  const isCommonView = filters.productTypeId !== "all" && filters.productTypeId !== "unassigned";
+  const commonCount = useMemo(
+    () => (isCommonView ? (activeTab === "channel" ? channelAttributes : masterAttributes).filter(a => a.productTypeIds.length === 0).length : 0),
+    [isCommonView, activeTab, channelAttributes, masterAttributes],
+  );
 
   // ── Handlers ─────────────────────────────────────────────────────────────────
 
@@ -1684,6 +1704,21 @@ export default function MasterAttributesPage() {
           <span className="text-xs text-gray-400">{filteredAttributes.length} attribute{filteredAttributes.length !== 1 ? "s" : ""}</span>
 
           <div className="ml-auto flex items-center gap-3">
+            {/* Common (all-types) fields toggle — only in a specific product-type view */}
+            {isCommonView && (
+              <button
+                onClick={() => setIncludeCommon(v => !v)}
+                className={`flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded-lg border transition-all ${
+                  includeCommon
+                    ? "bg-slate-100 dark:bg-slate-700/50 border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-300"
+                    : "border-gray-200 dark:border-gray-700 text-gray-400 dark:text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-700"
+                }`}
+                title={includeCommon ? "Hide common (all-types) fields" : "Show common (all-types) fields that also form this product"}
+              >
+                <span className="h-1.5 w-1.5 rounded-full bg-slate-400" />
+                <span className="hidden sm:inline">{includeCommon ? "Common shown" : "Common hidden"}{commonCount > 0 ? ` · ${commonCount}` : ""}</span>
+              </button>
+            )}
             {/* Collapse / expand all sections (grouped view) */}
             {viewMode === "grouped" && (
               <button
@@ -1842,6 +1877,7 @@ export default function MasterAttributesPage() {
 
                               categories={categories}
                               showSection={false}
+                              isCommon={isCommonView && attr.productTypeIds.length === 0}
                               reorderMode={false}
                               onToggleExpand={handleToggleExpand}
                               onSelect={handleSelectPreview}
@@ -1875,6 +1911,7 @@ export default function MasterAttributesPage() {
                   isSelected={previewId === attr.id}
                   categories={categories}
                   showSection={true}
+                  isCommon={isCommonView && attr.productTypeIds.length === 0}
                   reorderMode={reorderMode}
                   onToggleExpand={handleToggleExpand}
                   onSelect={handleSelectPreview}
