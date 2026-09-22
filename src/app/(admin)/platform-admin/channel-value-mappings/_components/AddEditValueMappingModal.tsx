@@ -100,6 +100,8 @@ export default function AddEditValueMappingModal({
   const [liveFields, setLiveFields] = useState<{ fieldName: string; label: string; options: string[] }[]>([]);
   const [loadingOpts, setLoadingOpts] = useState(false);
   const [optsError, setOptsError] = useState<string | null>(null);
+  // Authoring aid only — collapsed by default when editing (rows are usually already filled).
+  const [assistOpen, setAssistOpen] = useState(mode === "create");
 
   const selectedStore = channelStores.find((s) => s.storeId === storeId) ?? null;
   const matchedLiveField = useMemo(() => {
@@ -222,9 +224,16 @@ export default function AddEditValueMappingModal({
             </p>
           )}
 
-          {/* Tier 2 — live channel options assist */}
+          {/* Tier 2 — live channel options assist (authoring aid only; NOT part of the saved mapping) */}
           <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50/60 dark:bg-gray-800/40 p-3 space-y-2">
-            <p className="text-[11px] font-medium text-gray-600 dark:text-gray-300">Opsi live channel (opsional) — biar bisa pilih channel value, bukan ketik</p>
+            <button type="button" onClick={() => setAssistOpen((o) => !o)} className="w-full flex items-center justify-between text-left">
+              <span className="text-[11px] font-medium text-gray-600 dark:text-gray-300">
+                Bantuan isi channel value <span className="font-normal text-gray-400">— opsional · tidak disimpan</span>
+              </span>
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
+                className={`text-gray-400 transition-transform ${assistOpen ? "rotate-180" : ""}`}><polyline points="6 9 12 15 18 9" /></svg>
+            </button>
+            {assistOpen && (<>
             {!orgId ? (
               <p className="text-[11px] text-gray-400">Tak ada konteks organisasi — isi channel value manual.</p>
             ) : channelStores.length === 0 ? (
@@ -251,6 +260,7 @@ export default function AddEditValueMappingModal({
               </div>
             )}
             {optsError && <p className="text-[11px] text-red-500">{optsError}</p>}
+            </>)}
           </div>
 
           {/* Value pairs */}
