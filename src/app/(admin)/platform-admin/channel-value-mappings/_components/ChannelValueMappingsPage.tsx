@@ -206,8 +206,10 @@ export default function ChannelValueMappingsPage() {
 
   const channels = useMemo(() => Array.from(new Set(mappings.map((m) => m.channelType))).sort(), [mappings]);
 
-  // Flag a (channelType|masterFieldName) with >1 row as possibly duplicate/legacy — EXCEPT the
-  // legitimate axis pattern: a name-bridge (attr-id, 0 values) paired with a *_value_id variant slot.
+  // Flag a (channelType|masterFieldName) with >1 row as possibly duplicate/legacy — EXCEPT the legitimate
+  // COMPLEMENTARY pair: one name-bridge (0 values, declares the channel attribute) + one value-map (>0 values).
+  // That split is how the seeder models several channels (e.g. Shopee 200088 name-bridge + `colour` value-map,
+  // TikTok 100000 name-bridge + color_value_id slot). Two value-carrying rows for the same master → suspicious.
   const dupFlags = useMemo(() => {
     const groups = new Map<string, ChannelValueMapping[]>();
     for (const m of mappings) {
@@ -219,10 +221,9 @@ export default function ChannelValueMappingsPage() {
     const flags = new Map<string, boolean>();
     for (const [k, rows] of groups) {
       if (rows.length <= 1) { flags.set(k, false); continue; }
-      const kinds = rows.map((r) => fieldKind(r.channelFieldName));
-      const legitPair = rows.length === 2
-        && kinds.includes("attr-id") && kinds.includes("slot")
-        && rows.some((r) => fieldKind(r.channelFieldName) === "attr-id" && r.mappings.length === 0);
+      const empty = rows.filter((r) => r.mappings.length === 0).length;
+      const filled = rows.filter((r) => r.mappings.length > 0).length;
+      const legitPair = rows.length === 2 && empty === 1 && filled === 1;
       flags.set(k, !legitPair);
     }
     return flags;
@@ -289,6 +290,17 @@ export default function ChannelValueMappingsPage() {
         </div>
         <span className="ml-auto text-xs text-gray-400">{filtered.length} result{filtered.length !== 1 ? "s" : ""}</span>
       </div>
+
+      {/* Legend — apa arti badge jenis field */}
+      {!loading && !error && filtered.length > 0 && (
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[11px] text-gray-500 dark:text-gray-400 px-1">
+          <span className="font-medium text-gray-600 dark:text-gray-300">Jenis channel field:</span>
+          <span className="inline-flex items-center gap-1"><span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${KIND_META["attr-id"].cls}`}>attr-id</span> ID atribut channel (angka, mis. Shopee 200088)</span>
+          <span className="inline-flex items-center gap-1"><span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${KIND_META["slot"].cls}`}>variant slot</span> sumbu SKU (<code className="font-mono">*_value_id</code>)</span>
+          <span className="inline-flex items-center gap-1"><span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${KIND_META["field"].cls}`}>field</span> nama field / pembawa peta-nilai</span>
+          <span className="inline-flex items-center gap-1"><span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-rose-50 text-rose-600 dark:bg-rose-900/20 dark:text-rose-300">⚠ ganda</span> &gt;1 baris & bukan pasangan name-bridge+peta-nilai → cek</span>
+        </div>
+      )}
 
       {/* Table */}
       {error ? (
