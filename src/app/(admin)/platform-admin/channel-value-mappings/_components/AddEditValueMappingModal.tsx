@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   ChannelValueMapping,
   ChannelValueMappingRequest,
@@ -10,6 +10,8 @@ import {
   FALLBACK_STRATEGIES,
   ValueMappingEntry,
 } from "../_types/channel-value-mapping";
+import { AttributeService } from "../../../omni-admin/master-attributes/_services/attribute.service";
+import type { MasterAttribute } from "../../../omni-admin/master-attributes/_types/attribute";
 
 const CHANNEL_OPTIONS = [
   "shopify", "tiktok", "tiktokshop", "amazon", "ebay",
@@ -27,6 +29,13 @@ function PlusIcon() {
   return (
     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
       <path d="M5 12h14" /><path d="M12 5v14" />
+    </svg>
+  );
+}
+function WandIcon() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="m15 4 1.5 1.5M9.5 6.5 4 12l8 8 5.5-5.5M18 2l1 1M20 6l1 1M14 10l7-7" />
     </svg>
   );
 }
@@ -52,13 +61,58 @@ export default function AddEditValueMappingModal({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Master-aware assist: load real master attributes so the admin picks a field + its known values
+  // instead of blind-typing them. Degrades gracefully to free text if the endpoint is unavailable.
+  const [masterAttrs, setMasterAttrs] = useState<MasterAttribute[]>([]);
+  useEffect(() => {
+    let alive = true;
+    AttributeService.listAttributes()
+      .then((list) => { if (alive) setMasterAttrs(list ?? []); })
+      .catch(() => { /* silent — free-text still works */ });
+    return () => { alive = false; };
+  }, []);
+
+  // The attribute matching the current master field (by code), if any → drives value autocomplete + coverage.
+  const selectedAttr = useMemo(
+    () => masterAttrs.find((a) => a.code?.toLowerCase() === masterFieldName.trim().toLowerCase()),
+    [masterAttrs, masterFieldName],
+  );
+  const masterOptionValues = useMemo(
+    () => (selectedAttr?.options ?? []).map((o) => o.value).filter(Boolean),
+    [selectedAttr],
+  );
+
   const updateRow = (i: number, patch: Partial<ValueMappingEntry>) =>
     setRows((rs) => rs.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
   const addRow = () => setRows((rs) => [...rs, { masterValue: "", channelValue: "", channelLabel: "" }]);
   const removeRow = (i: number) => setRows((rs) => (rs.length > 1 ? rs.filter((_, idx) => idx !== i) : rs));
 
+  /** Populate one empty row per known master value that isn't already present (keeps typed channel values). */
+  const loadAllMasterValues = () => {
+    setRows((rs) => {
+      const present = new Set(rs.map((r) => r.masterValue.trim().toLowerCase()).filter(Boolean));
+      const seeded = masterOptionValues
+        .filter((v) => !present.has(v.toLowerCase()))
+        .map((v) => ({ masterValue: v, channelValue: "", channelLabel: "" }));
+      // drop the initial single blank row if it's still empty
+      const base = rs.filter((r) => r.masterValue.trim() || r.channelValue.trim());
+      return [...base, ...seeded].length ? [...base, ...seeded] : rs;
+    });
+  };
+
   const validRows = rows.filter((r) => r.masterValue.trim() && r.channelValue.trim());
   const canSave = channelType && masterFieldName.trim() && channelFieldName.trim() && validRows.length > 0 && !saving;
+
+  // Coverage: how many of the attribute's known values already have a (valid) channel value.
+  const coverage = useMemo(() => {
+    if (masterOptionValues.length === 0) return null;
+    const mapped = new Set(
+      rows.filter((r) => r.masterValue.trim() && r.channelValue.trim())
+        .map((r) => r.masterValue.trim().toLowerCase()),
+    );
+    const done = masterOptionValues.filter((v) => mapped.has(v.toLowerCase())).length;
+    return { done, total: masterOptionValues.length };
+  }, [masterOptionValues, rows]);
 
   async function handleSubmit() {
     if (!canSave) return;
@@ -111,20 +165,27 @@ export default function AddEditValueMappingModal({
             </div>
             <div>
               <label className="text-xs text-gray-500 dark:text-gray-400">Master field</label>
+              {/* Native combobox: pick a real master attribute (autocomplete) or type a custom code. */}
               <input
+                list="cvm-master-fields"
                 value={masterFieldName}
                 onChange={(e) => setMasterFieldName(e.target.value)}
                 disabled={mode === "edit"}
-                placeholder="mis. color"
+                placeholder="pilih / ketik, mis. material"
                 className="mt-1 w-full border border-gray-200 dark:border-gray-700 rounded-lg px-2.5 py-1.5 text-xs bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 font-mono disabled:opacity-60"
               />
+              <datalist id="cvm-master-fields">
+                {masterAttrs.map((a) => (
+                  <option key={a.code} value={a.code} label={`${a.name}${a.group ? ` · ${a.group}` : ""}`} />
+                ))}
+              </datalist>
             </div>
             <div>
               <label className="text-xs text-gray-500 dark:text-gray-400">Channel field</label>
               <input
                 value={channelFieldName}
                 onChange={(e) => setChannelFieldName(e.target.value)}
-                placeholder="mis. colour_id"
+                placeholder="mis. 100157 / colour_id"
                 className="mt-1 w-full border border-gray-200 dark:border-gray-700 rounded-lg px-2.5 py-1.5 text-xs bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 font-mono"
               />
             </div>
@@ -134,16 +195,38 @@ export default function AddEditValueMappingModal({
               Channel & master field bersifat identitas — tidak bisa diubah saat edit.
             </p>
           )}
+          {selectedAttr && (
+            <p className="text-[11px] text-gray-500 dark:text-gray-400">
+              Master field cocok: <span className="font-medium text-gray-700 dark:text-gray-300">{selectedAttr.name}</span>
+              {masterOptionValues.length > 0 && <> · {masterOptionValues.length} nilai master dikenal</>}
+            </p>
+          )}
 
           {/* Value pairs */}
           <div>
             <div className="flex items-center justify-between mb-2">
               <label className="text-xs font-medium text-gray-700 dark:text-gray-300">
                 Value mappings ({validRows.length} valid)
+                {coverage && (
+                  <span className={`ml-2 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium ${
+                    coverage.done >= coverage.total
+                      ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300"
+                      : "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300"
+                  }`}>
+                    {coverage.done}/{coverage.total} nilai master terpetakan
+                  </span>
+                )}
               </label>
-              <button onClick={addRow} className="inline-flex items-center gap-1 text-xs text-blue-600 dark:text-blue-400 hover:underline">
-                <PlusIcon /> Add row
-              </button>
+              <div className="flex items-center gap-3">
+                {masterOptionValues.length > 0 && (
+                  <button onClick={loadAllMasterValues} className="inline-flex items-center gap-1 text-xs text-violet-600 dark:text-violet-400 hover:underline" title="Isi baris untuk setiap nilai master yang dikenal">
+                    <WandIcon /> Muat semua nilai ({masterOptionValues.length})
+                  </button>
+                )}
+                <button onClick={addRow} className="inline-flex items-center gap-1 text-xs text-blue-600 dark:text-blue-400 hover:underline">
+                  <PlusIcon /> Add row
+                </button>
+              </div>
             </div>
             <div className="space-y-2">
               <div className="grid grid-cols-[1fr_1fr_1fr_auto] gap-2 text-[11px] text-gray-400 px-1">
@@ -152,25 +235,50 @@ export default function AddEditValueMappingModal({
                 <span>Channel label (opsional)</span>
                 <span />
               </div>
-              {rows.map((row, i) => (
-                <div key={i} className="grid grid-cols-[1fr_1fr_1fr_auto] gap-2 items-center">
-                  <input value={row.masterValue} onChange={(e) => updateRow(i, { masterValue: e.target.value })}
-                    placeholder="black"
-                    className="border border-gray-200 dark:border-gray-700 rounded-lg px-2.5 py-1.5 text-xs bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 font-mono" />
-                  <input value={row.channelValue} onChange={(e) => updateRow(i, { channelValue: e.target.value })}
-                    placeholder="COLOUR_0001"
-                    className="border border-gray-200 dark:border-gray-700 rounded-lg px-2.5 py-1.5 text-xs bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 font-mono" />
-                  <input value={row.channelLabel ?? ""} onChange={(e) => updateRow(i, { channelLabel: e.target.value })}
-                    placeholder="Black"
-                    className="border border-gray-200 dark:border-gray-700 rounded-lg px-2.5 py-1.5 text-xs bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300" />
-                  <button onClick={() => removeRow(i)} disabled={rows.length === 1}
-                    className="p-1.5 rounded hover:bg-red-50 dark:hover:bg-red-900/20 text-red-500 disabled:opacity-30 disabled:hover:bg-transparent"
-                    title="Remove row">
-                    <TrashIcon />
-                  </button>
-                </div>
-              ))}
+              {rows.map((row, i) => {
+                const known = masterOptionValues.length > 0
+                  && !!row.masterValue.trim()
+                  && masterOptionValues.some((v) => v.toLowerCase() === row.masterValue.trim().toLowerCase());
+                return (
+                  <div key={i} className="grid grid-cols-[1fr_1fr_1fr_auto] gap-2 items-center">
+                    <input value={row.masterValue} onChange={(e) => updateRow(i, { masterValue: e.target.value })}
+                      list={masterOptionValues.length > 0 ? "cvm-master-values" : undefined}
+                      placeholder="cotton"
+                      className={`border rounded-lg px-2.5 py-1.5 text-xs bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 font-mono ${
+                        known ? "border-green-300 dark:border-green-700/50" : "border-gray-200 dark:border-gray-700"
+                      }`} />
+                    <input value={row.channelValue} onChange={(e) => updateRow(i, { channelValue: e.target.value })}
+                      placeholder="Katun / 1000011"
+                      className="border border-gray-200 dark:border-gray-700 rounded-lg px-2.5 py-1.5 text-xs bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 font-mono" />
+                    <input value={row.channelLabel ?? ""} onChange={(e) => updateRow(i, { channelLabel: e.target.value })}
+                      placeholder="Katun"
+                      className="border border-gray-200 dark:border-gray-700 rounded-lg px-2.5 py-1.5 text-xs bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300" />
+                    <button onClick={() => removeRow(i)} disabled={rows.length === 1}
+                      className="p-1.5 rounded hover:bg-red-50 dark:hover:bg-red-900/20 text-red-500 disabled:opacity-30 disabled:hover:bg-transparent"
+                      title="Remove row">
+                      <TrashIcon />
+                    </button>
+                  </div>
+                );
+              })}
+              {masterOptionValues.length > 0 && (
+                <datalist id="cvm-master-values">
+                  {(selectedAttr?.options ?? []).map((o) => (
+                    <option key={o.value} value={o.value} label={o.label !== o.value ? o.label : undefined} />
+                  ))}
+                </datalist>
+              )}
             </div>
+            {coverage && coverage.done < coverage.total && (
+              <p className="text-[11px] text-gray-400 mt-1.5">
+                Belum terpetakan:{" "}
+                <span className="font-mono">
+                  {masterOptionValues
+                    .filter((v) => !rows.some((r) => r.masterValue.trim().toLowerCase() === v.toLowerCase() && r.channelValue.trim()))
+                    .join(", ")}
+                </span>
+              </p>
+            )}
           </div>
 
           {/* Fallback strategy */}
