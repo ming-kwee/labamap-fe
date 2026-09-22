@@ -33,6 +33,27 @@ export default function MasterOverrideSection({ fields, values, channelName, onC
 
   if (fields.length === 0) return null;
 
+  // Physical attributes (Height/Width/Length/Weight/…) are grouped into their own compact row —
+  // small inputs sized to the value, read as "package dimensions" (Shopify/Ginee pattern) — and
+  // ordered L → W → H → Weight. Everything else stays in the main stacked grid.
+  const isDimensionField = (f: ChannelFormField) => /(height|width|length|weight|depth|diameter)/i.test(f.fieldName);
+  const dimRank = (f: ChannelFormField) => {
+    const n = f.fieldName.toLowerCase();
+    const i = ["length", "width", "height", "depth", "diameter", "weight"].findIndex((k) => n.includes(k));
+    return i === -1 ? 99 : i;
+  };
+  const mainFields = fields.filter((f) => !isDimensionField(f));
+  const dimensionFields = fields.filter(isDimensionField).sort((a, b) => dimRank(a) - dimRank(b));
+
+  const renderField = (field: ChannelFormField) => (
+    <MasterOverrideField
+      field={field}
+      value={values[field.fieldName]}
+      channelName={channelName}
+      onChange={onChange}
+    />
+  );
+
   const body = (
     <>
       {/* Context banner */}
@@ -42,19 +63,30 @@ export default function MasterOverrideSection({ fields, values, channelName, onC
         {t("wizard.override.noteAfter", "only — all other channels keep the master value.")}
       </p>
 
-      {/* Override field cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        {fields.map((field) => (
-          <div key={field.fieldName} className={field.fieldType === "TEXTAREA" ? "md:col-span-2" : ""}>
-            <MasterOverrideField
-              field={field}
-              value={values[field.fieldName]}
-              channelName={channelName}
-              onChange={onChange}
-            />
+      {/* Main fields — compact stacked grid (Shopify/Ginee-style), long fields span the row. */}
+      {mainFields.length > 0 && (
+        <div className="grid grid-cols-1 gap-x-6 gap-y-5 px-1 sm:grid-cols-2 xl:grid-cols-3">
+          {mainFields.map((field) => (
+            <div key={field.fieldName} className={field.fieldType === "TEXTAREA" ? "sm:col-span-2 xl:col-span-3" : ""}>
+              {renderField(field)}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Physical attributes — subtle sub-group, tight 4-up row of small inputs. */}
+      {dimensionFields.length > 0 && (
+        <div className="pt-1">
+          <p className="mb-2 px-1 text-[11px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">
+            {t("override.dimensionsGroup", "Dimensions & weight")}
+          </p>
+          <div className="grid grid-cols-2 gap-x-4 gap-y-4 px-1 sm:grid-cols-4">
+            {dimensionFields.map((field) => (
+              <div key={field.fieldName}>{renderField(field)}</div>
+            ))}
           </div>
-        ))}
-      </div>
+        </div>
+      )}
     </>
   );
 

@@ -360,14 +360,45 @@ function VariantAxisSummary({
   axes,
   channelName,
   validation,
+  simplified,
 }: {
   axes: ResolvedVariantAxis[];
   channelName: string;
   validation?: AxisValidationIssue[];
+  simplified?: boolean;
 }) {
   const t = useT();
   const issues = validation ?? [];
   if (axes.length === 0 && issues.length === 0) return null;
+
+  const issueBlocks = issues.map((issue, i) => (
+    <div
+      key={`${issue.code}-${issue.dimension}-${i}`}
+      className={`px-3 py-2 rounded-lg border text-xs ${
+        issue.severity === "BLOCKING"
+          ? "bg-red-50 dark:bg-red-500/10 border-red-200 dark:border-red-500/30 text-red-700 dark:text-red-300"
+          : "bg-amber-50 dark:bg-amber-500/10 border-amber-200 dark:border-amber-500/30 text-amber-700 dark:text-amber-300"
+      }`}
+    >
+      <strong>{issue.dimension}</strong>: {issue.message}
+    </div>
+  ));
+
+  // Merchant view: drop the technical derivation banner + per-option cards (redundant with
+  // each SKU row's "S / Black" label). Keep just a plain one-line summary of the axes and
+  // any blocking/warning issues the seller genuinely needs to act on.
+  if (simplified) {
+    return (
+      <div className="space-y-2">
+        {axes.length > 0 && (
+          <p className="text-xs text-gray-500 dark:text-gray-400 px-1">
+            {axes.map((a) => `${a.name}: ${a.values.join(", ")}`).join("  ·  ")}
+          </p>
+        )}
+        {issueBlocks}
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-2">
@@ -408,18 +439,7 @@ function VariantAxisSummary({
         </div>
       )}
 
-      {issues.map((issue, i) => (
-        <div
-          key={`${issue.code}-${issue.dimension}-${i}`}
-          className={`px-3 py-2 rounded-lg border text-xs ${
-            issue.severity === "BLOCKING"
-              ? "bg-red-50 dark:bg-red-500/10 border-red-200 dark:border-red-500/30 text-red-700 dark:text-red-300"
-              : "bg-amber-50 dark:bg-amber-500/10 border-amber-200 dark:border-amber-500/30 text-amber-700 dark:text-amber-300"
-          }`}
-        >
-          <strong>{issue.dimension}</strong>: {issue.message}
-        </div>
-      ))}
+      {issueBlocks}
     </div>
   );
 }
@@ -886,7 +906,7 @@ export default function ChannelStoreTab({ schema, values, onChange, isSaving, la
 
   // ── Section renderer ────────────────────────────────────────────────────────
 
-  function renderSection(section: ChannelFormSection) {
+  function renderSection(section: ChannelFormSection, simplified = false) {
     if (section.sectionName === "master_overrides") {
       return (
         <MasterOverrideSection
@@ -914,7 +934,10 @@ export default function ChannelStoreTab({ schema, values, onChange, isSaving, la
       const ptName = masterProduct?.productTypeName;
       return (
         <div key={section.sectionName} className="space-y-2">
-          {ptName && ptDims && ptDims.length > 0 && (
+          {/* Merchant view hides the "Variant axes defined by <ProductType> (required per SKU)"
+              banner and the "Variant Overrides" header — both are platform jargon and the card
+              title ("Variations") already frames the section. */}
+          {!simplified && ptName && ptDims && ptDims.length > 0 && (
             <div className="flex items-start gap-2 px-3 py-2 rounded-lg bg-brand-50 dark:bg-brand-500/10 border border-brand-200 dark:border-brand-500/30">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-brand-600 dark:text-brand-400 flex-shrink-0 mt-0.5">
                 <polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/>
@@ -928,7 +951,7 @@ export default function ChannelStoreTab({ schema, values, onChange, isSaving, la
               </span>
             </div>
           )}
-          <SectionHeader label={section.label} count={section.variants.length} expanded />
+          {!simplified && <SectionHeader label={section.label} count={section.variants.length} expanded />}
           <VariantOverridesTable
             variantFields={allVariantFields}
             variants={section.variants}
@@ -936,6 +959,7 @@ export default function ChannelStoreTab({ schema, values, onChange, isSaving, la
             onChange={handleVariantChange}
             masterVariants={masterProduct?.variants}
             onEditImages={setEditingImagesSku}
+            simplified={simplified}
           />
         </div>
       );
@@ -1361,10 +1385,10 @@ export default function ChannelStoreTab({ schema, values, onChange, isSaving, la
             <ChannelFieldInput field={mainCategoryField} value={values.channelData[mainCategoryField.fieldName]} onChange={handleFieldChange} />
           ) : null
         }
-        renderVariants={() => (variantSection ? renderSection(variantSection) : null)}
+        renderVariants={() => (variantSection ? renderSection(variantSection, true) : null)}
         renderAxisSummary={() =>
           showAxisSummary ? (
-            <VariantAxisSummary axes={resolvedAxes} channelName={schema.storeName} validation={axisValidation} />
+            <VariantAxisSummary axes={resolvedAxes} channelName={schema.storeName} validation={axisValidation} simplified />
           ) : null
         }
         renderImages={() => (
@@ -1476,7 +1500,7 @@ export default function ChannelStoreTab({ schema, values, onChange, isSaving, la
       </div>
 
       {/* ── Field sections ──────────────────────────────────────────────────── */}
-      {sections.map(renderSection)}
+      {sections.map((s) => renderSection(s))}
 
       {/* ── Scenario D: category-specific injected fields ───────────────────── */}
       {renderCategoryAttributeSection()}

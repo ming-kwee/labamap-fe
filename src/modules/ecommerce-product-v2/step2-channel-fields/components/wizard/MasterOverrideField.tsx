@@ -31,74 +31,68 @@ const ResetIcon = () => (
   </svg>
 );
 
+/**
+ * One override field, Shopify/Ginee-style: a small label on top (with the Override/Reset action at
+ * the right of that row) and the input directly beneath — no per-field box, no label-beside-input
+ * gap. The parent lays these out in a compact grid so each input is a sensible width, not stretched
+ * across the row. When overriding, the master baseline is shown as a caption below.
+ */
 export default function MasterOverrideField({ field, value, channelName, onChange }: Props) {
   const t = useT();
   const isInherited = value === null || value === undefined;
 
+  const actionButton = isInherited ? (
+    <button
+      type="button"
+      onClick={() => onChange(field.fieldName, field.masterValue ?? "")}
+      className="flex items-center gap-1 text-xs font-medium text-brand-600 dark:text-brand-400 hover:text-brand-700 dark:hover:text-brand-300 hover:underline transition-colors flex-shrink-0"
+    >
+      <EditIcon />
+      {t("common.override", "Override")}
+    </button>
+  ) : (
+    <button
+      type="button"
+      onClick={() => onChange(field.fieldName, null)}
+      className="flex items-center gap-1 text-xs font-medium text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:underline transition-colors flex-shrink-0"
+    >
+      <ResetIcon />
+      {t("common.reset", "Reset")}
+    </button>
+  );
+
+  const input = (
+    <ChannelFieldInput
+      field={{ ...field, currentValue: isInherited ? field.masterValue : value }}
+      value={isInherited ? field.masterValue : value}
+      onChange={(fieldName, newVal) => onChange(fieldName, newVal)}
+      disabled={isInherited}
+    />
+  );
+
+  // Master reference — shown only when actively overriding, so the seller knows the baseline.
+  const masterRef = !isInherited ? (
+    <p className="mt-1.5 text-xs text-gray-400 dark:text-gray-500">
+      {t("override.masterLabel", "Master:")}{" "}
+      <span className="font-mono text-gray-500 dark:text-gray-400">{formatMasterValue(field.masterValue)}</span>
+      <span className="ml-1.5 text-gray-300 dark:text-gray-600">
+        {" "}
+        {t("override.onlyChannelUses", "· only {channel} uses your value").replace("{channel}", channelName)}
+      </span>
+    </p>
+  ) : null;
+
+  // Shopify/Ginee-style stacked field: small label on top (with the override/reset action at the
+  // right of that row), input directly beneath. No horizontal gap between label and input, and no
+  // per-field box — the parent lays these out in a compact grid so each input is a sensible width.
   return (
-    <div className={`rounded-xl border transition-all duration-150 p-3 space-y-2 ${
-      isInherited
-        ? "border-gray-200 dark:border-gray-700 bg-gray-50/40 dark:bg-gray-800/20"
-        : "border-brand-200 dark:border-brand-500/40 bg-brand-50/20 dark:bg-brand-500/5"
-    }`}>
-
-      {/* Label row + action button — always visible, no hunting below the input */}
-      <div className="flex items-center justify-between gap-2">
-        <label className="text-sm font-medium text-gray-700 dark:text-gray-300 leading-none">
-          {field.label}
-        </label>
-        {isInherited ? (
-          <button
-            type="button"
-            onClick={() => onChange(field.fieldName, field.masterValue ?? "")}
-            className="flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-lg
-              border border-brand-200 dark:border-brand-600/50
-              text-brand-600 dark:text-brand-400
-              bg-white dark:bg-gray-900
-              hover:bg-brand-50 dark:hover:bg-brand-500/10 hover:border-brand-300
-              transition-colors font-medium flex-shrink-0"
-          >
-            <EditIcon />
-            {t("common.override", "Override")}
-          </button>
-        ) : (
-          <button
-            type="button"
-            onClick={() => onChange(field.fieldName, null)}
-            className="flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-lg
-              border border-gray-200 dark:border-gray-700
-              text-gray-500 dark:text-gray-400
-              bg-white dark:bg-gray-900
-              hover:bg-gray-50 dark:hover:bg-gray-800
-              transition-colors font-medium flex-shrink-0"
-          >
-            <ResetIcon />
-            {t("common.reset", "Reset")}
-          </button>
-        )}
+    <div>
+      <div className="mb-1.5 flex items-center justify-between gap-2">
+        <label className="text-sm font-medium text-gray-700 dark:text-gray-300">{field.label}</label>
+        {actionButton}
       </div>
-
-      {/* Input — disabled + grayed when inherited, fully active when overriding */}
-      <ChannelFieldInput
-        field={{ ...field, currentValue: isInherited ? field.masterValue : value }}
-        value={isInherited ? field.masterValue : value}
-        onChange={(fieldName, newVal) => onChange(fieldName, newVal)}
-        disabled={isInherited}
-      />
-
-      {/* Master reference shown only when actively overriding */}
-      {!isInherited && (
-        <p className="text-xs text-gray-400 dark:text-gray-500">
-          {t("override.masterLabel", "Master:")}{" "}
-          <span className="font-mono text-gray-500 dark:text-gray-400">
-            {formatMasterValue(field.masterValue)}
-          </span>
-          <span className="ml-1.5 text-gray-300 dark:text-gray-600">
-            {" "}
-            {t("override.onlyChannelUses", "· only {channel} uses your value").replace("{channel}", channelName)}
-          </span>
-        </p>
-      )}
+      {input}
+      {masterRef}
     </div>
   );
 }

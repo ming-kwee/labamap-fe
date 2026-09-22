@@ -142,8 +142,11 @@ export function classifyNumericField(name: string): 'money' | 'quantity' | 'numb
 
 // ─── Shared input styling ──────────────────────────────────────────────────────
 
+// py-2.5 makes a bare <input>/<select> resolve to a 42px box (20px line + 20px padding + 2px
+// border) — matching inputWrapperClass's fixed h-[42px], so plain text fields (SKU) and the
+// money/quantity composites line up at the same height. compact keeps its 34px counterpart.
 const SIZE = {
-  base: 'px-3 py-2 text-sm',
+  base: 'px-3 py-2.5 text-sm',
   compact: 'px-2 py-1.5 text-sm',
 } as const;
 

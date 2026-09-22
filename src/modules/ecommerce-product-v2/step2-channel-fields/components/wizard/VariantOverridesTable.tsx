@@ -19,6 +19,12 @@ interface Props {
    * full per-variant image editor for that SKU. Omit to hide the column entirely.
    */
   onEditImages?: (sku: string) => void;
+  /**
+   * Merchant view: strip platform jargon a seller won't understand. "master" → "default"
+   * (bawaan), "Override" → "Edit" (Ubah), and the reset link reads "Reset to default (X)"
+   * instead of "master: X". Developer view leaves it off and keeps the precise wording.
+   */
+  simplified?: boolean;
 }
 
 export default function VariantOverridesTable({
@@ -29,6 +35,7 @@ export default function VariantOverridesTable({
   disabled,
   masterVariants,
   onEditImages,
+  simplified,
 }: Props) {
   const t = useT();
   if (variants.length === 0 || variantFields.length === 0) return null;
@@ -54,7 +61,7 @@ export default function VariantOverridesTable({
                 <div className="flex items-center gap-1.5">
                   {field.label}
                   {field.required && <span className="text-error-500">*</span>}
-                  {field.isMasterField && (
+                  {field.isMasterField && !simplified && (
                     <span className="text-xs font-normal px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400">
                       {t("badge.master", "master")}
                     </span>
@@ -122,7 +129,7 @@ export default function VariantOverridesTable({
                           </span>
                         ) : imgBaseline.length > 0 ? (
                           <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400">
-                            {t("badge.master", "master")} · {imgBaseline.length}
+                            {simplified ? t("badge.default", "default") : t("badge.master", "master")} · {imgBaseline.length}
                           </span>
                         ) : (
                           <span className="text-[10px] text-gray-400 dark:text-gray-500">{t("image.none", "No images")}</span>
@@ -151,11 +158,11 @@ export default function VariantOverridesTable({
                       <td key={field.fieldName} className="px-4 py-3">
                         <div className="space-y-1">
                           <div className="flex items-center gap-2">
-                            <span className="text-gray-400 dark:text-gray-500 text-sm font-mono">
+                            <span className={`text-sm ${simplified ? "text-gray-700 dark:text-gray-200" : "text-gray-400 dark:text-gray-500 font-mono"}`}>
                               {masterCellValue !== undefined ? String(masterCellValue) : "—"}
                             </span>
                             <span className="text-xs px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-700 text-gray-400 dark:text-gray-500">
-                              {t("badge.master", "master")}
+                              {simplified ? t("badge.default", "default") : t("badge.master", "master")}
                             </span>
                           </div>
                           <button
@@ -164,7 +171,7 @@ export default function VariantOverridesTable({
                             disabled={disabled}
                             className="text-xs text-brand-600 dark:text-brand-400 hover:underline disabled:opacity-50 disabled:cursor-not-allowed"
                           >
-                            ✏ {t("common.override", "Override")}
+                            ✏ {simplified ? t("common.edit", "Edit") : t("common.override", "Override")}
                           </button>
                         </div>
                       </td>
@@ -188,7 +195,9 @@ export default function VariantOverridesTable({
                             disabled={disabled}
                             className="text-xs text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 disabled:opacity-50 disabled:cursor-not-allowed"
                           >
-                            ↩ {t("badge.master", "master")}: {masterCellValue !== undefined ? String(masterCellValue) : "—"}
+                            {simplified
+                              ? `↩ ${t("wizard.variants.resetToDefault", "Reset to default")}${masterCellValue !== undefined ? ` (${String(masterCellValue)})` : ""}`
+                              : `↩ ${t("badge.master", "master")}: ${masterCellValue !== undefined ? String(masterCellValue) : "—"}`}
                           </button>
                         </div>
                       </td>

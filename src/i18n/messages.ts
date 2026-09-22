@@ -90,6 +90,7 @@ export const messages: Record<Locale, Dict> = {
     "common.expand": "Expand",
     "common.custom": "custom",
     "badge.master": "master",
+    "badge.default": "default",
     "image.none": "No images",
     "wizard.override.noteBefore": "Changes here apply to",
     "wizard.override.noteAfter": "only — all other channels keep the master value.",
@@ -97,6 +98,7 @@ export const messages: Record<Locale, Dict> = {
     "wizard.override.activeCount": "{n} active",
     "wizard.variants.imagesCol": "Images",
     "wizard.variants.editImagesTitle": "Edit variant images",
+    "wizard.variants.resetToDefault": "Reset to default",
     // Step-2 ChannelStoreTab (Fase 2b) — section tags, inheritance badges, axis summary, category, completion
     "wizard.tag.required": "Required",
     "wizard.tag.optional": "Optional",
@@ -427,6 +429,7 @@ export const messages: Record<Locale, Dict> = {
     // Step-2 wizard: MasterOverrideField
     "override.masterLabel": "Master:",
     "override.onlyChannelUses": "· only {channel} uses your value",
+    "override.dimensionsGroup": "Dimensions & weight",
     // Step-2 wizard: ListingDirtyBadge
     "dirty.checking": "Checking changes…",
     "dirty.upToDate": "Up to date",
@@ -794,6 +797,7 @@ export const messages: Record<Locale, Dict> = {
     "common.expand": "Perluas",
     "common.custom": "khusus",
     "badge.master": "master",
+    "badge.default": "bawaan",
     "image.none": "Tak ada gambar",
     "wizard.override.noteBefore": "Perubahan di sini berlaku untuk",
     "wizard.override.noteAfter": "saja — channel lain tetap memakai nilai master.",
@@ -801,6 +805,7 @@ export const messages: Record<Locale, Dict> = {
     "wizard.override.activeCount": "{n} aktif",
     "wizard.variants.imagesCol": "Gambar",
     "wizard.variants.editImagesTitle": "Ubah gambar varian",
+    "wizard.variants.resetToDefault": "Kembalikan ke bawaan",
     // Step-2 ChannelStoreTab (Fase 2b) — tag section, badge pewarisan, ringkasan sumbu, kategori, kelengkapan
     "wizard.tag.required": "Wajib",
     "wizard.tag.optional": "Opsional",
@@ -1131,6 +1136,7 @@ export const messages: Record<Locale, Dict> = {
     // Step-2 wizard: MasterOverrideField
     "override.masterLabel": "Master:",
     "override.onlyChannelUses": "· hanya {channel} yang memakai nilai Anda",
+    "override.dimensionsGroup": "Dimensi & Berat",
     // Step-2 wizard: ListingDirtyBadge
     "dirty.checking": "Memeriksa perubahan…",
     "dirty.upToDate": "Sudah terkini",

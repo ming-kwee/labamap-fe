@@ -318,8 +318,11 @@ export default function ChannelFieldInput({ field, value, onChange, disabled, va
     setSuggestionDismissed(true);
   }
 
+  // Kept in sync with MoneyInput/QuantityInput's wrapper (inputWrapperClass): same border-gray-300,
+  // shadow-sm, rounded-xl and 1px brand focus ring — so plain number/text/select fields sit flush
+  // and uniform next to the money-prefixed and stepper inputs (no lighter/borderless odd-ones-out).
   const baseClass =
-    "w-full rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2.5 text-sm text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-brand-500 disabled:opacity-50 disabled:cursor-not-allowed";
+    "w-full rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-sm px-3 py-2.5 text-sm text-gray-900 dark:text-white placeholder-gray-400 transition-colors focus:outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500 disabled:opacity-50 disabled:cursor-not-allowed";
   // A native <select> shows its placeholder option ("Select…") in the CONTAINER's text colour — placeholder-gray-400
   // only affects <input>/<textarea>, so an empty select would look as dark as a filled one. Strip the baked value
   // colour here and set it per-state on the select (muted when empty, crisp when filled) so empty vs filled is
