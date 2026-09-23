@@ -170,6 +170,9 @@ function getSectionCfg(section: string | undefined) {
   return SECTION_CONFIG[key] ?? SECTION_CONFIG[""];
 }
 
+// Legacy per-category assignment is retired; attributes scope by ProductType. Stable empty ref.
+const EMPTY_CATEGORIES: AttributeCategory[] = [];
+
 // ─── Delete Confirm Modal ─────────────────────────────────────────────────────
 
 function DeleteConfirmModal({
@@ -890,9 +893,8 @@ export default function MasterAttributesPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [savingId, setSavingId] = useState<string | null>(null); // attribute being saved/deleted
-  const [selectedCategoryId, setSelectedCategoryId] = useState<string>("all");
   const [filters, setFilters] = useState<AttributeFilters>({
-    search: "", categoryId: "all", productTypeId: "all", status: "all", type: "all", required: "all",
+    search: "", productTypeId: "all", status: "all", type: "all", required: "all",
     sortField: "formOrder", sortDir: "asc",
   });
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
@@ -909,8 +911,7 @@ export default function MasterAttributesPage() {
   // Category sidebar collapse
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
-  // Phase 4: sidebar mode — "productType" | "category"
-  const [sidebarMode, setSidebarMode] = useState<"productType" | "category">("productType");
+  // Phase 4: attributes are scoped by ProductType. (Legacy by-category sidebar removed.)
   const [productTypes, setProductTypes] = useState<ProductType[]>([]);
   const [ptLoading, setPtLoading] = useState(true);
   const [ptError, setPtError] = useState(false);
@@ -931,19 +932,10 @@ export default function MasterAttributesPage() {
   // Delete confirmation
   const [deleteTarget, setDeleteTarget] = useState<MasterAttribute | null>(null);
 
-  const [categories, setCategories] = useState<AttributeCategory[]>([]);
-  const [catsLoading, setCatsLoading] = useState(true);
-  const [catsError, setCatsError] = useState(false);
-
-  // product_categories removed (2026-06-16) — category sidebar is disabled.
-  // Next sprint: replace with ProductType-based scoping via ProductTypeService.list().
-  // See: docs/02-api-reference/14-product-categories-migration-backend.md §6
-  const loadCats = useCallback(() => {
-    setCatsLoading(false);
-    setCategories([]);
-  }, []);
-
-  useEffect(() => { loadCats(); }, [loadCats]);
+  // Attributes are scoped by ProductType (Phase 4). The legacy per-category assignment is retired
+  // (product_categories removed 2026-06-16), so `categories` stays permanently empty — it exists only
+  // to satisfy the card's legacy category-chip branch with a valid (always-empty) array.
+  const categories: AttributeCategory[] = EMPTY_CATEGORIES;
 
   const loadProductTypes = useCallback(() => {
     setPtLoading(true);
@@ -977,52 +969,19 @@ export default function MasterAttributesPage() {
   const masterAttributes  = useMemo(() => attributes.filter(a => !a.isChannelField), [attributes]);
   const channelAttributes = useMemo(() => attributes.filter(a =>  a.isChannelField), [attributes]);
 
-  // ── Phase 2: path-inheritance subtree sets ─────────────────────────────────
-  // For each category, precompute the Set of IDs that belong to it OR any descendant,
-  // using materialized-path prefix matching (e.g. "electronics" matches "electronics/smartphones").
-  // This lets sidebar clicks on a parent category show attrs assigned to any child too.
-  const categorySubtreeIds = useMemo(() => {
-    const map = new Map<string, Set<string>>();
-    for (const cat of categories) {
-      if (!cat.path) continue;
-      const prefix = cat.path + "/";
-      const ids = new Set(
-        categories
-          .filter(c => c.path === cat.path || c.path?.startsWith(prefix))
-          .map(c => c.id)
-      );
-      map.set(cat.id, ids);
-    }
-    return map;
-  }, [categories]);
-
   // ── Filtered & sorted attribute list ─────────────────────────────────────────
   const filteredAttributes = useMemo(() => {
     // Work from the correct tab's source
     let list = [...(activeTab === "channel" ? channelAttributes : masterAttributes)];
 
-    // Phase 4: ProductType filter (mutually exclusive with category filter)
-    if (filters.productTypeId !== "all") {
-      if (filters.productTypeId === "unassigned") {
-        list = list.filter(a => a.productTypeIds.length === 0);
-      } else {
-        // Type-specific fields, plus (optionally) the common all-types fields that also form the product.
-        list = includeCommon
-          ? list.filter(a => a.productTypeIds.includes(filters.productTypeId) || a.productTypeIds.length === 0)
-          : list.filter(a => a.productTypeIds.includes(filters.productTypeId));
-      }
-    } else {
-      // Category filter — Phase 2: exact match OR any descendant via path-prefix subtree
-      if (filters.categoryId === "unassigned") {
-        list = list.filter(a => a.categoryIds.length === 0 && a.scope === "CATEGORY_SPECIFIC");
-      } else if (filters.categoryId !== "all") {
-        const subtreeIds = categorySubtreeIds.get(filters.categoryId);
-        if (subtreeIds) {
-          list = list.filter(a => a.scope === "GLOBAL" || a.categoryIds.some(id => subtreeIds.has(id)));
-        } else {
-          list = list.filter(a => a.scope === "GLOBAL" || a.categoryIds.includes(filters.categoryId));
-        }
-      }
+    // Phase 4: ProductType filter (attributes are scoped by product type)
+    if (filters.productTypeId === "unassigned") {
+      list = list.filter(a => a.productTypeIds.length === 0);
+    } else if (filters.productTypeId !== "all") {
+      // Type-specific fields, plus (optionally) the common all-types fields that also form the product.
+      list = includeCommon
+        ? list.filter(a => a.productTypeIds.includes(filters.productTypeId) || a.productTypeIds.length === 0)
+        : list.filter(a => a.productTypeIds.includes(filters.productTypeId));
     }
 
     // Search
@@ -1056,21 +1015,7 @@ export default function MasterAttributesPage() {
     });
 
     return list;
-  }, [masterAttributes, channelAttributes, activeTab, filters, categorySubtreeIds, includeCommon]);
-
-  // Category attribute counts (master tab only) — Phase 2: counts include descendants
-  const categoryCounts = useMemo(() => {
-    const src = masterAttributes;
-    const counts: Record<string, number> = { all: src.length, unassigned: 0 };
-    for (const cat of categories) {
-      const subtreeIds = categorySubtreeIds.get(cat.id);
-      counts[cat.id] = subtreeIds
-        ? src.filter(a => a.scope === "GLOBAL" || a.categoryIds.some(id => subtreeIds.has(id))).length
-        : src.filter(a => a.scope === "GLOBAL" || a.categoryIds.includes(cat.id)).length;
-    }
-    counts.unassigned = src.filter(a => a.scope === "CATEGORY_SPECIFIC" && a.categoryIds.length === 0).length;
-    return counts;
-  }, [masterAttributes, categories, categorySubtreeIds]);
+  }, [masterAttributes, channelAttributes, activeTab, filters, includeCommon]);
 
   // Phase 4: ProductType attribute counts (master tab only)
   const productTypeCounts = useMemo(() => {
@@ -1251,22 +1196,13 @@ export default function MasterAttributesPage() {
 
   return (
     <div className="flex h-[calc(100vh-64px)] bg-gray-50 dark:bg-gray-900 overflow-hidden">
-      {/* ── Left: Sidebar (ProductType or Category filter) ─────────────────── */}
+      {/* ── Left: Sidebar (ProductType filter) ─────────────────── */}
       <aside className={`flex-shrink-0 border-r border-gray-200 dark:border-gray-700/60 bg-white dark:bg-gray-800/40 flex flex-col transition-all duration-300 overflow-hidden ${sidebarCollapsed ? "w-12" : "w-60"}`}>
 
         {/* Header */}
         <div className="flex-shrink-0 flex items-center justify-between px-3 py-3.5 border-b border-gray-100 dark:border-gray-700/50">
           {!sidebarCollapsed && (
-            <div className="min-w-0 flex-1 flex gap-0.5 rounded-lg bg-gray-100 dark:bg-gray-700/60 p-0.5">
-              <button
-                onClick={() => { setSidebarMode("productType"); setFilters(f => ({ ...f, productTypeId: "all", categoryId: "all" })); }}
-                className={`flex-1 text-[11px] font-medium py-1 px-1.5 rounded-md transition-colors truncate ${sidebarMode === "productType" ? "bg-white dark:bg-gray-800 text-gray-900 dark:text-white shadow-sm" : "text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300"}`}
-              >By Type</button>
-              <button
-                onClick={() => { setSidebarMode("category"); setFilters(f => ({ ...f, productTypeId: "all", categoryId: "all" })); }}
-                className={`flex-1 text-[11px] font-medium py-1 px-1.5 rounded-md transition-colors truncate ${sidebarMode === "category" ? "bg-white dark:bg-gray-800 text-gray-900 dark:text-white shadow-sm" : "text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300"}`}
-              >By Category</button>
-            </div>
+            <span className="min-w-0 flex-1 text-[11px] font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide truncate">By Product Type</span>
           )}
           <button
             onClick={() => setSidebarCollapsed(v => !v)}
@@ -1284,23 +1220,21 @@ export default function MasterAttributesPage() {
             {/* All */}
             <button
               type="button"
-              onClick={() => sidebarMode === "productType"
-                ? setFilters(f => ({ ...f, productTypeId: "all" }))
-                : setFilters(f => ({ ...f, categoryId: "all" }))}
+              onClick={() => setFilters(f => ({ ...f, productTypeId: "all" }))}
               className={`w-full flex items-center gap-2.5 px-3 py-2 text-xs transition-colors cursor-pointer ${
-                (sidebarMode === "productType" ? filters.productTypeId : filters.categoryId) === "all"
+                filters.productTypeId === "all"
                   ? "bg-brand-50 dark:bg-brand-500/10 text-brand-700 dark:text-brand-400 font-semibold"
                   : "text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700/50"
               }`}
             >
               <span className={`flex-shrink-0 w-2 h-2 rounded-full ${
-                (sidebarMode === "productType" ? filters.productTypeId : filters.categoryId) === "all" ? "bg-brand-500" : "bg-gray-300 dark:bg-gray-600"
+                filters.productTypeId === "all" ? "bg-brand-500" : "bg-gray-300 dark:bg-gray-600"
               }`} />
               {!sidebarCollapsed && (
                 <>
                   <span className="flex-1 text-left">All Attributes</span>
                   <span className="flex-shrink-0 text-[10px] text-gray-400 dark:text-gray-500 tabular-nums">
-                    {(sidebarMode === "productType" ? productTypeCounts : categoryCounts)["all"] ?? 0}
+                    {productTypeCounts["all"] ?? 0}
                   </span>
                 </>
               )}
@@ -1309,25 +1243,23 @@ export default function MasterAttributesPage() {
             {/* Unassigned */}
             <button
               type="button"
-              onClick={() => sidebarMode === "productType"
-                ? setFilters(f => ({ ...f, productTypeId: "unassigned" }))
-                : setFilters(f => ({ ...f, categoryId: "unassigned" }))}
+              onClick={() => setFilters(f => ({ ...f, productTypeId: "unassigned" }))}
               className={`w-full flex items-center gap-2.5 px-3 py-2 text-xs transition-colors cursor-pointer ${
-                (sidebarMode === "productType" ? filters.productTypeId : filters.categoryId) === "unassigned"
+                filters.productTypeId === "unassigned"
                   ? "bg-amber-50 dark:bg-amber-500/10 text-amber-700 dark:text-amber-400 font-semibold"
                   : "text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700/50"
               }`}
             >
               <span className={`flex-shrink-0 w-2 h-2 rounded-full ${
-                (sidebarMode === "productType" ? filters.productTypeId : filters.categoryId) === "unassigned"
+                filters.productTypeId === "unassigned"
                   ? "bg-amber-500" : "bg-amber-300 dark:bg-amber-500/40"
               }`} />
               {!sidebarCollapsed && (
                 <>
                   <span className="flex-1 text-left">Unassigned</span>
-                  {((sidebarMode === "productType" ? productTypeCounts : categoryCounts)["unassigned"] ?? 0) > 0 && (
+                  {(productTypeCounts["unassigned"] ?? 0) > 0 && (
                     <span className="flex-shrink-0 text-[10px] font-semibold bg-amber-100 dark:bg-amber-500/20 text-amber-600 dark:text-amber-400 px-1.5 py-0.5 rounded-full tabular-nums">
-                      {(sidebarMode === "productType" ? productTypeCounts : categoryCounts)["unassigned"]}
+                      {productTypeCounts["unassigned"]}
                     </span>
                   )}
                 </>
@@ -1335,9 +1267,8 @@ export default function MasterAttributesPage() {
             </button>
           </div>
 
-          {/* ── ProductType list (sidebarMode === "productType") ──────── */}
-          {sidebarMode === "productType" && (
-            <div className="py-1">
+          {/* ── ProductType list ──────────────────────────────────────── */}
+          <div className="py-1">
               {ptLoading ? (
                 !sidebarCollapsed ? (
                   <div className="px-3 py-2 space-y-2">
@@ -1395,163 +1326,23 @@ export default function MasterAttributesPage() {
                 })
               )}
             </div>
-          )}
-
-          {/* ── Category list (sidebarMode === "category") ────────────── */}
-          {sidebarMode === "category" && <div className="py-1">
-            {catsLoading ? (
-              /* Loading skeleton */
-              !sidebarCollapsed ? (
-                <div className="px-3 py-2 space-y-2">
-                  {[80, 60, 70, 55, 65].map((w, i) => (
-                    <div key={i} className="flex items-center gap-2 animate-pulse">
-                      <div className="w-2 h-2 rounded-full bg-gray-200 dark:bg-gray-700 flex-shrink-0" />
-                      <div className="h-3 rounded bg-gray-200 dark:bg-gray-700" style={{ width: `${w}%` }} />
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="flex flex-col items-center gap-1.5 py-3 px-2">
-                  {[1,2,3].map(i => (
-                    <div key={i} className="w-2 h-2 rounded-full bg-gray-200 dark:bg-gray-700 animate-pulse" />
-                  ))}
-                </div>
-              )
-            ) : catsError ? (
-              /* Error state */
-              !sidebarCollapsed ? (
-                <div className="px-3 py-4 text-center">
-                  <p className="text-[11px] text-red-500 dark:text-red-400 mb-1">Failed to load</p>
-                  <button
-                    type="button"
-                    onClick={loadCats}
-                    className="text-[11px] text-brand-600 dark:text-brand-400 hover:underline"
-                  >Retry</button>
-                </div>
-              ) : (
-                <div className="flex justify-center py-3">
-                  <span className="text-red-400 text-xs">!</span>
-                </div>
-              )
-            ) : categories.length === 0 ? (
-              /* Empty state */
-              !sidebarCollapsed ? (
-                <div className="px-3 py-5 text-center">
-                  <p className="text-[11px] text-gray-400 dark:text-gray-500 leading-snug">
-                    No categories yet.<br />Set them up first.
-                  </p>
-                  <Link
-                    href="/omni-admin/product-categories"
-                    className="mt-2 inline-block text-[11px] text-brand-600 dark:text-brand-400 hover:underline"
-                  >
-                    Create categories →
-                  </Link>
-                </div>
-              ) : null
-            ) : (
-              /* Category tree — indented by level */
-              categories.map(cat => {
-                const level = cat.level ?? 0;
-                const isActive = filters.categoryId === cat.id;
-                const leftPad = sidebarCollapsed ? 14 : 12 + level * 12;
-                // Phase 2: detect whether this category has descendants in the tree
-                const subtreeSize = categorySubtreeIds.get(cat.id)?.size ?? 1;
-                const hasDescendants = subtreeSize > 1;
-
-                return (
-                  <button
-                    key={cat.id}
-                    type="button"
-                    onClick={() => setFilters(f => ({ ...f, categoryId: cat.id }))}
-                    title={
-                      sidebarCollapsed
-                        ? `${cat.name}${cat.path ? ` (${cat.path})` : ""}${hasDescendants ? ` — includes ${subtreeSize - 1} subcategor${subtreeSize - 1 === 1 ? "y" : "ies"}` : ""}`
-                        : isActive && hasDescendants
-                          ? `Showing ${cat.name} and ${subtreeSize - 1} subcategor${subtreeSize - 1 === 1 ? "y" : "ies"}`
-                          : undefined
-                    }
-                    className={`w-full flex items-center gap-2 py-1.5 pr-3 text-xs transition-colors cursor-pointer ${
-                      isActive
-                        ? "font-semibold"
-                        : level === 0
-                          ? "text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50"
-                          : "text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700/50"
-                    }`}
-                    style={{
-                      paddingLeft: leftPad,
-                      ...(isActive ? { background: cat.color + "18", color: cat.color } : {}),
-                    }}
-                  >
-                    {/* Tree guide line for children */}
-                    {level > 0 && !sidebarCollapsed && (
-                      <span className="flex-shrink-0 w-3 border-l border-b border-gray-200 dark:border-gray-700 rounded-bl"
-                        style={{ height: 10, marginTop: -2 }} />
-                    )}
-                    {/* Color dot */}
-                    <span
-                      className="flex-shrink-0 rounded-full"
-                      style={{
-                        width:  level === 0 ? 7 : 5,
-                        height: level === 0 ? 7 : 5,
-                        background: cat.color + (isActive ? "" : level === 0 ? "aa" : "66"),
-                      }}
-                    />
-                    {!sidebarCollapsed && (
-                      <>
-                        <span className={`flex-1 text-left truncate ${level === 0 ? "font-medium" : ""}`}>
-                          {cat.name}
-                        </span>
-                        {/* Count badge — when active and spanning descendants, show subtree indicator */}
-                        {isActive && hasDescendants ? (
-                          <span className="flex-shrink-0 text-[10px] font-medium tabular-nums opacity-80">
-                            {categoryCounts[cat.id] ?? 0}
-                            <span className="ml-0.5 opacity-60">⊃</span>
-                          </span>
-                        ) : (
-                          <span className="flex-shrink-0 text-[10px] text-gray-400 dark:text-gray-500 tabular-nums">
-                            {categoryCounts[cat.id] ?? 0}
-                          </span>
-                        )}
-                      </>
-                    )}
-                  </button>
-                );
-              })
-            )}
-          </div>}
         </div>
 
-        {/* Footer — manage link (contextual) */}
+        {/* Footer — manage link */}
         <div className={`flex-shrink-0 border-t border-gray-100 dark:border-gray-700/50 ${sidebarCollapsed ? "p-1.5" : "px-2 py-2.5"}`}>
-          {sidebarMode === "productType" ? (
-            <Link
-              href="/omni-admin/product-types"
-              title="Manage product types"
-              className={`flex items-center gap-2 rounded-lg text-[11px] text-gray-400 dark:text-gray-500 hover:text-brand-600 dark:hover:text-brand-400 hover:bg-brand-50 dark:hover:bg-brand-500/10 transition-colors ${
-                sidebarCollapsed ? "justify-center p-1.5" : "px-2 py-1.5"
-              }`}
-            >
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="flex-shrink-0">
-                <rect x="3" y="3" width="18" height="4" rx="1"/><rect x="3" y="10" width="18" height="4" rx="1"/>
-                <rect x="3" y="17" width="7" height="4" rx="1"/><rect x="14" y="17" width="7" height="4" rx="1"/>
-              </svg>
-              {!sidebarCollapsed && <span>Manage Product Types</span>}
-            </Link>
-          ) : (
-            <Link
-              href="/omni-admin/product-categories"
-              title="Manage product categories"
-              className={`flex items-center gap-2 rounded-lg text-[11px] text-gray-400 dark:text-gray-500 hover:text-brand-600 dark:hover:text-brand-400 hover:bg-brand-50 dark:hover:bg-brand-500/10 transition-colors ${
-                sidebarCollapsed ? "justify-center p-1.5" : "px-2 py-1.5"
-              }`}
-            >
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="flex-shrink-0">
-                <path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/>
-                <path d="M2 10h20"/>
-              </svg>
-              {!sidebarCollapsed && <span>Manage Categories</span>}
-            </Link>
-          )}
+          <Link
+            href="/omni-admin/product-types"
+            title="Manage product types"
+            className={`flex items-center gap-2 rounded-lg text-[11px] text-gray-400 dark:text-gray-500 hover:text-brand-600 dark:hover:text-brand-400 hover:bg-brand-50 dark:hover:bg-brand-500/10 transition-colors ${
+              sidebarCollapsed ? "justify-center p-1.5" : "px-2 py-1.5"
+            }`}
+          >
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="flex-shrink-0">
+              <rect x="3" y="3" width="18" height="4" rx="1"/><rect x="3" y="10" width="18" height="4" rx="1"/>
+              <rect x="3" y="17" width="7" height="4" rx="1"/><rect x="14" y="17" width="7" height="4" rx="1"/>
+            </svg>
+            {!sidebarCollapsed && <span>Manage Product Types</span>}
+          </Link>
         </div>
       </aside>
 
@@ -1666,7 +1457,7 @@ export default function MasterAttributesPage() {
         {/* ── Tab strip ──────────────────────────────────────────────────────── */}
         <div className="flex-shrink-0 bg-white dark:bg-gray-800/40 border-b border-gray-200 dark:border-gray-700/60 px-6 flex items-end gap-0">
           <button
-            onClick={() => { setActiveTab("master"); setFilters(f => ({ ...f, categoryId: "all" })); }}
+            onClick={() => { setActiveTab("master"); setFilters(f => ({ ...f, productTypeId: "all" })); }}
             className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors -mb-px ${
               activeTab === "master"
                 ? "border-brand-500 text-brand-600 dark:text-brand-400"
@@ -1682,7 +1473,7 @@ export default function MasterAttributesPage() {
             }`}>{masterAttributes.length}</span>
           </button>
           <button
-            onClick={() => { setActiveTab("channel"); setFilters(f => ({ ...f, categoryId: "all" })); }}
+            onClick={() => { setActiveTab("channel"); setFilters(f => ({ ...f, productTypeId: "all" })); }}
             className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors -mb-px ${
               activeTab === "channel"
                 ? "border-indigo-500 text-indigo-600 dark:text-indigo-400"

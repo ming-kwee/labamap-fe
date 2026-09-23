@@ -417,7 +417,6 @@ export type SortDir = "asc" | "desc";
 
 export interface AttributeFilters {
   search: string;
-  categoryId: string;
   productTypeId: string;   // Phase 4 — "all" | "unassigned" | "<typeId>"
   status: AttributeStatus | "all";
   type: AttributeType | "all";
