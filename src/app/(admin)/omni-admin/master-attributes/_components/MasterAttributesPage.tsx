@@ -946,14 +946,17 @@ export default function MasterAttributesPage() {
     // Work from the correct tab's source
     let list = [...(activeTab === "channel" ? channelAttributes : masterAttributes)];
 
-    // Phase 4: ProductType filter (attributes are scoped by product type)
-    if (filters.productTypeId === "unassigned") {
-      list = list.filter(a => a.productTypeIds.length === 0);
-    } else if (filters.productTypeId !== "all") {
-      // Type-specific fields, plus (optionally) the common all-types fields that also form the product.
-      list = includeCommon
-        ? list.filter(a => a.productTypeIds.includes(filters.productTypeId) || a.productTypeIds.length === 0)
-        : list.filter(a => a.productTypeIds.includes(filters.productTypeId));
+    // Phase 4: ProductType filter — Master tab only. Channel fields aren't type-scoped, so the Channel
+    // tab ignores productTypeId (kept in state so it's restored when you switch back to Master).
+    if (activeTab === "master") {
+      if (filters.productTypeId === "unassigned") {
+        list = list.filter(a => a.productTypeIds.length === 0);
+      } else if (filters.productTypeId !== "all") {
+        // Type-specific fields, plus (optionally) the common all-types fields that also form the product.
+        list = includeCommon
+          ? list.filter(a => a.productTypeIds.includes(filters.productTypeId) || a.productTypeIds.length === 0)
+          : list.filter(a => a.productTypeIds.includes(filters.productTypeId));
+      }
     }
 
     // Channel filter — attribute is available on the selected channel (supportedChannels)
@@ -1036,11 +1039,11 @@ export default function MasterAttributesPage() {
     });
   }, [filteredAttributes]);
 
-  // In a specific product-type view, an attribute with no productTypeIds is a COMMON (all-types) field.
-  const isCommonView = filters.productTypeId !== "all" && filters.productTypeId !== "unassigned";
+  // In a specific product-type view (Master tab only), an attribute with no productTypeIds is COMMON.
+  const isCommonView = activeTab === "master" && filters.productTypeId !== "all" && filters.productTypeId !== "unassigned";
   const commonCount = useMemo(
-    () => (isCommonView ? (activeTab === "channel" ? channelAttributes : masterAttributes).filter(a => a.productTypeIds.length === 0).length : 0),
-    [isCommonView, activeTab, channelAttributes, masterAttributes],
+    () => (isCommonView ? masterAttributes.filter(a => a.productTypeIds.length === 0).length : 0),
+    [isCommonView, masterAttributes],
   );
 
   // ── Handlers ─────────────────────────────────────────────────────────────────
@@ -1488,7 +1491,7 @@ export default function MasterAttributesPage() {
         {/* ── Tab strip ──────────────────────────────────────────────────────── */}
         <div className="flex-shrink-0 bg-white dark:bg-gray-800/40 border-b border-gray-200 dark:border-gray-700/60 px-6 flex items-end gap-0">
           <button
-            onClick={() => { setActiveTab("master"); setFilters(f => ({ ...f, productTypeId: "all", channel: "all" })); }}
+            onClick={() => setActiveTab("master")}
             className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors -mb-px ${
               activeTab === "master"
                 ? "border-brand-500 text-brand-600 dark:text-brand-400"
@@ -1504,7 +1507,7 @@ export default function MasterAttributesPage() {
             }`}>{masterAttributes.length}</span>
           </button>
           <button
-            onClick={() => { setActiveTab("channel"); setFilters(f => ({ ...f, productTypeId: "all", channel: "all" })); }}
+            onClick={() => setActiveTab("channel")}
             className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors -mb-px ${
               activeTab === "channel"
                 ? "border-indigo-500 text-indigo-600 dark:text-indigo-400"
