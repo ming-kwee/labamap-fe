@@ -521,6 +521,7 @@ interface AttributeListItemProps {
   isSelected: boolean;
   showSection?: boolean;   // flat mode: show section badge on the card
   isCommon?: boolean;      // product-type view: attribute applies to ALL types (not specific to this one)
+  inTypeView?: boolean;    // viewing a specific product type → draw the common/type-specific accent stripe
   reorderMode?: boolean;   // drag-drop only active when reorder mode is on
   onToggleExpand: (id: string) => void;
   onSelect: (id: string) => void;
@@ -538,7 +539,7 @@ interface AttributeListItemProps {
 
 function AttributeListItem({
   attribute, index, isExpanded, isSelected,
-  showSection = false, isCommon = false, reorderMode = false,
+  showSection = false, isCommon = false, inTypeView = false, reorderMode = false,
   onToggleExpand, onSelect, onEdit, onDelete, onInsertAfter,
   isDragging, isDragOver, onDragStart, onDragOver, onDrop, onDragEnd,
 }: AttributeListItemProps) {
@@ -556,7 +557,8 @@ function AttributeListItem({
         ${reorderMode && isDragging ? "opacity-40 scale-[0.98]" : "opacity-100"}
         ${reorderMode && isDragOver ? "border-brand-400 shadow-lg shadow-brand-500/10 ring-2 ring-brand-400/20" : "border-gray-200 dark:border-gray-700/60"}
         ${isSelected ? "ring-2 ring-brand-400/30 border-brand-300 dark:border-brand-500/40" : ""}
-        ${isCommon ? "bg-slate-50 dark:bg-slate-800/30 hover:bg-slate-100/70 dark:hover:bg-slate-800/50 border-dashed" : "bg-white dark:bg-gray-800/40 hover:bg-gray-50/50 dark:hover:bg-gray-800/70"}
+        ${isCommon ? "bg-slate-100/70 dark:bg-slate-800/40 hover:bg-slate-100 dark:hover:bg-slate-800/60" : "bg-white dark:bg-gray-800/40 hover:bg-gray-50/50 dark:hover:bg-gray-800/70"}
+        ${inTypeView ? (isCommon ? "border-l-[5px] border-l-slate-400 dark:border-l-slate-500 border-dashed" : "border-l-[5px] border-l-brand-500 dark:border-l-brand-400") : ""}
         hover:border-gray-300 dark:hover:border-gray-600
         hover:shadow-sm
       `}
@@ -1730,6 +1732,7 @@ export default function MasterAttributesPage() {
 
                               showSection={false}
                               isCommon={isCommonView && attr.productTypeIds.length === 0}
+                              inTypeView={isCommonView}
                               reorderMode={false}
                               onToggleExpand={handleToggleExpand}
                               onSelect={handleSelectPreview}
@@ -1763,6 +1766,7 @@ export default function MasterAttributesPage() {
                   isSelected={previewId === attr.id}
                   showSection={true}
                   isCommon={isCommonView && attr.productTypeIds.length === 0}
+                  inTypeView={isCommonView}
                   reorderMode={reorderMode}
                   onToggleExpand={handleToggleExpand}
                   onSelect={handleSelectPreview}
