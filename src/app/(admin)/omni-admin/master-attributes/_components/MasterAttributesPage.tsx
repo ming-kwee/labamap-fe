@@ -871,7 +871,7 @@ export default function MasterAttributesPage() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [savingId, setSavingId] = useState<string | null>(null); // attribute being saved/deleted
   const [filters, setFilters] = useState<AttributeFilters>({
-    search: "", productTypeId: "all", status: "all", type: "all", required: "all",
+    search: "", productTypeId: "all", channel: "all", status: "all", type: "all", required: "all",
     sortField: "formOrder", sortDir: "asc",
   });
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
@@ -956,6 +956,11 @@ export default function MasterAttributesPage() {
         : list.filter(a => a.productTypeIds.includes(filters.productTypeId));
     }
 
+    // Channel filter — attribute is available on the selected channel (supportedChannels)
+    if (filters.channel !== "all") {
+      list = list.filter(a => a.supportedChannels?.includes(filters.channel));
+    }
+
     // Search
     if (filters.search) {
       const q = filters.search.toLowerCase();
@@ -999,6 +1004,22 @@ export default function MasterAttributesPage() {
     counts.unassigned = src.filter(a => a.productTypeIds.length === 0).length;
     return counts;
   }, [masterAttributes, productTypes]);
+
+  // All channel types present in the data (union of supportedChannels) — for the toolbar channel filter.
+  const allChannels = useMemo(() => {
+    const set = new Set<string>();
+    for (const a of attributes) for (const c of a.supportedChannels ?? []) set.add(c);
+    return Array.from(set).sort();
+  }, [attributes]);
+
+  // Channel Fields tab: how many channel-fields each channel supports — for the tab-aware channel sidebar.
+  const channelCounts = useMemo(() => {
+    const counts: Record<string, number> = { all: channelAttributes.length };
+    for (const ch of allChannels) {
+      counts[ch] = channelAttributes.filter(a => a.supportedChannels?.includes(ch)).length;
+    }
+    return counts;
+  }, [channelAttributes, allChannels]);
 
   // Attributes grouped by section (used in grouped view mode)
   const groupedAttributes = useMemo(() => {
@@ -1166,6 +1187,13 @@ export default function MasterAttributesPage() {
     ? (attributes.find(a => a.id === previewId) ?? null)
     : null;
 
+  // Sidebar is tab-aware: Master → product types; Channel → channels (channel fields aren't type-scoped).
+  const sbKey: "productTypeId" | "channel" = activeTab === "channel" ? "channel" : "productTypeId";
+  const sbValue = activeTab === "channel" ? filters.channel : filters.productTypeId;
+  const setSb = (v: string) => setFilters(f => ({ ...f, [sbKey]: v }));
+  const sbCounts = activeTab === "channel" ? channelCounts : productTypeCounts;
+  const sidebarChannels = allChannels.filter(ch => (channelCounts[ch] ?? 0) > 0);
+
   return (
     <div className="flex h-[calc(100vh-64px)] bg-gray-50 dark:bg-gray-900 overflow-hidden">
       {/* ── Left: Sidebar (ProductType filter) ─────────────────── */}
@@ -1174,7 +1202,7 @@ export default function MasterAttributesPage() {
         {/* Header */}
         <div className="flex-shrink-0 flex items-center justify-between px-3 py-3.5 border-b border-gray-100 dark:border-gray-700/50">
           {!sidebarCollapsed && (
-            <span className="min-w-0 flex-1 text-[11px] font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide truncate">By Product Type</span>
+            <span className="min-w-0 flex-1 text-[11px] font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide truncate">{activeTab === "channel" ? "By Channel" : "By Product Type"}</span>
           )}
           <button
             onClick={() => setSidebarCollapsed(v => !v)}
@@ -1192,27 +1220,28 @@ export default function MasterAttributesPage() {
             {/* All */}
             <button
               type="button"
-              onClick={() => setFilters(f => ({ ...f, productTypeId: "all" }))}
+              onClick={() => setSb("all")}
               className={`w-full flex items-center gap-2.5 px-3 py-2 text-xs transition-colors cursor-pointer ${
-                filters.productTypeId === "all"
+                sbValue === "all"
                   ? "bg-brand-50 dark:bg-brand-500/10 text-brand-700 dark:text-brand-400 font-semibold"
                   : "text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700/50"
               }`}
             >
               <span className={`flex-shrink-0 w-2 h-2 rounded-full ${
-                filters.productTypeId === "all" ? "bg-brand-500" : "bg-gray-300 dark:bg-gray-600"
+                sbValue === "all" ? "bg-brand-500" : "bg-gray-300 dark:bg-gray-600"
               }`} />
               {!sidebarCollapsed && (
                 <>
                   <span className="flex-1 text-left">All Attributes</span>
                   <span className="flex-shrink-0 text-[10px] text-gray-400 dark:text-gray-500 tabular-nums">
-                    {productTypeCounts["all"] ?? 0}
+                    {sbCounts["all"] ?? 0}
                   </span>
                 </>
               )}
             </button>
 
-            {/* Common (all types) — attributes with no productTypeIds apply to EVERY product type */}
+            {/* Common (all types) — master tab only (channel fields have no productTypeIds by nature) */}
+            {activeTab === "master" && (
             <button
               type="button"
               title="Common fields: no productTypeIds means they apply to every product type (e.g. Product Title, Price, Description) — not orphaned."
@@ -1238,9 +1267,11 @@ export default function MasterAttributesPage() {
                 </>
               )}
             </button>
+            )}
           </div>
 
-          {/* ── ProductType list ──────────────────────────────────────── */}
+          {/* ── List: product types (Master tab) or channels (Channel tab) ── */}
+          {activeTab === "master" ? (
           <div className="py-1">
               {ptLoading ? (
                 !sidebarCollapsed ? (
@@ -1299,9 +1330,35 @@ export default function MasterAttributesPage() {
                 })
               )}
             </div>
+          ) : (
+            <div className="py-1">
+              {sidebarChannels.length === 0 ? (
+                !sidebarCollapsed ? <div className="px-3 py-5 text-center"><p className="text-[11px] text-gray-400 dark:text-gray-500">No channel fields yet.</p></div> : null
+              ) : (
+                sidebarChannels.map(ch => {
+                  const isActive = filters.channel === ch;
+                  const cnt = channelCounts[ch] ?? 0;
+                  return (
+                    <button key={ch} type="button" onClick={() => setSb(ch)}
+                      title={sidebarCollapsed ? ch : `${ch} — ${cnt} channel field${cnt !== 1 ? "s" : ""}`}
+                      className={`w-full flex items-center gap-2 px-3 py-1.5 text-xs transition-colors cursor-pointer ${isActive ? "bg-brand-50 dark:bg-brand-500/10 text-brand-700 dark:text-brand-400 font-semibold" : "text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700/50"}`}>
+                      <span className={`flex-shrink-0 w-2 h-2 rounded-full ${isActive ? "bg-brand-500" : "bg-indigo-300 dark:bg-indigo-500/50"}`} />
+                      {!sidebarCollapsed && (
+                        <>
+                          <span className="flex-1 text-left font-medium truncate capitalize">{ch}</span>
+                          <span className={`flex-shrink-0 text-[10px] tabular-nums ${isActive ? "opacity-80" : "text-gray-400 dark:text-gray-500"}`}>{cnt}</span>
+                        </>
+                      )}
+                    </button>
+                  );
+                })
+              )}
+            </div>
+          )}
         </div>
 
-        {/* Footer — manage link */}
+        {/* Footer — manage link (Master tab only) */}
+        {activeTab === "master" && (
         <div className={`flex-shrink-0 border-t border-gray-100 dark:border-gray-700/50 ${sidebarCollapsed ? "p-1.5" : "px-2 py-2.5"}`}>
           <Link
             href="/omni-admin/product-types"
@@ -1317,6 +1374,7 @@ export default function MasterAttributesPage() {
             {!sidebarCollapsed && <span>Manage Product Types</span>}
           </Link>
         </div>
+        )}
       </aside>
 
       {/* ── Center: Main Content ──────────────────────────────────────────────── */}
@@ -1430,7 +1488,7 @@ export default function MasterAttributesPage() {
         {/* ── Tab strip ──────────────────────────────────────────────────────── */}
         <div className="flex-shrink-0 bg-white dark:bg-gray-800/40 border-b border-gray-200 dark:border-gray-700/60 px-6 flex items-end gap-0">
           <button
-            onClick={() => { setActiveTab("master"); setFilters(f => ({ ...f, productTypeId: "all" })); }}
+            onClick={() => { setActiveTab("master"); setFilters(f => ({ ...f, productTypeId: "all", channel: "all" })); }}
             className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors -mb-px ${
               activeTab === "master"
                 ? "border-brand-500 text-brand-600 dark:text-brand-400"
@@ -1446,7 +1504,7 @@ export default function MasterAttributesPage() {
             }`}>{masterAttributes.length}</span>
           </button>
           <button
-            onClick={() => { setActiveTab("channel"); setFilters(f => ({ ...f, productTypeId: "all" })); }}
+            onClick={() => { setActiveTab("channel"); setFilters(f => ({ ...f, productTypeId: "all", channel: "all" })); }}
             className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors -mb-px ${
               activeTab === "channel"
                 ? "border-indigo-500 text-indigo-600 dark:text-indigo-400"
@@ -1466,6 +1524,21 @@ export default function MasterAttributesPage() {
         {/* Toolbar */}
         <div className="flex-shrink-0 bg-white dark:bg-gray-800/40 border-b border-gray-100 dark:border-gray-700/30 px-6 py-2.5 flex items-center gap-4">
           <span className="text-xs text-gray-400">{filteredAttributes.length} attribute{filteredAttributes.length !== 1 ? "s" : ""}</span>
+
+          {/* Channel filter — master tab (channel tab uses the channel sidebar instead). Combine with product type for e.g. "Shopify × Apparel". */}
+          {activeTab === "master" && allChannels.length > 0 && (
+            <div className="flex items-center gap-1.5">
+              <span className="text-xs text-gray-400">Channel:</span>
+              <select
+                value={filters.channel}
+                onChange={e => setFilters(f => ({ ...f, channel: e.target.value }))}
+                className="text-xs border border-gray-200 dark:border-gray-700 rounded-lg px-2 py-1 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 focus:outline-none capitalize"
+              >
+                <option value="all">All channels</option>
+                {allChannels.map(ch => <option key={ch} value={ch} className="capitalize">{ch}</option>)}
+              </select>
+            </div>
+          )}
 
           <div className="ml-auto flex items-center gap-3">
             {/* Common (all-types) fields toggle — only in a specific product-type view */}

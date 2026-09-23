@@ -410,6 +410,7 @@ export type SortDir = "asc" | "desc";
 export interface AttributeFilters {
   search: string;
   productTypeId: string;   // Phase 4 — "all" | "unassigned" | "<typeId>"
+  channel: string;         // "all" | "<channelType>" — filters by supportedChannels
   status: AttributeStatus | "all";
   type: AttributeType | "all";
   required: boolean | "all";
