@@ -207,7 +207,12 @@ export default function PlaygroundClient() {
       <div className="flex-1 min-h-0 grid grid-cols-1 lg:grid-cols-3 gap-4">
         {/* Input */}
         <div className="min-h-0 flex flex-col rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-900/30 p-3">
-          <InputPanel text={inputText} onTextChange={setInputText} parseError={parsed.error} />
+          <InputPanel
+            text={inputText}
+            onTextChange={setInputText}
+            parseError={parsed.error}
+            onLoadPipeline={setSteps}
+          />
         </div>
 
         {/* Pipeline */}
