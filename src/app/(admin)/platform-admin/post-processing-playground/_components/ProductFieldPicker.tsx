@@ -102,7 +102,7 @@ export default function ProductFieldPicker({
           title={collapsed ? "Expand" : "Minimize"}
         >
           <span className="shrink-0 text-gray-400"><ChevronRight open={!collapsed} /></span>
-          <span className="text-[11px] font-medium text-gray-500 dark:text-gray-400">Choose what to load</span>
+          <span className="text-[11px] font-medium text-gray-500 dark:text-gray-400">Fields to load</span>
           {collapsed && selected.size > 0 && (
             <span className="text-[11px] text-gray-400 dark:text-gray-500">· {selected.size} selected</span>
           )}

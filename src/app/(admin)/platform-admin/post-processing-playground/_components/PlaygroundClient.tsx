@@ -52,6 +52,9 @@ export default function PlaygroundClient() {
   const [running, setRunning] = useState(false);
   const [runError, setRunError] = useState<string | null>(null);
 
+  // Faithful mode (Phase 2): the real publish's afterPostProcessing to validate the output against.
+  const [expectedOutput, setExpectedOutput] = useState<Record<string, unknown> | null>(null);
+
   // Load catalog once.
   useEffect(() => {
     let alive = true;
@@ -100,6 +103,24 @@ export default function PlaygroundClient() {
   }, [inputText]);
 
   const rules = useMemo(() => stepsToRules(steps), [steps]);
+
+  // Staged-dependency hint: steps whose sourcePath is a reserved `_`-key (e.g. `_sourceImages`) that isn't
+  // in the input read nothing → no-op. Those keys only exist after JOLT/staging (faithful mode). List the
+  // missing ones so the user knows to enable "Match real publish" (or add them manually). Auto-clears once
+  // the key is present (faithful input includes it).
+  const missingStaged = useMemo(() => {
+    if (!parsed.value) return [];
+    const inputKeys = new Set(Object.keys(parsed.value));
+    const missing = new Set<string>();
+    for (const s of steps) {
+      const sp = s.sourcePath?.trim();
+      if (sp && sp.startsWith("_")) {
+        const top = sp.split(".")[0];
+        if (!inputKeys.has(top)) missing.add(top);
+      }
+    }
+    return [...missing].sort();
+  }, [steps, parsed.value]);
 
   // ─── Run (shared by auto-run + manual) ───────────────────────────────────────
   const runNow = useCallback(async () => {
@@ -212,6 +233,7 @@ export default function PlaygroundClient() {
             onTextChange={setInputText}
             parseError={parsed.error}
             onLoadPipeline={setSteps}
+            onExpectedOutput={setExpectedOutput}
           />
         </div>
 
@@ -272,6 +294,8 @@ export default function PlaygroundClient() {
             running={running}
             runError={runError}
             disabledHint={disabledHint}
+            expectedOutput={expectedOutput}
+            missingStaged={missingStaged}
           />
         </div>
       </div>

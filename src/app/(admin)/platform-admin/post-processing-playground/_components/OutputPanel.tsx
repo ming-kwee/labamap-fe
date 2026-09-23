@@ -43,6 +43,114 @@ function pretty(value: unknown): string {
   }
 }
 
+/** Stable stringify (sorted keys) so key order doesn't cause false "differs". */
+function stable(value: unknown): string {
+  const seen = new WeakSet();
+  const norm = (v: unknown): unknown => {
+    if (v === null || typeof v !== "object") return v;
+    if (seen.has(v as object)) return "[circular]";
+    seen.add(v as object);
+    if (Array.isArray(v)) return v.map(norm);
+    const o = v as Record<string, unknown>;
+    return Object.keys(o).sort().reduce<Record<string, unknown>>((acc, k) => {
+      acc[k] = norm(o[k]);
+      return acc;
+    }, {});
+  };
+  try {
+    return JSON.stringify(norm(value));
+  } catch {
+    return String(value);
+  }
+}
+
+function isPlainObject(v: unknown): v is Record<string, unknown> {
+  return v !== null && typeof v === "object" && !Array.isArray(v);
+}
+
+/** One differing leaf between the playground output (`a`) and the real publish output (`b`). */
+interface DiffPath {
+  path: string;
+  a: unknown; // playground value (undefined = absent)
+  b: unknown; // real publish value
+}
+
+/**
+ * Recursive deep diff → the exact nested LEAF paths that differ (dot for objects, [i] for arrays).
+ * Much more useful than a top-level key diff for wrapper channels (Shopify/Wix nest everything under
+ * `product`). Identical subtrees are pruned via the stable stringify.
+ */
+function diffPaths(a: unknown, b: unknown, prefix = ""): DiffPath[] {
+  if (stable(a) === stable(b)) return [];
+  if (isPlainObject(a) && isPlainObject(b)) {
+    const keys = [...new Set([...Object.keys(a), ...Object.keys(b)])].sort();
+    return keys.flatMap((k) => diffPaths(a[k], b[k], prefix ? `${prefix}.${k}` : k));
+  }
+  if (Array.isArray(a) && Array.isArray(b)) {
+    const n = Math.max(a.length, b.length);
+    const out: DiffPath[] = [];
+    for (let i = 0; i < n; i++) out.push(...diffPaths(a[i], b[i], `${prefix}[${i}]`));
+    return out;
+  }
+  return [{ path: prefix || "(root)", a, b }];
+}
+
+/** Short one-line preview of a value for the diff detail view. */
+function shortVal(v: unknown): string {
+  if (v === undefined) return "(absent)";
+  let s: string;
+  try {
+    s = typeof v === "string" ? `"${v}"` : JSON.stringify(v);
+  } catch {
+    s = String(v);
+  }
+  return s.length > 90 ? `${s.slice(0, 90)}…` : s;
+}
+
+const MAX_DIFFS = 40;
+
+/** Faithful-mode validation banner: green when identical, else the exact differing paths (playground vs real). */
+function ValidationBanner({ diffs }: { diffs: DiffPath[] }) {
+  const [open, setOpen] = useState(false);
+  if (diffs.length === 0) {
+    return (
+      <div className="px-3 py-2 rounded-lg bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 text-[11px] text-green-700 dark:text-green-400 flex items-center gap-1.5">
+        <CheckIcon /> <span className="font-medium">Matches real publish</span> — the playground output equals the channel&rsquo;s real <span className="font-mono">afterPostProcessing</span>.
+      </div>
+    );
+  }
+  const shown = diffs.slice(0, MAX_DIFFS);
+  const more = diffs.length - shown.length;
+  return (
+    <div className="rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 text-[11px] text-amber-700 dark:text-amber-400">
+      <button onClick={() => setOpen((v) => !v)} className="w-full flex items-center gap-1.5 px-3 py-2 text-left" aria-expanded={open}>
+        <span className={`transition-transform text-amber-500 ${open ? "rotate-90" : ""}`}>
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="m9 18 6-6-6-6" /></svg>
+        </span>
+        <span className="font-medium">Differs from real publish</span>
+        <span>at {diffs.length} path{diffs.length !== 1 ? "s" : ""}</span>
+        <span className="ml-auto text-amber-500 underline">{open ? "hide" : "details"}</span>
+      </button>
+      {open && (
+        <div className="px-3 pb-2 space-y-1.5 max-h-56 overflow-auto">
+          {shown.map((d) => (
+            <div key={d.path} className="rounded-md bg-white/60 dark:bg-gray-900/40 border border-amber-200/60 dark:border-amber-800/40 p-1.5">
+              <div className="font-mono text-[10px] text-gray-700 dark:text-gray-200 break-all">{d.path}</div>
+              <div className="mt-0.5 font-mono text-[10px] text-gray-500 dark:text-gray-400 break-all">
+                <span className="text-blue-500">playground</span> {shortVal(d.a)}
+              </div>
+              <div className="font-mono text-[10px] text-gray-500 dark:text-gray-400 break-all">
+                <span className="text-green-600 dark:text-green-400">real</span> {shortVal(d.b)}
+              </div>
+            </div>
+          ))}
+          {more > 0 && <div className="text-[10px] text-amber-600 dark:text-amber-400">+ {more} more path{more !== 1 ? "s" : ""}</div>}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function StepRow({ step }: { step: RunStep }) {
   const [open, setOpen] = useState(false);
   const failed = Boolean(step.error);
@@ -106,13 +214,25 @@ export default function OutputPanel({
   running,
   runError,
   disabledHint,
+  expectedOutput,
+  missingStaged,
 }: {
   result: RunResponse | null;
   rules: Rule[];
   running: boolean;
   runError: string | null;
   disabledHint: string | null;
+  /** Faithful mode: the real publish's afterPostProcessing to validate against (null = off). */
+  expectedOutput?: Record<string, unknown> | null;
+  /** Reserved `_`-keys a step reads but the input lacks → the rule no-ops (enable faithful mode). */
+  missingStaged?: string[];
 }) {
+  // Validation (faithful mode): deep-diff the playground output vs the real publish output.
+  const validation =
+    expectedOutput && result && result.success
+      ? diffPaths(result.finalOutput, expectedOutput)
+      : null;
+
   return (
     <div className="flex flex-col h-full min-h-0">
       {/* Panel header */}
@@ -125,6 +245,14 @@ export default function OutputPanel({
       </div>
 
       <div className="flex-1 min-h-0 overflow-y-auto pr-1 space-y-3">
+        {/* Staged-dependency hint — a rule reads a `_`-key absent from the input → it no-ops. */}
+        {missingStaged && missingStaged.length > 0 && (
+          <div className="px-3 py-2 rounded-lg bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 text-[11px] text-blue-700 dark:text-blue-300">
+            <span className="font-medium">Pipeline reads staged data not in the input:</span>{" "}
+            <span className="font-mono">{missingStaged.join(", ")}</span>. These only exist after JOLT/staging, so those rules do nothing here — enable <b>Match real publish</b>, or add the key(s) to the input.
+          </div>
+        )}
+
         {/* Disabled hint (invalid input etc.) */}
         {disabledHint && (
           <div className="px-3 py-2 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 text-[11px] text-amber-700 dark:text-amber-400">
@@ -145,6 +273,9 @@ export default function OutputPanel({
             <span className="font-semibold">Pipeline failed:</span> <span className="font-mono break-words">{result.error}</span>
           </div>
         )}
+
+        {/* Faithful-mode validation banner (deep-path diff) */}
+        {validation && <ValidationBanner diffs={validation} />}
 
         {/* Final output */}
         <div>

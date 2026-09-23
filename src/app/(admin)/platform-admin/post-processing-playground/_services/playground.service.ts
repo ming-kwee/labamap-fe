@@ -17,6 +17,7 @@ import {
   Rule,
   RunResponse,
 } from "../_types/playground";
+import { tracePublish } from "@/modules/ecommerce-product-v2/services/publish-trace.service";
 
 const API_ROOT =
   process.env.NEXT_PUBLIC_BACKEND_API_URL ?? "http://localhost:8888/labamap/api/v1";
@@ -93,7 +94,7 @@ export function stepsToRules(steps: PipelineStep[]): Rule[] {
 // ─── Real-config loading: Rule[] → PipelineStep[] (inverse of stepsToRules) ───
 
 /** A raw op object `{op, ...params, steps?}` → a PipelineStep (recursive for FOR_EACH). */
-function opToStep(op: Record<string, unknown>, rule: RawRule, opLabel: string): PipelineStep {
+function opToStep(op: Record<string, unknown>, rule: ChannelRule, opLabel: string): PipelineStep {
   const opCode = String(op.op ?? "");
   const params: Record<string, unknown> = {};
   let children: PipelineStep[] | undefined;
@@ -121,7 +122,8 @@ function opToStep(op: Record<string, unknown>, rule: RawRule, opLabel: string): 
   };
 }
 
-interface RawRule {
+/** One real post-processing rule from a channel config (for the rule picker + loading). */
+export interface ChannelRule {
   name?: string;
   sourcePath?: string;
   targetPath?: string;
@@ -139,7 +141,7 @@ interface RawRule {
  *   rules sequentially with the same paths is equivalent to one N-op rule.
  * - FOR_EACH's nested `steps` become the step's `children` (per-item leaves).
  */
-export function rulesToSteps(rawRules: RawRule[]): PipelineStep[] {
+export function rulesToSteps(rawRules: ChannelRule[]): PipelineStep[] {
   const sorted = [...(rawRules ?? [])].sort(
     (a, b) => (a.priority ?? 100) - (b.priority ?? 100),
   );
@@ -233,20 +235,40 @@ export const PlaygroundService = {
 
   /**
    * GET /admin/channel-configurations/{channelId} — the channel's REAL postProcessingRules,
-   * mapped into editable PipelineSteps (priority-sorted, multi-op rules flattened, FOR_EACH
-   * nested into children). Load them into the pipeline builder to replay/experiment with the
-   * real config.
+   * priority-sorted, for the rule picker. The admin then chooses which rules to load; the
+   * chosen subset is mapped to PipelineSteps via {@link rulesToSteps}.
    */
-  async getChannelSteps(channelId: string): Promise<PipelineStep[]> {
+  async getChannelRules(channelId: string): Promise<ChannelRule[]> {
     const res = await fetch(`${CHANNEL_CONFIGS}/${encodeURIComponent(channelId)}`, {
       method: "GET",
       headers: JSON_HEADERS,
     });
     const cfg = await handleResponse<{ postProcessingRules?: unknown[] }>(res);
-    const raw = Array.isArray(cfg.postProcessingRules)
-      ? (cfg.postProcessingRules as RawRule[])
-      : [];
-    return rulesToSteps(raw);
+    const raw = Array.isArray(cfg.postProcessingRules) ? (cfg.postProcessingRules as ChannelRule[]) : [];
+    return [...raw].sort((a, b) => (a.priority ?? 100) - (b.priority ?? 100));
+  },
+
+  /**
+   * Faithful input via the publish trace (Phase 2): dry-run the REAL pipeline (JOLT + staging) for this
+   * product+channel and return the exact post-processing input (`beforePostProcessing`) plus the real
+   * result (`afterPostProcessing`) to validate the playground output against. Read-only (nothing published).
+   * `beforePostProcessing` requires the updated BFF (restart) — undefined if unavailable.
+   */
+  async traceRealScenario(
+    productId: string,
+    channelId: string,
+    masterProductData: Record<string, unknown>,
+  ): Promise<{
+    input: Record<string, unknown> | null;
+    expectedOutput: Record<string, unknown> | null;
+    warnings: string[];
+  }> {
+    const res = await tracePublish({ masterProductId: productId, channelId, masterProductData });
+    return {
+      input: (res.beforePostProcessing ?? null) as Record<string, unknown> | null,
+      expectedOutput: (res.afterPostProcessing ?? null) as Record<string, unknown> | null,
+      warnings: Array.isArray(res.warnings) ? res.warnings : [],
+    };
   },
 
   /** GET /post-processing/catalog — full operation catalog. */

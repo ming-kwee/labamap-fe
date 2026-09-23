@@ -12,9 +12,16 @@
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useAuth } from "@/shared/contexts/AuthContext";
-import { PlaygroundService, ProductOption, ChannelOption } from "../_services/playground.service";
+import {
+  PlaygroundService,
+  ProductOption,
+  ChannelOption,
+  ChannelRule,
+  rulesToSteps,
+} from "../_services/playground.service";
 import { PipelineStep } from "../_types/playground";
 import ProductFieldPicker from "./ProductFieldPicker";
+import ChannelRulePicker from "./ChannelRulePicker";
 
 // ─── Built-in sample presets ─────────────────────────────────────────────────
 const SAMPLES: { label: string; value: unknown }[] = [
@@ -55,12 +62,15 @@ export default function InputPanel({
   onTextChange,
   parseError,
   onLoadPipeline,
+  onExpectedOutput,
 }: {
   text: string;
   onTextChange: (t: string) => void;
   parseError: string | null;
   /** Load a real channel's post-processing rules into the pipeline builder. */
   onLoadPipeline?: (steps: PipelineStep[]) => void;
+  /** Faithful mode: the real publish's afterPostProcessing, to validate the playground output against. */
+  onExpectedOutput?: (expected: Record<string, unknown> | null) => void;
 }) {
   const [sampleOpen, setSampleOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -75,6 +85,8 @@ export default function InputPanel({
   const [selectedProductId, setSelectedProductId] = useState("");
   const [loadingProduct, setLoadingProduct] = useState(false);
   const [loadedProduct, setLoadedProduct] = useState<Record<string, unknown> | null>(null);
+  // Which loader is shown (side-by-side, one at a time — they can't both load the pipeline together).
+  const [loadMode, setLoadMode] = useState<"fields" | "config">("fields");
 
   const loadProducts = useCallback(async () => {
     if (!orgId) {
@@ -123,9 +135,12 @@ export default function InputPanel({
   const [channels, setChannels] = useState<ChannelOption[]>([]);
   const [channelsLoading, setChannelsLoading] = useState(false);
   const [selectedChannelId, setSelectedChannelId] = useState("");
+  const [channelRules, setChannelRules] = useState<ChannelRule[] | null>(null);
+  const [rulesLoading, setRulesLoading] = useState(false);
   const [loadingConfig, setLoadingConfig] = useState(false);
   const [configError, setConfigError] = useState<string | null>(null);
-  const [loadedConfig, setLoadedConfig] = useState<{ name: string; ruleCount: number } | null>(null);
+  const [loadedConfig, setLoadedConfig] = useState<{ name: string; ruleCount: number; faithful: boolean } | null>(null);
+  const [faithful, setFaithful] = useState(false);
 
   // Lazy-load the channel list once a product is loaded (the Real-config row appears).
   useEffect(() => {
@@ -137,27 +152,67 @@ export default function InputPanel({
       .finally(() => setChannelsLoading(false));
   }, [loadedProduct, channels.length, channelsLoading]);
 
-  const loadRealConfig = useCallback(async () => {
-    if (!selectedChannelId || !loadedProduct || !onLoadPipeline) return;
-    setLoadingConfig(true);
+  // Pick a channel → fetch its rules for the rule picker (don't load into the pipeline yet).
+  const onSelectChannel = useCallback(async (channelId: string) => {
+    setSelectedChannelId(channelId);
+    setChannelRules(null);
+    setLoadedConfig(null);
     setConfigError(null);
+    if (!channelId) return;
+    setRulesLoading(true);
     try {
-      const steps = await PlaygroundService.getChannelSteps(selectedChannelId);
-      onLoadPipeline(steps);                                   // → pipeline (list & blocks)
-      onTextChange(JSON.stringify(loadedProduct, null, 2));    // → input (full product fields)
-      const ch = channels.find((c) => c.channelId === selectedChannelId);
-      setLoadedConfig({ name: ch?.name ?? selectedChannelId, ruleCount: steps.length });
+      setChannelRules(await PlaygroundService.getChannelRules(channelId));
     } catch (e) {
       setConfigError((e as Error).message);
     } finally {
-      setLoadingConfig(false);
+      setRulesLoading(false);
     }
-  }, [selectedChannelId, loadedProduct, onLoadPipeline, onTextChange, channels]);
+  }, []);
+
+  // Load the CHOSEN rules (all or a subset) into the pipeline + set the input (simple or faithful).
+  const performLoad = useCallback(
+    async (selectedRules: ChannelRule[]) => {
+      if (!loadedProduct || !onLoadPipeline) return;
+      setLoadingConfig(true);
+      setConfigError(null);
+      try {
+        onLoadPipeline(rulesToSteps(selectedRules));            // → pipeline (list & blocks)
+        const ch = channels.find((c) => c.channelId === selectedChannelId);
+
+        if (faithful) {
+          // Faithful: dry-run the real pipeline (JOLT + staging) → post-processing INPUT + real OUTPUT.
+          const scn = await PlaygroundService.traceRealScenario(selectedProductId, selectedChannelId, loadedProduct);
+          if (scn.input) {
+            onTextChange(JSON.stringify(scn.input, null, 2));
+            onExpectedOutput?.(scn.expectedOutput);
+          } else {
+            onTextChange(JSON.stringify(loadedProduct, null, 2));
+            onExpectedOutput?.(null);
+            setConfigError(
+              scn.warnings.length > 0
+                ? `Faithful trace: ${scn.warnings[0]} — loaded product fields instead.`
+                : "Faithful input unavailable — is the BFF updated & restarted? Loaded product fields instead.",
+            );
+          }
+        } else {
+          onTextChange(JSON.stringify(loadedProduct, null, 2));  // simple: raw product fields
+          onExpectedOutput?.(null);
+        }
+        setLoadedConfig({ name: ch?.name ?? selectedChannelId, ruleCount: selectedRules.length, faithful });
+      } catch (e) {
+        setConfigError((e as Error).message);
+      } finally {
+        setLoadingConfig(false);
+      }
+    },
+    [loadedProduct, onLoadPipeline, onTextChange, channels, faithful, selectedChannelId, selectedProductId, onExpectedOutput],
+  );
 
   const resetPipeline = useCallback(() => {
     onLoadPipeline?.([]);
+    onExpectedOutput?.(null);
     setLoadedConfig(null);
-  }, [onLoadPipeline]);
+  }, [onLoadPipeline, onExpectedOutput]);
 
   const valid = parseError === null && text.trim() !== "";
   const tabCls = (active: boolean) =>
@@ -221,48 +276,68 @@ export default function InputPanel({
             <p className="mt-1 text-[11px] text-red-500 dark:text-red-400">{productsError}</p>
           )}
           {loadedProduct && !loadingProduct && (
-            <ProductFieldPicker
-              key={selectedProductId}
-              data={loadedProduct}
-              onLoad={(subset) => onTextChange(JSON.stringify(subset, null, 2))}
-            />
-          )}
-
-          {/* Real config: load a channel's actual post-processing rules into the pipeline */}
-          {loadedProduct && !loadingProduct && onLoadPipeline && (
-            <div className="mt-2 rounded-lg border border-brand-200 dark:border-brand-500/40 bg-brand-50/50 dark:bg-brand-900/10 p-2.5">
-              <div className="flex items-center gap-1.5 mb-1.5">
-                <span className="text-[11px] font-semibold text-brand-700 dark:text-brand-300">Load real config</span>
-                <span className="text-[11px] text-gray-400 dark:text-gray-500">— fills pipeline &amp; output</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <select
-                  value={selectedChannelId}
-                  onChange={(e) => setSelectedChannelId(e.target.value)}
-                  disabled={channelsLoading || loadingConfig}
-                  aria-label="Channel to load post-processing rules from"
-                  className="flex-1 min-w-0 text-xs rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-950 text-gray-800 dark:text-gray-200 px-2.5 py-2 focus:outline-none focus:ring-2 focus:ring-brand-400"
-                >
-                  <option value="">{channelsLoading ? "Loading channels…" : "Select a channel…"}</option>
-                  {channels.map((c) => (
-                    <option key={c.channelId} value={c.channelId}>
-                      {c.name} · {c.ruleCount} rule{c.ruleCount !== 1 ? "s" : ""}
-                    </option>
-                  ))}
-                </select>
-                <button
-                  onClick={loadRealConfig}
-                  disabled={!selectedChannelId || loadingConfig}
-                  className="shrink-0 px-2.5 py-2 text-xs font-semibold rounded-lg bg-brand-500 text-white hover:bg-brand-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-                >
-                  {loadingConfig ? "Loading…" : "Load"}
+            <div className="mt-2">
+              {/* Two loaders, side by side — pick one (they can't both load the pipeline at once). */}
+              <div className="flex items-center gap-1 p-0.5 rounded-lg bg-gray-100 dark:bg-gray-800 w-fit">
+                <button onClick={() => setLoadMode("fields")} className={tabCls(loadMode === "fields")}>
+                  Choose what to load
                 </button>
+                {onLoadPipeline && (
+                  <button onClick={() => setLoadMode("config")} className={tabCls(loadMode === "config")}>
+                    Load real config
+                  </button>
+                )}
               </div>
+
+              {loadMode === "fields" && (
+                <ProductFieldPicker
+                  key={selectedProductId}
+                  data={loadedProduct}
+                  onLoad={(subset) => onTextChange(JSON.stringify(subset, null, 2))}
+                />
+              )}
+
+              {loadMode === "config" && onLoadPipeline && (
+                <div className="mt-2 rounded-lg border border-brand-200 dark:border-brand-500/40 bg-brand-50/50 dark:bg-brand-900/10 p-2.5">
+                  <select
+                    value={selectedChannelId}
+                onChange={(e) => onSelectChannel(e.target.value)}
+                disabled={channelsLoading || loadingConfig}
+                aria-label="Channel to load post-processing rules from"
+                className="w-full text-xs rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-950 text-gray-800 dark:text-gray-200 px-2.5 py-2 focus:outline-none focus:ring-2 focus:ring-brand-400"
+              >
+                <option value="">{channelsLoading ? "Loading channels…" : "Select a channel…"}</option>
+                {channels.map((c) => (
+                  <option key={c.channelId} value={c.channelId}>
+                    {c.name} · {c.ruleCount} rule{c.ruleCount !== 1 ? "s" : ""}
+                  </option>
+                ))}
+              </select>
+              <label className="mt-1.5 flex items-center gap-1.5 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={faithful}
+                  onChange={(e) => setFaithful(e.target.checked)}
+                  className="h-3.5 w-3.5 rounded border-gray-300 dark:border-gray-600 text-brand-500 focus:ring-brand-400"
+                />
+                <span className="text-[11px] text-gray-600 dark:text-gray-300">
+                  Match real publish <span className="text-gray-400">(post-JOLT input + validate output)</span>
+                </span>
+              </label>
+
+              {/* Rule picker — choose which of the channel's rules to load */}
+              {rulesLoading && (
+                <p className="mt-2 text-[11px] text-gray-400 dark:text-gray-500">Loading rules…</p>
+              )}
+              {channelRules && !rulesLoading && (
+                <ChannelRulePicker key={selectedChannelId} rules={channelRules} onLoad={performLoad} />
+              )}
+
               {loadedConfig && (
                 <div className="mt-1.5 flex items-center justify-between gap-2">
                   <span className="text-[11px] text-green-700 dark:text-green-400">
-                    Loaded <b>{loadedConfig.name}</b> post-processing · {loadedConfig.ruleCount} step
-                    {loadedConfig.ruleCount !== 1 ? "s" : ""} — editable in the pipeline.
+                    Loaded <b>{loadedConfig.name}</b> · {loadedConfig.ruleCount} rule
+                    {loadedConfig.ruleCount !== 1 ? "s" : ""} into the pipeline{loadedConfig.faithful ? " (faithful)" : ""}.
                   </span>
                   <button onClick={resetPipeline} className="shrink-0 text-[11px] font-medium text-gray-500 hover:text-red-500">
                     Reset
@@ -270,9 +345,13 @@ export default function InputPanel({
                 </div>
               )}
               <p className="mt-1 text-[10px] leading-snug text-gray-400 dark:text-gray-500">
-                Runs post-processing only; real publish also runs JOLT first, so output may differ.
+                {faithful
+                  ? "Faithful: input is the real post-JOLT + staged document; the output is validated against the real publish."
+                  : "Runs post-processing only; real publish also runs JOLT first, so output may differ. Enable “Match real publish” for exact input + validation."}
               </p>
               {configError && <p className="mt-1 text-[11px] text-red-500 dark:text-red-400">{configError}</p>}
+                </div>
+              )}
             </div>
           )}
         </div>

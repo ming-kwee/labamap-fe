@@ -154,6 +154,8 @@ export interface PublishTraceResponse {
   afterJolt?: Record<string, unknown>;
   /** Reserved `_`-keys staged JOLT-independently (`_sourceImages`, `_channelCategoryId`, …). */
   stagedKeys?: string[];
+  /** The exact document post-processing starts from = afterJolt + staged `_`-key values. */
+  beforePostProcessing?: Record<string, unknown>;
   postProcessing?: PublishTracePostProcessingRule[];
   /** Document after all post-processing rules. */
   afterPostProcessing?: Record<string, unknown>;
