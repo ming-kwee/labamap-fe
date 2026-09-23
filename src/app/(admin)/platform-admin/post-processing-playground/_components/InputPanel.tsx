@@ -10,7 +10,7 @@
  * Monospace textarea + live validity indicator, Format / Sample / Clear actions.
  */
 
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAuth } from "@/shared/contexts/AuthContext";
 import {
   PlaygroundService,
@@ -53,6 +53,11 @@ const CheckIcon = () => (<svg width="13" height="13" viewBox="0 0 24 24" fill="n
 const AlertIcon = () => (<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10" /><path d="M12 8v4M12 16h.01" /></svg>);
 const ChevronIcon = () => (<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m6 9 6 6 6-6" /></svg>);
 const RefreshIcon = () => (<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12a9 9 0 0 1 15-6.7L21 8M21 3v5h-5M21 12a9 9 0 0 1-15 6.7L3 16M3 21v-5h5" /></svg>);
+const SearchIcon = () => (<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8" /><path d="m21 21-4.3-4.3" /></svg>);
+const UpIcon = () => (<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="m18 15-6-6-6 6" /></svg>);
+const DownIcon = () => (<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="m6 9 6 6 6-6" /></svg>);
+const CloseIcon = () => (<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18M6 6l12 12" /></svg>);
+const DataIcon = () => (<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3" /><path d="M3 5v14a9 3 0 0 0 18 0V5M3 12a9 3 0 0 0 18 0" /></svg>);
 
 const btnCls =
   "inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium rounded-lg border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors";
@@ -87,6 +92,8 @@ export default function InputPanel({
   const [loadedProduct, setLoadedProduct] = useState<Record<string, unknown> | null>(null);
   // Which loader is shown (side-by-side, one at a time — they can't both load the pipeline together).
   const [loadMode, setLoadMode] = useState<"fields" | "config">("fields");
+  // The loaders live in a side drawer so the JSON editor gets full height.
+  const [drawerOpen, setDrawerOpen] = useState(false);
 
   const loadProducts = useCallback(async () => {
     if (!orgId) {
@@ -199,6 +206,7 @@ export default function InputPanel({
           onExpectedOutput?.(null);
         }
         setLoadedConfig({ name: ch?.name ?? selectedChannelId, ruleCount: selectedRules.length, faithful });
+        setDrawerOpen(false); // close the drawer so the editor gets full height
       } catch (e) {
         setConfigError((e as Error).message);
       } finally {
@@ -214,7 +222,57 @@ export default function InputPanel({
     setLoadedConfig(null);
   }, [onLoadPipeline, onExpectedOutput]);
 
+  // ── Find-in-JSON (native selection + scroll; no code-editor dep) ─────────────
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const [activeMatch, setActiveMatch] = useState(0);
+
+  // All case-insensitive match start-offsets of the query in the text.
+  const matches = useMemo(() => {
+    const q = query.toLowerCase();
+    if (!q) return [] as number[];
+    const hay = text.toLowerCase();
+    const out: number[] = [];
+    let i = hay.indexOf(q);
+    while (i !== -1) {
+      out.push(i);
+      i = hay.indexOf(q, i + Math.max(1, q.length));
+    }
+    return out;
+  }, [query, text]);
+
+  const jumpTo = useCallback(
+    (idx: number) => {
+      const ta = textareaRef.current;
+      if (!ta || matches.length === 0) return;
+      const i = ((idx % matches.length) + matches.length) % matches.length;
+      setActiveMatch(i);
+      const start = matches[i];
+      const end = start + query.length;
+      ta.focus();
+      ta.setSelectionRange(start, end);
+      // Scroll the match roughly to the middle (line-based, no value mutation).
+      const line = text.slice(0, start).split("\n").length - 1;
+      const lh = parseFloat(getComputedStyle(ta).lineHeight) || 16;
+      ta.scrollTop = Math.max(0, line * lh - ta.clientHeight / 2);
+    },
+    [matches, query.length, text],
+  );
+
   const valid = parseError === null && text.trim() !== "";
+
+  // One-line summary of the current source (shown in the panel; the loaders live in the drawer).
+  const productName = products.find((p) => p.id === selectedProductId)?.name;
+  const sourceSummary =
+    inputMode === "json"
+      ? "Manual JSON — type in the editor"
+      : !selectedProductId
+        ? "No product selected"
+        : loadedConfig
+          ? `${productName ?? "product"} → ${loadedConfig.name} · ${loadedConfig.ruleCount} rule${loadedConfig.ruleCount !== 1 ? "s" : ""}${loadedConfig.faithful ? " · faithful" : ""}`
+          : productName ?? "product";
+
   const tabCls = (active: boolean) =>
     `px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors ${
       active
@@ -232,12 +290,37 @@ export default function InputPanel({
 
   return (
     <div className="flex flex-col h-full min-h-0">
+      {/* Source summary bar — opens the loader drawer; shows what's currently selected. */}
+      <div className="mb-2 shrink-0 flex items-center gap-2">
+        <button
+          onClick={() => setDrawerOpen(true)}
+          className="shrink-0 inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold rounded-lg bg-brand-500 text-white hover:bg-brand-600 transition-colors"
+        >
+          <DataIcon /> Load data
+        </button>
+        <span className="min-w-0 truncate text-[11px] text-gray-500 dark:text-gray-400" title={sourceSummary}>
+          {sourceSummary}
+        </span>
+      </div>
+
+      {/* Loader drawer (side overlay) — keeps the editor full-height. */}
+      {drawerOpen && (
+        <>
+          <div className="fixed inset-0 z-30 bg-black/30 dark:bg-black/50" onClick={() => setDrawerOpen(false)} aria-hidden />
+          <aside className="fixed inset-y-0 left-0 z-40 w-[92vw] max-w-sm bg-white dark:bg-gray-950 border-r border-gray-200 dark:border-gray-800 shadow-2xl flex flex-col">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-gray-800 shrink-0">
+              <h3 className="text-sm font-semibold text-gray-800 dark:text-gray-100">Load input data</h3>
+              <button onClick={() => setDrawerOpen(false)} className="p-1 rounded text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800" aria-label="Close">
+                <CloseIcon />
+              </button>
+            </div>
+            <div className="flex-1 min-h-0 overflow-auto p-4">
       {/* Input-source toggle */}
       <div className="flex items-center gap-1 mb-2 shrink-0 p-0.5 rounded-lg bg-gray-100 dark:bg-gray-800 w-fit">
         <button onClick={() => setInputMode("products")} className={tabCls(inputMode === "products")}>
           From My Products
         </button>
-        <button onClick={() => setInputMode("json")} className={tabCls(inputMode === "json")}>
+        <button onClick={() => { setInputMode("json"); setDrawerOpen(false); }} className={tabCls(inputMode === "json")}>
           Paste JSON
         </button>
       </div>
@@ -293,7 +376,7 @@ export default function InputPanel({
                 <ProductFieldPicker
                   key={selectedProductId}
                   data={loadedProduct}
-                  onLoad={(subset) => onTextChange(JSON.stringify(subset, null, 2))}
+                  onLoad={(subset) => { onTextChange(JSON.stringify(subset, null, 2)); setDrawerOpen(false); }}
                 />
               )}
 
@@ -356,6 +439,10 @@ export default function InputPanel({
           )}
         </div>
       )}
+            </div>
+          </aside>
+        </>
+      )}
 
       {/* Panel header */}
       <div className="flex items-center justify-between mb-2 shrink-0">
@@ -374,6 +461,14 @@ export default function InputPanel({
           )}
         </div>
         <div className="flex items-center gap-1.5">
+          <button
+            onClick={() => setSearchOpen((v) => !v)}
+            className={`${btnCls} ${searchOpen ? "bg-gray-100 dark:bg-gray-800" : ""}`}
+            title="Find in JSON"
+            aria-pressed={searchOpen}
+          >
+            <SearchIcon />
+          </button>
           <button onClick={handleFormat} className={btnCls} title="Pretty-print (2-space)">Format</button>
           <div className="relative" ref={menuRef}>
             <button
@@ -409,8 +504,42 @@ export default function InputPanel({
         </div>
       </div>
 
+      {/* Find-in-JSON row */}
+      {searchOpen && (
+        <div className="mb-2 shrink-0 flex items-center gap-1.5 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-950 px-2 py-1">
+          <span className="text-gray-400"><SearchIcon /></span>
+          <input
+            autoFocus
+            value={query}
+            onChange={(e) => {
+              setQuery(e.target.value);
+              setActiveMatch(-1); // reset — first Enter jumps to match #1
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                if (e.shiftKey) jumpTo(activeMatch < 0 ? matches.length - 1 : activeMatch - 1);
+                else jumpTo(activeMatch < 0 ? 0 : activeMatch + 1);
+              } else if (e.key === "Escape") {
+                setSearchOpen(false);
+              }
+            }}
+            placeholder="Find field… (Enter to jump, Shift+Enter back)"
+            aria-label="Find in input JSON"
+            className="flex-1 min-w-0 bg-transparent text-xs font-mono text-gray-800 dark:text-gray-200 focus:outline-none placeholder:text-gray-400"
+          />
+          <span className="shrink-0 text-[11px] tabular-nums text-gray-400">
+            {query ? `${matches.length ? activeMatch + 1 : 0}/${matches.length}` : ""}
+          </span>
+          <button onClick={() => jumpTo(activeMatch < 0 ? matches.length - 1 : activeMatch - 1)} disabled={matches.length === 0} className="shrink-0 p-1 rounded text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-30 disabled:cursor-not-allowed" title="Previous match" aria-label="Previous match"><UpIcon /></button>
+          <button onClick={() => jumpTo(activeMatch < 0 ? 0 : activeMatch + 1)} disabled={matches.length === 0} className="shrink-0 p-1 rounded text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-30 disabled:cursor-not-allowed" title="Next match" aria-label="Next match"><DownIcon /></button>
+          <button onClick={() => { setSearchOpen(false); setQuery(""); }} className="shrink-0 p-1 rounded text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800" title="Close" aria-label="Close search"><CloseIcon /></button>
+        </div>
+      )}
+
       {/* Editor */}
       <textarea
+        ref={textareaRef}
         value={text}
         onChange={(e) => onTextChange(e.target.value)}
         spellCheck={false}
