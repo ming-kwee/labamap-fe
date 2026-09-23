@@ -1193,7 +1193,7 @@ export default function MasterAttributesPage() {
 
         {/* Nav — scrollable */}
         <div className="flex-1 overflow-y-auto overflow-x-hidden min-h-0">
-          {/* ── Fixed top: All + Unassigned ─────────────────────────── */}
+          {/* ── Fixed top: All + Common (all-types) ─────────────────── */}
           <div className="py-1.5 border-b border-gray-100 dark:border-gray-700/40">
             {/* All */}
             <button
@@ -1218,25 +1218,26 @@ export default function MasterAttributesPage() {
               )}
             </button>
 
-            {/* Unassigned */}
+            {/* Common (all types) — attributes with no productTypeIds apply to EVERY product type */}
             <button
               type="button"
+              title="Common fields: no productTypeIds means they apply to every product type (e.g. Product Title, Price, Description) — not orphaned."
               onClick={() => setFilters(f => ({ ...f, productTypeId: "unassigned" }))}
               className={`w-full flex items-center gap-2.5 px-3 py-2 text-xs transition-colors cursor-pointer ${
                 filters.productTypeId === "unassigned"
-                  ? "bg-amber-50 dark:bg-amber-500/10 text-amber-700 dark:text-amber-400 font-semibold"
+                  ? "bg-slate-100 dark:bg-slate-700/40 text-slate-700 dark:text-slate-300 font-semibold"
                   : "text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700/50"
               }`}
             >
               <span className={`flex-shrink-0 w-2 h-2 rounded-full ${
                 filters.productTypeId === "unassigned"
-                  ? "bg-amber-500" : "bg-amber-300 dark:bg-amber-500/40"
+                  ? "bg-slate-500" : "bg-slate-300 dark:bg-slate-500/50"
               }`} />
               {!sidebarCollapsed && (
                 <>
-                  <span className="flex-1 text-left">Unassigned</span>
+                  <span className="flex-1 text-left">Common <span className="text-gray-400 font-normal">· all types</span></span>
                   {(productTypeCounts["unassigned"] ?? 0) > 0 && (
-                    <span className="flex-shrink-0 text-[10px] font-semibold bg-amber-100 dark:bg-amber-500/20 text-amber-600 dark:text-amber-400 px-1.5 py-0.5 rounded-full tabular-nums">
+                    <span className="flex-shrink-0 text-[10px] font-semibold bg-slate-200 dark:bg-slate-600/40 text-slate-600 dark:text-slate-300 px-1.5 py-0.5 rounded-full tabular-nums">
                       {productTypeCounts["unassigned"]}
                     </span>
                   )}
