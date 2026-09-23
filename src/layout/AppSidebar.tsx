@@ -92,26 +92,30 @@ const adminNavItems: NavItem[] = [
     ],
   },
   {
-    icon: <PaperPlaneIcon />,
-    name: "Platform Admin",
+    icon: <PlugInIcon />,
+    name: "Channel Setup",
+    // Define / connect / configure a channel and its APIs — changes when a channel
+    // updates its API, or when onboarding a new channel. Cross-org admin.
     subItems: [
-      // ── Store connections (cross-org admin) ───────────────────────────────
       { name: "Channel Store Connections", path: "/platform-admin/channel-stores", pro: false },
-      // ── Knowledge-base data tables (also read/written by AI — see AI Console) ─
-      // Canonical home for these managers. AI Console links to them contextually
-      // (one resource = one nav home; no duplicate entries).
+      { name: "Channel Configurations", path: "/platform-admin/channel-configurations", pro: false },
+      { name: "Channel Category API Configs", path: "/platform-admin/channel-category-api-configs", pro: false },
+      { name: "Channel Contract Versions", path: "/platform-admin/channel-contract-versions", pro: false },
+      { name: "Channel Category Schemas", path: "/platform-admin/channel-category-schemas", pro: false },
+      { name: "Merchant API Operations", path: "/platform-admin/merchant-api-operations", pro: false },
+    ],
+  },
+  {
+    icon: <PaperPlaneIcon />,
+    name: "Publishing Engine",
+    // How a master product is transformed / mapped / published to a channel (+ reverse
+    // sync inspection). These knowledge-base data tables are also read/written by AI —
+    // AI Console links here contextually (one resource = one nav home; no duplicates).
+    subItems: [
       { name: "Channel JOLT Specs", path: "/platform-admin/channel-jolt-specs", pro: false },
       { name: "Channel Field Mappings", path: "/platform-admin/channel-field-mappings", pro: false },
       { name: "Channel Value Mappings", path: "/platform-admin/channel-value-mappings", pro: false },
       { name: "Field Semantic Knowledge", path: "/platform-admin/field-semantic-knowledge", pro: false },
-      { name: "Merchant API Operations", path: "/platform-admin/merchant-api-operations", pro: false },
-      // ── Tuning / config (change when channels update their APIs) ──────────
-      { name: "Channel Configurations", path: "/platform-admin/channel-configurations", pro: false },
-      { name: "Channel Category API Configs", path: "/platform-admin/channel-category-api-configs", pro: false },
-      { name: "Channel Contract Versions", path: "/platform-admin/channel-contract-versions", pro: false },
-      // ── Onboarding setup (set once per new channel) ───────────────────────
-      { name: "Channel Category Schemas", path: "/platform-admin/channel-category-schemas", pro: false },
-      // ── Reverse sync (channel → master) inspection ────────────────────────
       { name: "Reverse Sync Inspector", path: "/platform-admin/reverse-sync-inspector", pro: false },
     ],
   },
@@ -119,8 +123,8 @@ const adminNavItems: NavItem[] = [
     icon: <PieChartIcon />,
     name: "AI Console",
     // Pure AI-operational surfaces. The knowledge-base data tables (field/value
-    // mappings, JOLT specs, semantic knowledge, category schemas) live once under
-    // Platform Admin; AI screens link to them contextually.
+    // mappings, JOLT specs, semantic knowledge) live once under Publishing Engine
+    // (category schemas under Channel Setup); AI screens link to them contextually.
     subItems: [
       // ── P0 · operational console (Agentic AI + RAG) ────────────────────────
       { name: "AI Health & Config", path: "/platform-admin/ai-health", pro: false },
