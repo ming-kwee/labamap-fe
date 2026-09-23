@@ -112,6 +112,7 @@ const adminNavItems: NavItem[] = [
     // sync inspection). These knowledge-base data tables are also read/written by AI —
     // AI Console links here contextually (one resource = one nav home; no duplicates).
     subItems: [
+      { name: "Post-Processing Playground", path: "/platform-admin/post-processing-playground", pro: false, new: true },
       { name: "Channel JOLT Specs", path: "/platform-admin/channel-jolt-specs", pro: false },
       { name: "Channel Field Mappings", path: "/platform-admin/channel-field-mappings", pro: false },
       { name: "Channel Value Mappings", path: "/platform-admin/channel-value-mappings", pro: false },
