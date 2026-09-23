@@ -424,7 +424,6 @@ function AttributePreviewPanel({ attribute, onClose }: { attribute: MasterAttrib
             <div className="mt-1 flex items-center gap-1.5 flex-wrap">
               <span className={`text-xs font-medium px-1.5 py-0.5 rounded-md ${cfg.bg} ${cfg.text} ${cfg.darkBg} ${cfg.darkText}`}>{cfg.label}</span>
               {attribute.required && <span className="text-xs font-medium px-1.5 py-0.5 rounded-md bg-red-50 text-red-600 dark:bg-red-500/10 dark:text-red-400">Required</span>}
-              {attribute.scope === "GLOBAL" && <span className="text-xs font-medium px-1.5 py-0.5 rounded-md bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400">Global</span>}
             </div>
           </div>
         </div>
@@ -590,11 +589,6 @@ function AttributeListItem({
             {attribute.required && (
               <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-red-50 text-red-600 dark:bg-red-500/10 dark:text-red-400 uppercase tracking-wide">
                 Required
-              </span>
-            )}
-            {attribute.scope === "GLOBAL" && (
-              <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-brand-50 text-brand-600 dark:bg-brand-500/10 dark:text-brand-400">
-                Global
               </span>
             )}
             {isCommon && (

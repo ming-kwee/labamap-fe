@@ -15,8 +15,6 @@ export type AttributeType =
   | "IMAGE_URL"
   | "TAGS";
 
-export type AttributeScope = "GLOBAL" | "CATEGORY_SPECIFIC";
-
 /** Maps to the backend `active` flag — DRAFT is frontend-only (unsaved). */
 export type AttributeStatus = "ACTIVE" | "INACTIVE" | "DRAFT";
 
@@ -83,9 +81,8 @@ export interface MasterAttribute {
   code: string;                 // from backend `fieldName` (system identifier, e.g. "collection_id")
   description?: string;         // from backend `mappingHint` (long help text shown to merchants)
 
-  // Type & scope
+  // Type
   type: AttributeType;
-  scope: AttributeScope;        // derived: CATEGORY_SPECIFIC if applicableCategories.length > 0
 
   // Behavior
   required: boolean;
@@ -263,7 +260,6 @@ function normaliseFieldType(raw: unknown): AttributeType {
  *   `fieldType`           → `type`  (normalised via FIELD_TYPE_MAP)
  *   `priority`            → `sortOrder`
  *   `applicableCategories`→ `categoryIds`
- *   `applicableCategories.length > 0` → scope = "CATEGORY_SPECIFIC"
  *
  * The `r` cast lets us probe undeclared keys without TypeScript errors,
  * which guards against both alternative serialisations and future backend
@@ -297,9 +293,6 @@ export function docToAttribute(doc: MasterAttributeDoc): MasterAttribute {
       )
     : [];
 
-  // scope derived from whether any categories are assigned
-  const scope: AttributeScope = categoryIds.length > 0 ? "CATEGORY_SPECIFIC" : "GLOBAL";
-
   // Convert backend {label, value} option shape to frontend AttributeOption
   const rawOptions = r.options ?? r.selectOptions ?? [];
   const options: AttributeOption[] = Array.isArray(rawOptions) && rawOptions.length > 0
@@ -321,7 +314,6 @@ export function docToAttribute(doc: MasterAttributeDoc): MasterAttribute {
     code,
     description,
     type,
-    scope,
     required:                     r.required ?? false,
     sortOrder,
     displayLevel:                 r.displayLevel,

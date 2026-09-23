@@ -87,7 +87,6 @@ const EMPTY_ATTRIBUTE: Omit<MasterAttribute, "id" | "createdAt" | "updatedAt"> =
   code: "",
   description: "",
   type: "TEXT",
-  scope: "GLOBAL",
   required: false,
   sortOrder: 0,
   displayLevel: "basic",
