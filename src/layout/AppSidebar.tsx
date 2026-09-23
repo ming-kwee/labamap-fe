@@ -111,12 +111,14 @@ const adminNavItems: NavItem[] = [
     // How a master product is transformed / mapped / published to a channel (+ reverse
     // sync inspection). These knowledge-base data tables are also read/written by AI —
     // AI Console links here contextually (one resource = one nav home; no duplicates).
+    // Ordered by the onboarding/config flow: reference mappings (field → value → JOLT spec),
+    // then the supporting knowledge base, then the tools (playground, reverse inspector).
     subItems: [
-      { name: "Post-Processing Playground", path: "/platform-admin/post-processing-playground", pro: false, new: true },
-      { name: "Channel JOLT Specs", path: "/platform-admin/channel-jolt-specs", pro: false },
       { name: "Channel Field Mappings", path: "/platform-admin/channel-field-mappings", pro: false },
       { name: "Channel Value Mappings", path: "/platform-admin/channel-value-mappings", pro: false },
+      { name: "Channel JOLT Specs", path: "/platform-admin/channel-jolt-specs", pro: false },
       { name: "Field Semantic Knowledge", path: "/platform-admin/field-semantic-knowledge", pro: false },
+      { name: "Post-Processing Playground", path: "/platform-admin/post-processing-playground", pro: false, new: true },
       { name: "Reverse Sync Inspector", path: "/platform-admin/reverse-sync-inspector", pro: false },
     ],
   },
