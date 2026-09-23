@@ -26,17 +26,7 @@ export const ChannelDetailView: React.FC<Props> = ({ channelId }) => {
   const [expandedRow, setExpandedRow] = useState<string | null>(null);
   const [syncingAll, setSyncingAll] = useState(false);
 
-  const channel = mockChannels.find((c) => c.id === channelId);
-  if (!channel) {
-    return (
-      <div className="text-center py-20 text-gray-500 dark:text-gray-400">
-        Channel &quot;{channelId}&quot; not found.{" "}
-        <Link href="/channels" className="text-brand-500 hover:underline">Back to Channels</Link>
-      </div>
-    );
-  }
-
-  // Products listed on this channel
+  // Products listed on this channel — hooks must run unconditionally, before any early return.
   const channelProducts = useMemo(() =>
     mockChannelProducts
       .map((p) => {
@@ -46,6 +36,16 @@ export const ChannelDetailView: React.FC<Props> = ({ channelId }) => {
       .filter(Boolean) as { product: typeof mockChannelProducts[0]; listing: typeof mockChannelProducts[0]["channelListings"][0] }[],
     [channelId]
   );
+
+  const channel = mockChannels.find((c) => c.id === channelId);
+  if (!channel) {
+    return (
+      <div className="text-center py-20 text-gray-500 dark:text-gray-400">
+        Channel &quot;{channelId}&quot; not found.{" "}
+        <Link href="/channels" className="text-brand-500 hover:underline">Back to Channels</Link>
+      </div>
+    );
+  }
 
   const filtered = channelProducts.filter(({ product, listing }) => {
     const matchSearch =

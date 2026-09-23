@@ -167,7 +167,12 @@ export class ProductApiService {
     }
 
     if (result.validation) {
-      const backendValidation = result.validation;
+      const backendValidation = result.validation as {
+        errors?: string[];
+        warnings?: string[];
+        valid?: boolean;
+        metadata?: { fieldsValidated?: number };
+      };
       const errors = backendValidation.errors || [];
       const warnings = backendValidation.warnings || [];
 
@@ -198,18 +203,19 @@ export class ProductApiService {
           ? errors[0]
           : `${errorCount} validation errors found`;
 
+      const isValid = backendValidation.valid ?? false;
       return {
-        valid: backendValidation.valid,
+        valid: isValid,
         message,
         violations,
         warnings: transformedWarnings,
         rulesExecuted: backendValidation.metadata?.fieldsValidated || 0,
         executionTimeMs: 0,
-        validationScore: backendValidation.valid ? 100 : Math.max(0, 100 - errorCount * 20),
-        canSubmit: backendValidation.valid && violations.length === 0
+        validationScore: isValid ? 100 : Math.max(0, 100 - errorCount * 20),
+        canSubmit: isValid && violations.length === 0
       };
     }
 
-    return result;
+    return result as unknown as EnhancedValidationResult;
   }
 }

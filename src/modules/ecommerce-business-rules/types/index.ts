@@ -1,2 +1,3 @@
 // Barrel export for ecommerce-business-rules types
-// Add type exports here
+// Add type exports here.
+export {};

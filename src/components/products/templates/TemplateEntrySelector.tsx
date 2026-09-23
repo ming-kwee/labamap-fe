@@ -24,7 +24,7 @@ const TemplateEntrySelector: React.FC<TemplateEntrySelectorProps> = ({ onSelectP
         'Start selling immediately'
       ],
       buttonText: 'Get Started Quickly',
-      buttonVariant: 'default' as const,
+      buttonVariant: 'primary' as const,
       recommended: true
     },
     {

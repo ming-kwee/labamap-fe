@@ -11,7 +11,7 @@ import QuickStartTemplateSelector from "./QuickStartTemplateSelector";
 export interface ChannelTemplate {
   id: string;
   name: string;
-  type: 'advanced-builder';
+  type: 'advanced-builder' | 'field-mapping' | 'category-mapping' | 'content-generation' | 'complete-channel';
   category: string;
   targetChannels: string[];
   description: string;

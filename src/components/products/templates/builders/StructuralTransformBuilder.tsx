@@ -319,7 +319,7 @@ const StructuralTransformBuilder: React.FC<StructuralTransformBuilderProps> = ({
               rows={6}
             />
             <p className="text-theme-xs text-gray-500 dark:text-gray-400 mt-1">
-              Use \\n for line breaks. Available placeholders: {`{description}`, `{features_html}`, `{specifications_table}`}
+              Use \\n for line breaks. Available placeholders: {"{description}, {features_html}, {specifications_table}"}
             </p>
           </div>
         </div>

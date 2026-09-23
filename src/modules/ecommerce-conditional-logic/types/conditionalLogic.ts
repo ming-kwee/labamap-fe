@@ -11,6 +11,9 @@ import {
   ConditionType
 } from './operators';
 
+// Re-export so consumers can import shared enums/types from this barrel too.
+export type { ConditionType };
+
 // Condition Expression (for complex multi-field conditions)
 export interface ConditionExpression {
   field: string;              // Field name to evaluate
@@ -113,10 +116,8 @@ export interface CreateRuleRequest {
   metadata?: Record<string, any>;
 }
 
-// Update Rule Request
-export interface UpdateRuleRequest extends Partial<CreateRuleRequest> {
-  // All fields from CreateRuleRequest are optional for updates
-}
+// Update Rule Request — all fields from CreateRuleRequest are optional for updates.
+export type UpdateRuleRequest = Partial<CreateRuleRequest>;
 
 // Validate Rule Request
 export interface ValidateRuleRequest {
