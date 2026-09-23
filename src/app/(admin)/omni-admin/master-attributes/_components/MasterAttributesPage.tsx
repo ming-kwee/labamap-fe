@@ -1197,6 +1197,19 @@ export default function MasterAttributesPage() {
   const sbCounts = activeTab === "channel" ? channelCounts : productTypeCounts;
   const sidebarChannels = allChannels.filter(ch => (channelCounts[ch] ?? 0) > 0);
 
+  // Switch tab, carrying the shared channel filter over — but reset it to "all" when the selected
+  // channel has no attributes in the destination tab (channel-fields for Channel, master-attrs for Master).
+  const switchTab = (tab: "master" | "channel") => {
+    setActiveTab(tab);
+    setFilters(f => {
+      if (f.channel === "all") return f;
+      const available = tab === "channel"
+        ? (channelCounts[f.channel] ?? 0) > 0
+        : masterAttributes.some(a => a.supportedChannels?.includes(f.channel));
+      return available ? f : { ...f, channel: "all" };
+    });
+  };
+
   return (
     <div className="flex h-[calc(100vh-64px)] bg-gray-50 dark:bg-gray-900 overflow-hidden">
       {/* ── Left: Sidebar (ProductType filter) ─────────────────── */}
@@ -1491,7 +1504,7 @@ export default function MasterAttributesPage() {
         {/* ── Tab strip ──────────────────────────────────────────────────────── */}
         <div className="flex-shrink-0 bg-white dark:bg-gray-800/40 border-b border-gray-200 dark:border-gray-700/60 px-6 flex items-end gap-0">
           <button
-            onClick={() => setActiveTab("master")}
+            onClick={() => switchTab("master")}
             className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors -mb-px ${
               activeTab === "master"
                 ? "border-brand-500 text-brand-600 dark:text-brand-400"
@@ -1507,7 +1520,7 @@ export default function MasterAttributesPage() {
             }`}>{masterAttributes.length}</span>
           </button>
           <button
-            onClick={() => setActiveTab("channel")}
+            onClick={() => switchTab("channel")}
             className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors -mb-px ${
               activeTab === "channel"
                 ? "border-indigo-500 text-indigo-600 dark:text-indigo-400"
