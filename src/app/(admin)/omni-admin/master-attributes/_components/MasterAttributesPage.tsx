@@ -2,7 +2,7 @@
 
 import React, { useState, useRef, useCallback, useMemo, useEffect } from "react";
 import Link from "next/link";
-import { MasterAttribute, AttributeCategory, AttributeType, AttributeFilters, SortField } from "../_types/attribute";
+import { MasterAttribute, AttributeType, AttributeFilters, SortField } from "../_types/attribute";
 import { AttributeService } from "../_services/attribute.service";
 // CategoryService removed — product_categories migrated to tags (2026-06-16).
 // Attribute categoryIds will be migrated to productTypeIds in a future sprint.
@@ -169,9 +169,6 @@ function getSectionCfg(section: string | undefined) {
   const key = (section ?? "").toLowerCase();
   return SECTION_CONFIG[key] ?? SECTION_CONFIG[""];
 }
-
-// Legacy per-category assignment is retired; attributes scope by ProductType. Stable empty ref.
-const EMPTY_CATEGORIES: AttributeCategory[] = [];
 
 // ─── Delete Confirm Modal ─────────────────────────────────────────────────────
 
@@ -523,7 +520,6 @@ interface AttributeListItemProps {
   index: number;
   isExpanded: boolean;
   isSelected: boolean;
-  categories: AttributeCategory[];
   showSection?: boolean;   // flat mode: show section badge on the card
   isCommon?: boolean;      // product-type view: attribute applies to ALL types (not specific to this one)
   reorderMode?: boolean;   // drag-drop only active when reorder mode is on
@@ -542,13 +538,12 @@ interface AttributeListItemProps {
 }
 
 function AttributeListItem({
-  attribute, index, isExpanded, isSelected, categories,
+  attribute, index, isExpanded, isSelected,
   showSection = false, isCommon = false, reorderMode = false,
   onToggleExpand, onSelect, onEdit, onDelete, onInsertAfter,
   isDragging, isDragOver, onDragStart, onDragOver, onDrop, onDragEnd,
 }: AttributeListItemProps) {
   const cfg = TYPE_CONFIG[attribute.type] ?? TYPE_CONFIG["TEXT"];
-  const assignedCategories = categories.filter(c => attribute.categoryIds.includes(c.id));
 
   return (
     <div
@@ -597,22 +592,10 @@ function AttributeListItem({
                 Required
               </span>
             )}
-            {attribute.scope === "GLOBAL" ? (
+            {attribute.scope === "GLOBAL" && (
               <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-brand-50 text-brand-600 dark:bg-brand-500/10 dark:text-brand-400">
                 Global
               </span>
-            ) : (
-              assignedCategories.slice(0, 2).map(c => (
-                <span key={c.id} className="inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded" style={{ background: c.color + "18", color: c.color }}>
-                  {c.icon ? <span>{c.icon}</span> : (
-                    <span className="h-1.5 w-1.5 rounded-full flex-shrink-0" style={{ background: c.color }} />
-                  )}
-                  {c.name}
-                </span>
-              ))
-            )}
-            {attribute.scope === "CATEGORY_SPECIFIC" && assignedCategories.length > 2 && (
-              <span className="text-[10px] text-gray-400">+{assignedCategories.length - 2}</span>
             )}
             {isCommon && (
               <span className="inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 dark:bg-slate-700/50 dark:text-slate-300"
@@ -931,11 +914,6 @@ export default function MasterAttributesPage() {
 
   // Delete confirmation
   const [deleteTarget, setDeleteTarget] = useState<MasterAttribute | null>(null);
-
-  // Attributes are scoped by ProductType (Phase 4). The legacy per-category assignment is retired
-  // (product_categories removed 2026-06-16), so `categories` stays permanently empty — it exists only
-  // to satisfy the card's legacy category-chip branch with a valid (always-empty) array.
-  const categories: AttributeCategory[] = EMPTY_CATEGORIES;
 
   const loadProductTypes = useCallback(() => {
     setPtLoading(true);
@@ -1666,7 +1644,6 @@ export default function MasterAttributesPage() {
                               isExpanded={expandedIds.has(attr.id)}
                               isSelected={previewId === attr.id}
 
-                              categories={categories}
                               showSection={false}
                               isCommon={isCommonView && attr.productTypeIds.length === 0}
                               reorderMode={false}
@@ -1700,7 +1677,6 @@ export default function MasterAttributesPage() {
                   index={index}
                   isExpanded={expandedIds.has(attr.id)}
                   isSelected={previewId === attr.id}
-                  categories={categories}
                   showSection={true}
                   isCommon={isCommonView && attr.productTypeIds.length === 0}
                   reorderMode={reorderMode}
