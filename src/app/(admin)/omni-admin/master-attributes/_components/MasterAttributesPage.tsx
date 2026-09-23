@@ -558,7 +558,7 @@ function AttributeListItem({
         ${reorderMode && isDragOver ? "border-brand-400 shadow-lg shadow-brand-500/10 ring-2 ring-brand-400/20" : "border-gray-200 dark:border-gray-700/60"}
         ${isSelected ? "ring-2 ring-brand-400/30 border-brand-300 dark:border-brand-500/40" : ""}
         ${isCommon ? "bg-slate-100/70 dark:bg-slate-800/40 hover:bg-slate-100 dark:hover:bg-slate-800/60" : "bg-white dark:bg-gray-800/40 hover:bg-gray-50/50 dark:hover:bg-gray-800/70"}
-        ${inTypeView ? (isCommon ? "border-l-[5px] border-l-slate-400 dark:border-l-slate-500 border-dashed" : "border-l-[5px] border-l-brand-500 dark:border-l-brand-400") : ""}
+        ${inTypeView ? (isCommon ? "border-l-[3px] border-l-slate-400 dark:border-l-slate-500" : "border-l-[3px] border-l-brand-500 dark:border-l-brand-400") : ""}
         hover:border-gray-300 dark:hover:border-gray-600
         hover:shadow-sm
       `}
