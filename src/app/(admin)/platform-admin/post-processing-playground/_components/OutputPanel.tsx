@@ -9,6 +9,8 @@
 
 import React, { useState } from "react";
 import { Rule, RunResponse, RunStep } from "../_types/playground";
+import { useTextFind, FindBar, FindToggle } from "./useTextFind";
+import JsonTree from "./JsonTree";
 
 const CopyIcon = () => (<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></svg>);
 const CheckIcon = () => (<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5" /></svg>);
@@ -233,6 +235,12 @@ export default function OutputPanel({
       ? diffPaths(result.finalOutput, expectedOutput)
       : null;
 
+  // Find-in-JSON over the final output (same mechanism as the input panel).
+  const finalText = result ? pretty(result.finalOutput) : "";
+  const find = useTextFind(finalText);
+  // Final-output view: collapsible Tree (default) or Raw text (with find).
+  const [outView, setOutView] = useState<"tree" | "raw">("tree");
+
   return (
     <div className="flex flex-col h-full min-h-0">
       {/* Panel header */}
@@ -279,16 +287,44 @@ export default function OutputPanel({
 
         {/* Final output */}
         <div>
-          <div className="flex items-center justify-between mb-1">
+          <div className="flex items-center justify-between mb-1 gap-2">
             <p className="text-[11px] font-medium uppercase tracking-wide text-gray-400">Final output</p>
             {result && (
-              <CopyButton getText={() => pretty(result.finalOutput)} label="Copy" />
+              <div className="flex items-center gap-1.5">
+                <div className="inline-flex items-center rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-0.5">
+                  {(["tree", "raw"] as const).map((v) => (
+                    <button
+                      key={v}
+                      onClick={() => setOutView(v)}
+                      className={`px-2 py-0.5 text-[11px] font-medium rounded-md capitalize transition-colors ${
+                        outView === v ? "bg-blue-600 text-white" : "text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200"
+                      }`}
+                    >
+                      {v}
+                    </button>
+                  ))}
+                </div>
+                {outView === "raw" && <FindToggle find={find} />}
+                <CopyButton getText={() => pretty(result.finalOutput)} label="Copy" />
+              </div>
             )}
           </div>
           {result ? (
-            <pre className="text-[11px] font-mono bg-gray-50 dark:bg-gray-950 border border-gray-200 dark:border-gray-800 rounded-lg p-3 overflow-x-auto text-gray-800 dark:text-gray-200 whitespace-pre-wrap break-words">
-              {pretty(result.finalOutput)}
-            </pre>
+            outView === "tree" ? (
+              <JsonTree data={result.finalOutput} />
+            ) : (
+              <>
+                {find.open && <FindBar find={find} />}
+                <textarea
+                  ref={find.ref}
+                  readOnly
+                  value={finalText}
+                  spellCheck={false}
+                  aria-label="Final output JSON"
+                  className="w-full h-64 resize-y font-mono text-[11px] leading-relaxed bg-gray-50 dark:bg-gray-950 border border-gray-200 dark:border-gray-800 rounded-lg p-3 text-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-400 whitespace-pre"
+                />
+              </>
+            )
           ) : (
             <div className="text-[11px] text-gray-400 border border-dashed border-gray-200 dark:border-gray-700 rounded-lg p-4 text-center">
               {disabledHint ? "—" : "Run the pipeline to see output."}
