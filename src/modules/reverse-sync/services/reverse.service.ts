@@ -18,6 +18,9 @@ import type {
   ReverseJoltSpec,
   ReversePullRequest,
   ReversePreviewRequest,
+  RawPull,
+  ReverseTrace,
+  ReverseOpCatalog,
   ReverseApplyRequest,
   ChannelListPage,
   ReverseImportRequest,
@@ -117,6 +120,19 @@ export const ReverseSyncService = {
     return post<ReverseApplyResult>("/pull/apply", req);
   },
 
+  /** POST /pull/raw — fetch the raw channel payload un-classified (Reverse Playground input). */
+  pullRaw(req: ReversePullRequest): Promise<RawPull> {
+    return post<RawPull>("/pull/raw", req);
+  },
+
+  /**
+   * POST /trace — run the reverse op-pipeline (rebase→deDerive→enrich→classify) on a supplied payload and
+   * return per-stage snapshots + the config operations (Reverse Playground). Read-only.
+   */
+  trace(req: ReversePreviewRequest): Promise<ReverseTrace> {
+    return post<ReverseTrace>("/trace", req);
+  },
+
   // ─── Preview / apply from a supplied payload (manual / dry-run) ──────────────
 
   /** POST /preview — classify a payload the FE already has (Shopee manual GET, testing). */
@@ -212,5 +228,11 @@ export const ReverseSyncService = {
       headers: JSON_HEADERS,
     });
     return handleJson<ReverseJoltSpec>(res);
+  },
+
+  /** GET /op-catalog — the reverse op vocabulary (opCode/stage/params/example) for the playground. */
+  async getOpCatalog(): Promise<ReverseOpCatalog> {
+    const res = await fetch(`${BASE}/op-catalog`, { headers: JSON_HEADERS });
+    return handleJson<ReverseOpCatalog>(res);
   },
 };

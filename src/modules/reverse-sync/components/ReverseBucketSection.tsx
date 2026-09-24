@@ -19,6 +19,7 @@ export function ReverseBucketSection({
   accent = "gray",
   defaultOpen = true,
   children,
+  onHelp,
 }: {
   title: string;
   count: number;
@@ -26,6 +27,8 @@ export function ReverseBucketSection({
   accent?: "blue" | "gray" | "muted";
   defaultOpen?: boolean;
   children: React.ReactNode;
+  /** Optional — shows a "?" in the header that opens an explainer (doesn't toggle the section). */
+  onHelp?: () => void;
 }) {
   const [open, setOpen] = useState(defaultOpen);
 
@@ -46,7 +49,19 @@ export function ReverseBucketSection({
           {count}
         </span>
         {hint && <span className="ml-1 truncate text-xs text-gray-400 dark:text-gray-500">{hint}</span>}
-        <span className={`ml-auto flex-shrink-0 text-gray-400 transition-transform ${open ? "rotate-180" : ""}`}>
+        {onHelp && (
+          <span
+            role="button"
+            tabIndex={0}
+            onClick={(e) => { e.stopPropagation(); onHelp(); }}
+            onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.stopPropagation(); onHelp(); } }}
+            className="ml-auto flex-shrink-0 text-[11px] font-medium text-gray-400 hover:text-brand-500"
+            title="What's this?"
+          >
+            what&rsquo;s this?
+          </span>
+        )}
+        <span className={`${onHelp ? "ml-2" : "ml-auto"} flex-shrink-0 text-gray-400 transition-transform ${open ? "rotate-180" : ""}`}>
           {CHEVRON}
         </span>
       </button>

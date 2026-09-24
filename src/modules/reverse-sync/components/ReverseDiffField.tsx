@@ -19,6 +19,7 @@ export function ReverseDiffField({
   incomingValue,
   changed,
   note,
+  wrap = false,
 }: {
   channelPath: string;
   /** Optional human label (e.g. resolved category-attribute name or masterAttrId). */
@@ -27,6 +28,8 @@ export function ReverseDiffField({
   incomingValue: unknown;
   changed: boolean | null;
   note?: string | null;
+  /** When true, values WRAP (full, readable) instead of truncating — for wide panels (e.g. the playground). */
+  wrap?: boolean;
 }) {
   const showDiff = changed !== false; // hide the arrow when values are identical
   const badge =
@@ -54,13 +57,13 @@ export function ReverseDiffField({
       <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5 text-xs">
         {showDiff && (
           <>
-            <span className="max-w-[45%] truncate rounded bg-white px-1.5 py-0.5 text-gray-400 line-through dark:bg-gray-900 dark:text-gray-500">
+            <span className={`rounded bg-white px-1.5 py-0.5 text-gray-400 line-through dark:bg-gray-900 dark:text-gray-500 ${wrap ? "max-w-full whitespace-pre-wrap break-words" : "max-w-[45%] truncate"}`}>
               {formatReverseValue(currentValue)}
             </span>
             <span className="text-gray-400 dark:text-gray-500">→</span>
           </>
         )}
-        <span className="max-w-[45%] truncate rounded bg-white px-1.5 py-0.5 font-medium text-gray-800 dark:bg-gray-900 dark:text-gray-100">
+        <span className={`rounded bg-white px-1.5 py-0.5 font-medium text-gray-800 dark:bg-gray-900 dark:text-gray-100 ${wrap ? "max-w-full whitespace-pre-wrap break-words" : "max-w-[45%] truncate"}`}>
           {formatReverseValue(incomingValue)}
         </span>
       </div>

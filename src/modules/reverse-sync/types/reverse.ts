@@ -142,6 +142,71 @@ export interface ReversePreviewRequest {
   masterProductId: string;
   storeId: string;
   channelPayload: Record<string, unknown>;
+  /** Optional — defaults to the channel config's effective apiVersion. */
+  apiVersion?: string;
+}
+
+/** `RawPull` — response of `/pull/raw`: the fetched channel payload, un-classified (Reverse Playground). */
+export interface RawPull {
+  channelType: string;
+  apiVersion?: string;
+  storeId: string;
+  channelProductId: string;
+  masterProductId?: string;
+  channelPayload: Record<string, unknown>;
+}
+
+/** One parameter of a reverse op (from its descriptor) — Reverse Op Catalog. */
+export interface ReverseParamSpec {
+  name: string;
+  type: string;
+  required: boolean;
+  description: string;
+}
+
+/** One reverse op-type described for discovery — Reverse Op Catalog. */
+export interface ReverseOpSpec {
+  opCode: string;
+  stage: string; // "rebase" | "deDerive" | "enrich" | "classify"
+  description: string;
+  params: ReverseParamSpec[];
+  example?: unknown;
+}
+
+/** Response of `/reverse/op-catalog` — the reverse op vocabulary (analog forward /post-processing/catalog). */
+export interface ReverseOpCatalog {
+  totalOperations: number;
+  stages: string[];
+  stageCounts: Record<string, number>;
+  operations: ReverseOpSpec[];
+  timestamp?: string;
+}
+
+/** One stage snapshot in a reverse `/trace` (rebase → deDerive → enrich → classify). */
+export interface ReverseStage {
+  stage: string;            // "rebase" | "deDerive" | "enrich" | "classify"
+  label: string;
+  /** Flat/rebased output snapshot for non-terminal stages. */
+  output?: Record<string, unknown>;
+  /** De-derivation notes (deDerive/enrich stages). */
+  notes?: string[];
+  /** Keys this stage added (enrich stage). */
+  added?: string[];
+  /** Terminal stage only: the 3-bucket classification. */
+  preview?: ReversePreview;
+}
+
+/**
+ * `ReverseTrace` — response of `/trace`: the reverse op-pipeline run stage-by-stage on a supplied payload.
+ * `operations` are read verbatim from `reverseSyncConfig.operations[]` ({op,...params}); the FE groups them by
+ * their fixed stage for display. `preview` == the classify stage's preview.
+ */
+export interface ReverseTrace {
+  channelType: string;
+  apiVersion?: string;
+  operations: Array<Record<string, unknown>>;
+  stages: ReverseStage[];
+  preview: ReversePreview;
 }
 
 /** `ReverseApplyRequest` — body for `/apply` and `/review`. */
