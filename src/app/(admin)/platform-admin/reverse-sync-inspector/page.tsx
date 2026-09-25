@@ -1,6 +1,6 @@
 import ReverseAdminInspector from "@/modules/reverse-sync/components/ReverseAdminInspector";
 
-export const metadata = { title: "Reverse Sync Inspector" };
+export const metadata = { title: "Reverse Readiness" };
 
 export default function Page() {
   return <ReverseAdminInspector />;

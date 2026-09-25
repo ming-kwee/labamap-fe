@@ -120,7 +120,7 @@ const adminNavItems: NavItem[] = [
       { name: "Field Semantic Knowledge", path: "/platform-admin/field-semantic-knowledge", pro: false },
       { name: "Post-Processing Playground", path: "/platform-admin/post-processing-playground", pro: false, new: true },
       { name: "Reverse Playground", path: "/platform-admin/reverse-post-processing-playground", pro: false, new: true },
-      { name: "Reverse Sync Inspector", path: "/platform-admin/reverse-sync-inspector", pro: false },
+      { name: "Reverse Readiness", path: "/platform-admin/reverse-sync-inspector", pro: false },
     ],
   },
   {
