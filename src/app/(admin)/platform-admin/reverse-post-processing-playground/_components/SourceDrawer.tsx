@@ -249,26 +249,43 @@ export default function SourceDrawer({
                 aria-label="Filter products"
                 className="mt-1 w-full text-xs rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-950 text-gray-800 dark:text-gray-200 px-2.5 py-2 focus:outline-none focus:ring-2 focus:ring-brand-400"
               />
-              <select
-                value={selectedProductId}
-                onChange={(e) => setSelectedProductId(e.target.value)}
-                disabled={listLoading && items.length === 0}
+              {/* Clickable list (not a native <select size>): a native sized listbox doesn't fire onChange
+                  when the FIRST option is clicked while the value is still the empty placeholder — so the
+                  button stayed disabled until you picked a different row. Buttons fire on every click. */}
+              <div
+                role="listbox"
                 aria-label="Pick a channel product"
-                size={Math.min(Math.max(visibleItems.length, 3), 8)}
-                className="mt-1.5 w-full text-xs rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-950 text-gray-800 dark:text-gray-200 px-1 py-1 focus:outline-none focus:ring-2 focus:ring-brand-400"
+                className="mt-1.5 max-h-64 overflow-y-auto rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-950 divide-y divide-gray-100 dark:divide-gray-800"
               >
-                {visibleItems.length === 0 && (
-                  <option value="" disabled>
+                {visibleItems.length === 0 ? (
+                  <div className="px-3 py-3 text-xs text-gray-400 dark:text-gray-500">
                     {listLoading ? "Loading products…" : "No products"}
-                  </option>
+                  </div>
+                ) : (
+                  visibleItems.map((it) => {
+                    const active = it.channelProductId === selectedProductId;
+                    return (
+                      <button
+                        key={it.channelProductId}
+                        type="button"
+                        role="option"
+                        aria-selected={active}
+                        onClick={() => setSelectedProductId(it.channelProductId)}
+                        className={`w-full text-left px-3 py-2 text-xs transition-colors ${
+                          active
+                            ? "bg-brand-50 text-brand-700 dark:bg-brand-900/20 dark:text-brand-300"
+                            : "text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800"
+                        }`}
+                      >
+                        <span className="font-medium">{it.title || it.channelProductId}</span>
+                        {it.status && (
+                          <span className="ml-1.5 text-[10px] text-gray-400 dark:text-gray-500">[{it.status}]</span>
+                        )}
+                      </button>
+                    );
+                  })
                 )}
-                {visibleItems.map((it) => (
-                  <option key={it.channelProductId} value={it.channelProductId}>
-                    {it.title || it.channelProductId}
-                    {it.status ? `  [${it.status}]` : ""}
-                  </option>
-                ))}
-              </select>
+              </div>
               <div className="mt-1.5 flex items-center justify-between gap-2">
                 <span className="text-[11px] text-gray-400 dark:text-gray-500">
                   {items.length} loaded{filter.trim() ? ` · ${visibleItems.length} shown` : ""}
