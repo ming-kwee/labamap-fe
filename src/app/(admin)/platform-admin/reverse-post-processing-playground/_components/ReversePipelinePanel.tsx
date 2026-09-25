@@ -28,7 +28,8 @@ const OP_STAGE: Record<string, string> = {
 const STAGE_ORDER = ["rebase", "deDerive", "enrich", "classify", "other"] as const;
 type StageKey = (typeof STAGE_ORDER)[number];
 
-/** Stage → number (shared with the output panel so tengah↔kanan align); "other" has none. */
+/** Stage → number (shared with the output panel so tengah↔kanan align); "other" has none. Build (5) is
+ *  output-only — it has no config op to list here, so it is not in the pipeline grouping. */
 const STAGE_NUM: Partial<Record<StageKey, number>> = { rebase: 1, deDerive: 2, enrich: 3, classify: 4 };
 
 const STAGE_META: Record<StageKey, { label: string; op: string; header: string; pill: string }> = {

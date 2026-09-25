@@ -20,6 +20,7 @@ import {
   formatReverseValue,
   type ReverseTrace,
   type ReverseStage,
+  type ReverseMasterDraft,
 } from "@/modules/reverse-sync";
 import JsonTree from "@/app/(admin)/platform-admin/post-processing-playground/_components/JsonTree";
 
@@ -73,7 +74,7 @@ export default function ReverseOutputPanel({
                 index={i + 1}
                 stage={stage}
                 // Terminal (classify / preview) stage expanded by default; intermediate stages collapsed.
-                defaultOpen={Boolean(stage.preview)}
+                defaultOpen={Boolean(stage.preview) || Boolean(stage.masterDraft)}
                 onExplain={onExplain}
               />
             ))}
@@ -93,8 +94,8 @@ export default function ReverseOutputPanel({
   );
 }
 
-/** Fixed stage → number, shared with the pipeline panel so tengah↔kanan align (1-4). */
-const STAGE_NUM: Record<string, number> = { rebase: 1, deDerive: 2, enrich: 3, classify: 4 };
+/** Fixed stage → number, shared with the pipeline panel so tengah↔kanan align. */
+const STAGE_NUM: Record<string, number> = { rebase: 1, deDerive: 2, enrich: 3, classify: 4, build: 5 };
 
 /** One collapsible stage row — mirrors the forward OutputPanel's StepRow. */
 function StageRow({
@@ -115,10 +116,12 @@ function StageRow({
 
   return (
     <div
-      className={`rounded-lg border ${
+      className={`rounded-lg border bg-white dark:bg-gray-900 ${
         isTerminal
-          ? "border-blue-200 dark:border-blue-800 bg-white dark:bg-gray-900"
-          : "border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900"
+          ? "border-blue-200 dark:border-blue-800"
+          : stage.masterDraft
+            ? "border-emerald-200 dark:border-emerald-800"
+            : "border-gray-200 dark:border-gray-700"
       }`}
     >
       <button
@@ -170,13 +173,20 @@ function StageRow({
               classification
             </span>
           )}
+          {stage.masterDraft && (
+            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-emerald-50 text-emerald-600 dark:bg-emerald-900/20 dark:text-emerald-300">
+              master draft
+            </span>
+          )}
         </div>
       </button>
 
       {open && (
         <div className="px-3 pb-3">
-          {isTerminal && stage.preview ? (
+          {stage.preview ? (
             <ClassifyBody preview={stage.preview} onExplain={onExplain} />
+          ) : stage.masterDraft ? (
+            <MasterDraftBody draft={stage.masterDraft} />
           ) : (
             <>
               {stage.output && <JsonTree data={stage.output} />}
@@ -263,6 +273,38 @@ function ClassifyBody({
       <DeDerivationNotes notes={preview.deDerivationNotes} />
     </div>
   );
+}
+
+/** Small image thumbnail grid (channel URLs, as-is). */
+function Thumbs({ urls, label }: { urls: string[]; label: string }) {
+  if (!urls || urls.length === 0) return null;
+  return (
+    <div>
+      <p className="mb-1 text-[11px] font-medium text-gray-500 dark:text-gray-400">{label} ({urls.length})</p>
+      <div className="flex flex-wrap gap-1.5">
+        {urls.map((u, i) => (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            key={i}
+            src={u}
+            alt=""
+            title={u}
+            className="h-14 w-14 rounded-md border border-gray-200 dark:border-gray-700 object-cover bg-gray-50 dark:bg-gray-800"
+            loading="lazy"
+            onError={(e) => { (e.currentTarget as HTMLImageElement).style.opacity = "0.25"; }}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Stage 5 — the reconstructed master draft as RAW JSON (the pipeline's output: attributes + images + variants),
+ * rendered via JsonTree like the other pipeline stages — not a visual preview.
+ */
+function MasterDraftBody({ draft }: { draft: ReverseMasterDraft }) {
+  return <JsonTree data={draft as unknown as Record<string, unknown>} />;
 }
 
 /** A plain key = value row for the channel-only / discarded buckets (mirrors ReversePreviewModal.PlainRow). */

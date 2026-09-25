@@ -182,9 +182,17 @@ export interface ReverseOpCatalog {
   timestamp?: string;
 }
 
-/** One stage snapshot in a reverse `/trace` (rebase → deDerive → enrich → classify). */
+/** The reconstructed master draft (Stage 5 "build") — normalized, channel-agnostic. */
+export interface ReverseMasterDraft {
+  attributes: Record<string, unknown>;
+  mainImage?: string | null;
+  galleryImages?: string[];
+  variants?: Array<Record<string, unknown>>;
+}
+
+/** One stage snapshot in a reverse `/trace` (rebase → deDerive → enrich → classify → build). */
 export interface ReverseStage {
-  stage: string;            // "rebase" | "deDerive" | "enrich" | "classify"
+  stage: string;            // "rebase" | "deDerive" | "enrich" | "classify" | "build"
   label: string;
   /** Flat/rebased output snapshot for non-terminal stages. */
   output?: Record<string, unknown>;
@@ -192,8 +200,10 @@ export interface ReverseStage {
   notes?: string[];
   /** Keys this stage added (enrich stage). */
   added?: string[];
-  /** Terminal stage only: the 3-bucket classification. */
+  /** Classify stage: the 3-bucket classification. */
   preview?: ReversePreview;
+  /** Build stage: the reconstructed master draft (variants + images). */
+  masterDraft?: ReverseMasterDraft;
 }
 
 /**
